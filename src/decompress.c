@@ -423,6 +423,23 @@ static inline void CopyFuncToIwram(void *funcBuffer, const void *funcStartAddres
     bitIndex += currK;  \
 }
 
+#if PLATFORM_NATIVE
+// The same for all the loops
+// The word fetched here is look-ahead: when the last symbol of the bitstream ends exactly on a
+// word boundary (bitIndex == 0) it is never used, but on the GBA it was read from the bytes
+// after the stream. Native reads zero past sDataEnd instead of past the end of the asset.
+static const u32 *sDataEnd;
+#define LOOP_BITADVANCE() \
+{   \
+    currBits = data < sDataEnd ? *data : 0; \
+    data++; \
+    bitIndex -= 32; \
+    if (bitIndex != 0)  \
+    {   \
+        sCurrState += (currBits & ((1u << bitIndex) - 1)) << (currK - bitIndex); \
+    } \
+}
+#else
 // The same for all the loops
 #define LOOP_BITADVANCE() \
 {   \
@@ -433,6 +450,8 @@ static inline void CopyFuncToIwram(void *funcBuffer, const void *funcStartAddres
         sCurrState += (currBits & ((1u << bitIndex) - 1)) << (currK - bitIndex); \
     } \
 }
+#endif
+#line 436
 //  Inner loop of tANS decoding for Lengths and Offset data for decompression instructions, uses u8 data sizes
 //  Basic process for decoding a tANS encoded value is to read the current symbol from the decoding table, then calculate the next state
 //  from the y and k values for the current state and add the value read from the next k bits in the bitstream
@@ -549,7 +568,13 @@ static void DecodeLOtANS(const u32 *data, const u32 *pFreqs, u8 *resultVec, u32 
             sBitIndex += currK;
             if (sBitIndex >= 32)
             {
+#if PLATFORM_NATIVE
+                // Dead look-ahead at the end of the stream, bounded like LOOP_BITADVANCE
+                currBits = ++sDataPtr < sDataEnd ? *sDataPtr : 0;
+#else
                 currBits = *(++sDataPtr);
+#endif
+#line 547
                 sBitIndex -= 32;
                 if (sBitIndex != 0)
                 {
@@ -1016,6 +1041,10 @@ static void SmolDecompressData(const struct SmolHeader *header, const u32 *data,
     u8 *loVec = memoryAlloced + alignedSymSize*2;
 
     sBitIndex = 0;
+#if PLATFORM_NATIVE
+    sDataEnd = sDataPtr + header->bitstreamSize;
+#endif
+#line 995
     //  Decode tANS encoded LO data, mode 3, 4 and 5
     if (loEncoded)
     {
