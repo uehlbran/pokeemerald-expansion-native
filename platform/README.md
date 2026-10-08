@@ -122,3 +122,39 @@ than `mmap` at run time: the header comment of `gba_memmap.c` and
 Sizes are what the hardware decodes, and are what `contains()` checks
 against; the 4 KiB pages are only the native mapping granularity. The
 executable itself starts at 0x40000000, above every region.
+
+## The flash chip (`flash`) and the save file (`save_file`)
+
+`flash` is the cartridge's 1 Mbit flash chip as an entry of expansion's own
+driver table: `NativeFlash`, a `struct FlashSetupInfo`
+(`include/gba/flash_internal.h`), whose program and erase functions work on
+the 128 KiB SRAM region. The region holds both 64 KiB banks back to back, so
+bank switching is a no-op and sector n is at `0x0E000000 + n * 4096`. Under
+`PLATFORM_NATIVE`, `src/agb_flash_1m.c` lists `NativeFlash` first and
+`src/agb_flash.c` leaves `ReadFlashId`, `ReadFlash` and `VerifyFlashSector`
+to this module, so `IdentifyFlash` always selects it. Erase fills with 0xFF;
+a byte program that would turn a 0 bit into a 1 is rejected as on hardware;
+every sector index, offset and length is bounds-checked. Each program and
+erase marks its sector dirty.
+
+`save_file` persists the chip as a raw 131072-byte `.sav`, byte n of the
+file being byte n of the chip, which is what GBA emulators read and write.
+Stores go to `<path>.tmp`, are fsynced, renamed over `<path>`, and the
+directory is fsynced. A NULL path keeps everything in memory (tests, the
+test runner).
+
+The frame loop must call `save_file_store()` whenever `flash_take_dirty()`
+returns true; that is what persists every path that writes flash, including
+the link saves and `TryWriteSpecialSaveSector`. Full contract: `flash.h`,
+`save_file.h`.
+
+| Constant | Value | Source |
+|---|---|---|
+| `FLASH_SECTOR_SIZE` | 4096 | GBATEK "GBA Cart Backup Flash ROM", "Erase 4Kbyte Sector" |
+| `FLASH_SECTOR_COUNT` | 32 | 128 KiB / 4 KiB; expansion's `MX29L010` entry |
+| `FLASH_CHIP_SIZE` | 131072 | GBATEK, "128 KBytes - 1Mbit Flash ROM"; expansion's `FLASH_ROM_SIZE_1M` |
+| `FLASH_ERASED_BYTE` | 0xFF | GBATEK, "erased memory is FFh-filled" |
+| `FLASH_NATIVE_ID` | 0x314E | ours: no real chip's ID, maker byte non-zero |
+| `FLASH_STATUS_BAD_SECTOR` | 0x80FF | `EraseFlashSector_MX`, `ProgramFlashSector_MX` |
+| `FLASH_STATUS_BAD_ARGUMENT` | 0x8000 | `ProgramFlashByte_MX` |
+| `FLASH_STATUS_TIME_LIMIT`, `FLASH_STATUS_TIMEOUT` | 0xA000, 0xC000, ORed with the phase | `WaitForFlashWrite_Common` |
