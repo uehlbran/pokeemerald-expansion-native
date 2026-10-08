@@ -140,7 +140,7 @@ PTEST(cpuset_maximum_counts)
 PTEST(cpuset_misaligned_source_and_destination_copy_correctly)
 {
     setup();
-    const uint8_t src[9] = { 0, 1, 2, 3, 4, 5, 6, 7, 8 };
+    const uint8_t src[12] = { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11 };
     uint8_t dst[12];
     memset(dst, FILL_BYTE, sizeof dst);
     CpuSet(src + 1, dst + 3, 3); /* three halfwords, both addresses odd */

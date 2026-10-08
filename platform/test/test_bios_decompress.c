@@ -1,4 +1,4 @@
-// deps: bios_internal.c transfer_bounds.c gba_memmap.c
+// deps: bios_stream.c bios_internal.c transfer_bounds.c gba_memmap.c
 /*
  * Tests of LZ77UnComp (SWI 11h/12h), RLUnComp (SWI 14h/15h) and HuffUnComp
  * (SWI 13h) on hand-built streams, from GBATEK "BIOS Decompression

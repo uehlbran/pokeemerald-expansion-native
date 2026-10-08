@@ -22,6 +22,8 @@
 _Static_assert(__BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__,
                "the BIOS functions read and write GBA data in host byte order");
 
+#define BIOS_BITS_PER_BYTE 8u
+
 /* The GBA address of a native pointer: the same number (gba_memmap.h).
  * uintptr_t, flagged for the 64-bit milestone as gba_memmap.h is. */
 uintptr_t bios_address_of(const void *pointer);
@@ -44,6 +46,26 @@ int32_t bios_asr(int32_t value, unsigned shift);
  * instead of overflowing. */
 int32_t bios_mul(int32_t a, int32_t b);
 
+/* The low 16 bits of value, as a halfword store (STRH) keeps them. */
+static inline uint16_t bios_low16(int32_t value)
+{
+    return (uint16_t)((uint32_t)value & UINT32_C(0xFFFF));
+}
+
+/* The low 16 bits of value read back as a signed halfword (LDRSH). */
+static inline int32_t bios_sign_extend16(int32_t value)
+{
+    uint16_t bits = bios_low16(value);
+    int16_t halfword;
+    memcpy(&halfword, &bits, sizeof halfword);
+    return halfword;
+}
+
+/* count entries of stride bytes whose last one is last_size bytes long:
+ * (count - 1) * stride + last_size, in *bytes. False if count is 0 or the
+ * span does not fit in size_t. */
+bool bios_span(size_t count, size_t stride, size_t last_size, size_t *bytes);
+
 /* Unaligned little-endian loads and stores (memcpy, so no alignment or
  * aliasing assumption). */
 static inline uint16_t bios_load16(const uint8_t *bytes)
@@ -56,6 +78,20 @@ static inline uint16_t bios_load16(const uint8_t *bytes)
 static inline uint32_t bios_load32(const uint8_t *bytes)
 {
     uint32_t value;
+    memcpy(&value, bytes, sizeof value);
+    return value;
+}
+
+static inline int16_t bios_load_s16(const uint8_t *bytes)
+{
+    int16_t value;
+    memcpy(&value, bytes, sizeof value);
+    return value;
+}
+
+static inline int32_t bios_load_s32(const uint8_t *bytes)
+{
+    int32_t value;
     memcpy(&value, bytes, sizeof value);
     return value;
 }

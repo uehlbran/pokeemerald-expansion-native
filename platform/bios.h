@@ -26,11 +26,14 @@
  *   bios_unfilter.c    BitUnPack, Diff8bitUnFilter*, Diff16bitUnFilter
  *   bios_control.c     resets, halts, the frame hook, MultiBoot
  *   bios_sound.c       SoundBias, MidiKey2Freq
+ *   bios_stream.c      the decompressors' header, source bound and writers
  *   bios_internal.c    helpers shared by the files above (bios_internal.h)
- * Written from GBATEK and tonc ("BIOS calls", https://www.coranac.com/tonc/text/swi.htm);
- * no reference port's or emulator's BIOS code was read (docs/C-RULES.md,
+ * Written from GBATEK, tonc ("BIOS calls",
+ * https://www.coranac.com/tonc/text/swi.htm) and expansion's own m4a.c; no
+ * reference port's or emulator's BIOS code was read (docs/C-RULES.md,
  * licensing). Where GBATEK leaves a behaviour open, the function's comment
- * below says what this implementation does.
+ * below says what this implementation does; ArcTan's coefficients are the
+ * one fact not taken from those sources (bios_arith.c says where from).
  *
  * Not provided: the BIOS sound driver (SWI 1Ah-1Eh, 20h-24h, 28h-2Ah:
  * SoundDriverInit and the rest, MusicPlayer*), which expansion replaces with
@@ -123,10 +126,11 @@ int bios_soft_reset(uint32_t resetFlags);
  * returns to its caller (bios_soft_reset is the path that reports it). */
 void SoftReset(uint32_t resetFlags);
 
-/* libagbsyscall's SoftResetRom and SoftResetExram: as SoftReset, after
- * writing the re-entry flag at 3007FFAh (0 = ROM, 1 = EWRAM); SoftResetExram
- * also keeps EWRAM (clears bit 0 of resetFlags). Natively there is one entry
- * point, the reset target, whichever flag is written. */
+/* libagbsyscall's SoftResetRom and SoftResetExram: as SoftReset; on the GBA
+ * they first write the re-entry flag at 3007FFAh (0 = restart from ROM, 1 =
+ * from EWRAM), which natively means nothing (there is one entry point, the
+ * reset target) and is not written. SoftResetExram keeps EWRAM: it clears
+ * bit 0 of resetFlags. */
 void SoftResetRom(uint32_t resetFlags);
 void SoftResetExram(uint32_t resetFlags);
 
@@ -258,8 +262,9 @@ void CpuFastSet(const void *src, void *dest, uint32_t control);
 
 /* Every stream starts with a 32-bit header: bits 4-7 the type (LZ77 1,
  * Huffman 2, run-length 3, diff filter 8), bits 8-31 the decompressed size
- * in bytes. A header naming another type is refused (BIOS_ERR_HEADER; the
- * hardware decodes it anyway). The destination range [dest, dest + size) is
+ * in bytes. A header naming another type is refused (BIOS_ERR_HEADER):
+ * GBATEK says the type "must be" that value and does not say whether the
+ * BIOS checks it. The destination range [dest, dest + size) is
  * validated before anything is written; output stops at exactly size bytes,
  * even in the middle of a block. A size of 0 writes nothing.
  *
@@ -340,7 +345,7 @@ void SoundBiasSet(void);
  * the octave, interpolated linearly between keys mk and mk+1 by fp/256, then
  * freq times it divided by 2^32. Keys above 178 are treated as 178 + 255/256
  * (the factor for key 180 does not fit in 32 bits). Prints and returns 0 if
- * transfer_bounds refuses the freq word. */
+ * transfer_bounds refuses the wave's first 8 bytes. */
 uint32_t MidiKey2Freq(const struct WaveData *wa, uint8_t mk, uint8_t fp);
 
 /* ---- Multi Boot (GBATEK "BIOS Multi Boot") ---------------------------- */

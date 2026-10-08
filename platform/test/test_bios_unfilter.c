@@ -1,4 +1,4 @@
-// deps: bios_internal.c transfer_bounds.c gba_memmap.c
+// deps: bios_stream.c bios_internal.c transfer_bounds.c gba_memmap.c
 /*
  * Tests of BitUnPack (SWI 10h) and the difference unfilters (SWI 16h-18h),
  * from GBATEK "BIOS Decompression Functions": BitUnPack's unpack information
@@ -266,9 +266,9 @@ PTEST(diff_headers_must_match)
     uint8_t out[12];
     memset(out, STALE, sizeof out);
     static const _Alignas(4) uint8_t sixteen[] = { 0x82, 0x02, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00 };
-    static const _Alignas(4) uint8_t lz77[] = { 0x10, 0x02, 0x00, 0x00, 0x00, 0x01, 0x02, 0x00 };
+    static const _Alignas(4) uint8_t lz77[] = { 0x11, 0x02, 0x00, 0x00, 0x00, 0x01, 0x02, 0x00 };
     Diff8bitUnFilterWram(sixteen, out);        /* unit size 2 is not 8-bit */
-    Diff8bitUnFilterVram(lz77, out);           /* type 1 is not a diff filter */
+    Diff8bitUnFilterVram(lz77, out);           /* unit size 1 but type 1: not a diff filter */
     Diff16bitUnFilter(diff8_example, out);     /* unit size 1 is not 16-bit */
     for (size_t i = 0; i < sizeof out; i++)
         PT_ASSERT_EQ_U32(out[i], STALE);
