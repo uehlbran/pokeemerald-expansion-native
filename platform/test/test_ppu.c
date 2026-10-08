@@ -244,12 +244,20 @@ PTEST(a_transparent_dot_shows_the_layer_below)
 
 PTEST(mode_1_does_not_display_bg3)
 {
-    /* GBATEK "LCD I/O Display Control": mode 1 layers are "012-". */
+    /* GBATEK "LCD I/O Display Control": mode 1 layers are "012-". Character
+     * block 0 and BG3's map are all 0x11 bytes, so BG3 would show something
+     * whether drawn as a text BG (4bpp index 1) or as a rotation/scaling BG
+     * (tile 0x11, 8bpp index 0x11). */
     uint16_t out[SCREEN_W];
     scene_reset();
     palette_set(0, BACKDROP);
-    bg_palette_set(1, 1, rgb(9, 9, 9));
-    solid_text_bg(3, 0, 1, 1, 1);
+    bg_palette_set(0, 1, rgb(9, 9, 9));
+    bg_palette_set(1, 1, rgb(9, 9, 9)); /* colour 0x11 */
+    for (uint32_t i = 0; i < CHAR_BLOCK_BYTES; i++)
+        vram_write8(i, 0x11);
+    for (uint32_t i = 0; i < SCREEN_BLOCK_BYTES; i++)
+        vram_write8(28 * SCREEN_BLOCK_BYTES + i, 0x11);
+    io_write16(IO_BG0CNT + 6, bgcnt_screen_block(28));
     io_write16(IO_DISPCNT, DISP_MODE_0 | DISP_BG3);
     PT_ASSERT_EQ_INT(ppu_render_line(0, out), PPU_OK);
     PT_ASSERT_EQ_INT(first_mismatch(out, 0, SCREEN_W, rgb(9, 9, 9)), -1);

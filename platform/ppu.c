@@ -20,6 +20,16 @@
  * layer offers one pixel per dot (ppu_obj.c), so OBJs never blend with each
  * other. The backdrop, BG palette colour 0, is behind everything.
  *
+ * THE REFERENCE POINTS (GBATEK "LCD I/O BG Rotation/Scaling", Internal
+ * Reference Point Registers): copied from BGxX/BGxY by ppu_latch_vblank(),
+ * re-copied when the registers change before a line (a write, see
+ * ppu_affine_reference_pick_up_writes), stepped by PB/PD after every line.
+ * Interpretation: they step after every line, in any mode, during forced
+ * blank and with the BG off, as GBATEK states it without conditions (mGBA
+ * steps only an enabled BG in modes 1-5 outside forced blank). The game
+ * latches anew every VBlank, so this can differ only within a frame in which
+ * BG2 is switched on or forced blank ends mid-frame.
+ *
  * State: the module's only state is `ppu` below (whether it is initialised,
  * and the two reference points). Every line buffer is on the stack.
  */
@@ -267,7 +277,7 @@ int ppu_render_line(uint16_t line, uint16_t *out)
         ppu_affine_reference_pick_up_writes(&ppu.reference[i], &regs.affine[i]);
     const int status = draw_line(&regs, line, out);
     /* GBATEK: the internal registers "are then incremented by dmx and dmy
-     * after each scanline", whatever is displayed. */
+     * after each scanline". */
     for (unsigned i = 0; i < PPU_AFFINE_BG_COUNT; i++)
         ppu_affine_reference_step(&ppu.reference[i], &regs.affine[i]);
     return status;

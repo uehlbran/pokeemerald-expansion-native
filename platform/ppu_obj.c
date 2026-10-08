@@ -39,6 +39,9 @@
  * row (mGBA does the same). Tile data beyond the 32 KiB OBJ area wraps
  * (ppu_obj_vram_byte). Shape 3 and mode 3, "Prohibited", draw nothing.
  * Modes 3-5, where tiles 0-511 are not displayed, are not supported (ppu.h).
+ * Not reproduced: the "garbage" GBATEK warns of when a lower-numbered OBJ has
+ * a lower priority than a later one that overlaps it; here the line buffer
+ * simply keeps the best-priority pixel.
  */
 #include "ppu_internal.h"
 
@@ -124,6 +127,7 @@ struct obj {
     int32_t width, height;           /* the image, in dots */
     int32_t area_width, area_height; /* doubled for double size */
     bool affine;
+    int32_t pa, pb, pc, pd;          /* its rotation/scaling group, if affine */
 };
 
 /* An OBJ on the current line and how many columns of its area to draw. */
@@ -145,6 +149,17 @@ void ppu_obj_clear_line(struct ppu_obj_line *out)
 static enum obj_mode mode_of(uint16_t attr0)
 {
     return (enum obj_mode)((attr0 >> ATTR0_MODE_SHIFT) & ATTR0_MODE_MASK);
+}
+
+/* The PA-PD group attribute 1 selects, into obj. */
+static void read_affine_group(struct obj *obj)
+{
+    const uint32_t group = ((uint32_t)obj->attr1 >> ATTR1_GROUP_SHIFT) & ATTR1_GROUP_MASK;
+    const uint32_t base = group * GROUP_BYTES + GROUP_PA_OFFSET;
+    obj->pa = ppu_signed_halfword(ppu_oam_halfword(base));
+    obj->pb = ppu_signed_halfword(ppu_oam_halfword(base + GROUP_PARAM_STRIDE));
+    obj->pc = ppu_signed_halfword(ppu_oam_halfword(base + 2 * GROUP_PARAM_STRIDE));
+    obj->pd = ppu_signed_halfword(ppu_oam_halfword(base + 3 * GROUP_PARAM_STRIDE));
 }
 
 /* Reads OBJ index from OAM; false if it is not displayed at all. */
@@ -171,6 +186,10 @@ static bool read_obj(uint32_t index, struct obj *obj)
     obj->x = obj->attr1 & ATTR1_X_MASK;
     if (obj->x >= X_FIRST_NEGATIVE)
         obj->x -= X_RANGE;
+    if (obj->affine)
+        read_affine_group(obj);
+    else
+        obj->pa = obj->pb = obj->pc = obj->pd = 0; /* not used; never left indeterminate */
     return true;
 }
 
@@ -215,16 +234,10 @@ static bool image_dot(const struct obj *obj, int32_t col, int32_t row, int32_t *
         *ty = (obj->attr1 & ATTR1_VFLIP) ? obj->height - 1 - row : row;
         return true;
     }
-    const uint32_t group = (obj->attr1 >> ATTR1_GROUP_SHIFT) & ATTR1_GROUP_MASK;
-    const uint32_t base = group * GROUP_BYTES + GROUP_PA_OFFSET;
-    const int32_t pa = ppu_signed_halfword(ppu_oam_halfword(base));
-    const int32_t pb = ppu_signed_halfword(ppu_oam_halfword(base + GROUP_PARAM_STRIDE));
-    const int32_t pc = ppu_signed_halfword(ppu_oam_halfword(base + 2 * GROUP_PARAM_STRIDE));
-    const int32_t pd = ppu_signed_halfword(ppu_oam_halfword(base + 3 * GROUP_PARAM_STRIDE));
     /* GBATEK: the rotation centre is the middle of the OBJ (and of its area). */
     const int32_t dx = col - obj->area_width / 2, dy = row - obj->area_height / 2;
-    const int32_t fx = pa * dx + pb * dy + (obj->width << HALF_IN_FIXED_POINT);
-    const int32_t fy = pc * dx + pd * dy + (obj->height << HALF_IN_FIXED_POINT);
+    const int32_t fx = obj->pa * dx + obj->pb * dy + (obj->width << HALF_IN_FIXED_POINT);
+    const int32_t fy = obj->pc * dx + obj->pd * dy + (obj->height << HALF_IN_FIXED_POINT);
     if (fx < 0 || fy < 0)
         return false;
     *tx = fx >> FRACTION_BITS;
