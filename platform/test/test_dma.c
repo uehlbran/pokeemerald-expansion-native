@@ -25,8 +25,10 @@
 #include "ptest.h"
 #include "transfer_bounds.h"
 
-_Static_assert(DMA_TIMING_VBLANK == DMA_START_VBLANK, "dma.h's VBlank timing is not expansion's DMA_START_VBLANK");
-_Static_assert(DMA_TIMING_HBLANK == DMA_START_HBLANK, "dma.h's HBlank timing is not expansion's DMA_START_HBLANK");
+_Static_assert(DMA_TIMING_VBLANK == DMA_START_VBLANK,
+               "dma.h's VBlank timing is not expansion's DMA_START_VBLANK");
+_Static_assert(DMA_TIMING_HBLANK == DMA_START_HBLANK,
+               "dma.h's HBlank timing is not expansion's DMA_START_HBLANK");
 
 /* GBATEK "GBA DMA Transfers": CNT_L 0 is 4000h units on DMA0-2, 10000h on DMA3. */
 #define DMA0_MAX_UNITS 0x4000u
@@ -42,8 +44,14 @@ _Static_assert(DMA_TIMING_HBLANK == DMA_START_HBLANK, "dma.h's HBlank timing is 
 #define DISPLAY_LINES 160u
 
 #define CONTROL(cnt_h, cnt_l) (((uint32_t)(cnt_h) << 16) | (uint32_t)(cnt_l))
-#define COPY16 (DMA_ENABLE | DMA_START_NOW | DMA_16BIT | DMA_SRC_INC | DMA_DEST_INC)
-#define COPY32 (DMA_ENABLE | DMA_START_NOW | DMA_32BIT | DMA_SRC_INC | DMA_DEST_INC)
+/* CNT_H values the tests build on. */
+#define NOW16 (DMA_ENABLE | DMA_START_NOW | DMA_16BIT)
+#define NOW32 (DMA_ENABLE | DMA_START_NOW | DMA_32BIT)
+#define HBLANK16 (DMA_ENABLE | DMA_START_HBLANK | DMA_16BIT)
+#define HBLANK_REPEAT16 (HBLANK16 | DMA_REPEAT)
+#define VBLANK32 (DMA_ENABLE | DMA_START_VBLANK | DMA_32BIT)
+#define COPY16 (NOW16 | DMA_SRC_INC | DMA_DEST_INC)
+#define COPY32 (NOW32 | DMA_SRC_INC | DMA_DEST_INC)
 
 static unsigned raised[GBA_IRQ_GAMEPAK + 1];
 
@@ -191,7 +199,7 @@ PTEST(set_before_init_is_refused_and_touches_no_memory)
     fill_pattern(ewram(0), 16, 1);
     PT_ASSERT_EQ_INT(dma_set(3, ewram(0), vram(0), CONTROL(COPY16, 8)), DMA_ERR_NOT_INITIALISED);
     PT_ASSERT(all_equal(vram(0), 16, 0));
-    PT_ASSERT_EQ_INT(dma_set(0, ewram(0), vram(0), CONTROL(DMA_ENABLE | DMA_START_HBLANK | DMA_REPEAT, 1)),
+    PT_ASSERT_EQ_INT(dma_set(0, ewram(0), vram(0), CONTROL(HBLANK_REPEAT16, 1)),
                      DMA_ERR_NOT_INITIALISED);
     PT_ASSERT_EQ_INT(dma_run_timing(DMA_TIMING_HBLANK), 0);
     PT_ASSERT(all_equal(vram(0), 16, 0));
@@ -202,7 +210,7 @@ PTEST(shutdown_forgets_armed_channels)
 {
     setup();
     fill_pattern(ewram(0), 8, 1);
-    PT_ASSERT_EQ_INT(dma_set(0, ewram(0), vram(0), CONTROL(DMA_ENABLE | DMA_START_HBLANK | DMA_REPEAT, 1)), DMA_OK);
+    PT_ASSERT_EQ_INT(dma_set(0, ewram(0), vram(0), CONTROL(HBLANK_REPEAT16, 1)), DMA_OK);
     dma_shutdown();
     PT_ASSERT_EQ_INT(dma_run_timing(DMA_TIMING_HBLANK), 0);
     PT_ASSERT_EQ_INT(dma_set(3, ewram(0), vram(0), CONTROL(COPY16, 4)), DMA_ERR_NOT_INITIALISED);
@@ -247,7 +255,7 @@ PTEST(fill_with_fixed_source_on_the_stack_16bit)
     setup();
     memset(vram(0), GUARD, GBA_VRAM_SIZE);
     PT_ASSERT_EQ_INT(dma_set(3, &value, vram(0x400),
-                             CONTROL(DMA_ENABLE | DMA_START_NOW | DMA_16BIT | DMA_SRC_FIXED | DMA_DEST_INC, units)),
+                             CONTROL(NOW16 | DMA_SRC_FIXED | DMA_DEST_INC, units)),
                      DMA_OK);
     for (size_t i = 0; i < units; i++)
         PT_ASSERT_EQ_INT(read16(vram(0x400 + i * UNIT16)), value);
@@ -262,7 +270,7 @@ PTEST(fill_with_fixed_source_on_the_stack_32bit)
     setup();
     memset(vram(0), GUARD, GBA_VRAM_SIZE);
     PT_ASSERT_EQ_INT(dma_set(3, &value, vram(0x800),
-                             CONTROL(DMA_ENABLE | DMA_START_NOW | DMA_32BIT | DMA_SRC_FIXED | DMA_DEST_INC, units)),
+                             CONTROL(NOW32 | DMA_SRC_FIXED | DMA_DEST_INC, units)),
                      DMA_OK);
     for (size_t i = 0; i < units; i++)
         PT_ASSERT_EQ_U32(read32(vram(0x800 + i * UNIT32)), value);
@@ -347,7 +355,7 @@ PTEST(count_zero_32bit_fill_on_dma3_covers_all_of_ewram)
     const uint32_t value = 0xC0FFEE11u;
     setup();
     PT_ASSERT_EQ_INT(dma_set(3, &value, ewram(0),
-                             CONTROL(DMA_ENABLE | DMA_START_NOW | DMA_32BIT | DMA_SRC_FIXED | DMA_DEST_INC, 0)),
+                             CONTROL(NOW32 | DMA_SRC_FIXED | DMA_DEST_INC, 0)),
                      DMA_OK);
     for (size_t offset = 0; offset < GBA_EWRAM_SIZE; offset += UNIT32)
         PT_ASSERT_EQ_U32(read32(ewram(offset)), value);
@@ -360,15 +368,18 @@ PTEST(maximum_count_one_unit_past_the_region_end_is_rejected)
     setup();
     fill_pattern(ewram(0), bytes, 29);
     /* Destination [20002h, 40002h): one unit beyond EWRAM. */
-    PT_ASSERT_EQ_INT(dma_set(3, ewram(0), ewram(bytes + UNIT16), CONTROL(COPY16, 0)), DMA_ERR_BOUNDS);
+    PT_ASSERT_EQ_INT(dma_set(3, ewram(0), ewram(bytes + UNIT16), CONTROL(COPY16, 0)),
+                     DMA_ERR_BOUNDS);
     PT_ASSERT(all_equal(ewram(bytes), bytes, 0));
     /* Source running one unit past the end of VRAM, on DMA0 with 4000h units. */
-    PT_ASSERT_EQ_INT(dma_set(0, vram(GBA_VRAM_SIZE - DMA0_MAX_UNITS * UNIT16 + UNIT16), ewram(bytes),
+    PT_ASSERT_EQ_INT(dma_set(0, vram(GBA_VRAM_SIZE - DMA0_MAX_UNITS * UNIT16 + UNIT16),
+                             ewram(bytes),
                              CONTROL(COPY16, 0)),
                      DMA_ERR_BOUNDS);
     PT_ASSERT(all_equal(ewram(bytes), bytes, 0));
     /* The same block one unit lower fits exactly. */
-    PT_ASSERT_EQ_INT(dma_set(0, vram(GBA_VRAM_SIZE - DMA0_MAX_UNITS * UNIT16), ewram(bytes), CONTROL(COPY16, 0)),
+    PT_ASSERT_EQ_INT(dma_set(0, vram(GBA_VRAM_SIZE - DMA0_MAX_UNITS * UNIT16), ewram(bytes),
+                             CONTROL(COPY16, 0)),
                      DMA_OK);
     teardown();
 }
@@ -378,7 +389,7 @@ PTEST(maximum_32bit_fill_one_unit_past_ewram_is_rejected)
     const uint32_t value = 0xFFFFFFFFu;
     setup();
     PT_ASSERT_EQ_INT(dma_set(3, &value, ewram(UNIT32),
-                             CONTROL(DMA_ENABLE | DMA_START_NOW | DMA_32BIT | DMA_SRC_FIXED | DMA_DEST_INC, 0)),
+                             CONTROL(NOW32 | DMA_SRC_FIXED | DMA_DEST_INC, 0)),
                      DMA_ERR_BOUNDS);
     PT_ASSERT(all_equal(ewram(0), GBA_EWRAM_SIZE, 0));
     teardown();
@@ -414,7 +425,7 @@ PTEST(misaligned_fixed_source_fill_copies_correctly)
     fill_pattern(local, sizeof local, 37);
     memset(vram(0), GUARD, GBA_VRAM_SIZE);
     PT_ASSERT_EQ_INT(dma_set(3, local + 1, vram(0x11),
-                             CONTROL(DMA_ENABLE | DMA_START_NOW | DMA_32BIT | DMA_SRC_FIXED | DMA_DEST_INC, 3)),
+                             CONTROL(NOW32 | DMA_SRC_FIXED | DMA_DEST_INC, 3)),
                      DMA_OK);
     for (size_t i = 0; i < 3; i++)
         PT_ASSERT_MEM_EQ(vram(0x11 + i * UNIT32), local + 1, UNIT32);
@@ -461,7 +472,7 @@ PTEST(destination_decrement_writes_backwards_from_the_start_address)
     memcpy(ewram(0), units, sizeof units);
     memset(vram(0), GUARD, GBA_VRAM_SIZE);
     PT_ASSERT_EQ_INT(dma_set(3, ewram(0), vram(0x106),
-                             CONTROL(DMA_ENABLE | DMA_START_NOW | DMA_16BIT | DMA_SRC_INC | DMA_DEST_DEC, 4)),
+                             CONTROL(NOW16 | DMA_SRC_INC | DMA_DEST_DEC, 4)),
                      DMA_OK);
     PT_ASSERT_EQ_INT(read16(vram(0x106)), 0xA001);
     PT_ASSERT_EQ_INT(read16(vram(0x104)), 0xB002);
@@ -478,7 +489,7 @@ PTEST(source_decrement_reads_backwards_from_the_start_address)
     memcpy(ewram(0x40), units, sizeof units);
     memset(vram(0), GUARD, GBA_VRAM_SIZE);
     PT_ASSERT_EQ_INT(dma_set(3, ewram(0x48), vram(0x200),
-                             CONTROL(DMA_ENABLE | DMA_START_NOW | DMA_32BIT | DMA_SRC_DEC | DMA_DEST_INC, 3)),
+                             CONTROL(NOW32 | DMA_SRC_DEC | DMA_DEST_INC, 3)),
                      DMA_OK);
     PT_ASSERT_EQ_U32(read32(vram(0x200)), 0x33333333u);
     PT_ASSERT_EQ_U32(read32(vram(0x204)), 0x22222222u);
@@ -493,13 +504,29 @@ PTEST(decrement_below_the_region_start_is_rejected)
     fill_pattern(ewram(0), 16, 43);
     /* [VRAM - 4, VRAM + 4): the first two units would land below VRAM. */
     PT_ASSERT_EQ_INT(dma_set(3, ewram(0), vram(UNIT16),
-                             CONTROL(DMA_ENABLE | DMA_START_NOW | DMA_16BIT | DMA_SRC_INC | DMA_DEST_DEC, 4)),
+                             CONTROL(NOW16 | DMA_SRC_INC | DMA_DEST_DEC, 4)),
                      DMA_ERR_BOUNDS);
     PT_ASSERT(all_equal(vram(0), 16, 0));
     PT_ASSERT_EQ_INT(dma_set(3, ewram(UNIT16), vram(0),
-                             CONTROL(DMA_ENABLE | DMA_START_NOW | DMA_16BIT | DMA_SRC_DEC | DMA_DEST_INC, 4)),
+                             CONTROL(NOW16 | DMA_SRC_DEC | DMA_DEST_INC, 4)),
                      DMA_ERR_BOUNDS);
     PT_ASSERT(all_equal(vram(0), 16, 0));
+    teardown();
+}
+
+PTEST(walks_that_wrap_the_address_space_are_rejected)
+{
+    setup();
+    fill_pattern(ewram(0), 16, 139);
+    /* Decrementing from address 2: the block would pass below address 0. */
+    PT_ASSERT_EQ_INT(dma_set(3, ewram(0), reg(UNIT16), CONTROL(NOW16 | DMA_DEST_DEC, 4)),
+                     DMA_ERR_BOUNDS);
+    /* Incrementing from the top of the address space: the block would wrap. */
+    PT_ASSERT_EQ_INT(dma_set(3, (const void *)(UINTPTR_MAX - 1), vram(0), CONTROL(COPY16, 4)),
+                     DMA_ERR_BOUNDS);
+    PT_ASSERT_EQ_INT(dma_set(3, ewram(0), (void *)(UINTPTR_MAX - 1), CONTROL(COPY16, 4)),
+                     DMA_ERR_BOUNDS);
+    PT_ASSERT(all_equal(vram(0), 8, 0));
     teardown();
 }
 
@@ -510,7 +537,7 @@ PTEST(destination_fixed_writes_every_unit_to_one_address)
     memcpy(ewram(0), units, sizeof units);
     memset(vram(0), GUARD, GBA_VRAM_SIZE);
     PT_ASSERT_EQ_INT(dma_set(3, ewram(0), vram(0x500),
-                             CONTROL(DMA_ENABLE | DMA_START_NOW | DMA_16BIT | DMA_SRC_INC | DMA_DEST_FIXED, 4)),
+                             CONTROL(NOW16 | DMA_SRC_INC | DMA_DEST_FIXED, 4)),
                      DMA_OK);
     PT_ASSERT_EQ_INT(read16(vram(0x500)), 0x0708);
     PT_ASSERT(vram_guarded_outside(0x500, UNIT16));
@@ -523,8 +550,7 @@ PTEST(fifo_pattern_fixed_destination_with_repeat_is_accepted_and_runs_once)
     setup();
     memcpy(ewram(0), samples, sizeof samples);
     PT_ASSERT_EQ_INT(dma_set(1, ewram(0), reg(REG_ADDR_FIFO_A),
-                             CONTROL(DMA_ENABLE | DMA_START_NOW | DMA_32BIT | DMA_SRC_INC | DMA_DEST_FIXED
-                                     | DMA_REPEAT, 4)),
+                             CONTROL(NOW32 | DMA_SRC_INC | DMA_DEST_FIXED | DMA_REPEAT, 4)),
                      DMA_OK);
     PT_ASSERT_EQ_U32(REG_FIFO_A, 0x04040404u);
     PT_ASSERT_EQ_U32(REG_FIFO_B, 0);
@@ -540,11 +566,11 @@ PTEST(source_control_prohibited_is_rejected)
     setup();
     fill_pattern(ewram(0), 16, 47);
     PT_ASSERT_EQ_INT(dma_set(3, ewram(0), vram(0),
-                             CONTROL(DMA_ENABLE | DMA_START_NOW | DMA_16BIT | DMA_SRC_PROHIBITED | DMA_DEST_INC, 4)),
+                             CONTROL(NOW16 | DMA_SRC_PROHIBITED | DMA_DEST_INC, 4)),
                      DMA_ERR_SOURCE_CONTROL);
     PT_ASSERT(all_equal(vram(0), 16, 0));
     PT_ASSERT_EQ_INT(dma_set(0, ewram(0), vram(0),
-                             CONTROL(DMA_ENABLE | DMA_START_HBLANK | DMA_16BIT | DMA_SRC_PROHIBITED, 4)),
+                             CONTROL(HBLANK16 | DMA_SRC_PROHIBITED, 4)),
                      DMA_ERR_SOURCE_CONTROL);
     PT_ASSERT_EQ_INT(dma_run_timing(DMA_TIMING_HBLANK), 0);
     PT_ASSERT(all_equal(vram(0), 16, 0));
@@ -575,7 +601,7 @@ PTEST(hblank_channel_waits_and_runs_once_without_repeat)
     setup();
     fill_pattern(ewram(0), 16, 59);
     PT_ASSERT_EQ_INT(dma_set(0, ewram(0), vram(0x20),
-                             CONTROL(DMA_ENABLE | DMA_START_HBLANK | DMA_16BIT | DMA_SRC_INC | DMA_DEST_INC, 2)),
+                             CONTROL(HBLANK16 | DMA_SRC_INC | DMA_DEST_INC, 2)),
                      DMA_OK);
     PT_ASSERT(all_equal(vram(0x20), 8, 0));
     PT_ASSERT_EQ_INT(dma_run_timing(DMA_TIMING_VBLANK), 0);
@@ -598,8 +624,7 @@ PTEST(hblank_repeat_with_reload_resets_destination_and_reloads_count)
     memcpy(expected, ewram(0), sizeof expected);
     memset(vram(0), GUARD, GBA_VRAM_SIZE);
     PT_ASSERT_EQ_INT(dma_set(0, ewram(0), vram(0x300),
-                             CONTROL(DMA_ENABLE | DMA_START_HBLANK | DMA_REPEAT | DMA_16BIT | DMA_SRC_INC
-                                     | DMA_DEST_RELOAD, 2)),
+                             CONTROL(HBLANK_REPEAT16 | DMA_SRC_INC | DMA_DEST_RELOAD, 2)),
                      DMA_OK);
     for (size_t run = 0; run < 3; run++) {
         PT_ASSERT_EQ_INT(dma_run_timing(DMA_TIMING_HBLANK), 1);
@@ -617,8 +642,7 @@ PTEST(hblank_repeat_without_reload_continues_destination)
     fill_pattern(ewram(0), 16, 71);
     memset(vram(0), GUARD, GBA_VRAM_SIZE);
     PT_ASSERT_EQ_INT(dma_set(0, ewram(0), vram(0x300),
-                             CONTROL(DMA_ENABLE | DMA_START_HBLANK | DMA_REPEAT | DMA_16BIT | DMA_SRC_INC
-                                     | DMA_DEST_INC, 2)),
+                             CONTROL(HBLANK_REPEAT16 | DMA_SRC_INC | DMA_DEST_INC, 2)),
                      DMA_OK);
     PT_ASSERT_EQ_INT(dma_run_timing(DMA_TIMING_HBLANK), 1);
     PT_ASSERT_EQ_INT(dma_run_timing(DMA_TIMING_HBLANK), 1);
@@ -637,8 +661,9 @@ PTEST(scanline_effect_frame_writes_one_table_entry_per_hblank)
         table[line] = (uint16_t)(line * 3 + 7);
     memcpy(ewram(0x1000), table, sizeof table);
     PT_ASSERT_EQ_INT(dma_set(0, ewram(0x1000 + UNIT16), reg(REG_ADDR_BG0HOFS),
-                             CONTROL(DMA_ENABLE | DMA_START_HBLANK | DMA_REPEAT | DMA_SRC_INC | DMA_DEST_INC
-                                     | DMA_16BIT | DMA_DEST_RELOAD, 1)),
+                             /* SCANLINE_EFFECT_DMACNT_16BIT */
+                             CONTROL(HBLANK_REPEAT16 | DMA_SRC_INC | DMA_DEST_INC
+                                     | DMA_DEST_RELOAD, 1)),
                      DMA_OK);
     for (size_t line = 1; line < DISPLAY_LINES; line++) {
         PT_ASSERT_EQ_INT(dma_run_timing(DMA_TIMING_HBLANK), 1);
@@ -655,8 +680,8 @@ PTEST(battle_transition_pattern_writes_next_source_unit_to_one_register)
     setup();
     memcpy(ewram(0x80), values, sizeof values);
     PT_ASSERT_EQ_INT(dma_set(0, ewram(0x80), reg(REG_ADDR_WIN0H),
-                             CONTROL(DMA_SRC_INC | DMA_DEST_FIXED | DMA_REPEAT | DMA_16BIT | DMA_START_HBLANK
-                                     | DMA_ENABLE, 1)),
+                             /* B_TRANS_DMA_FLAGS */
+                             CONTROL(HBLANK_REPEAT16 | DMA_SRC_INC | DMA_DEST_FIXED, 1)),
                      DMA_OK);
     for (size_t i = 0; i < 3; i++) {
         PT_ASSERT_EQ_INT(dma_run_timing(DMA_TIMING_HBLANK), 1);
@@ -671,7 +696,7 @@ PTEST(vblank_channel_runs_only_at_vblank_and_once_without_repeat)
     setup();
     fill_pattern(ewram(0), 16, 73);
     PT_ASSERT_EQ_INT(dma_set(1, ewram(0), vram(0x40),
-                             CONTROL(DMA_ENABLE | DMA_START_VBLANK | DMA_32BIT | DMA_SRC_INC | DMA_DEST_INC, 2)),
+                             CONTROL(VBLANK32 | DMA_SRC_INC | DMA_DEST_INC, 2)),
                      DMA_OK);
     PT_ASSERT_EQ_INT(dma_run_timing(DMA_TIMING_HBLANK), 0);
     PT_ASSERT(all_equal(vram(0x40), 8, 0));
@@ -689,8 +714,7 @@ PTEST(vblank_repeat_runs_at_every_vblank)
     setup();
     fill_pattern(ewram(0), 32, 83);
     PT_ASSERT_EQ_INT(dma_set(2, ewram(0), vram(0x80),
-                             CONTROL(DMA_ENABLE | DMA_START_VBLANK | DMA_REPEAT | DMA_32BIT | DMA_SRC_INC
-                                     | DMA_DEST_RELOAD, 1)),
+                             CONTROL(VBLANK32 | DMA_REPEAT | DMA_SRC_INC | DMA_DEST_RELOAD, 1)),
                      DMA_OK);
     for (size_t frame = 0; frame < 4; frame++) {
         PT_ASSERT_EQ_INT(dma_run_timing(DMA_TIMING_VBLANK), 1);
@@ -704,7 +728,7 @@ PTEST(other_timing_values_run_nothing)
 {
     setup();
     fill_pattern(ewram(0), 8, 89);
-    PT_ASSERT_EQ_INT(dma_set(0, ewram(0), vram(0), CONTROL(DMA_ENABLE | DMA_START_HBLANK | DMA_REPEAT, 1)), DMA_OK);
+    PT_ASSERT_EQ_INT(dma_set(0, ewram(0), vram(0), CONTROL(HBLANK_REPEAT16, 1)), DMA_OK);
     PT_ASSERT_EQ_INT(dma_run_timing(DMA_START_NOW), 0);
     PT_ASSERT_EQ_INT(dma_run_timing(DMA_START_SPECIAL), 0);
     PT_ASSERT_EQ_INT(dma_run_timing(0xFFFF), 0);
@@ -719,8 +743,8 @@ PTEST(channels_run_in_priority_order_dma0_first)
     setup();
     write16(ewram(0), first);
     write16(ewram(2), second);
-    PT_ASSERT_EQ_INT(dma_set(1, ewram(2), vram(0), CONTROL(DMA_ENABLE | DMA_START_HBLANK | DMA_16BIT, 1)), DMA_OK);
-    PT_ASSERT_EQ_INT(dma_set(0, ewram(0), vram(0), CONTROL(DMA_ENABLE | DMA_START_HBLANK | DMA_16BIT, 1)), DMA_OK);
+    PT_ASSERT_EQ_INT(dma_set(1, ewram(2), vram(0), CONTROL(HBLANK16, 1)), DMA_OK);
+    PT_ASSERT_EQ_INT(dma_set(0, ewram(0), vram(0), CONTROL(HBLANK16, 1)), DMA_OK);
     PT_ASSERT_EQ_INT(dma_run_timing(DMA_TIMING_HBLANK), 2);
     PT_ASSERT_EQ_INT(read16(vram(0)), second);
     teardown();
@@ -731,8 +755,8 @@ PTEST(hblank_source_running_off_its_region_is_refused_at_that_run)
     setup();
     write16(ewram(GBA_EWRAM_SIZE - UNIT16), 0x7777);
     PT_ASSERT_EQ_INT(dma_set(0, ewram(GBA_EWRAM_SIZE - UNIT16), reg(REG_ADDR_BG0HOFS),
-                             CONTROL(DMA_ENABLE | DMA_START_HBLANK | DMA_REPEAT | DMA_INTR_ENABLE | DMA_16BIT
-                                     | DMA_SRC_INC | DMA_DEST_RELOAD, 1)),
+                             CONTROL(HBLANK_REPEAT16 | DMA_INTR_ENABLE | DMA_SRC_INC
+                                     | DMA_DEST_RELOAD, 1)),
                      DMA_OK);
     PT_ASSERT_EQ_INT(dma_run_timing(DMA_TIMING_HBLANK), 1);
     PT_ASSERT_EQ_INT(REG_BG0HOFS, 0x7777);
@@ -750,7 +774,7 @@ PTEST(deferred_channel_with_bad_destination_is_refused_when_armed)
 {
     char *rodata = "read-only bytes";
     setup();
-    PT_ASSERT_EQ_INT(dma_set(0, ewram(0), rodata, CONTROL(DMA_ENABLE | DMA_START_HBLANK | DMA_REPEAT, 1)),
+    PT_ASSERT_EQ_INT(dma_set(0, ewram(0), rodata, CONTROL(HBLANK_REPEAT16, 1)),
                      DMA_ERR_BOUNDS);
     PT_ASSERT_EQ_INT(dma_run_timing(DMA_TIMING_HBLANK), 0);
     PT_ASSERT_EQ_STR(rodata, "read-only bytes");
@@ -762,7 +786,7 @@ PTEST(deferred_channel_with_bad_destination_is_refused_when_armed)
 
 PTEST(dma_stop_prevents_a_pending_hblank_transfer)
 {
-    const uint16_t cnt_h = DMA_ENABLE | DMA_START_HBLANK | DMA_REPEAT | DMA_16BIT | DMA_DEST_RELOAD | DMA_INTR_ENABLE;
+    const uint16_t cnt_h = HBLANK_REPEAT16 | DMA_DEST_RELOAD | DMA_INTR_ENABLE;
     setup();
     fill_pattern(ewram(0), 8, 97);
     PT_ASSERT_EQ_INT(dma_set(0, ewram(0), vram(0), CONTROL(cnt_h, 1)), DMA_OK);
@@ -771,7 +795,8 @@ PTEST(dma_stop_prevents_a_pending_hblank_transfer)
     PT_ASSERT(all_equal(vram(0), 8, 0));
     PT_ASSERT_EQ_INT(raised_total(), 0);
     /* What expansion's DmaStop leaves in CNT_H; SAD, DAD, CNT_L untouched. */
-    PT_ASSERT_EQ_INT(REG_DMA0CNT_H, cnt_h & ~(DMA_START_MASK | DMA_DREQ_ON | DMA_REPEAT | DMA_ENABLE));
+    PT_ASSERT_EQ_INT(REG_DMA0CNT_H,
+                     cnt_h & ~(DMA_START_MASK | DMA_DREQ_ON | DMA_REPEAT | DMA_ENABLE));
     PT_ASSERT_EQ_INT(REG_DMA0CNT_L, 1);
     PT_ASSERT_EQ_U32(REG_DMA0SAD, address_of(ewram(0)));
     PT_ASSERT_EQ_U32(REG_DMA0DAD, address_of(vram(0)));
@@ -782,8 +807,9 @@ PTEST(dma_set_without_enable_disarms_the_channel)
 {
     setup();
     fill_pattern(ewram(0), 8, 101);
-    PT_ASSERT_EQ_INT(dma_set(0, ewram(0), vram(0), CONTROL(DMA_ENABLE | DMA_START_HBLANK | DMA_REPEAT, 1)), DMA_OK);
-    PT_ASSERT_EQ_INT(dma_set(0, ewram(0), vram(0), CONTROL(DMA_START_HBLANK | DMA_REPEAT, 1)), DMA_OK);
+    PT_ASSERT_EQ_INT(dma_set(0, ewram(0), vram(0), CONTROL(HBLANK_REPEAT16, 1)), DMA_OK);
+    PT_ASSERT_EQ_INT(dma_set(0, ewram(0), vram(0), CONTROL(DMA_START_HBLANK | DMA_REPEAT, 1)),
+                     DMA_OK);
     PT_ASSERT_EQ_INT(dma_run_timing(DMA_TIMING_HBLANK), 0);
     PT_ASSERT(all_equal(vram(0), 8, 0));
     /* Nothing enabled: an immediate control without the enable bit copies nothing. */
@@ -820,13 +846,13 @@ PTEST(irq_raised_once_per_completed_transfer_only_with_the_irq_bit)
     PT_ASSERT_EQ_INT(raised[GBA_IRQ_DMA2], 1);
     PT_ASSERT_EQ_INT(raised_total(), 2);
     /* A refused transfer completes nothing. */
-    PT_ASSERT_EQ_INT(dma_set(3, ewram(0), vram(GBA_VRAM_SIZE - UNIT16), CONTROL(COPY16 | DMA_INTR_ENABLE, 2)),
+    PT_ASSERT_EQ_INT(dma_set(3, ewram(0), vram(GBA_VRAM_SIZE - UNIT16),
+                             CONTROL(COPY16 | DMA_INTR_ENABLE, 2)),
                      DMA_ERR_BOUNDS);
     PT_ASSERT_EQ_INT(raised_total(), 2);
     /* An armed channel raises at each completed block, not when armed. */
     PT_ASSERT_EQ_INT(dma_set(0, ewram(0), vram(0x100),
-                             CONTROL(DMA_ENABLE | DMA_START_HBLANK | DMA_REPEAT | DMA_INTR_ENABLE | DMA_DEST_RELOAD,
-                                     1)),
+                             CONTROL(HBLANK_REPEAT16 | DMA_INTR_ENABLE | DMA_DEST_RELOAD, 1)),
                      DMA_OK);
     PT_ASSERT_EQ_INT(raised[GBA_IRQ_DMA0], 0);
     for (unsigned run = 1; run <= 3; run++) {
@@ -842,7 +868,8 @@ PTEST(irq_raised_once_per_completed_transfer_only_with_the_irq_bit)
 
 PTEST(special_timing_is_recorded_and_never_runs)
 {
-    const uint16_t cnt_h = DMA_ENABLE | DMA_START_SPECIAL | DMA_32BIT | DMA_REPEAT | DMA_DEST_FIXED | DMA_INTR_ENABLE;
+    const uint16_t cnt_h =
+        DMA_ENABLE | DMA_START_SPECIAL | DMA_32BIT | DMA_REPEAT | DMA_DEST_FIXED | DMA_INTR_ENABLE;
     setup();
     fill_pattern(ewram(0), 64, 107);
     /* DMA1/2: sound FIFO; DMA3: video capture; DMA0: prohibited. */
@@ -887,10 +914,10 @@ PTEST(direct_register_writes_start_nothing)
     REG_DMA1SAD = address_of(ewram(0));
     REG_DMA1DAD = (uint32_t)REG_ADDR_FIFO_A;
     REG_DMA1CNT_H = DMA_ENABLE | DMA_START_SPECIAL | DMA_32BIT | DMA_REPEAT;
-    REG_DMA2CNT = CONTROL(DMA_ENABLE | DMA_START_NOW | DMA_32BIT | DMA_SRC_INC | DMA_DEST_FIXED, 4);
+    REG_DMA2CNT = CONTROL(NOW32 | DMA_SRC_INC | DMA_DEST_FIXED, 4);
     REG_DMA0SAD = address_of(ewram(0));
     REG_DMA0DAD = address_of(vram(0));
-    REG_DMA0CNT = CONTROL(DMA_ENABLE | DMA_START_HBLANK | DMA_REPEAT, 1);
+    REG_DMA0CNT = CONTROL(HBLANK_REPEAT16, 1);
     PT_ASSERT_EQ_INT(dma_run_timing(DMA_TIMING_HBLANK), 0);
     PT_ASSERT_EQ_INT(dma_run_timing(DMA_TIMING_VBLANK), 0);
     PT_ASSERT_EQ_U32(REG_FIFO_A, 0);
@@ -902,7 +929,7 @@ PTEST(direct_register_writes_start_nothing)
 
 PTEST(registers_hold_what_dma_set_wrote)
 {
-    const uint32_t control = CONTROL(DMA_ENABLE | DMA_START_HBLANK | DMA_REPEAT | DMA_DEST_RELOAD | DMA_16BIT, 1);
+    const uint32_t control = CONTROL(HBLANK_REPEAT16 | DMA_DEST_RELOAD, 1);
     setup();
     PT_ASSERT_EQ_INT(dma_set(0, ewram(0x10), reg(REG_ADDR_BG0HOFS), control), DMA_OK);
     PT_ASSERT_EQ_U32(REG_DMA0SAD, address_of(ewram(0x10)));
@@ -924,7 +951,8 @@ PTEST(each_channel_writes_its_own_registers)
     setup();
     for (unsigned channel = 0; channel < DMA_CHANNEL_COUNT; channel++) {
         uint32_t control = CONTROL(DMA_ENABLE | DMA_START_VBLANK | DMA_16BIT, channel + 1);
-        PT_ASSERT_EQ_INT(dma_set(channel, ewram(channel * 0x100), vram(channel * 0x100), control), DMA_OK);
+        PT_ASSERT_EQ_INT(dma_set(channel, ewram(channel * 0x100), vram(channel * 0x100), control),
+                         DMA_OK);
     }
     PT_ASSERT_EQ_U32(REG_DMA0SAD, address_of(ewram(0x000)));
     PT_ASSERT_EQ_U32(REG_DMA1SAD, address_of(ewram(0x100)));
