@@ -82,8 +82,11 @@ PTEST(every_gba_region_first_and_last_byte_and_whole)
             PT_ASSERT(transfer_bounds_ok(info->base + info->size - 1, 1, access));
             PT_ASSERT(transfer_bounds_ok(info->base, info->size, access));
             PT_ASSERT(!transfer_bounds_ok(info->base, info->size + 1, access));
-            PT_ASSERT(!transfer_bounds_ok(info->base + info->size, 1, access));
-            PT_ASSERT(!transfer_bounds_ok(info->base - 1, 1, access));
+            /* the byte after the region is refused unless another region starts there */
+            PT_ASSERT(transfer_bounds_ok(info->base + info->size, 1, access)
+                      == (gba_memmap_region_of(info->base + info->size, 1) != GBA_REGION_NONE));
+            PT_ASSERT(transfer_bounds_ok(info->base - 1, 1, access)
+                      == (gba_memmap_region_of(info->base - 1, 1) != GBA_REGION_NONE));
         }
     }
     transfer_bounds_shutdown();
@@ -155,6 +158,10 @@ PTEST(mutable_globals_are_readable_and_writable)
     transfer_bounds_shutdown();
 }
 
+/* no_sanitize_address: with AddressSanitizer's use-after-return (on by default
+ * in GCC 13's runtime) a local lives on a heap-allocated "fake stack", not on
+ * the thread stack this module bounds. This function's local must be real. */
+__attribute__((no_sanitize_address))
 PTEST(stack_locals_are_readable_and_writable)
 {
     uint8_t local[BYTE_COUNT] = {0};
