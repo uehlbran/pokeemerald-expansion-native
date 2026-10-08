@@ -14,7 +14,7 @@ resumes by reading both and first posting what it believes is in flight.
 | 4 | Native test-runner integration; suite matches the GBA baseline | not started |
 | 5 | Debug-menu gate | not started |
 | 6 | Unit tests under sanitizers, clang-tidy, cppcheck, docs; 32-bit done | not started |
-| 7 | 64-bit audit and build; every gate again; 64-bit done | not started |
+| 7 | 64-bit audit and build; every gate again, plus the cross-width save round-trip gate (h); 64-bit done | not started |
 | 8 | CI for both targets; Windows (MinGW) and macOS | later |
 
 ## Milestone 2 work breakdown
