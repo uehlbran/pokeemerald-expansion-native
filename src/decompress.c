@@ -568,7 +568,13 @@ static void DecodeLOtANS(const u32 *data, const u32 *pFreqs, u8 *resultVec, u32 
             sBitIndex += currK;
             if (sBitIndex >= 32)
             {
+#if PLATFORM_NATIVE
+                // Dead look-ahead at the end of the stream, bounded like LOOP_BITADVANCE
+                currBits = ++sDataPtr < sDataEnd ? *sDataPtr : 0;
+#else
                 currBits = *(++sDataPtr);
+#endif
+#line 547
                 sBitIndex -= 32;
                 if (sBitIndex != 0)
                 {
@@ -1038,7 +1044,7 @@ static void SmolDecompressData(const struct SmolHeader *header, const u32 *data,
 #if PLATFORM_NATIVE
     sDataEnd = sDataPtr + header->bitstreamSize;
 #endif
-#line 1038
+#line 995
     //  Decode tANS encoded LO data, mode 3, 4 and 5
     if (loEncoded)
     {
