@@ -23,10 +23,9 @@
 #include "gba_memmap.h"
 #include "interrupt.h"
 
-/* GBATEK "GBA Sound Control Registers": 4000084h SOUNDCNT_X; bit 7 is the
- * PSG/FIFO master enable. crt0.s:95 stores a zero byte there (the low byte
- * of INTR_FLAG_GAMEPAK), which turns all sound off. */
-#define SOUNDCNT_X_OFFSET UINT32_C(0x084)
+/* GBATEK "GBA Sound Control Registers": SOUNDCNT_X (gba_memmap.h); bit 7 is
+ * the PSG/FIFO master enable. crt0.s:95 stores a zero byte there (the low
+ * byte of INTR_FLAG_GAMEPAK), which turns all sound off. */
 #define SOUNDCNT_X_ALL_OFF UINT8_C(0x00)
 
 /* What crt0.s:49-50 writes to IME. */
@@ -35,7 +34,7 @@
 _Static_assert(GBA_IE_OFFSET + sizeof(uint16_t) <= GBA_IO_SIZE, "IE is outside the I/O region");
 _Static_assert(GBA_IF_OFFSET + sizeof(uint16_t) <= GBA_IO_SIZE, "IF is outside the I/O region");
 _Static_assert(GBA_IME_OFFSET + sizeof(uint16_t) <= GBA_IO_SIZE, "IME is outside the I/O region");
-_Static_assert(SOUNDCNT_X_OFFSET < GBA_IO_SIZE, "SOUNDCNT_X is outside the I/O region");
+_Static_assert(GBA_SOUNDCNT_X_OFFSET < GBA_IO_SIZE, "SOUNDCNT_X is outside the I/O region");
 /* GBATEK: the sources are IF bits 0-13; the marker must be none of them. */
 _Static_assert(INTERRUPT_IF_MARKER >= (1u << GBA_IRQ_COUNT), "the IF marker is a source bit");
 
@@ -152,7 +151,7 @@ static size_t first_in_intr_main_order(uint16_t pending)
 static void halt_for_game_pak(void)
 {
     volatile uint8_t *const soundcnt_x =
-        (volatile uint8_t *)(uintptr_t)(GBA_IO_BASE + SOUNDCNT_X_OFFSET);
+        (volatile uint8_t *)(uintptr_t)(GBA_IO_BASE + GBA_SOUNDCNT_X_OFFSET);
     *soundcnt_x = SOUNDCNT_X_ALL_OFF;
     controller.halted = true;
     (void)fprintf(stderr,

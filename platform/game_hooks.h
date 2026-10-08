@@ -54,6 +54,14 @@ void game_hooks_forget_agb_main_loop(void);
 /* The code PlatformTestRunnerExit was given, for main to return. */
 uint32_t game_hooks_exit_code(void);
 
+/* longjmp(*target, value), first leaving the battle runner's stack if
+ * PlatformCallWithStack's entry is running: the switch back to the caller's
+ * stack is made, with AddressSanitizer's fiber annotations, and the call is
+ * over before the jump. Every jump out of game code that can happen while a
+ * battle test body runs goes through here: the hooks below, main's frame
+ * exit, and the BIOS's SoftReset. value must not be 0. Does not return. */
+_Noreturn void game_hooks_unwind(jmp_buf *target, int value);
+
 /* After every interrupt dispatch: a handler that wants the IRQ to return
  * somewhere else writes that address into the BIOS's saved IRQ return
  * address at 03007F9Ch (GBATEK "BIOS RAM Usage": the IRQ stack; expansion's

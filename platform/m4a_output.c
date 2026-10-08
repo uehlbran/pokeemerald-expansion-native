@@ -55,7 +55,7 @@ bool m4a_output_current_frame(struct m4a_output_frame *out)
 
 uint32_t m4a_output_sample_rate(void)
 {
-    const struct SoundInfo *info = SOUND_INFO_PTR;
+    const struct SoundInfo *info = sound_info();
     if (info == NULL || info->pcmFreq <= 0)
         return 0;
     return (uint32_t)info->pcmFreq;

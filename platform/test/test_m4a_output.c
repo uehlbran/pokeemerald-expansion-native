@@ -78,6 +78,7 @@ PTEST(nothing_to_play)
     configure(1);
     info.ident = ID_NUMBER + 10; /* m4aSoundVSyncOff */
     PT_ASSERT(!m4a_output_current_frame(&frame));
+    PT_ASSERT_EQ_U32(m4a_output_sample_rate(), 0); /* the same test */
     info.ident = ID_NUMBER - 1;
     PT_ASSERT(!m4a_output_current_frame(&frame));
     configure(8); /* a counter past the period */

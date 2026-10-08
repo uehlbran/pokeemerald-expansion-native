@@ -19,7 +19,9 @@
  * SoftReset restarts the game. Natively the restart point is a jmp_buf the
  * frame loop registers (bios_set_reset_target); the reset longjmps there
  * after clearing what the BIOS clears, and never exits the process (the
- * ports' exit(0) is what this replaces). The re-entry flag at 3007FFAh (ROM
+ * ports' exit(0) is what this replaces). The jump goes through
+ * game_hooks_unwind, which first leaves the battle test runner's stack if a
+ * test body is running on it (game_hooks.h). The re-entry flag at 3007FFAh (ROM
  * or EWRAM) has no native meaning: there is one entry point.
  *
  * Single-threaded: the frame loop and the game share the main thread, so
@@ -29,6 +31,7 @@
 #include <string.h>
 
 #include "bios.h"
+#include "game_hooks.h"
 #include "gba_irq.h"
 #include "gba_memmap.h"
 
@@ -195,7 +198,7 @@ int bios_soft_reset(uint32_t resetFlags)
     *io_register(IO_IME) = IME_DISABLED;
     RegisterRamReset(resetFlags);
     clear_memory(BIOS_RAM_AREA_BASE, BIOS_RAM_AREA_SIZE);
-    longjmp(*reset_target, BIOS_RESET_JUMP_VALUE);
+    game_hooks_unwind(reset_target, BIOS_RESET_JUMP_VALUE);
 }
 
 void SoftReset(uint32_t resetFlags)

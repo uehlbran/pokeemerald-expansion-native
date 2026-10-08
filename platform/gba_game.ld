@@ -55,37 +55,52 @@ INSERT AFTER .rodata;
  * variable is in IWRAM or EWRAM, which crt0's RegisterRamReset(RESET_ALL)
  * zeroes before it copies the initialised data back. Natively the game's
  * variables are in the executable's .data and .bss, beside the platform's,
- * which must survive the reset. So the game's objects (those under src/,
- * data/, sound/ and test/ of Makefile.native's object directory; the
- * platform's come from libplatform.a) have their initialised data (in the
+ * which must survive the reset. So the game's initialised data (in the
  * sanitized build that includes every instrumented global: AddressSanitizer
- * moves them to .data with their redzones) in
- * game_data, of which crt0 keeps a copy, and their zero-initialised data in
- * game_bss, which crt0 zeroes.
+ * moves them to .data with their redzones) goes in game_data, of which crt0
+ * keeps a copy, and its zero-initialised data in game_bss, which crt0
+ * zeroes.
+ *
+ * Which data is the game's: the .data and .bss of the objects under src/,
+ * data/, sound/ and test/ of Makefile.native's object directories
+ * (build/native<bits>[-test][-san]/; the platform's come from
+ * libplatform.a, and its unit tests' objects from platform/build/), and,
+ * from any object, the sections only expansion's markers produce: .iwram
+ * (IWRAM_INIT) and common_data (COMMON_DATA), which also lets a unit test
+ * place a variable in each bracket. If the object paths ever stop matching,
+ * the game's .bss would silently stay out of game_bss; game_bss_objects_end
+ * marks the end of the part the paths select, and crt0_init fails when that
+ * part is empty in the game executable (gba_game_objects_linked, set by
+ * Makefile.native, says it is the game).
  *
  * Both go before the default script's .data and .bss (INSERT BEFORE), whose
  * catch-all patterns would otherwise take the game's sections first;
  * transfer_bounds counts game_data_start as the start of the writable
- * globals for that reason. The objects are matched by Makefile.native's
- * object directories (build/native<bits>[-test][-san]/), so the platform's
- * own unit tests, whose objects are under platform/build/, have none.
+ * globals for that reason.
  *
- * game_data holds .data (none at present: the GBA scripts discard .data, so
- * expansion has none) and .iwram (IWRAM_INIT). game_bss holds .bss and
- * COMMON_DATA (section common_data), in the GBA's order: the m4a engine
+ * game_bss keeps the GBA's order, .bss then COMMON_DATA: the m4a engine
  * breaks channel-stealing ties by track address, and its tracks are in .bss
  * (sound/music_player_table.inc) and common_data (gPokemonCryTracks). Every
  * COMMON_DATA definition is zero, and the GBA scripts do not load the
- * section, so it is not loaded here either. */
+ * section, so it is not loaded here either.
+ *
+ * Outside both brackets: script_data (data/*.s, 1.2 MiB of event, battle
+ * and AI scripts, flagged "aw" by expansion's sources). On the GBA it is in
+ * ROM, where a write does nothing, so the game cannot depend on writing it
+ * and never does; a soft reset has nothing to restore there. (Checked: after
+ * 9000 frames of the intro and title screen its bytes equal the file's.) */
+PROVIDE(gba_game_objects_linked = 0);
+
 SECTIONS
 {
     game_data :
     {
         game_data_start = .;
-        *native*/src/*.o(.data .data.* .iwram)
-        *native*/data/*.o(.data .data.* .iwram)
-        *native*/sound/*.o(.data .data.* .iwram)
-        *native*/test/*.o(.data .data.* .iwram)
+        *native*/src/*.o(.data .data.*)
+        *native*/data/*.o(.data .data.*)
+        *native*/sound/*.o(.data .data.*)
+        *native*/test/*.o(.data .data.*)
+        *(.iwram)
         game_data_end = .;
     }
 }
@@ -100,10 +115,8 @@ SECTIONS
         *native*/data/*.o(.bss .bss.*)
         *native*/sound/*.o(.bss .bss.*)
         *native*/test/*.o(.bss .bss.*)
-        *native*/src/*.o(common_data)
-        *native*/data/*.o(common_data)
-        *native*/sound/*.o(common_data)
-        *native*/test/*.o(common_data)
+        game_bss_objects_end = .;
+        *(common_data)
         game_bss_end = .;
     }
 }

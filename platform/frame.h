@@ -27,8 +27,9 @@
  *     dispatch; VCOUNT stays 161 while the game runs until the next frame,
  *     so SetGpuReg writes through (lcd_status.h).
  *  5. Sound: the frame of the m4a engine's ring the FIFO DMAs play
- *     (m4a_output) and as many PSG samples (psg_generate), mixed
- *     (sound_mix) and queued (audio_queue).
+ *     (m4a_output; silent if the engine runs at another rate) and as many
+ *     PSG samples (psg_generate), mixed (sound_mix) and queued
+ *     (audio_queue).
  *  6. The panel shows the frame (video_present); SDL's events are polled
  *     (video_poll_events, each passed to input_handle_event; a quit ends the
  *     loop after this frame); KEYINPUT is written (input_update_keyinput).
@@ -48,6 +49,7 @@
 #ifndef FRAME_H
 #define FRAME_H
 
+#include <stdbool.h>
 #include <stdint.h>
 
 /* The m4a engine's rate as expansion sets it: m4aSoundInit selects
@@ -57,10 +59,6 @@
  * GBA's"). */
 #define FRAME_AUDIO_SAMPLE_RATE_HZ 13379u
 #define FRAME_AUDIO_SAMPLES_PER_FRAME 224u
-
-/* The most samples of one frame: the whole of one FIFO's half of the ring
- * (PCM_DMA_BUF_SIZE in include/gba/m4a_internal.h). */
-#define FRAME_AUDIO_MAX_SAMPLES 1584u
 
 /* Frames queued before playback starts, so the device does not start on an
  * empty queue (audio.h: the device starts paused). */
@@ -110,6 +108,11 @@ int frame_exit_status(void);
  * successful store. main calls it once more before shutting down. Returns 0,
  * or -1 if the store failed (reported). */
 int frame_flush_save(void);
+
+/* True once the m4a engine has mixed a frame of another size than
+ * FRAME_AUDIO_SAMPLES_PER_FRAME (another sample rate); its Direct Sound is
+ * then left out of the mix rather than played at the wrong pitch. */
+bool frame_sound_rate_mismatch(void);
 
 /* The frame buffer: VIDEO_PIXEL_COUNT BGR555 pixels, row-major. */
 const uint16_t *frame_pixels(void);

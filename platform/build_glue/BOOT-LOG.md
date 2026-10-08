@@ -97,7 +97,7 @@ one frame late.
     unwinds to main as designed. The tests table is packed: 6294 entries of
     20 bytes, `test_test_runner.o`'s first.
 
-12. **The sanitized TEST=1 executable crashed before `main`** (SEGV in an
+11. **The sanitized TEST=1 executable crashed before `main`** (SEGV in an
     ASan module constructor, `_sub_I_00099_1` of `test/bag.o`). Its `call
     __asan_init` had been assembled as the event script command `call`
     (the byte 04h and a word): `include/test/overworld_script.h` gives the
@@ -114,8 +114,8 @@ one frame late.
 
 ## Soft reset
 
-11. Exercised under gdb by holding A+B+Start+Select from frame 300
-    (`input_script_set(15)`): `DoSoftReset` -> `SoftReset` -> `longjmp` ->
+12. Exercised under gdb by holding A+B+Start+Select from frame 300
+    (`input_script_set(15)`): `DoSoftReset` -> `SoftReset` -> `game_hooks_unwind` ->
     `restart_after_soft_reset` (RegisterRamReset(RESET_ALL), game variables
     zeroed and re-initialised by `crt0_restart`, interrupt/timer/dma/ppu/psg
     restarted) -> `AgbMain` again; the run reached 1200 frames and exited 0,

@@ -36,12 +36,16 @@ extern const uint32_t IntrMain[CRT0_INTR_MAIN_SIZE / sizeof(uint32_t)];
 enum crt0_error {
     CRT0_OK = 0,
     CRT0_ERR_EWRAM_INIT_SIZE = -1, /* the EWRAM_INIT data is larger than CRT0_EWRAM_INIT_MAX_SIZE */
-    CRT0_ERR_NO_MEMORY = -2        /* no memory for the copy of the game's initialised data */
+    CRT0_ERR_NO_MEMORY = -2,       /* no memory for the copy of the game's initialised data */
+    CRT0_ERR_NO_GAME_OBJECTS = -3  /* the game executable's game_bss has no part from the game's objects */
 };
 
 /* Copies the EWRAM_INIT data and the game's initialised data as the loader
  * left them. Call once, before AgbMain first runs. CRT0_OK or an error
- * (reported). */
+ * (reported). In the game executable (gba_game.ld: gba_game_objects_linked)
+ * it fails with CRT0_ERR_NO_GAME_OBJECTS if gba_game.ld's object-path
+ * patterns selected no .bss: a soft reset would then leave the game's
+ * variables stale, so it says so at start-up instead. */
 int crt0_init(void);
 
 /* Frees the copies. Safe at any time and twice. */
