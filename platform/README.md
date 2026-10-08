@@ -137,11 +137,31 @@ a byte program that would turn a 0 bit into a 1 is rejected as on hardware;
 every sector index, offset and length is bounds-checked. Each program and
 erase marks its sector dirty.
 
-`save_file` persists the chip as a raw 131072-byte `.sav`, byte n of the
-file being byte n of the chip, which is what GBA emulators read and write.
-Stores go to `<path>.tmp`, are fsynced, renamed over `<path>`, and the
-directory is fsynced. A NULL path keeps everything in memory (tests, the
-test runner).
+`save_file` persists the chip in a versioned `.sav`. Stores go to
+`<path>.tmp`, are fsynced, renamed over `<path>`, and the directory is
+fsynced. A NULL path keeps everything in memory (tests, the test runner).
+Format version 1 is a 28-byte header followed by the chip image, every
+header integer an unsigned 32-bit little-endian value:
+
+| Offset | Field | Value |
+|---|---|---|
+| 0 | magic | the 8 bytes `PENSAVE\0` |
+| 8 | format version | 1 (`SAVE_FILE_FORMAT_VERSION`) |
+| 12 | layout tag: pointer width | `sizeof(void *) * 8` of the build that wrote it, 32 or 64 |
+| 16 | layout tag: layout id | that build's `SAVE_FILE_LAYOUT_ID` (1) |
+| 20 | image size | 131072 |
+| 24 | image CRC | CRC-32/ISO-HDLC of the image (`save_file_crc32`; check value 0xCBF43926) |
+| 28 | image | 131072 bytes, byte n of the chip, sector s at 28 + s * 4096 |
+
+A file with the magic loads only if its version is 1, its sizes are exact,
+its pointer width is 32 or 64 and its CRC matches; with this build's layout
+tag the load returns `SAVE_FILE_OK`, with another (say a 32-bit save in the
+64-bit build) `SAVE_FILE_FOREIGN_LAYOUT`, and `save_file_loaded_layout`
+reports the tag so main can refuse or convert. A bare 131072-byte image
+without the magic, what GBA emulators write, loads as `SAVE_FILE_LEGACY`
+(layout unknown) and gets a header on the next store; for an emulator, our
+image is the file's last 131072 bytes. Anything else is `SAVE_FILE_CORRUPT`
+and leaves an erased chip.
 
 The frame loop must call `save_file_store()` whenever `flash_take_dirty()`
 returns true; that is what persists every path that writes flash, including
