@@ -172,13 +172,17 @@ explicit `uint8_t`/`int8_t` and does not depend on it.
 
 `REG_IF` clears on write-1 on hardware; natively a write is a store. The
 controller holds the pending bits in its own state, stores them to
-`REG_IF` after every change, and treats a differing `REG_IF` as a game
-write whose 1 bits clear requests. Blind spots, accepted and documented
-in `platform/interrupt.h`: a game write of exactly the value already in
-`REG_IF`, and several game writes between two platform calls. The
-alternative, routing every `REG_IF` write through a guarded call, would
-touch nine game files for a case that only matters when a stale request
-is cleared before enabling a source. Also decided: no interrupt nesting
+`REG_IF` after every change together with a marker in bit 15 (unused by
+the hardware, never written by the game), and treats a differing
+`REG_IF` as a game write whose 1 bits clear requests. Because of the
+marker, every game write differs from the stored value, so expansion's
+stale-request idiom (`REG_IF = INTR_FLAG_x` before enabling a source) is
+seen even when that bit is the only one pending. Residual blind spots,
+documented in `platform/interrupt.h`: several game writes between two
+platform calls (only the last counts), a raw read of `REG_IF` shows bit
+15 (expansion never reads `REG_IF`), and a `REG_IF |= x` read-modify-write
+(expansion has none). The alternative, routing every `REG_IF` write
+through a guarded call, would touch nine game files. Also decided: no interrupt nesting
 (`crt0.s` lines 99-108 narrow `IE` while a handler runs; a request
 raised inside a handler runs after it in the same dispatch); a Game Pak
 request halts as `IntrMain` does; a dispatch cap of 256 requests per
