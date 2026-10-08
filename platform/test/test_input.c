@@ -15,6 +15,8 @@
  * tested through the pure functions that input_update_keyinput feeds.
  */
 #include <SDL.h>
+#include <gba/defines.h>
+#include <gba/io_reg.h>
 #include <stdlib.h>
 
 #include "gba_memmap.h"
@@ -29,6 +31,19 @@ static volatile uint16_t *keyinput(void)
 {
     return (volatile uint16_t *)KEYINPUT_ADDRESS;
 }
+
+/* The key bits are expansion's (include/gba/io_reg.h). */
+_Static_assert(INPUT_KEY_A == A_BUTTON, "A");
+_Static_assert(INPUT_KEY_B == B_BUTTON, "B");
+_Static_assert(INPUT_KEY_SELECT == SELECT_BUTTON, "Select");
+_Static_assert(INPUT_KEY_START == START_BUTTON, "Start");
+_Static_assert(INPUT_KEY_RIGHT == DPAD_RIGHT, "Right");
+_Static_assert(INPUT_KEY_LEFT == DPAD_LEFT, "Left");
+_Static_assert(INPUT_KEY_UP == DPAD_UP, "Up");
+_Static_assert(INPUT_KEY_DOWN == DPAD_DOWN, "Down");
+_Static_assert(INPUT_KEY_R == R_BUTTON, "R");
+_Static_assert(INPUT_KEY_L == L_BUTTON, "L");
+_Static_assert(INPUT_KEYS_MASK == KEYS_MASK, "mask");
 
 static void headless_sdl_init(void)
 {
@@ -286,6 +301,20 @@ PTEST(stick_inside_the_deadzone_is_ignored)
     PT_ASSERT_EQ_U32(input_pad_to_keys(&pad), 0u);
 }
 
+PTEST(stick_exactly_on_the_deadzone_edge_is_ignored_on_every_side)
+{
+    struct input_pad_state xneg = { .left_x = -INPUT_STICK_DEADZONE };
+    struct input_pad_state ypos = { .left_y = INPUT_STICK_DEADZONE };
+    PT_ASSERT_EQ_U32(input_pad_to_keys(&xneg), 0u);
+    PT_ASSERT_EQ_U32(input_pad_to_keys(&ypos), 0u);
+}
+
+PTEST(stick_int16_min_on_y_is_up)
+{
+    struct input_pad_state pad = { .left_y = INT16_MIN };
+    PT_ASSERT_EQ_U32(input_pad_to_keys(&pad), INPUT_KEY_UP);
+}
+
 PTEST(stick_past_the_deadzone_gives_a_direction)
 {
     struct input_pad_state r = { .left_x = INPUT_STICK_DEADZONE + 1 };
@@ -350,6 +379,7 @@ PTEST(host_ignores_a_pushed_key_event_because_state_comes_from_the_driver)
     headless_sdl_init();
     int status = input_init(INPUT_SOURCE_HOST);
     uint16_t seen = 0;
+    uint8_t z_held = 0;
     if (status == 0) {
         SDL_Event event;
         SDL_zero(event);
@@ -358,6 +388,8 @@ PTEST(host_ignores_a_pushed_key_event_because_state_comes_from_the_driver)
         event.key.keysym.scancode = SDL_SCANCODE_Z;
         SDL_PushEvent(&event);
         SDL_PumpEvents();
+        const uint8_t *keyboard = SDL_GetKeyboardState(NULL);
+        z_held = keyboard[SDL_SCANCODE_Z];
         input_update_keyinput();
         seen = *keyinput();
         *keyinput() = 0;
@@ -365,7 +397,8 @@ PTEST(host_ignores_a_pushed_key_event_because_state_comes_from_the_driver)
     input_shutdown();
     SDL_Quit();
     PT_ASSERT_EQ_INT(status, 0);
-    PT_ASSERT_EQ_U32(seen, 0x03FFu);
+    PT_ASSERT_EQ_INT(z_held, 0); /* the premise: SDL did not apply the event */
+    PT_ASSERT_EQ_U32(seen, input_keys_to_keyinput(z_held ? INPUT_KEY_A : 0));
 }
 
 PTEST(host_event_handler_ignores_unrelated_and_bogus_controller_events)
@@ -405,13 +438,283 @@ PTEST(event_handler_before_init_and_with_null_is_safe)
     PT_ASSERT(input_handle_event(NULL) != 0);
 }
 
-PTEST(host_shutdown_is_safe_after_sdl_quit_and_twice)
+PTEST(host_shutdown_before_sdl_quit_then_again_after_is_safe)
 {
     headless_sdl_init();
-    PT_ASSERT_EQ_INT(input_init(INPUT_SOURCE_HOST), 0);
-    input_shutdown();
-    input_shutdown();
+    int status = input_init(INPUT_SOURCE_HOST);
+    input_shutdown(); /* must precede SDL_Quit (input.h) */
     SDL_Quit();
+    input_shutdown(); /* nothing left to release */
+    PT_ASSERT_EQ_INT(status, 0);
+}
+
+/* ---- host source with SDL virtual game controllers (no hardware needed) ---- */
+
+#define VPAD_BUTTONS ((uint16_t)SDL_CONTROLLER_BUTTON_MAX)
+#define VPAD_AXES ((uint16_t)SDL_CONTROLLER_AXIS_MAX)
+#define MAX_VPADS (INPUT_MAX_CONTROLLERS + 1)
+
+struct vpad {
+    SDL_Joystick *joystick;
+    SDL_JoystickID instance;
+};
+
+static int vpad_device_index(const struct vpad *pad)
+{
+    int count = SDL_NumJoysticks();
+    for (int i = 0; i < count; i++) {
+        if (SDL_JoystickGetDeviceInstanceID(i) == pad->instance) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+static int vpad_attach(struct vpad *pad)
+{
+    SDL_VirtualJoystickDesc desc;
+    SDL_zero(desc);
+    desc.version = SDL_VIRTUAL_JOYSTICK_DESC_VERSION;
+    desc.type = SDL_JOYSTICK_TYPE_GAMECONTROLLER;
+    desc.naxes = VPAD_AXES;
+    desc.nbuttons = VPAD_BUTTONS;
+    desc.button_mask = (UINT32_C(1) << VPAD_BUTTONS) - 1u;
+    desc.axis_mask = (UINT32_C(1) << VPAD_AXES) - 1u;
+    desc.name = "test virtual pad";
+    int index = SDL_JoystickAttachVirtualEx(&desc);
+    if (index < 0) {
+        return -1;
+    }
+    pad->joystick = SDL_JoystickOpen(index);
+    if (pad->joystick == NULL) {
+        return -1;
+    }
+    pad->instance = SDL_JoystickInstanceID(pad->joystick);
+    return 0;
+}
+
+static void vpad_detach(struct vpad *pad)
+{
+    if (pad->joystick == NULL) {
+        return;
+    }
+    SDL_JoystickClose(pad->joystick);
+    pad->joystick = NULL;
+    int index = vpad_device_index(pad);
+    if (index >= 0) {
+        SDL_JoystickDetachVirtual(index);
+    }
+}
+
+static void vpads_detach(struct vpad *pads, size_t count)
+{
+    for (size_t i = 0; i < count; i++) {
+        vpad_detach(&pads[i]);
+    }
+}
+
+/* What main does each frame: pump, then hand every event to the input module.
+ * Returns how many events it reported as errors. */
+static int pump_into_input(void)
+{
+    int failures = 0;
+    SDL_Event event;
+    SDL_PumpEvents();
+    while (SDL_PollEvent(&event) == 1) {
+        if (input_handle_event(&event) != 0) {
+            failures++;
+        }
+    }
+    return failures;
+}
+
+static int pad_is_open(const struct vpad *pad)
+{
+    return SDL_GameControllerFromInstanceID(pad->instance) != NULL;
+}
+
+static int vpad_sdl_init(void)
+{
+    setenv("SDL_VIDEODRIVER", "dummy", 1);
+    return SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMECONTROLLER);
+}
+
+PTEST(added_event_opens_a_pad_and_a_duplicate_does_not_open_it_twice)
+{
+    struct vpad pad = { 0 };
+    PT_ASSERT_EQ_INT(vpad_sdl_init(), 0);
+    int status = input_init(INPUT_SOURCE_HOST);
+    int attached = vpad_attach(&pad);
+    int first_failures = pump_into_input();
+    int open_after_add = pad_is_open(&pad);
+    SDL_Event again;
+    SDL_zero(again);
+    again.type = SDL_CONTROLLERDEVICEADDED;
+    again.cdevice.which = vpad_device_index(&pad);
+    int duplicate = input_handle_event(&again);
+    input_shutdown();
+    int open_after_shutdown = pad_is_open(&pad); /* a second reference would still be held */
+    vpad_detach(&pad);
+    SDL_Quit();
+    PT_ASSERT_EQ_INT(status, 0);
+    PT_ASSERT_EQ_INT(attached, 0);
+    PT_ASSERT_EQ_INT(first_failures, 0);
+    PT_ASSERT_EQ_INT(open_after_add, 1);
+    PT_ASSERT_EQ_INT(duplicate, 0);
+    PT_ASSERT_EQ_INT(open_after_shutdown, 0);
+}
+
+PTEST(a_pad_present_before_init_is_opened_by_init)
+{
+    struct vpad pad = { 0 };
+    PT_ASSERT_EQ_INT(vpad_sdl_init(), 0);
+    int attached = vpad_attach(&pad);
+    int status = input_init(INPUT_SOURCE_HOST);
+    int open_after_init = pad_is_open(&pad);
+    int failures = pump_into_input(); /* its ADDED event arrives after init: a duplicate */
+    input_shutdown();
+    int open_after_shutdown = pad_is_open(&pad);
+    vpad_detach(&pad);
+    SDL_Quit();
+    PT_ASSERT_EQ_INT(attached, 0);
+    PT_ASSERT_EQ_INT(status, 0);
+    PT_ASSERT_EQ_INT(open_after_init, 1);
+    PT_ASSERT_EQ_INT(failures, 0);
+    PT_ASSERT_EQ_INT(open_after_shutdown, 0);
+}
+
+PTEST(removed_event_closes_the_pad_and_frees_its_slot)
+{
+    struct vpad pads[MAX_VPADS] = { { 0 } };
+    int attached = 0, status;
+    PT_ASSERT_EQ_INT(vpad_sdl_init(), 0);
+    for (size_t i = 0; i < INPUT_MAX_CONTROLLERS; i++) {
+        attached |= vpad_attach(&pads[i]);
+    }
+    status = input_init(INPUT_SOURCE_HOST);
+    int fifth_attached = vpad_attach(&pads[INPUT_MAX_CONTROLLERS]);
+    pump_into_input();
+    int fifth_open_while_full = pad_is_open(&pads[INPUT_MAX_CONTROLLERS]);
+    SDL_JoystickID closing = pads[0].instance;
+    vpad_detach(&pads[0]);
+    int removal_failures = pump_into_input();
+    int first_open_after_removal = SDL_GameControllerFromInstanceID(closing) != NULL;
+    SDL_Event add_fifth;
+    SDL_zero(add_fifth);
+    add_fifth.type = SDL_CONTROLLERDEVICEADDED;
+    add_fifth.cdevice.which = vpad_device_index(&pads[INPUT_MAX_CONTROLLERS]);
+    int add_status = input_handle_event(&add_fifth);
+    int fifth_open_after_free = pad_is_open(&pads[INPUT_MAX_CONTROLLERS]);
+    input_shutdown();
+    vpads_detach(pads, MAX_VPADS);
+    SDL_Quit();
+    PT_ASSERT_EQ_INT(attached, 0);
+    PT_ASSERT_EQ_INT(status, 0);
+    PT_ASSERT_EQ_INT(fifth_attached, 0);
+    PT_ASSERT_EQ_INT(fifth_open_while_full, 0);
+    PT_ASSERT_EQ_INT(removal_failures, 0);
+    PT_ASSERT_EQ_INT(first_open_after_removal, 0);
+    PT_ASSERT_EQ_INT(add_status, 0);
+    PT_ASSERT_EQ_INT(fifth_open_after_free, 1);
+}
+
+PTEST(a_fifth_pad_at_init_is_reported_and_skipped_without_failing_init)
+{
+    struct vpad pads[MAX_VPADS] = { { 0 } };
+    int attached = 0;
+    PT_ASSERT_EQ_INT(vpad_sdl_init(), 0);
+    for (size_t i = 0; i < MAX_VPADS; i++) {
+        attached |= vpad_attach(&pads[i]);
+    }
+    int status = input_init(INPUT_SOURCE_HOST);
+    int open_count = 0;
+    for (size_t i = 0; i < MAX_VPADS; i++) {
+        open_count += pad_is_open(&pads[i]);
+    }
+    int fifth_event = 0;
+    SDL_Event add_fifth;
+    SDL_zero(add_fifth);
+    add_fifth.type = SDL_CONTROLLERDEVICEADDED;
+    add_fifth.cdevice.which = vpad_device_index(&pads[INPUT_MAX_CONTROLLERS]);
+    fifth_event = input_handle_event(&add_fifth);
+    input_shutdown();
+    vpads_detach(pads, MAX_VPADS);
+    SDL_Quit();
+    PT_ASSERT_EQ_INT(attached, 0);
+    PT_ASSERT_EQ_INT(status, 0);
+    PT_ASSERT_EQ_INT(open_count, INPUT_MAX_CONTROLLERS);
+    PT_ASSERT(fifth_event != 0); /* reported, not silent */
+}
+
+static uint16_t keyinput_after_update(void)
+{
+    *keyinput() = SENTINEL;
+    input_update_keyinput();
+    uint16_t value = *keyinput();
+    *keyinput() = 0;
+    return value;
+}
+
+PTEST(pad_buttons_and_stick_reach_keyinput)
+{
+    struct vpad pad = { 0 };
+    PT_ASSERT_EQ_INT(vpad_sdl_init(), 0);
+    int attached = vpad_attach(&pad);
+    int status = input_init(INPUT_SOURCE_HOST);
+    pump_into_input();
+    uint16_t idle = keyinput_after_update();
+
+    SDL_JoystickSetVirtualButton(pad.joystick, SDL_CONTROLLER_BUTTON_A, 1);
+    SDL_JoystickSetVirtualButton(pad.joystick, SDL_CONTROLLER_BUTTON_START, 1);
+    SDL_JoystickSetVirtualButton(pad.joystick, SDL_CONTROLLER_BUTTON_DPAD_UP, 1);
+    pump_into_input();
+    uint16_t buttons = keyinput_after_update();
+
+    SDL_JoystickSetVirtualButton(pad.joystick, SDL_CONTROLLER_BUTTON_A, 0);
+    SDL_JoystickSetVirtualButton(pad.joystick, SDL_CONTROLLER_BUTTON_START, 0);
+    SDL_JoystickSetVirtualButton(pad.joystick, SDL_CONTROLLER_BUTTON_DPAD_UP, 0);
+    SDL_JoystickSetVirtualAxis(pad.joystick, SDL_CONTROLLER_AXIS_LEFTX, INPUT_STICK_DEADZONE + 1);
+    pump_into_input();
+    uint16_t stick_out = keyinput_after_update();
+
+    SDL_JoystickSetVirtualAxis(pad.joystick, SDL_CONTROLLER_AXIS_LEFTX, INPUT_STICK_DEADZONE);
+    pump_into_input();
+    uint16_t stick_edge = keyinput_after_update();
+
+    SDL_JoystickSetVirtualAxis(pad.joystick, SDL_CONTROLLER_AXIS_LEFTX, 0);
+    SDL_JoystickSetVirtualAxis(pad.joystick, SDL_CONTROLLER_AXIS_LEFTY, INT16_MIN);
+    pump_into_input();
+    uint16_t stick_up = keyinput_after_update();
+
+    input_shutdown();
+    vpad_detach(&pad);
+    SDL_Quit();
+    PT_ASSERT_EQ_INT(attached, 0);
+    PT_ASSERT_EQ_INT(status, 0);
+    PT_ASSERT_EQ_U32(idle, 0x03FFu);
+    PT_ASSERT_EQ_U32(buttons, input_keys_to_keyinput(INPUT_KEY_A | INPUT_KEY_START | INPUT_KEY_UP));
+    PT_ASSERT_EQ_U32(stick_out, input_keys_to_keyinput(INPUT_KEY_RIGHT));
+    PT_ASSERT_EQ_U32(stick_edge, 0x03FFu);
+    PT_ASSERT_EQ_U32(stick_up, input_keys_to_keyinput(INPUT_KEY_UP));
+}
+
+PTEST(shutdown_with_pads_still_open_releases_them)
+{
+    struct vpad pads[2] = { { 0 } };
+    PT_ASSERT_EQ_INT(vpad_sdl_init(), 0);
+    int attached = vpad_attach(&pads[0]) | vpad_attach(&pads[1]);
+    int status = input_init(INPUT_SOURCE_HOST);
+    int open_before = pad_is_open(&pads[0]) + pad_is_open(&pads[1]);
+    input_shutdown();
+    int open_after = pad_is_open(&pads[0]) + pad_is_open(&pads[1]);
+    uint16_t after_update = keyinput_after_update(); /* uninitialised again: untouched */
+    vpads_detach(pads, 2);
+    SDL_Quit();
+    PT_ASSERT_EQ_INT(attached, 0);
+    PT_ASSERT_EQ_INT(status, 0);
+    PT_ASSERT_EQ_INT(open_before, 2);
+    PT_ASSERT_EQ_INT(open_after, 0);
+    PT_ASSERT_EQ_U32(after_update, SENTINEL);
 }
 
 PTEST_MAIN()
