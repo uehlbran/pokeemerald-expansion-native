@@ -273,3 +273,19 @@ because the game never checks DMA results and an abort would kill it
 where hardware would have transferred. The 27/28-bit address masks are
 not applied because native addresses are not GBA bus addresses; the
 transfer-bounds policy replaces them.
+
+## 2026-10-08: PPU interpretation points
+
+Windows with X1 > X2 or Y1 > Y2 wrap around (hardware and mGBA
+behaviour; GBATEK's literal "X2 = 240" wording is not followed). OBJ tile
+reads wrap inside the 32 KiB OBJ area; BG map and tile reads beyond the
+64 KiB BG area read 0. Affine reference points are copied in when
+BGxX/BGxY differ from the last value copied (plain memory cannot show a
+write of the same value; the game writes them through SetGpuReg at
+VBlank, picked up at line 0) and step by PB/PD after every line. The OBJ
+cycle budget (1210, or 954 with the H-Blank Interval Free bit) is
+charged per OBJ in OAM order including horizontally off-screen ones,
+and the OBJ that exhausts it is drawn partially. Modes 2 to 7 are not
+supported and render a black line with an error. Not modelled: the
+"garbage" quirk for out-of-order OBJ priorities and the one-frame delay
+before a newly enabled BG appears.
