@@ -36,7 +36,7 @@ The platform maps the GBA regions at their GBA addresses
 | EWRAM | 0x02000000 | 256 KiB | linker script places expansion's `.sbss` (`EWRAM_DATA`) here; the rest is mapped |
 | IWRAM | 0x03000000 | 32 KiB | mapped; only fixed addresses are used (`INTR_CHECK`, `INTR_VECTOR`, the test runner's persistent state) |
 | I/O | 0x04000000 | 1 KiB in a 4 KiB page | mapped; every `REG_*` macro reads and writes here |
-| mGBA debug | 0x04FFF600 | 4 KiB page | mapped; used by the test runner shim |
+| mGBA debug | 0x04FFF000 | 4 KiB page holding the registers at 0x04FFF600, 0x04FFF700, 0x04FFF780 | mapped; used by the test runner shim |
 | Palette | 0x05000000 | 1 KiB | mapped |
 | VRAM | 0x06000000 | 96 KiB | mapped |
 | OAM | 0x07000000 | 1 KiB | mapped |
