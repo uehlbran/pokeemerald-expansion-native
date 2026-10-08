@@ -13,17 +13,18 @@ resumes by reading both and first posting what it believes is in flight.
 | 3 | Input-replay smoke test, save round-trip, root-cause fixes | not started |
 | 4 | Native test-runner integration; suite matches the GBA baseline | not started |
 | 5 | Debug-menu gate | not started |
-| 6 | Unit tests under sanitizers, clang-tidy, cppcheck, docs; 32-bit done | not started |
-| 7 | 64-bit audit and build; every gate again, plus the cross-width save round-trip gate (h); 64-bit done | not started |
+| 6 | Unit tests under sanitizers, clang-tidy, cppcheck, `.clang-format` enforced in the gate, docs, the refactoring pass (below); 32-bit done | not started |
+| 7 | 64-bit audit and build; every gate again, plus the cross-width save round-trip gate (h); the refactoring pass again; 64-bit done | not started |
 | 8 | CI for both targets; Windows (MinGW) and macOS | later |
 
 ## Milestone 2 work breakdown
 
-State on 2026-10-08 night: merged on main: foundation, build system,
-timer, transfer_bounds, input, rtc, video/audio/pacer, interrupt, psg,
-ppu, dma, flash/save_file. Fixing: m4a. Working: bios, integration (main,
-frame loop, link, first boot). Next: merge bios and m4a, then the
-integration branch once it links and runs frames.
+State on 2026-10-09: every platform module and the m4a engine are
+merged on main (commit a8c906700d). One worker remains: integration
+(work/integration: main.c, frame loop, game hooks, link script, the
+native link, first headless boot). Next: review and merge it once the
+executable runs frames; then boot debugging to the title screen and
+opening (milestone 2 exit), then milestone 3 (input replay).
 
 Wave 1 (no dependencies between them):
 
@@ -59,3 +60,26 @@ single line. Diffs get mechanical checks (both targets build where the
 toolchain exists, all tests pass under sanitizers, no new warnings) and a
 Sonnet first-pass review; the orchestrator reads what is flagged and
 merges.
+
+## Standing instruction: the refactoring pass (owner, 2026-10-09)
+
+Before declaring 32-bit done (end of milestone 6) and again before
+declaring 64-bit done (end of milestone 7), run a dedicated refactoring
+pass over everything we wrote: the platform layer, build glue and tests,
+reviewed as if it were someone else's code submitted for merge into a
+codebase maintained for decades, against `docs/C-RULES.md`. Look for:
+logic that exists in two modules because two workers needed it; named
+constants that should be shared; functions that do more than one thing;
+error paths patched rather than designed; anything marked temporary or
+TODO; test files that drifted from the structure of the module they
+test; headers exposing more than the module's real interface. Remove
+dead code and anything kept just in case. Every change is
+behaviour-preserving and proven by the existing tests and gates; where a
+refactor reveals a missing test, write it first. Do not touch expansion's
+own files in this pass; any upstream modification that turns out to be
+unnecessary is removed and struck from `UPSTREAM_MODIFICATIONS.md`.
+Dispatch the pass as module-sized worker tasks reviewed like everything
+else, then the orchestrator reads the platform layer end to end once and
+records in `STATUS.md` that the pass happened and what it changed.
+Milestone 6 also adds a checked-in `.clang-format` applied to our
+directories only, enforced in the gate.
