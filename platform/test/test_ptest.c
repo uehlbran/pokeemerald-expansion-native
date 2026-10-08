@@ -1,12 +1,12 @@
 /*
  * Self-test of ptest.h: every assertion's pass path and fail path, the
- * failure message (file, line, test name, expression, values), single
- * evaluation of arguments, the runner's summary and exit status, and
- * registration. Failure paths run under ptest_capture, so a failing
- * assertion is observed and checked instead of failing this run.
+ * failure message (file, line, test name, expression, values) and its cut at
+ * PTEST_MESSAGE_SIZE, single evaluation of every argument, and the runner:
+ * summary and exit status, a run with no tests, the PTEST_MAX_TESTS limit,
+ * and registration. Failure paths run under ptest_capture, and runner tests
+ * on their own registry through ptest_main_for, so what they check is
+ * observed instead of failing this run.
  */
-#include <stdlib.h>
-
 #include "ptest.h"
 
 /* What a probed function did: whether it ran past its assertion, and where the assertion is. */
@@ -72,7 +72,23 @@ PTEST(assert_failure_records_location_and_returns)
     PT_ASSERT(has_location(&outcome, &probe, "assert_failure_records_location_and_returns"));
     PT_ASSERT(has_text(outcome.message, "PT_ASSERT(2 + 2 == 5)"));
     /* The capture must leave the running test's own state untouched. */
-    PT_ASSERT(!ptest_registry.current.failed);
+    PT_ASSERT(!ptest_current.outcome.failed);
+}
+
+static void fail_twice_through_helpers(void *context)
+{
+    struct probe *probe = context;
+    assert_false(probe); /* first failure, returns from the helper only */
+    PT_FAIL("second failure");
+}
+
+PTEST(first_failure_is_kept)
+{
+    struct probe probe = { false, 0 };
+    const struct ptest_outcome outcome = ptest_capture(fail_twice_through_helpers, &probe);
+    PT_ASSERT(outcome.failed);
+    PT_ASSERT(has_text(outcome.message, "PT_ASSERT(2 + 2 == 5)"));
+    PT_ASSERT(!has_text(outcome.message, "second failure"));
 }
 
 /* ---- PT_ASSERT_EQ_U32 ---- */
@@ -340,6 +356,53 @@ PTEST(assertion_arguments_are_evaluated_once)
     PT_ASSERT_EQ_U32(counter, 3);
 }
 
+/* How often each argument of an assertion was evaluated. */
+struct evaluations {
+    uint32_t actual, expected, nbytes;
+};
+
+static const uint8_t evaluated_bytes[2] = { 7, 7 };
+
+static void count_pointer_evaluations(void *context)
+{
+    struct evaluations *const count = context;
+    PT_ASSERT_EQ_PTR((count->actual++, &evaluated_bytes[0]),
+                     (count->expected++, &evaluated_bytes[0]));
+    PT_ASSERT_MEM_EQ((count->actual++, &evaluated_bytes[0]),
+                     (count->expected++, &evaluated_bytes[1]),
+                     (count->nbytes++, sizeof evaluated_bytes[0]));
+}
+
+PTEST(pointer_and_memory_arguments_are_evaluated_once)
+{
+    struct evaluations count = { 0, 0, 0 };
+    const struct ptest_outcome outcome = ptest_capture(count_pointer_evaluations, &count);
+    PT_ASSERT(!outcome.failed);
+    PT_ASSERT_EQ_U32(count.actual, 2);
+    PT_ASSERT_EQ_U32(count.expected, 2);
+    PT_ASSERT_EQ_U32(count.nbytes, 1);
+}
+
+/* ---- truncation ---- */
+
+static void fail_with_long_message(void *context)
+{
+    (void)context;
+    char message[2 * PTEST_MESSAGE_SIZE];
+    memset(message, 'x', sizeof message - 1);
+    message[sizeof message - 1] = '\0';
+    PT_FAIL(message);
+}
+
+PTEST(long_failure_message_is_cut_to_message_size)
+{
+    const struct ptest_outcome outcome = ptest_capture(fail_with_long_message, NULL);
+    const char *const terminator = memchr(outcome.message, '\0', sizeof outcome.message);
+    PT_ASSERT(outcome.failed);
+    PT_ASSERT(terminator == outcome.message + PTEST_MESSAGE_SIZE - 1);
+    PT_ASSERT(has_text(outcome.message, ": long_failure_message_is_cut_to_message_size: PT_FAIL: xxx"));
+}
+
 /* ---- runner and registry ---- */
 
 static void runner_passing_case(void)
@@ -352,64 +415,123 @@ static void runner_failing_case(void)
     PT_FAIL("expected failure");
 }
 
-/* Runs cases into a memory stream; returns the exit status, stores the text (caller frees). */
-static int run_into_text(const struct ptest_case *cases, size_t count, char **text)
+#define RUN_TEXT_SIZE 2048 /* room for everything the runs below print */
+
+/* A run of a registry: its exit status and what it printed. */
+struct run {
+    int status;
+    bool text_complete; /* all output was read back and fits in text */
+    char text[RUN_TEXT_SIZE];
+};
+
+static struct run run_registry(const struct ptest_registry *registry)
 {
-    size_t length = 0;
-    *text = NULL;
-    FILE *out = open_memstream(text, &length);
+    struct run run = { .status = -1, .text_complete = false, .text = "" };
+    FILE *const out = tmpfile();
     if (out == NULL)
-        return -1;
-    const int status = ptest_run_cases(cases, count, out);
+        return run;
+    run.status = ptest_main_for(registry, out);
+    if (fseek(out, 0, SEEK_SET) == 0) {
+        const size_t length = fread(run.text, 1, sizeof run.text - 1, out);
+        run.text[length] = '\0';
+        run.text_complete = !ferror(out) && length < sizeof run.text - 1;
+    }
     if (fclose(out) != 0)
-        return -1;
-    return status;
+        run.text_complete = false;
+    return run;
 }
 
 PTEST(runner_reports_failures_and_returns_nonzero)
 {
-    const struct ptest_case cases[] = {
-        { "runner_passing_case", runner_passing_case },
-        { "runner_failing_case", runner_failing_case },
-    };
-    char *text = NULL;
-    const int status = run_into_text(cases, 2, &text);
-    const bool fail_line =
-        text != NULL && has_text(text, ": runner_failing_case: PT_FAIL: expected failure\n");
-    const size_t fail_lines = text != NULL ? count_text(text, "FAIL ") : 0;
-    const bool summary = text != NULL && has_text(text, "1 passed, 1 failed\n");
-    free(text);
-    PT_ASSERT_EQ_INT(status, 1);
-    PT_ASSERT(fail_line);
-    PT_ASSERT(fail_lines == 1);
-    PT_ASSERT(summary);
+    struct ptest_registry registry = { .count = 0 };
+    ptest_register_in(&registry, "runner_passing_case", runner_passing_case);
+    ptest_register_in(&registry, "runner_failing_case", runner_failing_case);
+    const struct run run = run_registry(&registry);
+    PT_ASSERT(run.text_complete);
+    PT_ASSERT_EQ_INT(run.status, 1);
+    PT_ASSERT(has_text(run.text, ": runner_failing_case: PT_FAIL: expected failure\n"));
+    PT_ASSERT(count_text(run.text, "FAIL ") == 1);
+    PT_ASSERT(has_text(run.text, "1 passed, 1 failed\n"));
     /* The nested run restores the running test's name and state. */
-    PT_ASSERT_EQ_STR(ptest_registry.current_name, "runner_reports_failures_and_returns_nonzero");
-    PT_ASSERT(!ptest_registry.current.failed);
+    PT_ASSERT_EQ_STR(ptest_current.name, "runner_reports_failures_and_returns_nonzero");
+    PT_ASSERT(!ptest_current.outcome.failed);
 }
 
 PTEST(runner_returns_zero_when_all_pass)
 {
-    const struct ptest_case cases[] = {
-        { "first", runner_passing_case },
-        { "second", runner_passing_case },
-    };
-    char *text = NULL;
-    const int status = run_into_text(cases, 2, &text);
-    const bool summary = text != NULL && strcmp(text, "2 passed, 0 failed\n") == 0;
-    free(text);
-    PT_ASSERT_EQ_INT(status, 0);
-    PT_ASSERT(summary);
+    struct ptest_registry registry = { .count = 0 };
+    ptest_register_in(&registry, "first", runner_passing_case);
+    ptest_register_in(&registry, "second", runner_passing_case);
+    const struct run run = run_registry(&registry);
+    PT_ASSERT(run.text_complete);
+    PT_ASSERT_EQ_INT(run.status, 0);
+    PT_ASSERT_EQ_STR(run.text, "2 passed, 0 failed\n");
+}
+
+PTEST(runner_fails_when_no_tests_are_registered)
+{
+    const struct ptest_registry registry = { .count = 0 };
+    const struct run run = run_registry(&registry);
+    PT_ASSERT(run.text_complete);
+    PT_ASSERT_EQ_INT(run.status, 1);
+    PT_ASSERT_EQ_STR(run.text, "ptest: no tests registered\n");
+}
+
+PTEST(registry_holds_exactly_max_tests)
+{
+    struct ptest_registry registry = { .count = 0 };
+    for (int i = 0; i < PTEST_MAX_TESTS; i++)
+        ptest_register_in(&registry, "passing", runner_passing_case);
+    char expected[64];
+    const int length = snprintf(expected, sizeof expected, "%d passed, 0 failed\n", PTEST_MAX_TESTS);
+    PT_ASSERT(length > 0 && (size_t)length < sizeof expected);
+    PT_ASSERT(!registry.overflowed);
+    const struct run run = run_registry(&registry);
+    PT_ASSERT(run.text_complete);
+    PT_ASSERT_EQ_INT(run.status, 0);
+    PT_ASSERT_EQ_STR(run.text, expected);
+}
+
+PTEST(registration_past_max_tests_fails_the_run_naming_the_limit)
+{
+    struct ptest_registry registry = { .count = 0 };
+    for (int i = 0; i <= PTEST_MAX_TESTS; i++)
+        ptest_register_in(&registry, "passing", runner_passing_case);
+    PT_ASSERT(registry.overflowed);
+    PT_ASSERT(registry.count == PTEST_MAX_TESTS);
+    const struct run run = run_registry(&registry);
+    PT_ASSERT(run.text_complete);
+    PT_ASSERT_EQ_INT(run.status, 1);
+    PT_ASSERT(has_text(run.text, "raise PTEST_MAX_TESTS"));
+    PT_ASSERT(!has_text(run.text, "passed")); /* no test ran */
+}
+
+/* A test name longer than a whole message: the line is cut, the run still fails. */
+PTEST(runner_cuts_a_failure_line_whose_prefix_overflows)
+{
+    char long_name[PTEST_MESSAGE_SIZE + 100];
+    memset(long_name, 'n', sizeof long_name - 1);
+    long_name[sizeof long_name - 1] = '\0';
+    struct ptest_registry registry = { .count = 0 };
+    ptest_register_in(&registry, long_name, runner_failing_case);
+    const struct run run = run_registry(&registry);
+    const char *const line = strstr(run.text, "FAIL ");
+    const char *const line_end = line != NULL ? strchr(line, '\n') : NULL;
+    PT_ASSERT(run.text_complete);
+    PT_ASSERT_EQ_INT(run.status, 1);
+    PT_ASSERT(line_end != NULL);
+    PT_ASSERT(line_end - line == (ptrdiff_t)strlen("FAIL ") + PTEST_MESSAGE_SIZE - 1);
+    PT_ASSERT(has_text(run.text, "0 passed, 1 failed\n"));
 }
 
 PTEST(registry_contains_this_test)
 {
     bool found = false;
-    for (size_t i = 0; i < ptest_registry.count; i++)
-        found = found || (ptest_registry.cases[i].run == ptest_body_registry_contains_this_test &&
-                          strcmp(ptest_registry.cases[i].name, "registry_contains_this_test") == 0);
+    for (size_t i = 0; i < ptest_tests.count; i++)
+        found = found || (ptest_tests.cases[i].run == ptest_body_registry_contains_this_test &&
+                          strcmp(ptest_tests.cases[i].name, "registry_contains_this_test") == 0);
     PT_ASSERT(found);
-    PT_ASSERT(!ptest_registry.overflowed);
+    PT_ASSERT(!ptest_tests.overflowed);
 }
 
 PTEST_MAIN()

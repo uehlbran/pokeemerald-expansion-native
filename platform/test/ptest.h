@@ -7,14 +7,21 @@
  *   PT_ASSERT(cond), PT_ASSERT_EQ_U32/_INT/_PTR/_STR(actual, expected),
  *   PT_ASSERT_MEM_EQ(actual, expected, nbytes), PT_FAIL(message):
  *                           on failure record file, line, test name, the
- *                           expression and the values, mark the test failed and
+ *                           expression and the values (truncated to
+ *                           PTEST_MESSAGE_SIZE), mark the test failed and
  *                           return from the enclosing void function. Every
- *                           argument is evaluated exactly once.
+ *                           argument is evaluated exactly once. A test reports
+ *                           its first failure: one in a helper returns from
+ *                           the helper, and later ones do not replace it.
  *   PTEST_MAIN()            defines main: runs every test, prints one line per
  *                           failed test and "N passed, M failed", returns 0 only
- *                           if every test passed (and fails if none exist).
+ *                           if every test passed; fails if there are no tests
+ *                           or more than PTEST_MAX_TESTS.
  *   ptest_capture(fn, ctx)  runs fn(ctx) and returns its failure instead of
  *                           failing the running test (for testing assertions).
+ *   ptest_register_in, ptest_main_for
+ *                           what PTEST and PTEST_MAIN do, on a registry the
+ *                           caller supplies (for testing the runner).
  *
  * The registry is static: a test binary is one translation unit including
  * this header. Tests run in definition order with GCC, but must not rely on it.
@@ -31,40 +38,52 @@
 #include <string.h>
 
 #define PTEST_MAX_TESTS 256    /* registry capacity of one test binary */
-#define PTEST_MESSAGE_SIZE 512 /* one failure line; longer ones are truncated */
+#define PTEST_MESSAGE_SIZE 512 /* one failure line, with its terminator; longer ones are cut */
 
 struct ptest_case { const char *name; void (*run)(void); };
 struct ptest_outcome { bool failed; char message[PTEST_MESSAGE_SIZE]; };
-
-static struct {
+struct ptest_registry {
     struct ptest_case cases[PTEST_MAX_TESTS];
     size_t count;
-    bool overflowed;
-    const char *current_name;
-    struct ptest_outcome current;
-} ptest_registry;
+    bool overflowed; /* a registration was refused for lack of room */
+};
 
-static inline void ptest_register(const char *name, void (*run)(void))
+/* The tests PTEST() registers in this binary. */
+static struct ptest_registry ptest_tests;
+
+/* The test running now: its name and its outcome so far. */
+static struct {
+    const char *name;
+    struct ptest_outcome outcome;
+} ptest_current;
+
+static inline void ptest_register_in(struct ptest_registry *registry, const char *name,
+                                     void (*run)(void))
 {
-    if (ptest_registry.count == PTEST_MAX_TESTS)
-        ptest_registry.overflowed = true;
+    if (registry->count == PTEST_MAX_TESTS)
+        registry->overflowed = true;
     else
-        ptest_registry.cases[ptest_registry.count++] = (struct ptest_case){ name, run };
+        registry->cases[registry->count++] = (struct ptest_case){ name, run };
 }
 
 __attribute__((format(printf, 3, 4)))
 static inline void ptest_fail_at(const char *file, int line, const char *format, ...)
 {
-    char *const text = ptest_registry.current.message;
+    char *const text = ptest_current.outcome.message;
+    if (ptest_current.outcome.failed)
+        return; /* keep the test's first failure */
+    ptest_current.outcome.failed = true;
     const int prefix = snprintf(text, PTEST_MESSAGE_SIZE, "%s:%d: %s: ", file, line,
-                                ptest_registry.current_name);
-    ptest_registry.current.failed = true;
-    if (prefix < 0 || prefix >= PTEST_MESSAGE_SIZE)
-        return;
+                                ptest_current.name);
+    /* snprintf returns the length before truncation; the rest goes after what it stored. */
+    const size_t used = prefix < 0 ? 0
+                        : (size_t)prefix < PTEST_MESSAGE_SIZE ? (size_t)prefix
+                        : PTEST_MESSAGE_SIZE - 1;
     va_list args;
     va_start(args, format);
-    if (vsnprintf(text + prefix, PTEST_MESSAGE_SIZE - (size_t)prefix, format, args) < 0)
-        snprintf(text + prefix, PTEST_MESSAGE_SIZE - (size_t)prefix, "(unformattable message)");
+    if (vsnprintf(text + used, PTEST_MESSAGE_SIZE - used, format, args) < 0)
+        (void)snprintf(text + used, PTEST_MESSAGE_SIZE - used,
+                       "(unformattable message)"); /* best-effort */
     va_end(args);
 }
 
@@ -124,58 +143,60 @@ static inline bool ptest_check_mem(const char *file, int line, const char *a_tex
 
 static inline struct ptest_outcome ptest_capture(void (*body)(void *), void *context)
 {
-    const struct ptest_outcome outer = ptest_registry.current;
-    ptest_registry.current = (struct ptest_outcome){ .failed = false };
+    const struct ptest_outcome outer = ptest_current.outcome;
+    ptest_current.outcome = (struct ptest_outcome){ .failed = false };
     body(context);
-    const struct ptest_outcome captured = ptest_registry.current;
-    ptest_registry.current = outer;
+    const struct ptest_outcome captured = ptest_current.outcome;
+    ptest_current.outcome = outer;
     return captured;
 }
 
 /* Runs the cases, reports to out, returns the exit status (0 = all passed). */
 static inline int ptest_run_cases(const struct ptest_case *cases, size_t count, FILE *out)
 {
-    const char *const outer_name = ptest_registry.current_name;
-    const struct ptest_outcome outer = ptest_registry.current;
+    const char *const outer_name = ptest_current.name;
+    const struct ptest_outcome outer = ptest_current.outcome;
     size_t failed = 0;
     for (size_t i = 0; i < count; i++) {
-        ptest_registry.current_name = cases[i].name;
-        ptest_registry.current = (struct ptest_outcome){ .failed = false };
+        ptest_current.name = cases[i].name;
+        ptest_current.outcome = (struct ptest_outcome){ .failed = false };
         cases[i].run();
-        if (ptest_registry.current.failed) {
+        if (ptest_current.outcome.failed) {
             failed++;
-            fprintf(out, "FAIL %s\n", ptest_registry.current.message);
+            (void)fprintf(out, "FAIL %s\n", ptest_current.outcome.message); /* ferror below */
         }
     }
-    fprintf(out, "%zu passed, %zu failed\n", count - failed, failed);
-    ptest_registry.current_name = outer_name;
-    ptest_registry.current = outer;
-    const bool output_ok = fflush(out) == 0 && !ferror(out); /* covers every fprintf above */
+    (void)fprintf(out, "%zu passed, %zu failed\n", count - failed, failed); /* ferror below */
+    ptest_current.name = outer_name;
+    ptest_current.outcome = outer;
+    const bool output_ok = fflush(out) == 0 && !ferror(out);
     return failed == 0 && output_ok ? 0 : 1;
 }
 
-static inline int ptest_main(void)
+/* Runs every test in registry, reporting to out; returns the exit status. */
+static inline int ptest_main_for(const struct ptest_registry *registry, FILE *out)
 {
-    if (ptest_registry.overflowed) {
-        fprintf(stderr, "ptest: more than %d tests; raise PTEST_MAX_TESTS\n", PTEST_MAX_TESTS);
+    if (registry->overflowed) {
+        (void)fprintf(out, "ptest: more than %d tests registered; raise PTEST_MAX_TESTS\n",
+                      PTEST_MAX_TESTS); /* best-effort */
         return 1;
     }
-    if (ptest_registry.count == 0) {
-        fputs("ptest: no tests registered\n", stderr);
+    if (registry->count == 0) {
+        (void)fputs("ptest: no tests registered\n", out); /* best-effort */
         return 1;
     }
-    return ptest_run_cases(ptest_registry.cases, ptest_registry.count, stdout);
+    return ptest_run_cases(registry->cases, registry->count, out);
 }
 
 #define PTEST(name)                                                       \
     static void ptest_body_##name(void);                                  \
     __attribute__((constructor)) static void ptest_register_##name(void) \
     {                                                                     \
-        ptest_register(#name, ptest_body_##name);                         \
+        ptest_register_in(&ptest_tests, #name, ptest_body_##name);        \
     }                                                                     \
     static void ptest_body_##name(void)
 
-#define PTEST_MAIN() int main(void) { return ptest_main(); }
+#define PTEST_MAIN() int main(void) { return ptest_main_for(&ptest_tests, stdout); }
 
 /* Returns from the test unless the check passed. */
 #define PTEST_REQUIRE_(check) do { if (!(check)) return; } while (0)
