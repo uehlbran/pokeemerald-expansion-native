@@ -56,7 +56,7 @@ static int parse_offset(const char *text, size_t length, int64_t *offset)
     return 0;
 }
 
-int rtc_offset_store_load(const char *path, int64_t *offset)
+int rtc_offset_store_load(const char *path, int64_t *offset, int *found)
 {
     char text[FILE_BUFFER_SIZE];
     ssize_t length;
@@ -66,6 +66,7 @@ int rtc_offset_store_load(const char *path, int64_t *offset)
     if (fd < 0) {
         if (errno == ENOENT) {
             *offset = 0;
+            *found = 0;
             return 0;
         }
         rtc_report_call_failure("open (offset file)");
@@ -88,6 +89,7 @@ int rtc_offset_store_load(const char *path, int64_t *offset)
         return -1;
     }
     *offset = parsed;
+    *found = 1;
     return 0;
 }
 
@@ -111,6 +113,38 @@ static void discard_temp(const char *temp_path)
 {
     if (unlink(temp_path) != 0)
         rtc_report_call_failure("unlink (temporary offset file)");
+}
+
+/* fsync of the directory holding path, so the rename itself is durable. */
+static int sync_directory(const char *path)
+{
+    char dir[PATH_MAX];
+    char *slash;
+    int fd;
+
+    snprintf(dir, sizeof dir, "%s", path);
+    slash = strrchr(dir, '/');
+    if (slash == NULL)
+        snprintf(dir, sizeof dir, ".");
+    else if (slash == dir)
+        slash[1] = '\0';
+    else
+        *slash = '\0';
+    fd = open(dir, O_RDONLY | O_DIRECTORY | O_CLOEXEC);
+    if (fd < 0) {
+        rtc_report_call_failure("open (offset file directory)");
+        return -1;
+    }
+    if (fsync(fd) != 0) {
+        rtc_report_call_failure("fsync (offset file directory)");
+        close(fd);
+        return -1;
+    }
+    if (close(fd) != 0) {
+        rtc_report_call_failure("close (offset file directory)");
+        return -1;
+    }
+    return 0;
 }
 
 int rtc_offset_store_save(const char *path, int64_t offset)
@@ -157,5 +191,5 @@ int rtc_offset_store_save(const char *path, int64_t offset)
         discard_temp(temp_path);
         return -1;
     }
-    return 0;
+    return sync_directory(path);
 }

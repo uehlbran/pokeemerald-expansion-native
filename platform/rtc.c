@@ -14,19 +14,21 @@
  * WHAT THIS MODEL DOES. It is the chip at the level of those registers, which
  * is all the game observes through the SiiRtc* API (under PLATFORM_NATIVE
  * src/siirtc.c calls this module instead of toggling GPIO pins). The
- * counters are not stored: the chip time is the host's local wall-clock time
- * plus a persisted offset in seconds, so the clock keeps running while the
+ * counters are not stored: the chip time is the host's UTC time plus a
+ * persisted offset in seconds, so the clock keeps running while the
  * game is off and "set the time" means "compute the offset". No reference
  * port is copied; this is written from GBATEK and expansion's own sources.
  *
  * DECISIONS.
- *  - Local time, not UTC. A cartridge clock is set once by the player to the
- *    wall clock in front of them and knows no time zones; the game then
- *    reads morning, day and night from it. With UTC the in-game day would
- *    change at the wrong hour for everyone off Greenwich. The host's local
- *    fields (localtime_r) are taken as the chip's seconds counter, so a host
- *    DST change moves the in-game clock by an hour, as moving the dial on a
- *    real console clock would.
+ *  - UTC plus a fixed offset, initialised from local time. A cartridge
+ *    clock is set once by the player to the wall clock in front of them,
+ *    knows no time zones and never jumps at daylight saving. So the chip's
+ *    seconds are the time source (UTC) plus the persisted offset. On first
+ *    run, when no offset file exists (or none is configured), the offset is
+ *    initialised to the host's local-minus-UTC difference at that instant
+ *    (localtime_r, used only for this) so the in-game clock reads local wall
+ *    time, and it is persisted. After that a host zone or DST change does not
+ *    move the clock; the player's set operations adjust the offset.
  *  - Year range and the 2099 -> 2000 wrap. The chip's year is two BCD digits
  *    (00h..99h = 2000..2099) with no century, and its leap year rule is
  *    "year divisible by 4", so year 00 is leap. The model's calendar is a
@@ -225,45 +227,53 @@ static int64_t system_clock(void)
     return (int64_t)now;
 }
 
-/* The host's local wall-clock fields read as a seconds counter. */
-static int host_local_seconds(int64_t *out)
+/* The time source's reading, range checked. */
+static int host_utc_seconds(int64_t *out)
 {
     int64_t utc = chip.source();
-    time_t t;
-    struct tm local;
 
     if (utc < -RTC_OFFSET_LIMIT || utc > RTC_OFFSET_LIMIT) {
         fprintf(stderr, "rtc: time source returned %lld, out of range\n", (long long)utc);
         return -1;
     }
-    t = (time_t)utc;
+    *out = utc;
+    return 0;
+}
+
+/* Host local wall-clock time minus UTC at the instant utc, in seconds: the
+ * zone offset including any DST in force then. Used once, on first run. */
+static int local_minus_utc(int64_t utc, int64_t *out)
+{
+    time_t t = (time_t)utc;
+    struct tm local;
+
     if (localtime_r(&t, &local) == NULL) {
         rtc_report_call_failure("localtime_r");
         return -1;
     }
     *out = unix_days_from_civil((int64_t)local.tm_year + TM_YEAR_BASE, local.tm_mon + 1, local.tm_mday) * SECONDS_PER_DAY
-         + ((int64_t)local.tm_hour * MINUTES_PER_HOUR + local.tm_min) * SECONDS_PER_MINUTE + local.tm_sec;
+         + ((int64_t)local.tm_hour * MINUTES_PER_HOUR + local.tm_min) * SECONDS_PER_MINUTE + local.tm_sec - utc;
     return 0;
 }
 
 static int chip_seconds_now(int64_t *out)
 {
-    int64_t local;
-    if (host_local_seconds(&local) != 0)
+    int64_t utc;
+    if (host_utc_seconds(&utc) != 0)
         return -1;
-    *out = local + chip.offset;
+    *out = utc + chip.offset;
     return 0;
 }
 
 /* Makes the chip read chip_seconds now, persisting before committing. */
 static int set_chip_seconds(int64_t chip_seconds)
 {
-    int64_t local;
+    int64_t utc;
     int64_t new_offset;
 
-    if (host_local_seconds(&local) != 0)
+    if (host_utc_seconds(&utc) != 0)
         return -1;
-    new_offset = chip_seconds - local;
+    new_offset = chip_seconds - utc;
     if (new_offset < -RTC_OFFSET_LIMIT || new_offset > RTC_OFFSET_LIMIT) {
         fprintf(stderr, "rtc: offset %lld out of range\n", (long long)new_offset);
         return -1;
@@ -341,6 +351,8 @@ void rtc_shutdown(void)
 int rtc_init(rtc_time_source source, const char *offset_file_path)
 {
     int64_t offset = 0;
+    int64_t utc;
+    int found = 0;
 
     rtc_shutdown();
     if (offset_file_path != NULL) {
@@ -348,11 +360,19 @@ int rtc_init(rtc_time_source source, const char *offset_file_path)
             fprintf(stderr, "rtc: offset file path is longer than %zu bytes\n", sizeof chip.offset_path - 1);
             return -1;
         }
-        if (rtc_offset_store_load(offset_file_path, &offset) != 0)
+        if (rtc_offset_store_load(offset_file_path, &offset, &found) != 0)
             return -1;
         strcpy(chip.offset_path, offset_file_path);
     }
     chip.source = source != NULL ? source : system_clock;
+    if (!found) {
+        /* First run: show the host's wall clock, then run on fixed UTC + offset. */
+        if (host_utc_seconds(&utc) != 0 || local_minus_utc(utc, &offset) != 0
+            || (chip.offset_path[0] != '\0' && rtc_offset_store_save(chip.offset_path, offset) != 0)) {
+            rtc_shutdown();
+            return -1;
+        }
+    }
     chip.offset = offset;
     chip.status = STATUS_DEFAULT;
     chip.initialised = true;

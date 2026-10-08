@@ -236,7 +236,7 @@ PTEST(get_time_reports_hour_minute_second_only)
     PT_ASSERT_EQ_U32(d.day_of_week_bcd, 0xEEu);
 }
 
-PTEST(chip_time_is_host_local_time)
+PTEST(first_run_chip_time_is_host_local_time)
 {
     struct rtc_datetime d;
     /* POSIX TZ "XXX-2" is two hours east of UTC: no tz database needed. */
@@ -253,7 +253,11 @@ PTEST(chip_time_is_host_local_time)
 PTEST(source_out_of_range_is_an_error)
 {
     struct rtc_datetime d;
-    start_at(INT64_MIN);
+    pin_utc();
+    g_now = INT64_MIN;
+    PT_ASSERT_EQ_INT(rtc_init(fake_source, NULL), -1); /* first-run offset needs a valid reading */
+    start_at(EPOCH_2000_01_01);
+    g_now = INT64_MIN;
     PT_ASSERT_EQ_INT(rtc_get_datetime(&d), -1);
     g_now = INT64_MAX;
     PT_ASSERT_EQ_INT(rtc_get_datetime(&d), -1);
@@ -332,9 +336,10 @@ PTEST(negative_offset_round_trips)
     assert_dt(&out, 0x01, 0x01, 0x01, 0x01, 0x00, 0x00, 0x00);
 }
 
-PTEST(missing_offset_file_is_offset_zero)
+PTEST(missing_offset_file_is_first_run)
 {
     struct rtc_datetime out;
+    char text[64];
     new_scratch();
     pin_utc();
     g_now = EPOCH_2024_03_15_13_45_30;
@@ -342,7 +347,63 @@ PTEST(missing_offset_file_is_offset_zero)
     PT_ASSERT_EQ_INT(rtc_get_datetime(&out), 0);
     rtc_shutdown();
     assert_dt(&out, 0x24, 0x03, 0x15, 0x05, 0x93, 0x45, 0x30);
-    PT_ASSERT(!file_exists(g_path)); /* init alone writes nothing */
+    read_file(g_path, text, sizeof text);
+    PT_ASSERT_EQ_STR(text, "0\n"); /* TZ=UTC: local minus UTC is 0, persisted on first run */
+}
+
+static void expect_first_run_offset(const char *tz, int64_t now, const char *expected_file_text)
+{
+    char text[64];
+    new_scratch();
+    setenv("TZ", tz, 1);
+    tzset();
+    g_now = now;
+    PT_ASSERT_EQ_INT(rtc_init(fake_source, g_path), 0);
+    rtc_shutdown();
+    read_file(g_path, text, sizeof text);
+    PT_ASSERT_EQ_STR(text, expected_file_text);
+}
+
+PTEST(first_run_offset_is_local_minus_utc_for_the_injected_instant)
+{
+    expect_first_run_offset("UTC+3", EPOCH_2024_03_15_13_45_30, "-10800\n");
+    expect_first_run_offset("XXX-2", EPOCH_2024_03_15_13_45_30, "7200\n");
+    /* A zone with DST: EST in January, EDT in July. */
+    expect_first_run_offset("EST5EDT,M3.2.0,M11.1.0", 1705320000LL, "-18000\n");
+    expect_first_run_offset("EST5EDT,M3.2.0,M11.1.0", 1719835200LL, "-14400\n");
+    pin_utc();
+}
+
+PTEST(existing_offset_file_wins_over_the_host_zone)
+{
+    struct rtc_datetime out;
+    new_scratch();
+    write_file(g_path, "3600\n");
+    setenv("TZ", "UTC+3", 1);
+    tzset();
+    g_now = EPOCH_2024_03_15_13_45_30;
+    PT_ASSERT_EQ_INT(rtc_init(fake_source, g_path), 0);
+    PT_ASSERT_EQ_INT(rtc_get_datetime(&out), 0);
+    rtc_shutdown();
+    pin_utc();
+    assert_dt(&out, 0x24, 0x03, 0x15, 0x05, 0x94, 0x45, 0x30);
+}
+
+PTEST(dst_change_does_not_move_the_chip_time)
+{
+    struct rtc_datetime out;
+    /* 2024-03-09 12:00 UTC is 07:00 EST; US DST begins on 03-10. */
+    setenv("TZ", "EST5EDT,M3.2.0,M11.1.0", 1);
+    tzset();
+    g_now = 1709985600LL;
+    PT_ASSERT_EQ_INT(rtc_init(fake_source, NULL), 0);
+    PT_ASSERT_EQ_INT(rtc_get_datetime(&out), 0);
+    assert_dt(&out, 0x24, 0x03, 0x09, 0x06, 0x07, 0x00, 0x00);
+    g_now += 2 * 86400; /* the host zone is now EDT; the chip must not follow */
+    PT_ASSERT_EQ_INT(rtc_get_datetime(&out), 0);
+    assert_dt(&out, 0x24, 0x03, 0x11, 0x01, 0x07, 0x00, 0x00);
+    rtc_shutdown();
+    pin_utc();
 }
 
 PTEST(corrupt_offset_file_is_an_error)
@@ -432,7 +493,9 @@ PTEST(invalid_bcd_and_ranges_are_rejected_without_changing_the_offset)
         struct rtc_datetime out;
         PT_ASSERT_EQ_INT(rtc_get_datetime(&out), 0);
         assert_dt(&out, 0x24, 0x03, 0x15, 0x05, 0x93, 0x45, 0x30);
-        PT_ASSERT(!file_exists(g_path)); /* nothing was persisted */
+        char text[64];
+        read_file(g_path, text, sizeof text);
+        PT_ASSERT_EQ_STR(text, "0\n"); /* still the first-run file */
     }
     rtc_shutdown();
 }
@@ -701,6 +764,7 @@ PTEST(failed_rename_removes_the_temporary_file_and_reports_an_error)
     g_now = EPOCH_2024_03_15_13_45_30;
     PT_ASSERT_EQ_INT(rtc_init(fake_source, g_path), 0);
     /* The target becomes a directory after init: rename(2) onto it fails. */
+    PT_ASSERT_EQ_INT(unlink(g_path), 0);
     PT_ASSERT_EQ_INT(mkdir(g_path, 0700), 0);
     PT_ASSERT_EQ_INT(rtc_set_datetime(&first), -1);
     PT_ASSERT(!file_exists(g_tmp_path));
