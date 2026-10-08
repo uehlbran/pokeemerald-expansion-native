@@ -394,29 +394,7 @@ static void STWI_init_slave(void)
     gSTWIStatus->recoveryCount = 0;
     REG_SIOCNT = SIO_INTR_ENABLE | SIO_32BIT_MODE | SIO_57600_BPS | SIO_ENABLE;
 }
-
-#if PLATFORM_NATIVE
-// Each ARM routine in the #else branch jumps to its callback with the
-// caller's arguments still in r0 and r1, which is a call with them.
-#if __STDC_VERSION__ < 202311L
-static void Callback_Dummy_M(int reqCommandId, int error, void (*callbackM)())
-#else
-static void Callback_Dummy_M(int reqCommandId, int error, void (*callbackM)(...))
-#endif
-{
-    callbackM(reqCommandId, error);
-}
-
-static void Callback_Dummy_S(u16 reqCommandId, void (*callbackS)(u16))
-{
-    callbackS(reqCommandId);
-}
-
-static void Callback_Dummy_ID(void (*callbackId)(void))
-{
-    callbackId();
-}
-#else
+#if !PLATFORM_NATIVE
 NAKED
 #if __STDC_VERSION__ < 202311L
 static void Callback_Dummy_M(int reqCommandId, int error, void (*callbackM)())
@@ -437,5 +415,29 @@ NAKED
 static void Callback_Dummy_ID(void (*callbackId)(void))
 {
     asm("bx r0");
+}
+#endif
+
+#if PLATFORM_NATIVE
+// Native dummy callbacks. Each ARM routine above, which the GBA build
+// keeps, jumps to its callback with the caller's arguments still in r0 and
+// r1, which is a call with them.
+#if __STDC_VERSION__ < 202311L
+static void Callback_Dummy_M(int reqCommandId, int error, void (*callbackM)())
+#else
+static void Callback_Dummy_M(int reqCommandId, int error, void (*callbackM)(...))
+#endif
+{
+    callbackM(reqCommandId, error);
+}
+
+static void Callback_Dummy_S(u16 reqCommandId, void (*callbackS)(u16))
+{
+    callbackS(reqCommandId);
+}
+
+static void Callback_Dummy_ID(void (*callbackId)(void))
+{
+    callbackId();
 }
 #endif

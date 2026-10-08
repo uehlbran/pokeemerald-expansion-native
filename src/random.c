@@ -38,15 +38,7 @@ static void SFC32_Seed(struct Sfc32State *state, u32 seed, u8 stream)
         _SFC32_Next_Stream(state, stream);
     }
 }
-
-#if PLATFORM_NATIVE
-// The Thumb routine in the #else branch is _SFC32_Next on gRngValue;
-// test/random.c checks that the two agree.
-u32 Random32(void)
-{
-    return _SFC32_Next(&gRngValue);
-}
-#else
+#if !PLATFORM_NATIVE
 /*This ASM implementation uses some shortcuts and is generally faster on the GBA.
 * It's not necessarily faster if inlined, or on other platforms.
 * In addition, it's extremely non-portable. */
@@ -78,7 +70,6 @@ u32 NAKED Random32(void)
     );
 }
 #endif
-
 u32 Random2_32(void)
 {
     return _SFC32_Next_Stream(&gRng2Value, STREAM2);
@@ -276,3 +267,14 @@ u32 Crc32B (const u8 *data, u32 size)
    }
    return ~crc;
 }
+
+#if PLATFORM_NATIVE
+// Native Random32. The Thumb routine above, which the GBA build keeps, is
+// _SFC32_Next on gRngValue; test/random.c checks that the two agree. It is
+// defined here, at the end of the file, so that the GBA build's line
+// numbers, which its assertions embed in the ROM, do not move.
+u32 Random32(void)
+{
+    return _SFC32_Next(&gRngValue);
+}
+#endif
