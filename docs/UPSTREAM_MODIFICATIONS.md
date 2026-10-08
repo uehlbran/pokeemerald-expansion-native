@@ -19,6 +19,17 @@ Flag for 64-bit: a row marked "64-bit" needs attention in the 64-bit
 milestone, for example because it fixes a pointer width or an address
 range.
 
+Line numbers. The GBA ROM embeds `__LINE__` in assertion messages, so a
+guarded block that adds lines to a `src/` file must be followed by
+`#line N`, where N is the upstream line number of the first unchanged
+line after the block, taken from `git show rhh/<tag>:src/<file>` (or
+`main`), never from the physical line of the edited file, and
+accounting for any earlier `#line` in the same file. Verify by
+preprocessing with and without `-DPLATFORM_NATIVE=1` and comparing the
+line markers at a few anchor lines after the block; the GBA ROM's sha1
+must not change. Where a guard can replace a blank line on each side of
+the original (`#if !PLATFORM_NATIVE` / `#endif`), no `#line` is needed.
+
 ## Whole-file replacements and moves
 
 | File | Reason | What changed | Since |
