@@ -36,10 +36,10 @@ WARNINGS := -Wall -Wextra -Wshadow -Wstrict-prototypes -Wconversion -Werror
 OPTIMISATION := -O1 -g
 
 # AddressSanitizer (with LeakSanitizer, on by default on Linux) and
-# UndefinedBehaviorSanitizer on every object, unconditionally; any report
-# aborts the binary. Override on the command line (SANITIZERS=) only for a
-# lib meant for a non-sanitized link; the tests always need them.
-SANITIZERS := -fsanitize=address,undefined -fno-sanitize-recover=all -fno-omit-frame-pointer
+# UndefinedBehaviorSanitizer on every object, tests and libplatform.a alike,
+# unconditionally (docs/C-RULES.md; "override" ignores command-line attempts
+# to change it); any report aborts the binary.
+override SANITIZERS := -fsanitize=address,undefined -fno-sanitize-recover=all -fno-omit-frame-pointer
 
 # Expansion's headers (../include) are system headers to us, so their warnings
 # stay out of our -Werror build: we do not rewrite or re-lint expansion's code
@@ -66,7 +66,7 @@ LDFLAGS_ALL := -m$(BITS) $(SANITIZERS) $(GBA_LDFLAGS)
 
 # The sanitizer options every test runs under, set here so the environment
 # cannot weaken them: leaks detected, no suppressions file, UBSan backtraces.
-SANITIZER_ENV := ASAN_OPTIONS=detect_leaks=1 LSAN_OPTIONS= UBSAN_OPTIONS=print_stacktrace=1
+override SANITIZER_ENV := ASAN_OPTIONS=detect_leaks=1 LSAN_OPTIONS= UBSAN_OPTIONS=print_stacktrace=1
 
 MODULE_SRCS := $(wildcard *.c)
 MODULE_OBJS := $(MODULE_SRCS:%.c=$(OBJ_DIR)/%.o)

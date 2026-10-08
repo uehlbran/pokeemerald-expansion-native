@@ -20,7 +20,8 @@ Every object is compiled with `-std=gnu17 -Wall -Wextra -Wshadow
 LeakSanitizer and UndefinedBehaviorSanitizer. `make test` runs every test
 binary, prints its output, and fails if any binary exits non-zero or prints
 a sanitizer report. The 32-bit build needs the i386 C library and sanitizer
-runtimes (`gcc-multilib`).
+runtimes (`gcc-multilib`). The tests run on Linux only for now: the region
+layout needs GNU ld and a non-PIE ELF executable (see below).
 
 Every test binary is linked with `gba_regions.ld` and `-no-pie
 -Wl,-Ttext-segment=0x40000000`, so the GBA memory regions exist in it (see
@@ -42,11 +43,14 @@ same way.
 
   `// # deps:` is accepted too. A deps entry that does not exist stops the
   build with an error naming the test.
+- To test a module's `static` functions without widening its header, a test
+  can `#include "<name>.c"` as long as its own name matches no module, so the
+  module is not linked a second time (`test/test_gba_memmap_layout.c`).
 
 ## ptest.h
 
 `platform/test/ptest.h` is a header-only test framework, about two hundred
-lines with no dependency (why in-house: `docs/RESEARCH.md`, "Test framework
+lines with no dependency beyond the C library (why in-house: `docs/RESEARCH.md`, "Test framework
 for the platform layer").
 
 ```c
@@ -73,27 +77,32 @@ PTEST_MAIN()
 | `PT_FAIL(message)` | always | the message |
 | `PTEST_MAIN()` | (defines `main`) | |
 
-A failing assertion records `file:line: test: expression: values`, marks the
-test failed and returns from the enclosing function, so assertions belong in
-the test body or in `void` helpers it calls last. Each argument is evaluated
-once. Restore any shared state (such as bytes written into a GBA region)
+A failing assertion records `file:line: test: expression: values`, cut to
+`PTEST_MESSAGE_SIZE` (512) bytes, marks the test failed and returns from the
+enclosing function. A test reports its first failure: an assertion in a
+`void` helper returns from the helper, and later failures in the same test
+do not replace the first. Each argument is evaluated once. Restore any shared state (such as bytes written into a GBA region)
 before asserting, so an early return leaves nothing behind. The runner prints
 one `FAIL` line per failed test and `N passed, M failed`, and exits 0 only if
-every test passed; a binary with no tests fails. There is no skip and no
-filter. Arguments must already have the assertion's type: `-Wconversion`
+every test passed; a binary with no tests fails, and so does one that
+registers more than `PTEST_MAX_TESTS` (256), with a message naming the limit.
+There is no skip and no filter. Arguments must already have the assertion's type: `-Wconversion`
 rejects, for example, a `size_t` passed to `PT_ASSERT_EQ_U32` on 64-bit, so
 compare sizes and addresses with `PT_ASSERT(a == b)`.
 
 `ptest_capture(fn, context)` runs `fn(context)` and returns its failure
-(`struct ptest_outcome`) instead of failing the running test; it is for
-testing assertions themselves (`test/test_ptest.c`).
+(`struct ptest_outcome`) instead of failing the running test, and
+`ptest_register_in(registry, name, fn)` and `ptest_main_for(registry, out)`
+do what `PTEST` and `PTEST_MAIN` do on a registry the caller owns. They are
+for testing the framework itself (`test/test_ptest.c`).
 
 ## The GBA memory map (`gba_memmap`)
 
 The regions exist at their GBA addresses in every executable linked with
 `gba_regions.ld`: the linker makes each a zero-filled, writable section and
 the kernel maps it at load time. `gba_memmap_init()` checks the link put
-them where the header says; `gba_memmap_contains()` and
+each at its base, exactly its size in whole 4 KiB pages long, and does not
+touch the memory; `gba_memmap_contains()` and
 `gba_memmap_region_of()` are the bounds checks other modules use before
 touching a range a game-supplied address names. Why a linker script rather
 than `mmap` at run time: the header comment of `gba_memmap.c` and
