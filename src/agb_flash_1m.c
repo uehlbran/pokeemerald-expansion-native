@@ -3,8 +3,17 @@
 
 KEEP_SECTION USED static const char AgbLibFlashVersion[] = "FLASH1M_V103";
 
+#if PLATFORM_NATIVE
+// The native build's flash chip (platform/flash.c): its ReadFlashId returns
+// this entry's ID, so IdentifyFlash always selects it.
+extern const struct FlashSetupInfo NativeFlash;
+#endif
+
 static const struct FlashSetupInfo *const sSetupInfos[] =
 {
+#if PLATFORM_NATIVE
+    &NativeFlash,
+#endif
     &MX29L010,
     &LE26FV10N1TS,
     &DefaultFlash
