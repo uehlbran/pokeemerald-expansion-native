@@ -41,6 +41,7 @@ _Static_assert(__BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__,
 #define DMA_SAD_OFFSET UINT32_C(0)
 #define DMA_DAD_OFFSET UINT32_C(4)
 #define DMA_CNT_OFFSET UINT32_C(8)    /* CNT_L, and CNT_L with CNT_H as one word */
+#define DMA_CNT_H_SHIFT 16u              /* CNT_H is the high halfword of that word (GBATEK "GBA DMA Transfers") */
 #define DMA_CNT_H_OFFSET UINT32_C(10)
 
 /* GBATEK "GBA DMA Transfers", DMAxCNT_L: "14 bit, 1..4000h" on DMA0-2,
@@ -380,7 +381,7 @@ int dma_set(unsigned channel, const void *src, void *dest, uint32_t control)
     }
     uintptr_t sad = (uintptr_t)src;
     uintptr_t dad = (uintptr_t)dest;
-    uint16_t cnt_h = (uint16_t)(control >> 16);
+    uint16_t cnt_h = (uint16_t)(control >> DMA_CNT_H_SHIFT);
 
     write_registers(channel, sad, dad, control);
     state.channels[channel] = (struct dma_channel){
