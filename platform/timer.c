@@ -14,6 +14,7 @@
 #include "gba_memmap.h"
 #include "timer.h"
 
+/* GBATEK "GBA Timers": four timers, TM0CNT to TM3CNT. */
 #define TIMER_COUNT 4u
 
 /* GBATEK "GBA Timers": TM0CNT_L at 4000100h, TM0CNT_H at 4000102h, then the
@@ -34,7 +35,8 @@
  * to the reload after 10000h - reload ticks. */
 #define TIMER_COUNTER_RANGE UINT32_C(0x10000)
 
-/* The prescaler dividers selected by CNT_H bits 0-1, in cycles per tick. */
+/* The prescaler dividers selected by CNT_H bits 0-1, in cycles per tick
+ * (GBATEK "GBA Timers": F/1, F/64, F/256, F/1024). */
 static const uint32_t prescaler_cycles[] = { 1, 64, 256, 1024 };
 
 struct timer {
@@ -99,18 +101,12 @@ static uint32_t count_ticks(struct timer *t, uint64_t ticks)
     return (uint32_t)(1 + ticks / period);
 }
 
-/* Ticks the timer sees: the source's overflows when counting up, else the
- * cycles through the prescaler, carrying the leftover cycles. */
-static uint32_t ticks_for(struct timer *t, uint16_t control, uint32_t cycles,
-                          uint32_t source_overflows, bool has_source)
+/* Ticks from `cycles` through the prescaler, carrying the leftover cycles. */
+static uint32_t prescaled_ticks(struct timer *t, uint16_t control, uint32_t cycles)
 {
-    uint64_t total;
-    uint32_t divider;
+    uint32_t divider = prescaler_cycles[control & TIMER_CNT_H_PRESCALER_MASK];
+    uint64_t total = (uint64_t)t->residue + cycles;
 
-    if (has_source && (control & TIMER_CNT_H_COUNT_UP) != 0)
-        return source_overflows;
-    divider = prescaler_cycles[control & TIMER_CNT_H_PRESCALER_MASK];
-    total = (uint64_t)t->residue + cycles;
     t->residue = (uint32_t)(total % divider);
     return (uint32_t)(total / divider);
 }
@@ -140,8 +136,12 @@ static uint32_t advance_one(unsigned index, uint32_t cycles, uint32_t source_ove
     uint32_t overflows = 0;
 
     sync_with_game(index, t, enabled);
-    if (enabled)
-        overflows = count_ticks(t, ticks_for(t, control, cycles, source_overflows, index > 0));
+    if (enabled) {
+        bool counts_up = index > 0 && (control & TIMER_CNT_H_COUNT_UP) != 0;
+        uint32_t ticks = counts_up ? source_overflows : prescaled_ticks(t, control, cycles);
+
+        overflows = count_ticks(t, ticks);
+    }
     *cnt_l(index) = t->counter;
     t->cell_value = t->counter;
     if (overflows > 0 && (control & TIMER_CNT_H_IRQ_ENABLE) != 0)

@@ -129,7 +129,7 @@ PTEST(prescaler_1024_test_runner_reload_overflows_at_the_right_cycle)
     teardown();
 }
 
-PTEST(test_runner_timeout_arrives_after_sixty_frames_of_cycles)
+PTEST(test_runner_timeout_arrives_in_the_sixtieth_frame)
 {
     setup();
     REG_TM2CNT_L = TEST_RUNNER_RELOAD;
@@ -137,8 +137,7 @@ PTEST(test_runner_timeout_arrives_after_sixty_frames_of_cycles)
     for (int frame = 0; frame < 59; frame++)
         timer_advance(TIMER_CYCLES_PER_FRAME);
     PT_ASSERT_EQ_INT(raised[GBA_IRQ_TIMER2], 0);
-    for (int frame = 0; frame < 2; frame++)
-        timer_advance(TIMER_CYCLES_PER_FRAME);
+    timer_advance(TIMER_CYCLES_PER_FRAME); /* the 60th frame crosses it */
     PT_ASSERT_EQ_INT(raised[GBA_IRQ_TIMER2], 1);
     teardown();
 }
@@ -353,12 +352,39 @@ PTEST(counter_reads_back_from_cnt_l_after_advance)
 
 PTEST(huge_advance_does_not_overflow_arithmetic)
 {
+    const uint64_t ticks = ((uint64_t)UINT32_MAX + (CYCLES_1024 - 1)) / CYCLES_1024;
     setup();
-    REG_TM0CNT_L = 0xFFFF;
-    REG_TM0CNT_H = TIMER_ENABLE | TIMER_INTR_ENABLE | TIMER_1CLK;
+    REG_TM0CNT_H = TIMER_ENABLE | TIMER_INTR_ENABLE | TIMER_1024CLK;
+    timer_advance(CYCLES_1024 - 1); /* residue 1023, no tick yet */
     timer_advance(UINT32_MAX);
     PT_ASSERT_EQ_INT(raised[GBA_IRQ_TIMER0], 1);
-    PT_ASSERT_EQ_INT(REG_TM0CNT_L, 0xFFFF);
+    PT_ASSERT_EQ_INT(REG_TM0CNT_L, ticks % 65536u);
+    teardown();
+}
+
+PTEST(disabled_timer_cell_shows_the_frozen_counter_after_a_reload_write)
+{
+    setup();
+    REG_TM0CNT_L = 100;
+    REG_TM0CNT_H = TIMER_ENABLE | TIMER_1CLK;
+    timer_advance(50);
+    REG_TM0CNT_H = 0;
+    REG_TM0CNT_L = 9; /* a reload for the next start, not a counter */
+    timer_advance(1000);
+    PT_ASSERT_EQ_INT(REG_TM0CNT_L, 150);
+    teardown();
+}
+
+PTEST(cascade_into_timer_3_with_a_nonzero_reload_wraps)
+{
+    setup();
+    REG_TM2CNT_L = 0xFFFF; /* overflows every tick */
+    REG_TM2CNT_H = TIMER_ENABLE | TIMER_1CLK;
+    REG_TM3CNT_L = 0xFFFD; /* period 3 */
+    REG_TM3CNT_H = TIMER_ENABLE | TIMER_COUNTUP | TIMER_INTR_ENABLE;
+    timer_advance(4); /* 4 ticks: overflow after 3, then 1 into the period */
+    PT_ASSERT_EQ_INT(raised[GBA_IRQ_TIMER3], 1);
+    PT_ASSERT_EQ_INT(REG_TM3CNT_L, 0xFFFE);
     teardown();
 }
 

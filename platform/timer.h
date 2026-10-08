@@ -16,8 +16,13 @@
  * touched (as on hardware). After advancing, the module stores the counter
  * in the cell and remembers it, which is what a game's read sees. Limit: a
  * game write of exactly the value the cell already holds cannot be seen;
- * that changes nothing when it is the counter value, and it is the reload
- * only if the game re-writes the counter it just read as the new reload.
+ * that changes nothing when it is the counter value, and it matters only
+ * if the game wants that value as the reload: writing CNT_L equal to the
+ * cell and then enabling loads the old reload, not the written value.
+ * Second limit: the enable bit is compared between advances, so a stop and
+ * restart with no advance in between (enabled at both samples) is invisible
+ * and does not reload the counter. Init seeds counter and reload from the
+ * cell, so a value in the cell at init is the first reload.
  *
  * Enabling (CNT_H enable bit 0 to 1 since the last advance) loads the
  * counter from the reload, which is the cell the game wrote just before,
