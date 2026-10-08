@@ -20,8 +20,10 @@ resumes by reading both and first posting what it believes is in flight.
 ## Milestone 2 work breakdown
 
 State on 2026-10-09: milestone 2 done; the native build boots to the
-title screen plain and sanitized. Milestone 3 (replay smoke test) is
-being dispatched to one worker in worktree replay.
+title screen plain and sanitized. Milestone 3 (replay smoke test,
+worktree replay, Sonnet) and the milestone 4 test-runner protocol
+(worktree testrunner, Opus; independent files, so started in parallel)
+are in progress.
 
 Wave 1 (no dependencies between them):
 
