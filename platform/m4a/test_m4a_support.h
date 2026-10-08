@@ -131,4 +131,59 @@ uint8_t M4aTestMixDelta(uint32_t volume, int32_t sample);
 /* A value wrapped to the signed 8-bit range, as a byte store and signed reload give. */
 int32_t M4aTestWrapS8(int64_t value);
 
+/* Sequencer fixtures */
+
+/* Track command bytes (sound/MPlayDef.s). */
+#define CMD_W01   0x81
+#define CMD_W02   0x82
+#define CMD_FINE  0xB1
+#define CMD_TEMPO 0xBB
+#define CMD_VOL   0xBE
+#define CMD_N24   0xE7 /* note command 0xCF + 24 */
+/* Status of a channel that is playing and not released. */
+#define SF_PLAYING SOUND_CHANNEL_SF_ENV_ATTACK
+/* MPlayMain's tempo accumulator: one tick per 150 units. */
+#define TEMPO_TICK 150
+/* gClockTable: a length for each wait (0x80..0xB0) and note (0xCF..0xFF) command. */
+#define CLOCK_TABLE_SIZE 49u
+/* 13379 Hz * 1024, the WaveData.freq of a sample recorded at 13379 Hz. */
+#define NOTE_WAVE_FREQ (13379u << 10)
+
+/* Writes target as the 4-byte little-endian address song data holds (32-bit). */
+void M4aTestPutPointer(uint8_t *dst, const void *target);
+/* Links chans[0..n) into track's chain in that order. */
+void M4aTestLinkChannels(struct MusicPlayerTrack *track, struct SoundChannel *const *chans, size_t n);
+/* M4aTestSetUp, then an open player with numTracks cleared tracks, trackCount
+ * of them in use, at 150 tempo units per frame (one tick). */
+struct SoundInfo *M4aTestSetUpPlayer(struct MusicPlayerInfo *player, struct MusicPlayerTrack *tracks,
+                                     size_t numTracks, uint8_t trackCount);
+
+/* Mixer fixtures (M4aTestSetUp configures 16 samples per frame, divFreq 1) */
+
+#define SPV 16u
+/* With divFreq 1 a channel's frequency is its step: 9.23 fixed-point
+ * source samples per output sample. */
+#define STEP_ONE        0x800000u
+#define STEP_HALF       0x400000u
+#define STEP_3_QUARTERS 0x600000u
+/* Envelope 255, masterVolume 15: (255 * ((255 * 16) >> 4)) >> 8 = 254 for
+ * rightVolume 255, and (128 * 255) >> 8 = 127 for leftVolume 128. */
+#define ENV_RIGHT 254u
+#define ENV_LEFT  127u
+/* WaveData.status with the loop flag (o_WaveData_flags 0x40 in its high byte). */
+#define WAVE_STATUS_LOOP 0x4000u
+/* constants/m4a_constants.inc values the C header does not define. */
+#define TYPE_REV   0x10u
+#define TYPE_CMP   0x20u
+#define SF_SPECIAL 0x20u
+/* Status after the first frame of a channel with attack 255: decay phase. */
+#define SF_DECAY_AFTER_START 0x02u
+
+/* A Direct Sound channel, started, at full envelope from its first frame on
+ * (attack 255, decay and sustain 255), right volume 255, left 128. */
+struct SoundChannel *M4aTestStartChannel(struct SoundInfo *si, size_t index, struct WaveData *wav,
+                                         uint8_t type, uint32_t step, uint32_t startOffset);
+/* A linear congruential generator for test patterns; returns 8 bits. */
+uint32_t M4aTestLcgNext(uint32_t *state);
+
 #endif // GUARD_PLATFORM_M4A_TEST_SUPPORT_H

@@ -22,9 +22,9 @@ CFLAGS  := $(ARCH) -std=gnu17 -Wall -Wextra -Wshadow -Wstrict-prototypes -Wconve
            -O1 -g $(SAN) -idirafter $(ROOT)/include -I.
 LDFLAGS := $(ARCH) $(SAN)
 
-ENGINE_SRCS  := m4a_mixer.c m4a_sequencer.c m4a_note.c m4a_commands.c m4a_clear64.c
+ENGINE_SRCS  := m4a_mixer.c m4a_render.c m4a_sequencer.c m4a_note.c m4a_commands.c m4a_clear64.c
 SUPPORT_SRCS := test_m4a_support.c test_m4a_c_reference.c
-TESTS        := test_m4a_engine test_m4a_mixer
+TESTS        := test_m4a_mixer test_m4a_render test_m4a_engine test_m4a_note test_m4a_commands
 
 ENGINE_OBJS  := $(ENGINE_SRCS:%.c=$(BUILD)/%.o)
 COMMON_OBJS  := $(ENGINE_OBJS) $(SUPPORT_SRCS:%.c=$(BUILD)/%.o) $(BUILD)/m4a_tables.o

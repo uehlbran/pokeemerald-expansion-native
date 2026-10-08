@@ -24,7 +24,7 @@ ARM_LDFLAGS := --specs=rdimon.specs -Wl,-Ttext=0x08000000 \
                -Wl,--section-start=.gba_iwram=0x03007000 -Wl,--section-start=.gba_io=0x04000000
 
 DRIVER_SRCS := difftest.c difftest_m4a_c.c difftest_platform.c $(ENGINE)/test_m4a_c_reference.c $(ROOT)/src/m4a_tables.c
-ENGINE_SRCS := $(addprefix $(ENGINE)/,m4a_mixer.c m4a_sequencer.c m4a_note.c m4a_commands.c m4a_clear64.c)
+ENGINE_SRCS := $(addprefix $(ENGINE)/,m4a_mixer.c m4a_render.c m4a_sequencer.c m4a_note.c m4a_commands.c m4a_clear64.c)
 
 .PHONY: run clean
 

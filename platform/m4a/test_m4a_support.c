@@ -322,6 +322,70 @@ int32_t M4aTestWrapS8(int64_t value)
     return (int32_t)(wrapped >= 128 ? wrapped - 256 : wrapped);
 }
 
+/* Sequencer fixtures */
+
+void M4aTestPutPointer(uint8_t *dst, const void *target)
+{
+    uintptr_t bits = (uintptr_t)target;
+
+    for (size_t i = 0; i < 4; i++)
+        dst[i] = (uint8_t)(bits >> (8 * i));
+}
+
+void M4aTestLinkChannels(struct MusicPlayerTrack *track, struct SoundChannel *const *chans, size_t n)
+{
+    track->chan = n > 0 ? chans[0] : NULL;
+    for (size_t i = 0; i < n; i++)
+    {
+        chans[i]->track = track;
+        chans[i]->prevChannelPointer = i > 0 ? chans[i - 1] : NULL;
+        chans[i]->nextChannelPointer = i + 1 < n ? chans[i + 1] : NULL;
+    }
+}
+
+struct SoundInfo *M4aTestSetUpPlayer(struct MusicPlayerInfo *player, struct MusicPlayerTrack *tracks,
+                                     size_t numTracks, uint8_t trackCount)
+{
+    struct SoundInfo *si = M4aTestSetUp();
+
+    memset(player, 0, sizeof(*player));
+    memset(tracks, 0, numTracks * sizeof(*tracks));
+    player->ident = ID_NUMBER;
+    player->tracks = tracks;
+    player->trackCount = trackCount;
+    player->tempoD = TEMPO_TICK;
+    player->tempoU = 0x100;
+    player->tempoI = TEMPO_TICK;
+    return si;
+}
+
+/* Mixer fixtures */
+
+struct SoundChannel *M4aTestStartChannel(struct SoundInfo *si, size_t index, struct WaveData *wav,
+                                         uint8_t type, uint32_t step, uint32_t startOffset)
+{
+    struct SoundChannel *chan = &si->chans[index];
+
+    memset(chan, 0, sizeof(*chan));
+    chan->statusFlags = SOUND_CHANNEL_SF_START;
+    chan->type = type;
+    chan->wav = wav;
+    chan->frequency = step;
+    chan->count = startOffset;
+    chan->rightVolume = 255;
+    chan->leftVolume = 128;
+    chan->attack = 255;
+    chan->decay = 255;
+    chan->sustain = 255;
+    return chan;
+}
+
+uint32_t M4aTestLcgNext(uint32_t *state)
+{
+    *state = *state * 1664525u + 1013904223u;
+    return *state >> 24;
+}
+
 /* Fixture */
 
 struct SoundInfo *M4aTestSetUp(void)
