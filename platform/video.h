@@ -27,6 +27,10 @@
 /* Upper bound: 16 gives 3840x2560, beyond any display; larger is a caller bug. */
 #define VIDEO_MAX_SCALE 16
 
+/* Forward declaration: callers that only want the frame API need no SDL headers
+ * for it (SDL_Event is a typedef of this union). */
+union SDL_Event;
+
 struct video_config {
     bool headless;     /* no window; present discards */
     int scale;         /* 1..VIDEO_MAX_SCALE, also checked in headless mode */
@@ -42,10 +46,12 @@ int video_init(const struct video_config *cfg);
  * green, 10-14 blue, bit 15 ignored), row-major. Returns 0 on success. */
 int video_present(const uint16_t *frame);
 
-/* Pumps SDL events (the keyboard state input reads is updated by this) and
- * returns false once the user asked to quit. Events are consumed here, so
- * input must read SDL's keyboard/joystick state arrays, not the queue. */
-bool video_poll_events(void);
+/* Pumps the SDL event queue, calling on_event(event, ctx) for every event
+ * (on_event may be NULL: events are just consumed), and returns false once
+ * the user asked to quit (SDL_QUIT or window close; the quit event is still
+ * passed to on_event). In headless mode nothing is pumped and it returns
+ * true. */
+bool video_poll_events(void (*on_event)(const union SDL_Event *event, void *ctx), void *ctx);
 
 /* Releases texture, renderer, window in reverse order. Safe after a failed
  * or partial init, without init, and twice. */

@@ -51,11 +51,54 @@ PTEST(windowed_init_present_shutdown_succeeds)
     PT_ASSERT_EQ_INT(video_init(&cfg), 0);
     int present = video_present(frame_buffer);
     int present_again = video_present(frame_buffer);
-    bool keep_running = video_poll_events();
+    bool keep_running = video_poll_events(NULL, NULL);
     video_shutdown();
     PT_ASSERT_EQ_INT(present, 0);
     PT_ASSERT_EQ_INT(present_again, 0);
     PT_ASSERT(keep_running);
+}
+
+struct event_log {
+    int user_events;
+    int quit_events;
+};
+
+static void log_event(const union SDL_Event *event, void *ctx)
+{
+    struct event_log *log = ctx;
+    if (event->type == SDL_USEREVENT)
+        log->user_events++;
+    if (event->type == SDL_QUIT)
+        log->quit_events++;
+}
+
+PTEST(events_reach_the_callback_with_ctx_and_quit_returns_false)
+{
+    use_dummy_driver();
+    struct video_config cfg = windowed_config();
+    PT_ASSERT_EQ_INT(video_init(&cfg), 0);
+    struct event_log log = { 0, 0 };
+    SDL_Event user;
+    SDL_zero(user);
+    user.type = SDL_USEREVENT;
+    SDL_Event quit;
+    SDL_zero(quit);
+    quit.type = SDL_QUIT;
+    int pushed_user = SDL_PushEvent(&user);
+    bool after_user = video_poll_events(log_event, &log);
+    int pushed_quit = SDL_PushEvent(&quit);
+    bool after_quit = video_poll_events(log_event, &log);
+    int pushed_quit_null = SDL_PushEvent(&quit);
+    bool null_callback_quit = video_poll_events(NULL, NULL);
+    video_shutdown();
+    PT_ASSERT(pushed_user == 1);
+    PT_ASSERT(pushed_quit == 1);
+    PT_ASSERT(pushed_quit_null == 1);
+    PT_ASSERT(after_user);
+    PT_ASSERT(!after_quit);
+    PT_ASSERT(!null_callback_quit);
+    PT_ASSERT_EQ_INT(log.user_events, 1);
+    PT_ASSERT_EQ_INT(log.quit_events, 1);
 }
 
 PTEST(headless_presents_without_a_window)
@@ -64,7 +107,7 @@ PTEST(headless_presents_without_a_window)
     struct video_config cfg = { .headless = true, .scale = 3, .title = "headless" };
     PT_ASSERT_EQ_INT(video_init(&cfg), 0);
     int present = video_present(frame_buffer);
-    bool keep_running = video_poll_events();
+    bool keep_running = video_poll_events(NULL, NULL);
     video_shutdown();
     PT_ASSERT_EQ_INT(present, 0);
     PT_ASSERT(keep_running);

@@ -25,7 +25,10 @@
 /* Sanity ceiling for the requested rate; the engine's rates are far lower. */
 #define AUDIO_MAX_SAMPLE_RATE_HZ 192000u
 
-/* Returns 0 on success. silent: no device is opened, queue calls only count
+/* Paused-at-init protocol: the device starts paused, so the caller queues
+ * the first frames and then calls audio_set_paused(false).
+ *
+ * Returns 0 on success. silent: no device is opened, queue calls only count
  * frames (headless gates). The device starts paused: call
  * audio_set_paused(false) once the first frames are ready. */
 int audio_init(uint32_t sample_rate_hz, bool silent);

@@ -116,13 +116,15 @@ int video_present(const uint16_t *frame)
     return 0;
 }
 
-bool video_poll_events(void)
+bool video_poll_events(void (*on_event)(const union SDL_Event *event, void *ctx), void *ctx)
 {
     if (!state.initialised || state.headless)
         return true;
     bool keep_running = true;
     SDL_Event event;
     while (SDL_PollEvent(&event) != 0) {
+        if (on_event != NULL)
+            on_event(&event, ctx);
         if (event.type == SDL_QUIT ||
             (event.type == SDL_WINDOWEVENT && event.window.event == SDL_WINDOWEVENT_CLOSE))
             keep_running = false;
