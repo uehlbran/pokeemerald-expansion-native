@@ -172,6 +172,8 @@ C_FILTER := sed -f $(C_FILTER_SCRIPT)
 
 ASM_FILTER_SCRIPT := platform/build_glue/asm_filter.py
 ASM_FILTER := $(PYTHON) -I $(ASM_FILTER_SCRIPT)
+# The filter runs its self-test once (per change) before anything uses it.
+ASM_FILTER_CHECKED := $(OBJ_DIR)/asm_filter.checked
 # The assembler reads the filtered program on stdin, as every recipe that
 # uses $(AS) pipes into it (expansion's data rules and map_data_rules.mk).
 AS := $(ASM_FILTER) | $(HOST_AS)
@@ -214,6 +216,12 @@ ifneq (,$(MAKECMDGOALS))
     NODEP := 1
     SETUP_PREREQS := 0
   endif
+endif
+
+# The .SHELLSTATUS checks below need GNU make 4.2 or later; on an older
+# make the variable never changes and a failed tool build would go unseen.
+ifneq (,$(filter 3.% 4.0 4.0.% 4.1 4.1.%,$(MAKE_VERSION)))
+  $(error Makefile.native needs GNU make 4.2 or later, this is $(MAKE_VERSION))
 endif
 
 .SHELLSTATUS ?= 0
@@ -369,7 +377,7 @@ ifeq ($(TEST),1)
 OVERWORLD_SCRIPT_MACROS := $(TEST_BUILDDIR)/overworld_script_macros.inc
 OVERWORLD_SCRIPT_MACRO_SRCS := constants/gba_constants.inc asm/macros/asm.inc asm/macros/event.inc
 
-$(OVERWORLD_SCRIPT_MACROS): $(OVERWORLD_SCRIPT_MACRO_SRCS) $(DATA_ASM_SUBDIR)/script_cmd_table.inc $(DATA_ASM_SUBDIR)/specials.inc $(ASM_FILTER_SCRIPT)
+$(OVERWORLD_SCRIPT_MACROS): $(OVERWORLD_SCRIPT_MACRO_SRCS) $(DATA_ASM_SUBDIR)/script_cmd_table.inc $(DATA_ASM_SUBDIR)/specials.inc $(ASM_FILTER_CHECKED)
 	printf '.include "%s"\n' $(OVERWORLD_SCRIPT_MACRO_SRCS) | $(PREPROC) -i $(@:.inc=.s) charmap.txt | $(ASM_FILTER) > $@
 
 $(TEST_OBJS): $(OVERWORLD_SCRIPT_MACROS)
@@ -391,7 +399,7 @@ endif
 # Data assembly: expansion's recipe, with $(AS) being the filter plus the
 # host assembler. map_data_rules.mk supplies maps.o and map_events.o.
 
-$(DATA_ASM_BUILDDIR)/%.o: $(DATA_ASM_SUBDIR)/%.s $(ASM_FILTER_SCRIPT)
+$(DATA_ASM_BUILDDIR)/%.o: $(DATA_ASM_SUBDIR)/%.s
 	$(PREPROC) -s $< charmap.txt | $(CPP) $(CPPFLAGS) $(INCLUDE_SCANINC_ARGS) - | $(PREPROC) -ie $< charmap.txt | $(AS) $(ASFLAGS) -o $@
 
 $(DATA_ASM_BUILDDIR)/%.d: $(DATA_ASM_SUBDIR)/%.s
@@ -410,8 +418,17 @@ MPLAYDEF_NATIVE := $(OBJ_DIR)/sound/MPlayDef.s
 $(MID_BUILDDIR)/%.o: $(MID_ASM_DIR)/%.s
 	$(ASM_FILTER) < $< | $(HOST_AS) $(ASFLAGS) -I $(dir $(MPLAYDEF_NATIVE)) -o $@
 
-$(MID_OBJS): $(MPLAYDEF_NATIVE) $(ASM_FILTER_SCRIPT)
+$(MID_OBJS): $(MPLAYDEF_NATIVE)
 
-$(MPLAYDEF_NATIVE): sound/MPlayDef.s $(ASM_FILTER_SCRIPT)
+$(MPLAYDEF_NATIVE): sound/MPlayDef.s $(ASM_FILTER_CHECKED)
 	@mkdir -p $(@D)
 	$(ASM_FILTER) < $< > $@
+
+# Every object assembled through the filter (map_data_rules.mk's maps.o and
+# map_events.o included) waits for its self-test.
+$(DATA_ASM_OBJS) $(MID_OBJS): $(ASM_FILTER_CHECKED)
+
+$(ASM_FILTER_CHECKED): $(ASM_FILTER_SCRIPT)
+	@mkdir -p $(@D)
+	$(ASM_FILTER) --self-test
+	@touch $@

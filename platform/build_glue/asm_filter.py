@@ -10,7 +10,8 @@ Directives"):
   * '@' starts an end-of-line comment on ARM; on x86 it is an ordinary
     character, so a comment becomes a syntax error. '\\@' (the macro
     execution counter) is not a comment on either and is kept, as
-    tools/preproc does.
+    tools/preproc does. An '@' inside a string ("a@b") or a character
+    constant ('@ in GAS syntax, or '@' in C style) is kept too.
   * '.align N' aligns to 2**N bytes on ARM and to N bytes on x86.
     '.p2align N' means 2**N on both.
   * '.word' emits 4 bytes on ARM and 2 bytes on x86. '.4byte' emits 4 on
@@ -21,7 +22,13 @@ Everything else the data uses ('%progbits' section types, '.type ...,
 as. With these rewrites the 32-bit objects' sections are byte-identical to
 the GBA build's.
 
+Malformed input fails loudly rather than being corrupted: after an
+unterminated string nothing is stripped or renamed, so an '@' comment that
+follows reaches the assembler, which rejects it.
+
 Reads stdin, writes stdout. Run as 'python3 -I asm_filter.py'.
+'python3 -I asm_filter.py --self-test' checks the rules above and exits
+non-zero on a failure.
 """
 
 import re
@@ -41,42 +48,63 @@ DIRECTIVE = re.compile(
     r")\b")
 
 
+def end_of_string(line, start):
+    """Index just past the string literal opening at line[start] ('"').
+
+    An unterminated string runs to the end of the line."""
+    index = start + 1
+    while index < len(line):
+        if line[index] == "\\":
+            index += 2
+        elif line[index] == '"':
+            return index + 1
+        else:
+            index += 1
+    return len(line)
+
+
+def end_of_char_constant(line, start):
+    """Index just past the character constant opening at line[start] (').
+
+    GAS writes a character constant as 'c or '\\c; a closing quote, as in
+    C's 'c', is accepted and skipped."""
+    index = start + 1
+    if index < len(line) and line[index] == "\\":
+        index += 1
+    index += 1
+    if index < len(line) and line[index] == "'":
+        index += 1
+    return min(index, len(line))
+
+
+def code_positions(line):
+    """Yield the index of each character outside string and character literals."""
+    index = 0
+    while index < len(line):
+        char = line[index]
+        if char == '"':
+            index = end_of_string(line, index)
+        elif char == "'":
+            index = end_of_char_constant(line, index)
+        else:
+            yield index
+            index += 1
+
+
 def strip_comment(line):
-    """Return the line without an ARM '@' comment, honouring quoted strings."""
-    quote = None
-    escaped = False
-    for index, char in enumerate(line):
-        if quote is not None:
-            if escaped:
-                escaped = False
-            elif char == "\\":
-                escaped = True
-            elif char == quote:
-                quote = None
-        elif char in "\"'":
-            quote = char
-        elif char == "@" and not (index > 0 and line[index - 1] == "\\"):
+    """Return the line without an ARM '@' comment."""
+    for index in code_positions(line):
+        if line[index] == "@" and not (index > 0 and line[index - 1] == "\\"):
             return line[:index].rstrip() + "\n"
     return line
 
 
 def split_statements(line):
-    """Split a line on ';' statement separators outside quoted strings."""
+    """Split a line on the ';' statement separators outside literals."""
     parts = []
-    quote = None
-    escaped = False
     start = 0
-    for index, char in enumerate(line):
-        if quote is not None:
-            if escaped:
-                escaped = False
-            elif char == "\\":
-                escaped = True
-            elif char == quote:
-                quote = None
-        elif char in "\"'":
-            quote = char
-        elif char == ";":
+    for index in code_positions(line):
+        if line[index] == ";":
             parts.append(line[start:index])
             start = index + 1
     parts.append(line[start:])
@@ -97,11 +125,53 @@ def filter_line(line):
     return ";".join(rename_directive(part) for part in split_statements(line))
 
 
-def main():
+SELF_TEST_CASES = (
+    ("\t.align 2 @ comment\n", "\t.p2align 2\n"),
+    ("label: .align 2, 0\n", "label: .p2align 2, 0\n"),
+    ("\t.ifdef x ; .align 1 ; .endif\n", "\t.ifdef x ; .p2align 1 ; .endif\n"),
+    ("\t.word target @ comment\n", "\t.4byte target\n"),
+    (".Lx_\\@_1: .word 3\n", ".Lx_\\@_1: .4byte 3\n"),
+    ("gLabel::\t.word 4\n", "gLabel::\t.4byte 4\n"),
+    ("\t.byte 1 ; .word 2\n", "\t.byte 1 ; .4byte 2\n"),
+    ("\t.hword 1\n", "\t.hword 1\n"),
+    ("\t.words 1\n", "\t.words 1\n"),
+    ("\t.balign 4 @ kept as is\n", "\t.balign 4\n"),
+    ("\t.byte (.L_\\@_2 - .L_\\@_1)\n", "\t.byte (.L_\\@_2 - .L_\\@_1)\n"),
+    ('\t.string "a@b" @ comment\n', '\t.string "a@b"\n'),
+    ('\t.string "it\'s \\"@\\"" @ comment\n', '\t.string "it\'s \\"@\\""\n'),
+    ("\t.byte '@ @ comment\n", "\t.byte '@\n"),
+    ("\t.byte '@', 'x' @ comment\n", "\t.byte '@', 'x'\n"),
+    ("\t.byte '\\n, ';' ; .word 1 @ comment\n", "\t.byte '\\n, ';' ; .4byte 1\n"),
+    # An unterminated string: nothing after it is touched.
+    ('\t.ascii "open @ text\n', '\t.ascii "open @ text\n'),
+)
+
+
+def self_test():
+    failures = 0
+    for given, expected in SELF_TEST_CASES:
+        actual = filter_line(given)
+        if actual != expected:
+            failures += 1
+            sys.stderr.write("asm_filter self-test: %r\n  expected %r\n  got      %r\n"
+                             % (given, expected, actual))
+    if failures:
+        sys.stderr.write("asm_filter self-test: %d of %d failed\n"
+                         % (failures, len(SELF_TEST_CASES)))
+        return 1
+    return 0
+
+
+def main(argv):
+    if argv[1:] == ["--self-test"]:
+        return self_test()
+    if len(argv) > 1:
+        sys.stderr.write("usage: asm_filter.py [--self-test] < input > output\n")
+        return 2
     for line in sys.stdin:
         sys.stdout.write(filter_line(line))
     return 0
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(main(sys.argv))
