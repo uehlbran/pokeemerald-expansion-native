@@ -1,6 +1,6 @@
 # Status
 
-Last updated 2026-10-08 (milestone 1 complete, milestone 2 starting).
+Last updated 2026-10-08 evening (milestone 2 in progress: platform modules landing).
 
 This file is the honest ledger. A thing is listed as verified only with
 the gate that proved it. Anything without a gate is unverified, whatever
@@ -13,12 +13,15 @@ we believe about it.
 | GBA target builds from a clean clone of this repository | `make -j32` on 2026-10-08, WSL2 Ubuntu 24.04, gcc-arm-none-eabi 13.2.1 | `pokeemerald.gba`, 32 MiB, exit 0 |
 | GBA target passes expansion's test suite | `TEST=1 make -j32 check` on 2026-10-08 | 5862 total: 5414 passed, 18 known failing, 9 expected failing, 421 to-do, exit 0 (`research/gba-baseline-1.17.1.md`) |
 | GBA memory regions can be mapped at their addresses in a native process on 32-bit and 64-bit, with ASan and UBSan | `research/memory-map-experiment.md` | works |
+| Platform modules merged so far: `gba_memmap` (region layout via linker script), `ptest.h` self-test, `timer`, `transfer_bounds`, `input` | `make -C platform test BITS=32` and `BITS=64`, every test under ASan+UBSan with leak detection, after a Sonnet first-pass review and orchestrator merge | green on both widths at merge time |
 
 ## Not verified
 
-Everything else. There is no native build yet. In particular, nothing
-in the platform layer exists, boots, renders, sounds, saves, or passes a
-test.
+Everything else. There is no native build yet: no executable boots,
+renders, sounds or saves. The merged modules are verified only by their
+own unit tests, not by running the game. Modules still on worker
+branches (interrupt, rtc, psg, flash/save_file, ppu, video/audio/pacer,
+dma, bios, the m4a engine translation, Makefile.native) are unverified.
 
 ## Known broken
 

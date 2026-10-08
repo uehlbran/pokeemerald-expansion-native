@@ -19,11 +19,10 @@ resumes by reading both and first posting what it believes is in flight.
 
 ## Milestone 2 work breakdown
 
-State on 2026-10-08 ~16:00 MDT: W1-foundation merged (9fcf8e007e). W1-build
-and W1-m4a still running. Wave 2 launched in worktrees transfer,
-interrupt, timer, rtc, input, psg, save, ppu, sdlout (see "Wave 2" below;
-dma and bios wait for transfer to merge). Next: merge wave 2 as each
-reports, then dma and bios, then main/frame loop and the link.
+State on 2026-10-08 evening: merged on main: foundation, timer,
+transfer_bounds, input. In review or fixing: sdlout, rtc. Working:
+interrupt, psg, save, ppu, dma, bios, W1-build, W1-m4a. Next: merge each
+as it lands, then main/frame loop and the first link.
 
 Wave 1 (no dependencies between them):
 
