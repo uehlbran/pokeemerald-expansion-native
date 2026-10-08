@@ -13,8 +13,9 @@
 
 #define TEST_RATE_HZ 32768u
 #define BYTES_PER_SAMPLE_FRAME 4u /* signed 16-bit, two channels */
+#define TEST_SAMPLE_FRAMES 4096u
 
-static int16_t samples[AUDIO_TEST_MAX_FRAMES * 2u];
+static int16_t samples[TEST_SAMPLE_FRAMES * 2u];
 
 static void use_dummy_driver(void)
 {
@@ -24,10 +25,10 @@ static void use_dummy_driver(void)
 PTEST(queue_bound_is_four_video_frames_of_samples)
 {
     /* 32768 Hz * 280896 / 16777216 = 548.625 -> 549 per video frame; x4. */
-    PT_ASSERT_EQ_INT(audio_max_queued_frames(TEST_RATE_HZ), 4u * 549u);
+    PT_ASSERT(audio_max_queued_frames(TEST_RATE_HZ) == 4u * 549u);
     /* 48000 Hz: 803.67 -> 804 per video frame. */
-    PT_ASSERT_EQ_INT(audio_max_queued_frames(48000u), 4u * 804u);
-    PT_ASSERT_EQ_INT(audio_max_queued_frames(0u), 0u);
+    PT_ASSERT(audio_max_queued_frames(48000u) == 4u * 804u);
+    PT_ASSERT(audio_max_queued_frames(0u) == 0u);
 }
 
 PTEST(queue_adds_four_bytes_per_frame)
