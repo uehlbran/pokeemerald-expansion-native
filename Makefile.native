@@ -1,0 +1,393 @@
+# Makefile.native: the native (x86, SDL2) build of pokeemerald-expansion.
+#
+#   make -f Makefile.native -j$(nproc) objects [BITS=32|64] [TEST=0|1]
+#   make -f Makefile.native clean      # removes build/native*/ and nothing else
+#
+# Expansion's Makefile and its rule fragments are not modified; this file
+# sits beside them and reuses them. See docs/ARCHITECTURE.md ("Build") and
+# docs/RESEARCH.md ("Build system").
+#
+# Linking is not here yet: the platform layer (platform/) that provides the
+# BIOS calls, VBlankIntrWait, IntrMain and the linker-script symbols is a
+# separate milestone. platform/build_glue/LINK-NEEDS.md lists what the final
+# link needs.
+#
+# --------------------------------------------------------------------------
+# How assets are generated
+#
+# Expansion has no single "all assets" target. Its in-tree generated
+# headers and map includes are the `generated` target (AUTO_GEN_TARGETS);
+# graphics (.4bpp, .gbapal, .lz, .smol, ...) and songs are built only as
+# prerequisites of objects, discovered by tools/scaninc, whose .d output
+# lists every #include, INCBIN and INCGFX of a source file and also emits
+# the INCGFX conversion recipes. So this file does what expansion's
+# Makefile does, with the same pieces:
+#
+#   * Tools: `$(MAKE) -f make_tools.mk`, exactly as `make tools`, run at
+#     parse time like expansion's Makefile (scaninc must exist before the
+#     .d files are made).
+#   * Rules: the fragments graphics_file_rules.mk, map_data_rules.mk,
+#     spritesheet_rules.mk, json_data_rules.mk, audio_rules.mk and
+#     trainer_rules.mk are included unchanged. They only need the variable
+#     names expansion's Makefile defines (GFX, MAPJSON, C_BUILDDIR, ...),
+#     which are defined below with native values.
+#   * The few asset rules that live in expansion's Makefile itself rather
+#     than in a fragment (the generic %.4bpp/%.gbapal/%.lz/%.smol pattern
+#     rules, the learnset helpers, wild_encounters.h, script_commands.h)
+#     are repeated below in the section marked "Mirrored from Makefile".
+#     They must be kept in sync with Makefile when upgrading expansion.
+#   * Generated headers: `$(MAKE) -f Makefile.native generated` at parse
+#     time, before scaninc runs, exactly as expansion's Makefile runs its
+#     own `generated`.
+#   * Dependencies: scaninc .d files, exactly as expansion. -MMD was
+#     considered and rejected: it cannot see INCBIN/INCGFX, which preproc
+#     expands after cpp, so assets would never be (re)built.
+#
+# Assets are target-independent and land where the GBA build puts them:
+# next to their sources (graphics/**, sound/**, src/data/*.h, data/maps/**)
+# and in build/assets/ for INCGFX conversions. The GBA build and this one
+# therefore share them, and `clean` here does not touch them.
+#
+# --------------------------------------------------------------------------
+# The C pipeline mirrors expansion's MODERN path:
+#
+#   gcc -E <CPPFLAGS> src.c | preproc -i -g build/assets src.c charmap.txt
+#     | gcc -c -x cpp-output <CFLAGS> -o obj -
+#
+# `-x cpp-output` tells gcc the input is already preprocessed, which is
+# what expansion achieves by calling cc1 directly; it keeps the gcc driver
+# (and therefore -m32/-m64 handling) without a second preprocessing pass.
+# Warnings: expansion's -Wall and its -W/-Wno- flags are kept, -Werror is
+# not: expansion's warnings on x86 are upstream's to fix, not ours.
+#
+# Assembly: src/*.s (crt0.s, m4a_1.s, libgcnmultiboot.s, decompress_asm.s,
+# rom_header.s) and libagbsyscall are ARM code and are not built; the
+# platform layer replaces them. data/*.s and the mid2agb songs are
+# assembled by the host `as` through the same `preproc | cpp | preproc`
+# steps as on GBA, followed by platform/build_glue/asm_filter.py, which strips
+# ARM '@' comments and turns '.align' (ARM: power of two) into '.p2align'.
+# `AS` below is that filter piped into the host assembler, so the
+# fragments' own recipes (map_data_rules.mk) work unchanged.
+# --------------------------------------------------------------------------
+
+# 32 or 64. 32 is the first milestone; 64 must keep compiling.
+BITS ?= 32
+# 1 builds the test objects (test/**) and defines TESTING=1, as on GBA.
+TEST ?= 0
+DEBUG ?= 0
+GAME_VERSION ?= EMERALD
+MAP_VERSION ?= emerald
+
+ifeq (,$(filter 32 64,$(BITS)))
+  $(error BITS must be 32 or 64, not '$(BITS)')
+endif
+
+BUILD_DIR := build
+ifeq ($(TEST),1)
+  OBJ_DIR := $(BUILD_DIR)/native$(BITS)-test
+else
+  OBJ_DIR := $(BUILD_DIR)/native$(BITS)
+endif
+# Shared with the GBA build: INCGFX outputs do not depend on the target.
+ASSETS_DIR_NAME := $(BUILD_DIR)/assets
+
+# Directory names as expansion's Makefile spells them; the fragments use them.
+C_SUBDIR = src
+DATA_SRC_SUBDIR = src/data
+DATA_ASM_SUBDIR = data
+MID_SUBDIR = sound/songs/midi
+TEST_SUBDIR = test
+
+C_BUILDDIR = $(OBJ_DIR)/$(C_SUBDIR)
+DATA_ASM_BUILDDIR = $(OBJ_DIR)/$(DATA_ASM_SUBDIR)
+MID_BUILDDIR = $(OBJ_DIR)/$(MID_SUBDIR)
+TEST_BUILDDIR = $(OBJ_DIR)/$(TEST_SUBDIR)
+
+SHELL := bash -o pipefail
+
+# --------------------------------------------------------------------------
+# Host toolchain
+
+HOST_CC ?= gcc
+HOST_AS ?= as
+PYTHON ?= python3
+
+# -funsigned-char: plain char is unsigned on ARM, and the game was written
+# for that ABI. Passed to the preprocessing step too, so <limits.h> agrees.
+ARCH_FLAGS := -m$(BITS) -funsigned-char
+
+CPP := $(HOST_CC) -E $(ARCH_FLAGS)
+
+INCLUDE_DIRS := include
+INCLUDE_CPP_ARGS := $(INCLUDE_DIRS:%=-iquote %)
+INCLUDE_SCANINC_ARGS := $(INCLUDE_DIRS:%=-I %)
+
+# PLATFORM_NATIVE is the single guard macro (docs/RESEARCH.md, "Guard macro").
+CPPFLAGS := $(INCLUDE_CPP_ARGS) -Wno-trigraphs -DMODERN=1 -DTESTING=$(TEST) -D$(GAME_VERSION) -std=gnu17 -DPLATFORM_NATIVE=1
+
+ifeq ($(DEBUG),1)
+  O_LEVEL ?= g
+else
+  O_LEVEL ?= 2
+endif
+
+# Expansion's warning set (Makefile, CFLAGS) without -Werror and without the
+# ARM code-generation flags. -fno-pie: the executable is linked non-PIE at a
+# fixed address (docs/ARCHITECTURE.md, "The memory model").
+CFLAGS := $(ARCH_FLAGS) -O$(O_LEVEL) -std=gnu17 -fno-pie \
+          -Wall -Wno-strict-aliasing -Wno-attribute-alias -Woverride-init \
+          -Wnonnull -Wenum-conversion -Wno-pointer-to-int-cast
+ifneq (,$(filter 1,$(DEBUG) $(DINFO)))
+  CFLAGS += -g
+endif
+
+# preproc's COMPOUND_STRING output relies on '@' being the ARM assembler's
+# comment character; this rewrites it for x86 (see the script's comment).
+C_FILTER_SCRIPT := platform/build_glue/c_filter.sed
+C_FILTER := sed -f $(C_FILTER_SCRIPT)
+
+ASM_FILTER_SCRIPT := platform/build_glue/asm_filter.py
+ASM_FILTER := $(PYTHON) -I $(ASM_FILTER_SCRIPT)
+# The assembler reads the filtered program on stdin, as every recipe that
+# uses $(AS) pipes into it (expansion's data rules and map_data_rules.mk).
+AS := $(ASM_FILTER) | $(HOST_AS)
+# --noexecstack: the data needs no executable stack (ld warns otherwise).
+ASFLAGS := --$(BITS) --noexecstack --defsym MODERN=1 --defsym $(GAME_VERSION)=1 --defsym PLATFORM_NATIVE=1
+
+# --------------------------------------------------------------------------
+# Tools (TOOLS_DIR, the `tools` target) come from expansion's make_tools.mk.
+
+AUTO_GEN_TARGETS :=
+include make_tools.mk
+
+EXE :=
+SMOLTM       := $(TOOLS_DIR)/compresSmol/compresSmolTilemap$(EXE)
+SMOL         := $(TOOLS_DIR)/compresSmol/compresSmol$(EXE)
+GFX          := $(TOOLS_DIR)/gbagfx/gbagfx$(EXE)
+WAV2AGB      := $(TOOLS_DIR)/wav2agb/wav2agb$(EXE)
+MID          := $(TOOLS_DIR)/mid2agb/mid2agb$(EXE)
+SCANINC      := $(TOOLS_DIR)/scaninc/scaninc$(EXE)
+PREPROC      := $(TOOLS_DIR)/preproc/preproc$(EXE)
+MAPJSON      := $(TOOLS_DIR)/mapjson/mapjson$(EXE)
+JSONPROC     := $(TOOLS_DIR)/jsonproc/jsonproc$(EXE)
+TRAINERPROC  := $(TOOLS_DIR)/trainerproc/trainerproc$(EXE)
+
+MAKEFLAGS += --no-print-directory
+
+.SUFFIXES:
+.SECONDARY:
+.DELETE_ON_ERROR:
+
+RULES_NO_SCAN += clean generated
+.PHONY: objects $(RULES_NO_SCAN)
+
+.DEFAULT_GOAL := objects
+
+NODEP ?= 0
+SETUP_PREREQS ?= 1
+ifneq (,$(MAKECMDGOALS))
+  ifeq (,$(filter-out $(RULES_NO_SCAN),$(MAKECMDGOALS)))
+    NODEP := 1
+    SETUP_PREREQS := 0
+  endif
+endif
+
+.SHELLSTATUS ?= 0
+
+ifeq ($(SETUP_PREREQS),1)
+  # As expansion's Makefile: tools first, then the generated sources scaninc
+  # must be able to see.
+  $(foreach line, $(shell $(MAKE) -f make_tools.mk | sed "s/ /__SPACE__/g"), $(info $(subst __SPACE__, ,$(line))))
+  ifneq ($(.SHELLSTATUS),0)
+    $(error Errors occurred while building tools. See error messages above for more details)
+  endif
+  $(foreach line, $(shell $(MAKE) -f Makefile.native BITS=$(BITS) TEST=$(TEST) MAP_VERSION=$(MAP_VERSION) generated | sed "s/ /__SPACE__/g"), $(info $(subst __SPACE__, ,$(line))))
+  ifneq ($(.SHELLSTATUS),0)
+    $(error Errors occurred while generating map-related sources. See error messages above for more details)
+  endif
+endif
+
+# --------------------------------------------------------------------------
+# Sources: the same wildcards as expansion's Makefile. src/*.s is excluded
+# (ARM code, replaced by the platform layer); asm/*.s does not exist.
+
+C_SRCS_IN := $(wildcard $(C_SUBDIR)/*.c $(C_SUBDIR)/*/*.c $(C_SUBDIR)/*/*/*.c)
+C_SRCS := $(foreach src,$(C_SRCS_IN),$(if $(findstring .inc.c,$(src)),,$(src)))
+C_OBJS := $(patsubst $(C_SUBDIR)/%.c,$(C_BUILDDIR)/%.o,$(C_SRCS))
+
+TEST_SRCS_IN := $(wildcard $(TEST_SUBDIR)/*.c $(TEST_SUBDIR)/*/*.c $(TEST_SUBDIR)/*/*/*.c)
+TEST_SRCS := $(foreach src,$(TEST_SRCS_IN),$(if $(findstring .inc.c,$(src)),,$(src)))
+TEST_OBJS := $(patsubst $(TEST_SUBDIR)/%.c,$(TEST_BUILDDIR)/%.o,$(TEST_SRCS))
+
+DATA_ASM_SRCS := $(wildcard $(DATA_ASM_SUBDIR)/*.s)
+DATA_ASM_OBJS := $(patsubst $(DATA_ASM_SUBDIR)/%.s,$(DATA_ASM_BUILDDIR)/%.o,$(DATA_ASM_SRCS))
+
+MID_SRCS := $(wildcard $(MID_SUBDIR)/*.mid)
+MID_OBJS := $(patsubst $(MID_SUBDIR)/%.mid,$(MID_BUILDDIR)/%.o,$(MID_SRCS))
+
+OBJS := $(C_OBJS) $(DATA_ASM_OBJS) $(MID_OBJS)
+ifeq ($(TEST),1)
+  OBJS += $(TEST_OBJS)
+endif
+
+ifeq ($(SETUP_PREREQS),1)
+  $(shell mkdir -p $(sort $(dir $(OBJS))))
+endif
+
+objects: $(OBJS)
+
+clean:
+	rm -rf $(BUILD_DIR)/native*/
+
+# --------------------------------------------------------------------------
+# Expansion's rule fragments, unchanged.
+
+include graphics_file_rules.mk
+include map_data_rules.mk
+include spritesheet_rules.mk
+include json_data_rules.mk
+include audio_rules.mk
+include trainer_rules.mk
+
+# --------------------------------------------------------------------------
+# Mirrored from Makefile (asset rules that are not in a fragment). Keep in
+# sync with expansion's Makefile when upgrading.
+
+LEARNSET_HELPERS_DIR := $(TOOLS_DIR)/learnset_helpers
+LEARNSET_HELPERS_DATA_DIR := $(LEARNSET_HELPERS_DIR)/porymoves_files
+LEARNSET_HELPERS_BUILD_DIR := $(LEARNSET_HELPERS_DIR)/build
+ALL_LEARNABLES_JSON := $(DATA_SRC_SUBDIR)/pokemon/all_learnables.json
+ALL_TUTORS_JSON := $(LEARNSET_HELPERS_BUILD_DIR)/all_tutors.json
+ALL_TEACHING_TYPES_JSON := $(LEARNSET_HELPERS_BUILD_DIR)/all_teaching_types.json
+
+WILD_ENCOUNTERS_TOOL_DIR := $(TOOLS_DIR)/wild_encounters
+AUTO_GEN_TARGETS += $(DATA_SRC_SUBDIR)/wild_encounters.h
+
+MISC_TOOL_DIR := $(TOOLS_DIR)/misc
+AUTO_GEN_TARGETS += $(INCLUDE_DIRS)/constants/script_commands.h
+
+$(DATA_SRC_SUBDIR)/wild_encounters.h: $(DATA_SRC_SUBDIR)/wild_encounters.json $(WILD_ENCOUNTERS_TOOL_DIR)/wild_encounters_to_header.py $(INCLUDE_DIRS)/config/overworld.h $(INCLUDE_DIRS)/config/dexnav.h
+	python3 $(WILD_ENCOUNTERS_TOOL_DIR)/wild_encounters_to_header.py
+
+$(INCLUDE_DIRS)/constants/script_commands.h: $(MISC_TOOL_DIR)/make_scr_cmd_constants.py $(DATA_ASM_SUBDIR)/script_cmd_table.inc
+	python3  $(MISC_TOOL_DIR)/make_scr_cmd_constants.py
+
+generated: $(AUTO_GEN_TARGETS)
+	@:
+
+%.s:   ;
+%.png: ;
+%.pal: ;
+%.wav: ;
+
+%.1bpp:     %.png  ; $(GFX) $< $@
+%.4bpp:     %.png  ; $(GFX) $< $@
+%.8bpp:     %.png  ; $(GFX) $< $@
+%.gbapal:   %.pal  ; $(GFX) $< $@
+%.gbapal:   %.png  ; $(GFX) $< $@
+%.lz:       %      ; $(GFX) $< $@
+%.smolTM:   %      ; $(SMOLTM) $< $@
+%.fastSmol: %      ; $(SMOL) -w $< $@ false false false
+%.smol:     %      ; $(SMOL) -w $< $@
+%.rl:       %      ; $(GFX) $< $@
+
+TEACHABLE_DEPS := $(ALL_LEARNABLES_JSON) $(INCLUDE_DIRS)/constants/tms_hms.h $(INCLUDE_DIRS)/config/pokemon.h $(DATA_SRC_SUBDIR)/pokemon/special_movesets.json $(INCLUDE_DIRS)/config/pokedex_plus_hgss.h $(LEARNSET_HELPERS_DIR)/make_teachables.py
+
+$(LEARNSET_HELPERS_BUILD_DIR):
+	@mkdir -p $@
+
+$(ALL_LEARNABLES_JSON):
+	python3 $(LEARNSET_HELPERS_DIR)/make_learnables.py $(LEARNSET_HELPERS_DATA_DIR) $@
+
+$(ALL_TUTORS_JSON): $(shell find data/ -type f -name '*.inc')  $(LEARNSET_HELPERS_DIR)/make_tutors.py | $(LEARNSET_HELPERS_BUILD_DIR)
+	python3 $(LEARNSET_HELPERS_DIR)/make_tutors.py $@
+
+$(ALL_TEACHING_TYPES_JSON): $(wildcard $(DATA_SRC_SUBDIR)/pokemon/species_info/*_families.h)  $(LEARNSET_HELPERS_DIR)/make_teaching_types.py | $(LEARNSET_HELPERS_BUILD_DIR)
+	python3 $(LEARNSET_HELPERS_DIR)/make_teaching_types.py $@
+
+$(DATA_SRC_SUBDIR)/pokemon/teachable_learnsets.h: $(TEACHABLE_DEPS) | $(ALL_TUTORS_JSON) $(ALL_TEACHING_TYPES_JSON)
+	python3 $(LEARNSET_HELPERS_DIR)/make_teachables.py $(LEARNSET_HELPERS_BUILD_DIR)
+
+$(DATA_SRC_SUBDIR)/tutor_moves.h: $(DATA_SRC_SUBDIR)/pokemon/special_movesets.json | $(ALL_TUTORS_JSON)
+	python3 $(LEARNSET_HELPERS_DIR)/make_teachables.py  --tutors $(LEARNSET_HELPERS_BUILD_DIR)
+
+# Per-file flags, as expansion's Makefile sets them (the host-relevant part).
+$(C_BUILDDIR)/librfu_intr.o: CFLAGS += -fno-toplevel-reorder
+$(C_BUILDDIR)/agb_flash.o: CFLAGS += -fno-toplevel-reorder
+$(C_BUILDDIR)/berry_crush.o: CFLAGS += -Wno-address-of-packed-member
+$(C_BUILDDIR)/pokedex_plus_hgss.o: CFLAGS := $(filter-out -Wnonnull -Wenum-conversion,$(CFLAGS))
+$(C_BUILDDIR)/data.o: CFLAGS += -fno-show-column -fno-diagnostics-show-caret
+$(C_BUILDDIR)/graphics.o: CFLAGS += -Wno-missing-braces
+
+$(C_BUILDDIR)/move_relearner.o: $(C_SUBDIR)/move_relearner.c $(DATA_SRC_SUBDIR)/tutor_moves.h
+$(C_BUILDDIR)/pokemon.o: $(C_SUBDIR)/pokemon.c $(DATA_SRC_SUBDIR)/pokemon/teachable_learnsets.h
+
+# --------------------------------------------------------------------------
+# C
+
+$(C_BUILDDIR)/%.o: $(C_SUBDIR)/%.c $(C_FILTER_SCRIPT)
+	@echo "$(HOST_CC) <flags> -o $@ $<"
+	@$(CPP) $(CPPFLAGS) $< | $(PREPROC) -i -g $(ASSETS_DIR_NAME) $< charmap.txt | $(C_FILTER) | $(HOST_CC) $(CFLAGS) -c -x cpp-output -o $@ -
+
+$(C_BUILDDIR)/%.d: $(C_SUBDIR)/%.c
+	$(SCANINC) -M $@ -g $(ASSETS_DIR_NAME) $(INCLUDE_SCANINC_ARGS) $<
+
+ifneq ($(NODEP),1)
+-include $(addprefix $(OBJ_DIR)/,$(C_SRCS:.c=.d))
+endif
+
+ifeq ($(TEST),1)
+# include/test/overworld_script.h gives inline assembly the event script
+# macros through `.include`. Its native branch includes this one file
+# instead: the same files flattened by preproc (which also drops the '@'
+# comments) and rewritten by the asm filter, found on the test objects'
+# assembler include path.
+OVERWORLD_SCRIPT_MACROS := $(TEST_BUILDDIR)/overworld_script_macros.inc
+OVERWORLD_SCRIPT_MACRO_SRCS := constants/gba_constants.inc asm/macros/asm.inc asm/macros/event.inc
+
+$(OVERWORLD_SCRIPT_MACROS): $(OVERWORLD_SCRIPT_MACRO_SRCS) $(DATA_ASM_SUBDIR)/script_cmd_table.inc $(DATA_ASM_SUBDIR)/specials.inc $(ASM_FILTER_SCRIPT)
+	printf '.include "%s"\n' $(OVERWORLD_SCRIPT_MACRO_SRCS) | $(PREPROC) -i $(@:.inc=.s) charmap.txt | $(ASM_FILTER) > $@
+
+$(TEST_OBJS): $(OVERWORLD_SCRIPT_MACROS)
+$(TEST_OBJS): CFLAGS += -Wa,-I,$(TEST_BUILDDIR)
+
+$(TEST_BUILDDIR)/%.o: $(TEST_SUBDIR)/%.c $(C_FILTER_SCRIPT)
+	@echo "$(HOST_CC) <flags> -o $@ $<"
+	@$(CPP) $(CPPFLAGS) $< | $(PREPROC) -i -g $(ASSETS_DIR_NAME) $< charmap.txt | $(C_FILTER) | $(HOST_CC) $(CFLAGS) -c -x cpp-output -o $@ -
+
+$(TEST_BUILDDIR)/%.d: $(TEST_SUBDIR)/%.c
+	$(SCANINC) -M $@ -g $(ASSETS_DIR_NAME) $(INCLUDE_SCANINC_ARGS) $<
+
+ifneq ($(NODEP),1)
+-include $(addprefix $(OBJ_DIR)/,$(TEST_SRCS:.c=.d))
+endif
+endif
+
+# --------------------------------------------------------------------------
+# Data assembly: expansion's recipe, with $(AS) being the filter plus the
+# host assembler. map_data_rules.mk supplies maps.o and map_events.o.
+
+$(DATA_ASM_BUILDDIR)/%.o: $(DATA_ASM_SUBDIR)/%.s $(ASM_FILTER_SCRIPT)
+	$(PREPROC) -s $< charmap.txt | $(CPP) $(CPPFLAGS) $(INCLUDE_SCANINC_ARGS) - | $(PREPROC) -ie $< charmap.txt | $(AS) $(ASFLAGS) -o $@
+
+$(DATA_ASM_BUILDDIR)/%.d: $(DATA_ASM_SUBDIR)/%.s
+	$(SCANINC) -M $@ -g $(ASSETS_DIR_NAME) $(INCLUDE_SCANINC_ARGS) -I "" $<
+
+ifneq ($(NODEP),1)
+-include $(addprefix $(OBJ_DIR)/,$(DATA_ASM_SRCS:.s=.d))
+endif
+
+# Songs. The GBA recipe (audio_rules.mk) hands the file to `as` directly and
+# lets it `.include "MPlayDef.s"` from sound/; here the song is filtered on
+# its way in and MPlayDef.s is found as a filtered copy in $(OBJ_DIR)/sound.
+# Same target and prerequisite pattern as audio_rules.mk, so this replaces it.
+MPLAYDEF_NATIVE := $(OBJ_DIR)/sound/MPlayDef.s
+
+$(MID_BUILDDIR)/%.o: $(MID_ASM_DIR)/%.s
+	$(ASM_FILTER) < $< | $(HOST_AS) $(ASFLAGS) -I $(dir $(MPLAYDEF_NATIVE)) -o $@
+
+$(MID_OBJS): $(MPLAYDEF_NATIVE) $(ASM_FILTER_SCRIPT)
+
+$(MPLAYDEF_NATIVE): sound/MPlayDef.s $(ASM_FILTER_SCRIPT)
+	@mkdir -p $(@D)
+	$(ASM_FILTER) < $< > $@

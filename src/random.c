@@ -39,6 +39,14 @@ static void SFC32_Seed(struct Sfc32State *state, u32 seed, u8 stream)
     }
 }
 
+#if PLATFORM_NATIVE
+// The Thumb routine in the #else branch is _SFC32_Next on gRngValue;
+// test/random.c checks that the two agree.
+u32 Random32(void)
+{
+    return _SFC32_Next(&gRngValue);
+}
+#else
 /*This ASM implementation uses some shortcuts and is generally faster on the GBA.
 * It's not necessarily faster if inlined, or on other platforms.
 * In addition, it's extremely non-portable. */
@@ -69,6 +77,7 @@ u32 NAKED Random32(void)
     .ltorg"
     );
 }
+#endif
 
 u32 Random2_32(void)
 {

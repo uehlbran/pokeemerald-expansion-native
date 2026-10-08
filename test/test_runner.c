@@ -709,6 +709,17 @@ const struct TestRunner gAssumptionsRunner =
  *
  * WARNING: This could potentially be flaky because other global state
  * will not be cleaned up, we may decide to Exit on a timeout instead. */
+#if PLATFORM_NATIVE
+// The ARM routine in the #else branch reloads the stack pointer saved in
+// gAgbMainLoop_sp and jumps to AgbMainLoop. The platform layer provides
+// that jump.
+void PlatformJumpToAgbMainLoop(void);
+
+static void JumpToAgbMainLoop(void)
+{
+    PlatformJumpToAgbMainLoop();
+}
+#else
 static NAKED void JumpToAgbMainLoop(void)
 {
     asm(".arm\n\
@@ -719,6 +730,7 @@ static NAKED void JumpToAgbMainLoop(void)
          bx r0\n\
          .pool");
 }
+#endif
 
 static void ReinitCallbacks(void)
 {
@@ -812,11 +824,22 @@ static bool32 MgbaOpen_(void)
     return REG_DEBUG_ENABLE == 0x1DEA;
 }
 
+#if PLATFORM_NATIVE
+// BIOS Stop (swi 0x3) with the exit code in r0, which mgba-rom-test turns
+// into its process exit code. The platform layer provides the exit.
+void PlatformTestRunnerExit(u32 exitCode);
+
+static void MgbaExit_(u8 exitCode)
+{
+    PlatformTestRunnerExit(exitCode);
+}
+#else
 static void MgbaExit_(u8 exitCode)
 {
     register u32 _exitCode asm("r0") = exitCode;
     asm("swi 0x3" :: "r" (_exitCode));
 }
+#endif
 
 s32 Test_MgbaPrintf(const char *fmt, ...)
 {
@@ -1033,6 +1056,16 @@ static s32 MgbaVPrintf_(const char *fmt, va_list va)
 /* Entry point for the Debugging and Control System. Handles illegal
  * instructions, which are typically caused by branching to an invalid
  * address. */
+#if PLATFORM_NATIVE
+// The ARM entry in the #else branch only jumps to DACSHandle in Thumb
+// state.
+void DACSHandle(void);
+
+void DACSEntry(void)
+{
+    DACSHandle();
+}
+#else
 #if MODERN
 __attribute__((naked, section(".dacs"), target("arm")))
 #else
@@ -1044,6 +1077,7 @@ void DACSEntry(void)
          ldr r0, =(DACSHandle + 1)\n\
          bx r0\n");
 }
+#endif
 
 #define DACS_LR (*(vu32 *)0x3007FEC)
 
