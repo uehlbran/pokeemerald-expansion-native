@@ -533,6 +533,7 @@ static void DecodeLOtANS(const u32 *data, const u32 *pFreqs, u8 *resultVec, u32 
     CopyFuncToIwram(funcBuffer, DecodeLOtANSLoop, SwitchToArmCallLOtANS);
     SwitchToArmCallLOtANS(data, sWorkingYkTable, resultVec, &resultVec[count - remainingCount], (void *) funcBuffer);
 #endif
+#line 531 // the lines below keep their numbers (assertf messages use __LINE__)
 
     if (remainingCount)
     {
@@ -614,6 +615,7 @@ static void DecodeSymtANS(const u32 *data, const u32 *pFreqs, u16 *resultVec, u3
     CopyFuncToIwram(funcBuffer, DecodeLOtANSLoop, SwitchToArmCallLOtANS);
     SwitchToArmCallDecodeSymtANS(data, sWorkingYkTable, resultVec, &resultVec[count], (void *) funcBuffer);
 #endif
+#line 607 // the lines below keep their numbers (assertf messages use __LINE__)
 }
 
 #define ANS_LOOP_MAIN(nibble)   \
@@ -797,6 +799,7 @@ static void DecodeSymDeltatANS(const u32 *data, const u32 *pFreqs, u16 *resultVe
     CopyFuncToIwram(funcBuffer, DecodeSymDeltatANSLoop, SwitchToArmCallSymDeltaANS);
     u32 currSymbol = SwitchToArmCallSymDeltaANS(data, sWorkingYkTable, resultVec, &resultVec[count - remainingCount], (void *) funcBuffer);
 #endif
+#line 785 // the lines below keep their numbers (assertf messages use __LINE__)
 
     if (remainingCount)
     {
@@ -959,6 +962,7 @@ static void DecodeInstructionsIwram(u32 headerLoSize, const u8 *loVec, const u16
     CopyFuncToIwram(funcBuffer, DecodeInstructions, SwitchToArmCallDecodeInstructions);
     SwitchToArmCallDecodeInstructions(headerLoSize, loVec, symVec, dest, (void *) funcBuffer);
 #endif
+#line 942 // the lines below keep their numbers (assertf messages use __LINE__)
 }
 
 //  Entrance point for smol compressed data
@@ -1120,6 +1124,7 @@ static void SmolDecompressTilemap(const struct SmolTilemapHeader *header, const 
     CopyFuncToIwram(funcBuffer, DeltaDecodeTileNumbers, SwitchToArmCallDecodeTileNumbers);
     SwitchToArmCallDecodeTileNumbers(deltaDest, arraySize, (void *) funcBuffer);
 #endif
+#line 1098 // the lines below keep their numbers (assertf messages use __LINE__)
 }
 
 //  Helper functions for determining modes
@@ -1433,4 +1438,5 @@ void FastLZ77UnCompWram(const u32 *src, void *dest)
     CopyFuncToIwram(funcBuffer, LZ77UnCompWRAMOptimized, LZ77UnCompWRAMOptimized_end);
     SwitchToArmCallFastLZ77(src, dest, (void *) funcBuffer);
 #endif
+#line 1405 // the lines below keep their numbers (assertf messages use __LINE__)
 }

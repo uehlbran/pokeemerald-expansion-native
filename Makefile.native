@@ -184,13 +184,24 @@ endif
 # (DMA_ENABLE | ...) << 16; GNU C defines that (it is two's complement), but
 # UBSan's shift-base check reports every one, so that one check is off for
 # expansion's objects only; every other check stays, and platform/ keeps all.
-# UBSan reports in expansion's code do not stop the run (no
-# -fno-sanitize-recover), so one run lists them all; AddressSanitizer stops
-# at its first report as always.
-GAME_SANITIZER_FLAGS := -fsanitize=address,undefined -fno-sanitize=shift-base -fno-omit-frame-pointer
+# Reports in expansion's code are recoverable, so that one run can list them
+# all: UBSan prints and carries on (no -fno-sanitize-recover), and with
+# -fsanitize-recover=address AddressSanitizer does too when run with
+# ASAN_OPTIONS=halt_on_error=0 (by default it still stops at its first
+# report). The platform library always stops at the first.
+GAME_SANITIZER_FLAGS := -fsanitize=address,undefined -fno-sanitize=shift-base -fsanitize-recover=address \
+                        -fno-omit-frame-pointer
 ifeq ($(SANITIZE),1)
   CFLAGS += $(GAME_SANITIZER_FLAGS)
 endif
+# AddressSanitizer's use-after-return detection (on by default at run time)
+# moves address-taken locals to heap frames that are poisoned when the
+# function returns. The battle test runner relies on the opposite: a test
+# function's locals stay where they are after it returns, and the runner
+# writes results into them (test/test_runner_battle.c, InvokeTestFunction;
+# platform/game_hooks.h, PlatformCallWithStack). So the test objects are
+# compiled without that detection; everything else keeps it.
+GAME_TEST_SANITIZER_FLAGS := -fsanitize-address-use-after-return=never
 
 # preproc's COMPOUND_STRING output relies on '@' being the ARM assembler's
 # comment character; this rewrites it for x86 (see the script's comment).
@@ -462,6 +473,9 @@ $(OVERWORLD_SCRIPT_MACROS): $(OVERWORLD_SCRIPT_MACRO_SRCS) $(DATA_ASM_SUBDIR)/sc
 
 $(TEST_OBJS): $(OVERWORLD_SCRIPT_MACROS)
 $(TEST_OBJS): CFLAGS += -Wa,-I,$(TEST_BUILDDIR)
+ifeq ($(SANITIZE),1)
+$(TEST_OBJS): CFLAGS += $(GAME_TEST_SANITIZER_FLAGS)
+endif
 
 $(TEST_BUILDDIR)/%.o: $(TEST_SUBDIR)/%.c $(C_FILTER_SCRIPT)
 	@echo "$(HOST_CC) <flags> -o $@ $<"
