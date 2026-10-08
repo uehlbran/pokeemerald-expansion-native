@@ -172,6 +172,20 @@ static int16_t max_left(size_t from, size_t count)
     return max;
 }
 
+/* Every left sample in [from, from + count) is 0 or level * LEVEL_STEP, and
+ * the level appears (a square or noise channel at that level). */
+static bool left_is_level(size_t from, size_t count, int level)
+{
+    bool seen = level == 0;
+    for (size_t i = from; i < from + count; i++) {
+        if (left(i) == level * LEVEL_STEP)
+            seen = true;
+        else if (left(i) != 0)
+            return false;
+    }
+    return seen;
+}
+
 static size_t rising_edges_left(size_t frames)
 {
     size_t edges = 0;
@@ -343,7 +357,7 @@ PTEST(square_duty_cycles_have_gbatek_high_fractions)
         square(1, duty(pattern), NRX2_FULL_STEADY, SQUARE_ONE_STEP_PER_SAMPLE, INITIAL);
         PT_ASSERT(run(800));
         PT_ASSERT(nonzero_left(800) == 100 * high_per_eight[pattern]);
-        PT_ASSERT_EQ_INT(max_left(0, 800), 15 * LEVEL_STEP);
+        PT_ASSERT(left_is_level(0, 800, 15));
     }
 }
 
@@ -391,9 +405,9 @@ PTEST(trigger_acts_once_and_reads_back_clear)
     PT_ASSERT_EQ_U32(peek(NR14), SQUARE_FOUR_SAMPLE_PERIOD >> 8);
     PT_ASSERT_EQ_U32(peek(NR13), SQUARE_FOUR_SAMPLE_PERIOD & 0xFFu);
     PT_ASSERT(run(2055)); /* samples 2048-2055 follow the second envelope tick */
-    PT_ASSERT_EQ_INT(max_left(2047, 8), 13 * LEVEL_STEP);
+    PT_ASSERT(left_is_level(2047, 8, 13));
     PT_ASSERT(run(100)); /* no new trigger: the envelope is not restarted */
-    PT_ASSERT_EQ_INT(max_left(92, 8), 13 * LEVEL_STEP);
+    PT_ASSERT(left_is_level(92, 8, 13));
 }
 
 /* m4a's CgbSound writes NRx4 with bit 7 set on every volume change, often
@@ -403,10 +417,10 @@ PTEST(rewriting_the_same_trigger_value_restarts_the_channel)
     PT_ASSERT(start(RATE_EXACT));
     start_decaying_square();
     PT_ASSERT(run(2056));
-    PT_ASSERT_EQ_INT(max_left(2048, 8), 13 * LEVEL_STEP);
+    PT_ASSERT(left_is_level(2048, 8, 13));
     poke(NR14, (uint8_t)(INITIAL | SQUARE_FOUR_SAMPLE_PERIOD >> 8));
     PT_ASSERT(run(100));
-    PT_ASSERT_EQ_INT(max_left(92, 8), 15 * LEVEL_STEP);
+    PT_ASSERT(left_is_level(92, 8, 15));
 }
 
 /* Pan Docs "Audio Details", DACs: NRx2 bits 3-7 all zero switch the DAC off;
@@ -464,7 +478,7 @@ PTEST(length_counter_is_ignored_while_length_enable_is_clear)
     PT_ASSERT(run(MAX_FRAMES));
     PT_ASSERT(run(MAX_FRAMES));
     PT_ASSERT_EQ_U32(peek(NR52), MASTER_ENABLE | 0x01u);
-    PT_ASSERT_EQ_INT(max_left(MAX_FRAMES - 8, 8), 15 * LEVEL_STEP);
+    PT_ASSERT(left_is_level(MAX_FRAMES - 8, 8, 15));
 }
 
 /* GBATEK NR31 "units of (256-n)/256s": n = 254 is 2 ticks, at 3/512 s =
@@ -507,11 +521,11 @@ PTEST(envelope_decreases_one_level_per_period_and_stops_at_zero)
     PT_ASSERT(start(RATE_EXACT));
     start_decaying_square();
     PT_ASSERT(run(1000));
-    PT_ASSERT_EQ_INT(max_left(992, 8), 15 * LEVEL_STEP);
+    PT_ASSERT(left_is_level(992, 8, 15));
     for (int ticks = 1; ticks <= 20; ticks++) {
         PT_ASSERT(run(1024)); /* now 1000 + 1024 * ticks samples in */
         const int level = ticks < 15 ? 15 - ticks : 0;
-        PT_ASSERT_EQ_INT(max_left(1016, 8), level * LEVEL_STEP);
+        PT_ASSERT(left_is_level(1016, 8, level));
     }
     PT_ASSERT_EQ_U32(peek(NR52), MASTER_ENABLE | 0x01u);
 }
@@ -523,11 +537,11 @@ PTEST(envelope_increases_every_step_time_ticks_and_stops_at_fifteen)
     PT_ASSERT(start(RATE_EXACT));
     square(1, duty(2), 0x0A, SQUARE_FOUR_SAMPLE_PERIOD, INITIAL);
     PT_ASSERT(run(2000));
-    PT_ASSERT_EQ_INT(max_left(1992, 8), 0);
+    PT_ASSERT(left_is_level(1992, 8, 0));
     for (int steps = 1; steps <= 18; steps++) {
         PT_ASSERT(run(2048)); /* now 2000 + 2048 * steps samples in */
         const int level = steps < 15 ? steps : 15;
-        PT_ASSERT_EQ_INT(max_left(2040, 8), level * LEVEL_STEP);
+        PT_ASSERT(left_is_level(2040, 8, level));
     }
 }
 
@@ -538,9 +552,9 @@ PTEST(noise_channel_has_an_envelope)
     poke(NR43, NOISE_7_BIT | 0x21u); /* one LFSR clock per sample, see below */
     poke(NR44, INITIAL);
     PT_ASSERT(run(1000));
-    PT_ASSERT_EQ_INT(max_left(744, 256), 15 * LEVEL_STEP);
+    PT_ASSERT(left_is_level(744, 256, 15));
     PT_ASSERT(run(1024));
-    PT_ASSERT_EQ_INT(max_left(768, 256), 14 * LEVEL_STEP);
+    PT_ASSERT(left_is_level(768, 256, 14));
 }
 
 /* --- Sweep ----------------------------------------------------------------- */
