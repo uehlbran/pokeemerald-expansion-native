@@ -600,6 +600,52 @@ PTEST(sweep_time_counts_128_hz_ticks)
     PT_ASSERT_EQ_U32(channel1_frequency(), 320);
 }
 
+/* Shift 0 with a sweep time: each step computes X + X/2^0 = 2X (or X - X =
+ * 0) but writes nothing back (Pan Docs "Audio Details": the new frequency is
+ * written "if ... the individual step is not zero"); the overflow check still
+ * runs, so increasing stops the channel exactly when 2n > 2047. Steps at 384
+ * samples, then every 512. */
+static void check_sweep_shift_zero(uint8_t nr10, uint16_t frequency, bool stops_at_first_step)
+{
+    PT_ASSERT(start(RATE_EXACT));
+    poke(NR10, nr10);
+    square(1, duty(2), NRX2_FULL_STEADY, frequency, INITIAL);
+    PT_ASSERT(run(383));
+    PT_ASSERT_EQ_U32(peek(NR52), MASTER_ENABLE | 0x01u); /* no check at trigger with shift 0 */
+    PT_ASSERT(run(1 + 3 * 512)); /* the first four steps */
+    PT_ASSERT_EQ_U32(channel1_frequency(), frequency);
+    PT_ASSERT_EQ_U32(peek(NR52), stops_at_first_step ? MASTER_ENABLE : MASTER_ENABLE | 0x01u);
+}
+
+PTEST(sweep_shift_zero_keeps_the_frequency_and_checks_overflow_of_2n)
+{
+    check_sweep_shift_zero(0x10, 1023, false); /* time 1, increase: 2046 fits */
+    check_sweep_shift_zero(0x10, 1024, true);  /* 2048 overflows */
+    check_sweep_shift_zero(0x18, 1024, false); /* time 1, decrease: 0 never overflows */
+    check_sweep_shift_zero(0x18, 2047, false);
+}
+
+/* Sweep time 0 does no steps and reloads the sweep timer with 8 (Pan Docs
+ * "Audio Details": "The volume envelope and sweep timers treat a period of 0
+ * as 8"). Writing time 1 later does not restart the timer (mGBA src/gb/audio.c
+ * keeps counting on an NR10 write): the first step comes when the 8 runs out,
+ * at the eighth 128 Hz tick, 384 + 7 * 512 = 3968 samples, then every tick. */
+PTEST(sweep_time_zero_reloads_the_sweep_timer_with_eight)
+{
+    PT_ASSERT(start(RATE_EXACT));
+    poke(NR10, 0x02); /* time 0, increase, shift 2 */
+    square(1, duty(2), NRX2_FULL_STEADY, 256, INITIAL);
+    PT_ASSERT(run(1408)); /* three 128 Hz ticks, no steps */
+    PT_ASSERT_EQ_U32(channel1_frequency(), 256);
+    poke(NR10, 0x12); /* time 1 */
+    PT_ASSERT(run(3967 - 1408));
+    PT_ASSERT_EQ_U32(channel1_frequency(), 256);
+    PT_ASSERT(run(1));
+    PT_ASSERT_EQ_U32(channel1_frequency(), 320);
+    PT_ASSERT(run(512));
+    PT_ASSERT_EQ_U32(channel1_frequency(), 400);
+}
+
 /* Overflow past 2047 stops the channel (Pan Docs "Audio Details": the check
  * runs after each written step on the next value too). From 1024 with shift
  * 2: 1280, then 1600, then 2000, whose next value 2500 overflows, so the
