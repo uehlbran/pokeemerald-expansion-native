@@ -1,7 +1,11 @@
 # Makefile.native: the native (x86, SDL2) build of pokeemerald-expansion.
 #
 #   make -f Makefile.native -j$(nproc) objects [BITS=32|64] [TEST=0|1]
+#                                       [O_LEVEL=2] [DINFO=1]
 #   make -f Makefile.native clean      # removes build/native*/ and nothing else
+#
+# Objects go to build/native<bits>/ (build/native<bits>-test/ with TEST=1),
+# mirroring the source tree.
 #
 # Expansion's Makefile and its rule fragments are not modified; this file
 # sits beside them and reuses them. See docs/ARCHITECTURE.md ("Build") and
@@ -97,7 +101,6 @@
 BITS ?= 32
 # 1 builds the test objects (test/**) and defines TESTING=1, as on GBA.
 TEST ?= 0
-DEBUG ?= 0
 GAME_VERSION ?= EMERALD
 MAP_VERSION ?= emerald
 
@@ -148,11 +151,9 @@ INCLUDE_SCANINC_ARGS := $(INCLUDE_DIRS:%=-I %)
 # PLATFORM_NATIVE is the single guard macro (docs/RESEARCH.md, "Guard macro").
 CPPFLAGS := $(INCLUDE_CPP_ARGS) -Wno-trigraphs -DMODERN=1 -DTESTING=$(TEST) -D$(GAME_VERSION) -std=gnu17 -DPLATFORM_NATIVE=1
 
-ifeq ($(DEBUG),1)
-  O_LEVEL ?= g
-else
-  O_LEVEL ?= 2
-endif
+# As in expansion's Makefile: O_LEVEL and DINFO=1 (debug information) do
+# not change the object directory, so clean when switching them.
+O_LEVEL ?= 2
 
 # Expansion's warning set (Makefile, CFLAGS) without -Werror and without the
 # ARM code-generation flags. -fno-pie: the executable is linked non-PIE at a
@@ -160,7 +161,7 @@ endif
 CFLAGS := $(ARCH_FLAGS) -O$(O_LEVEL) -std=gnu17 -fno-pie \
           -Wall -Wno-strict-aliasing -Wno-attribute-alias -Woverride-init \
           -Wnonnull -Wenum-conversion -Wno-pointer-to-int-cast
-ifneq (,$(filter 1,$(DEBUG) $(DINFO)))
+ifeq ($(DINFO),1)
   CFLAGS += -g
 endif
 
