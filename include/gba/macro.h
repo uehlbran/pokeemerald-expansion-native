@@ -90,6 +90,19 @@
 
 #define CpuFastCopy(src, dest, size) CpuFastSet(src, dest, ((size)/(32/8) & 0x1FFFFF))
 
+#if PLATFORM_NATIVE
+// A register write cannot start a transfer natively: platform/dma.c writes
+// the DMA registers as below and runs the transfer. It prints and returns an
+// error when it refuses one; the game never checks, so the result is
+// discarded. Addresses pass through uintptr_t because callers pass ints
+// (VRAM) as well as pointers; lossless on 32- and 64-bit.
+#include "platform/dma_hooks.h"
+#define DmaSetUnchecked(dmaNum, src, dest, control)                         \
+{                                                                           \
+    (void)dma_set(dmaNum, (const void *)(uintptr_t)(src),                   \
+                  (void *)(uintptr_t)(dest), (u32)(control));               \
+}
+#else
 #define DmaSetUnchecked(dmaNum, src, dest, control) \
 {                                                 \
     vu32 *dmaRegs = (vu32 *)REG_ADDR_DMA##dmaNum; \
@@ -98,6 +111,7 @@
     dmaRegs[2] = (vu32)(control);                 \
     dmaRegs[2];                                   \
 }
+#endif
 
 #if MODERN
 // NOTE: Assumes 16-bit DMAs.
@@ -266,6 +280,13 @@
 #define DmaClear16Defvars(dmaNum, dest, size) DmaClearDefvars(dmaNum, dest, size, 16)
 #define DmaClear32Defvars(dmaNum, dest, size) DmaClearDefvars(dmaNum, dest, size, 32)
 
+#if PLATFORM_NATIVE
+// platform/dma.c clears the same CNT_H bits and forgets a pending transfer.
+#define DmaStop(dmaNum) \
+{                       \
+    dma_stop(dmaNum);   \
+}
+#else
 #define DmaStop(dmaNum)                                         \
 {                                                               \
     vu16 *dmaRegs = (vu16 *)REG_ADDR_DMA##dmaNum;               \
@@ -273,6 +294,7 @@
     dmaRegs[5] &= ~DMA_ENABLE;                                  \
     dmaRegs[5];                                                 \
 }
+#endif
 
 #define IntrEnable(flags)                                       \
 {                                                               \

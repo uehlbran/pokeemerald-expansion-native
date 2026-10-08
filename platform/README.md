@@ -150,6 +150,25 @@ VRAM, palette RAM, OAM and I/O. Each file's header comment lists where it
 interprets GBATEK. The tests (`test/test_ppu*.c`) build tiny scenes in the
 regions with `test/ppu_scene.h`; an all-zero OAM entry is a displayed 8x8 OBJ
 at (0,0), as on hardware, so scenes hide every OBJ first.
+## DMA (`dma`)
+
+`dma_set()` and `dma_stop()`, declared in `dma_hooks.h`, are what expansion's
+`DmaSetUnchecked` and `DmaStop` become under `PLATFORM_NATIVE`
+(`include/gba/macro.h`), so every `DmaSet`, `DmaCopy*`, `DmaFill*` and
+`DmaClear*` reaches them; macro.h includes the header as
+`"platform/dma_hooks.h"`, so a build compiling the game puts the repository
+root on its quote include path (`platform/Makefile` uses `-iquote ..`).
+`main` calls `dma_init(interrupt_raise)`; the frame loop calls
+`dma_run_timing(DMA_TIMING_HBLANK)` between scanlines and
+`dma_run_timing(DMA_TIMING_VBLANK)` on entering VBlank (GBATEK "GBA DMA
+Transfers"). Every block is checked whole with `transfer_bounds_ok()` before
+a byte moves; a refused one prints to stderr, returns a negative
+`enum dma_error` (the macros discard it) and touches no memory. What is
+relaxed (alignment, address masks), what is not emulated ("special" start
+timing, Game Pak DRQ), and why: `dma.h`.
+
+`test_dma_macro.c` compiles expansion's `macro.h` as the native build does
+and checks that the game's own macros reach the module.
 ## The interrupt controller (`interrupt`)
 
 `interrupt.h` stands in for the CPU's IRQ line, IE, IF and IME (GBATEK "GBA
