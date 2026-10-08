@@ -84,7 +84,7 @@ static const struct io_range other_registers[] = {
     { 0x0B0, 0x0E0 }, /* DMA0-DMA3 */
     { 0x100, 0x110 }, /* TM0CNT-TM3CNT */
     { 0x132, 0x134 }, /* KEYCNT */
-    { 0x200, 0x20C }, /* IE, IF, WAITCNT, IME */
+    { 0x200, 0x20C }, /* IE, IF, WAITCNT, IME (IF: see RegisterRamReset) */
 };
 
 /* RegisterRamReset bit 6: GBATEK "Sound Registers", 060h-0A7h, except
@@ -173,6 +173,13 @@ void RegisterRamReset(uint32_t resetFlags)
         clear_registers(sound_registers, sizeof sound_registers / sizeof sound_registers[0]);
     }
     if (resetFlags & BIOS_RESET_REGS) {
+        /* This zeroes REG_IF too, but the interrupt module keeps the pending
+         * requests in its own state and marks the value it last stored in
+         * IF with INTERRUPT_IF_MARKER (bit 15; interrupt.h): to it a zero IF
+         * is a game write acknowledging every request, not a reset of its
+         * state. main's reset path must therefore re-initialise the
+         * interrupt module after a reset; the BIOS does not call it (it
+         * would make bios depend on the interrupt module's internals). */
         clear_registers(other_registers, sizeof other_registers / sizeof other_registers[0]);
         *io_register(IO_DISPSTAT) = (uint16_t)(*io_register(IO_DISPSTAT) & DISPSTAT_READ_ONLY);
     }
@@ -188,7 +195,7 @@ int bios_soft_reset(uint32_t resetFlags)
     *io_register(IO_IME) = IME_DISABLED;
     RegisterRamReset(resetFlags);
     clear_memory(BIOS_RAM_AREA_BASE, BIOS_RAM_AREA_SIZE);
-    longjmp(*reset_target, 1);
+    longjmp(*reset_target, BIOS_RESET_JUMP_VALUE);
 }
 
 void SoftReset(uint32_t resetFlags)

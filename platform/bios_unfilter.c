@@ -167,7 +167,7 @@ void Diff16bitUnFilter(const void *src, void *dest)
     uint16_t sum = 0;
     for (size_t i = 0; i < header.size / DIFF16_UNIT; i++) {
         sum = (uint16_t)(sum + bios_load16(units + i * DIFF16_UNIT));
-        bios_sink_put(&out, (uint8_t)(sum & 0xFFu));
+        bios_sink_put(&out, (uint8_t)(sum & UINT8_MAX));
         bios_sink_put(&out, (uint8_t)(sum >> BIOS_BITS_PER_BYTE));
     }
 }

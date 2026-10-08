@@ -35,6 +35,7 @@
 #define IO_SOUNDBIAS UINT32_C(0x088)
 #define SOUNDBIAS_LEVEL_MASK UINT16_C(0x03FF)
 #define SOUNDBIAS_LEVEL_SET UINT16_C(0x0200)
+#define SOUNDBIAS_LEVEL_ZERO UINT16_C(0x0000)
 
 /* The wave's frequency word (GBATEK's formula reads [wa + 4]). */
 #define WAVE_FREQ_OFFSET 4u
@@ -63,7 +64,7 @@ static volatile uint16_t *soundbias(void)
 void SoundBiasChange(uint32_t level)
 {
     uint16_t kept = (uint16_t)(*soundbias() & ~SOUNDBIAS_LEVEL_MASK);
-    *soundbias() = (uint16_t)(kept | (level != 0 ? SOUNDBIAS_LEVEL_SET : 0));
+    *soundbias() = (uint16_t)(kept | (level != 0 ? SOUNDBIAS_LEVEL_SET : SOUNDBIAS_LEVEL_ZERO));
 }
 
 void SoundBiasReset(void)

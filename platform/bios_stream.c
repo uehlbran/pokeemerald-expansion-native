@@ -30,6 +30,8 @@
 #define HEADER_TYPE_SHIFT 4u
 #define HEADER_TYPE_MASK 0x0Fu
 #define HEADER_SIZE_SHIFT 8u
+/* A "Vram" writer's unit: 16 bits, two bytes. */
+#define WRITE16_UNIT_SIZE 2u
 
 int bios_stream_open(struct bios_source *source, const char *function, const void *src, size_t src_size,
                      unsigned type, struct bios_stream_header *header)
@@ -81,10 +83,10 @@ void bios_sink_put(struct bios_sink *sink, uint8_t byte)
 {
     if (sink->width == BIOS_WRITE_8BIT) {
         sink->bytes[sink->position] = byte;
-    } else if (sink->position % 2 == 0) {
+    } else if (sink->position % WRITE16_UNIT_SIZE == 0) {
         sink->held = byte;
     } else {
-        const uint8_t unit[2] = { sink->held, byte };
+        const uint8_t unit[WRITE16_UNIT_SIZE] = { sink->held, byte };
         memcpy(sink->bytes + sink->position - 1, unit, sizeof unit);
     }
     sink->position++;

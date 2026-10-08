@@ -97,9 +97,11 @@ int bios_init(void (*run_frame)(void));
 /* Forgets the frame hook and the reset target. Safe at any time. */
 void bios_shutdown(void);
 
-/* The jmp_buf SoftReset longjmps to (with value 1) after clearing what the
- * BIOS clears. main calls setjmp on it before entering AgbMain. NULL forgets
- * it. The buffer must outlive every SoftReset call. */
+/* The jmp_buf SoftReset longjmps to (with BIOS_RESET_JUMP_VALUE) after
+ * clearing what the BIOS clears. main calls setjmp on it before entering
+ * AgbMain; setjmp returning BIOS_RESET_JUMP_VALUE means the game reset. NULL
+ * forgets it. The buffer must outlive every SoftReset call. */
+#define BIOS_RESET_JUMP_VALUE 1
 void bios_set_reset_target(jmp_buf *target);
 
 /* SoftReset's documented error path: does what SoftReset does and longjmps

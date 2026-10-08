@@ -58,6 +58,11 @@ static const int32_t arctan_coefficients[] = {
     0x0390, 0x091C, 0x0FB6, 0x16AA, 0x2081, 0x3651, 0xA2F9,
 };
 
+/* Sqrt works one base-4 digit (two bits) at a time, from the highest power
+ * of 4 a u32 can hold, 4^15. */
+#define SQRT_HIGHEST_POWER_OF_4 UINT32_C(0x40000000)
+#define SQRT_DIGIT_SHIFT 2u
+
 static bool warned_div_by_zero;
 
 static uint32_t magnitude(int32_t value)
@@ -110,9 +115,9 @@ uint16_t Sqrt(uint32_t num)
 {
     uint32_t remainder = num;
     uint32_t root = 0;
-    uint32_t bit = UINT32_C(1) << 30;
+    uint32_t bit = SQRT_HIGHEST_POWER_OF_4;
     while (bit > remainder) {
-        bit >>= 2;
+        bit >>= SQRT_DIGIT_SHIFT;
     }
     while (bit != 0) {
         if (remainder >= root + bit) {
@@ -121,7 +126,7 @@ uint16_t Sqrt(uint32_t num)
         } else {
             root >>= 1;
         }
-        bit >>= 2;
+        bit >>= SQRT_DIGIT_SHIFT;
     }
     return (uint16_t)root;
 }
