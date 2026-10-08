@@ -30,6 +30,8 @@
 /* What expansion's DmaCopy16/DmaCopy32 put in CNT_H. */
 #define COPY16_CNT_H (DMA_ENABLE | DMA_START_NOW | DMA_16BIT | DMA_SRC_INC | DMA_DEST_INC)
 #define COPY32_CNT_H (DMA_ENABLE | DMA_START_NOW | DMA_32BIT | DMA_SRC_INC | DMA_DEST_INC)
+/* The CNT_H bits expansion's GBA DmaStop clears. */
+#define DMA_STOP_CLEARS (DMA_START_MASK | DMA_DREQ_ON | DMA_REPEAT | DMA_ENABLE)
 #define GUARD 0xA5u
 
 static unsigned raised;
@@ -101,12 +103,52 @@ static void teardown(void)
     reset();
 }
 
+/* The game's calls. Expansion's DMA_COPY and DMA_FILL build the control
+ * word as ((DMA_ENABLE | ...) << 16), shifting a signed int into its sign
+ * bit. GCC defines that in gnu17, but UBSan's shift check reports it, and
+ * it is upstream's code, so the functions that expand those macros are
+ * exempt from that one check; the native game build meets the same report.
+ * DMA_CLEAR also ORs that negative int with a u32 size, which
+ * -Wsign-conversion reports inside expansion's macro text. */
+#define EXPANSION_SIGNED_SHIFT __attribute__((no_sanitize("shift")))
+
+EXPANSION_SIGNED_SHIFT static void game_copy16(void)
+{
+    DmaCopy16(3, ewram(0x100), vram(0x200), 0x40);
+}
+
+EXPANSION_SIGNED_SHIFT static void game_copy32(u32 *source, u32 *destination)
+{
+    DmaCopy32(3, source, destination, 0x80);
+}
+
+/* src/starter_choose.c: DmaFill16(3, 0, VRAM, VRAM_SIZE), VRAM an int. */
+EXPANSION_SIGNED_SHIFT static void game_fill_vram_and_oam(void)
+{
+    DmaFill16(3, 0x1234, VRAM, VRAM_SIZE);
+    DmaFill32(3, 0xDEADBEEF, OAM, OAM_SIZE);
+}
+
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wsign-conversion"
+EXPANSION_SIGNED_SHIFT static void game_clear(u16 *destination16, u32 *destination32)
+{
+    DmaClear16(3, destination16, 0x100);
+    DmaClear32(3, destination32, 0x20);
+}
+#pragma GCC diagnostic pop
+
+EXPANSION_SIGNED_SHIFT static void game_copy16_past_vram(void)
+{
+    DmaCopy16(3, ewram(0), vram(GBA_VRAM_SIZE - 2), 8);
+}
+
 PTEST(dma_copy16_copies_and_leaves_the_registers_as_on_the_gba)
 {
     setup();
     fill_pattern(ewram(0x100), 0x40, 1);
     memset(vram(0x200 - 4), GUARD, 0x40 + 8);
-    DmaCopy16(3, ewram(0x100), vram(0x200), 0x40);
+    game_copy16();
     PT_ASSERT_MEM_EQ(vram(0x200), ewram(0x100), 0x40);
     PT_ASSERT(all_equal(vram(0x200 - 4), 4, GUARD));
     PT_ASSERT(all_equal(vram(0x240), 4, GUARD));
@@ -123,7 +165,7 @@ PTEST(dma_copy32_copies)
     u32 *destination = (u32 *)vram(0x800);
     setup();
     fill_pattern(ewram(0x400), 0x80, 3);
-    DmaCopy32(3, source, destination, 0x80);
+    game_copy32(source, destination);
     PT_ASSERT_MEM_EQ(vram(0x800), ewram(0x400), 0x80);
     PT_ASSERT(all_equal(vram(0x880), 4, 0));
     PT_ASSERT_EQ_INT(REG_DMA3CNT_L, 0x80 / 4);
@@ -131,42 +173,32 @@ PTEST(dma_copy32_copies)
     teardown();
 }
 
-/* src/starter_choose.c: DmaFill16(3, 0, VRAM, VRAM_SIZE), VRAM an int. */
 PTEST(dma_fill_with_integer_addresses_fills_the_whole_region)
 {
     setup();
     memset(vram(0), GUARD, GBA_VRAM_SIZE);
-    DmaFill16(3, 0x1234, VRAM, VRAM_SIZE);
+    game_fill_vram_and_oam();
     for (size_t offset = 0; offset < GBA_VRAM_SIZE; offset += 2)
         PT_ASSERT_EQ_INT(read16(vram(offset)), 0x1234);
-    DmaFill32(3, 0xDEADBEEF, OAM, OAM_SIZE);
     for (size_t offset = 0; offset < OAM_SIZE; offset += 4)
         PT_ASSERT_EQ_U32(read32((const uint8_t *)(uintptr_t)(OAM + offset)), 0xDEADBEEFu);
     PT_ASSERT_EQ_U32(REG_DMA3DAD, (uint32_t)OAM);
     teardown();
 }
 
-/* DMA_CLEAR passes a u32 size into DMA_FILL, whose control word ORs it with
- * ((DMA_ENABLE | ...) << 16), a negative int: -Wsign-conversion reports that
- * inside expansion's macro text, which is not ours to change. */
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wsign-conversion"
 PTEST(dma_clear_zeroes_exactly_the_range)
 {
-    u16 *destination = (u16 *)ewram(0x1000);
     setup();
     memset(ewram(0x1000 - 2), GUARD, 0x100 + 4);
-    DmaClear16(3, destination, 0x100);
+    memset(ewram(0x2000), GUARD, 0x40);
+    game_clear((u16 *)ewram(0x1000), (u32 *)ewram(0x2000));
     PT_ASSERT(all_equal(ewram(0x1000), 0x100, 0));
     PT_ASSERT(all_equal(ewram(0x1000 - 2), 2, GUARD));
     PT_ASSERT(all_equal(ewram(0x1100), 2, GUARD));
-    memset(ewram(0x2000), GUARD, 0x40);
-    DmaClear32(3, (u32 *)ewram(0x2000), 0x20);
     PT_ASSERT(all_equal(ewram(0x2000), 0x20, 0));
     PT_ASSERT(all_equal(ewram(0x2020), 0x20, GUARD));
     teardown();
 }
-#pragma GCC diagnostic pop
 
 /* src/scanline_effect.c: DmaStop(0) then DmaSet(0, ...) into a register,
  * run between scanlines by the frame loop. */
@@ -189,8 +221,7 @@ PTEST(dma_set_hblank_then_dma_stop)
     PT_ASSERT_EQ_INT(dma_run_timing(DMA_TIMING_HBLANK), 0);
     PT_ASSERT_EQ_INT(REG_BG0HOFS, 0x102);
     /* What the GBA's DmaStop leaves in CNT_H. */
-    PT_ASSERT_EQ_INT(REG_DMA0CNT_H, SCANLINE_16BIT_CNT_H & ~(DMA_START_MASK | DMA_DREQ_ON | DMA_REPEAT)
-                                        & ~DMA_ENABLE);
+    PT_ASSERT_EQ_INT(REG_DMA0CNT_H, SCANLINE_16BIT_CNT_H & ~DMA_STOP_CLEARS);
     teardown();
 }
 
@@ -201,7 +232,7 @@ PTEST(refused_transfer_through_the_macro_writes_nothing)
 {
     setup();
     fill_pattern(ewram(0), 8, 5);
-    DmaCopy16(3, ewram(0), vram(GBA_VRAM_SIZE - 2), 8);
+    game_copy16_past_vram();
     PT_ASSERT(all_equal(vram(GBA_VRAM_SIZE - 2), 2, 0));
     PT_ASSERT_EQ_INT(REG_DMA3CNT_H & DMA_ENABLE, 0);
     PT_ASSERT_EQ_INT(raised, 0);
