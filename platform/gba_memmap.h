@@ -99,11 +99,14 @@ enum gba_memmap_error {
     GBA_MEMMAP_ERR_LAYOUT = -1 /* a region is not linked where this header says */
 };
 
-/* Checks that every region exists at its address, readable, writable and
- * zero-filled at process start. Returns GBA_MEMMAP_OK, or a negative
- * enum gba_memmap_error after printing which region is wrong to stderr.
- * Idempotent: calling it again, with or without gba_memmap_shutdown() in
- * between, checks again and returns the same result. Region contents are
+/* Checks that the executable was linked with platform/gba_regions.ld as this
+ * header expects: each region's section starts at the region's base and is
+ * exactly the region's size, rounded up to whole 4 KiB pages, long. It does
+ * not touch the memory: the ELF loader is what makes the sections exist,
+ * zero-filled and read-write, before main. Returns GBA_MEMMAP_OK, or
+ * GBA_MEMMAP_ERR_LAYOUT after printing the first region that differs to
+ * stderr. Idempotent: calling it again, with or without gba_memmap_shutdown()
+ * in between, checks again and returns the same result. Region contents are
  * never changed by init or shutdown. */
 int gba_memmap_init(void);
 

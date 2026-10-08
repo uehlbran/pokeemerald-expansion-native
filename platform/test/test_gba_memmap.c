@@ -252,10 +252,9 @@ PTEST(init_is_idempotent_and_keeps_contents)
     PT_ASSERT_EQ_U32(after_second, 0x77);
 }
 
-/* In this design init can fail only when the binary was linked with a region
- * layout that disagrees with the header, which a correctly linked test binary
- * cannot produce; shutdown after a failed init is the same call as shutdown
- * without init, which this covers along with repeated shutdown. */
+/* init fails only on a wrong link layout, which test_gba_memmap_layout.c
+ * covers; it acquires nothing either way, so shutdown after a failed init is
+ * the same call as shutdown without init, covered here with repeated shutdown. */
 PTEST(shutdown_is_safe_without_init_and_when_repeated)
 {
     gba_memmap_shutdown();

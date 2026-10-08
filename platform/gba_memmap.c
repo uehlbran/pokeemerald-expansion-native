@@ -17,9 +17,10 @@
  * executable, before any code runs. The executable is linked non-PIE at
  * 0x40000000 (-Wl,-Ttext-segment) to stay clear of every region on both bit
  * widths. So init has nothing to map: it checks that the linker put each
- * section where this module's table says (the script cannot include this
- * module's header, so the numbers exist twice) and fails loudly if not; and
- * shutdown has nothing to release. Every test binary and the game link with
+ * section where this module's table says, at the region's base and exactly
+ * the region's size in whole 4 KiB pages long (the script cannot include
+ * this module's header, so the numbers exist twice), and fails loudly if
+ * not; and shutdown has nothing to release. Every test binary and the game link with
  * the fragment (platform/Makefile; Makefile.native must do the same).
  *
  * WHY NOT RUNTIME MMAP. Both ways were tried on 2026-10-08 with 32-bit and
@@ -96,34 +97,50 @@ static const struct linked_section linked_sections[GBA_REGION_COUNT] = {
     [GBA_REGION_SRAM] = { gba_linked_sram_start, gba_linked_sram_end },
 };
 
+/* gba_regions.ld gives each region whole pages of this size (the x86 page). */
+#define LINKED_PAGE_SIZE 0x1000u
+
 static bool is_region(enum gba_region region)
 {
     return region > GBA_REGION_NONE && region < GBA_REGION_COUNT;
 }
 
-/* True if the linker placed region's section at its base, at least its size long. */
-static bool linked_where_expected(enum gba_region region)
+/* The bytes gba_regions.ld reserves for a region: its size in whole pages. */
+static size_t linked_size(const struct gba_region_info *info)
+{
+    return (info->size + LINKED_PAGE_SIZE - 1) / LINKED_PAGE_SIZE * LINKED_PAGE_SIZE;
+}
+
+/* GBA_MEMMAP_OK if the section linked at [start, end) is exactly the one
+ * gba_regions.ld must give region: at its base, linked_size() long. Otherwise
+ * says which region and how on log, and returns GBA_MEMMAP_ERR_LAYOUT.
+ * Tested directly by test/test_gba_memmap_layout.c. */
+static int check_linked_section(enum gba_region region, uintptr_t start, uintptr_t end,
+                                FILE *log)
 {
     const struct gba_region_info *const info = &regions[region];
-    /* Pointer to integer, flagged: comparing a linked address with a GBA address. */
-    const uintptr_t start = (uintptr_t)linked_sections[region].start;
-    const uintptr_t end = (uintptr_t)linked_sections[region].end;
-    if (start == info->base && end - start >= info->size)
-        return true;
-    /* The return code is the contract; the message is best effort. */
-    (void)fprintf(stderr,
+    const size_t expected_size = linked_size(info);
+    if (start == info->base && end - start == expected_size)
+        return GBA_MEMMAP_OK;
+    (void)fprintf(log,
                   "gba_memmap: %s is linked at 0x%08" PRIXPTR "-0x%08" PRIXPTR
-                  " but must cover 0x%08" PRIXPTR "-0x%08" PRIXPTR "; link with "
+                  " but must be at 0x%08" PRIXPTR "-0x%08" PRIXPTR "; link with "
                   "platform/gba_regions.ld (see platform/Makefile)\n",
-                  info->name, start, end, info->base, info->base + info->size);
-    return false;
+                  info->name, start, end, info->base,
+                  info->base + expected_size); /* best-effort */
+    return GBA_MEMMAP_ERR_LAYOUT;
 }
 
 int gba_memmap_init(void)
 {
-    for (int id = GBA_REGION_NONE + 1; id < GBA_REGION_COUNT; id++)
-        if (!linked_where_expected((enum gba_region)id))
-            return GBA_MEMMAP_ERR_LAYOUT;
+    for (int id = GBA_REGION_NONE + 1; id < GBA_REGION_COUNT; id++) {
+        /* Pointers to integers, flagged: comparing linked addresses with GBA addresses. */
+        const uintptr_t start = (uintptr_t)linked_sections[id].start;
+        const uintptr_t end = (uintptr_t)linked_sections[id].end;
+        const int status = check_linked_section((enum gba_region)id, start, end, stderr);
+        if (status != GBA_MEMMAP_OK)
+            return status;
+    }
     return GBA_MEMMAP_OK;
 }
 
