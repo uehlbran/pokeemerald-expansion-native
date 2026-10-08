@@ -7,11 +7,10 @@
  * two pages at their GBA addresses, as the native platform will, plus one
  * page below 0x02000000 so the BIOS-region read guard can be exercised.
  *
- * It also provides the src/m4a.c functions the engine calls (m4a.c itself
- * cannot be compiled standalone: it includes global.h and an ARM swi).
- * MidiKeyToFreq and TrkVolPitSet are transcribed from src/m4a.c so pitch
- * and volume flow through as in the game; the others only record the call.
- * ClearChain and Clear64byte dispatch through gMPlayJumpTable as m4a.c does.
+ * It also provides the src/m4a.c functions the engine calls, each recording
+ * the call: MidiKeyToFreq and TrkVolPitSet then compute as m4a.c does
+ * (test_m4a_c_reference.c), ClearChain and Clear64byte dispatch through
+ * gMPlayJumpTable as m4a.c does, and the rest only record.
  */
 #ifndef GUARD_PLATFORM_M4A_TEST_SUPPORT_H
 #define GUARD_PLATFORM_M4A_TEST_SUPPORT_H

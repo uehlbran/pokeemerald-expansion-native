@@ -2,7 +2,7 @@
  * Unit tests for the sequencer half of the m4a engine (src/m4a_1.s
  * umul3232H32, SoundMainBTM, RealClearChain, MPlayJumpTableCopy,
  * m4aSoundVSync, MPlayMain, TrackStop, ChnVolSetAsm, ply_note and the
- * ply_* track commands), translated to C in m4a_sequencer.c,
+ * ply_* track commands), translated to C in m4a_sequencer.c, m4a_note.c,
  * m4a_commands.c and m4a_clear64.c. Expected values are worked out by hand
  * from the assembly (the arithmetic is in the comments) or by 64-bit
  * reference arithmetic in the test.
@@ -32,6 +32,8 @@ extern void *const gMPlayJumpTableTemplate[];
 #define SF_PLAYING SOUND_CHANNEL_SF_ENV_ATTACK
 /* MPlayMain's tempo accumulator threshold: one tick per 150 units. */
 #define TEMPO_TICK 150
+/* gClockTable: a length for each wait (0x80..0xB0) and note (0xCF..0xFF) command. */
+#define MPLAY_CLOCK_TABLE_SIZE_FOR_TEST 49u
 /* DMA control the VSync leaves on DMA1/DMA2: enable, FIFO timing, 32-bit, repeat
  * (0x8000 | 0x3000 | 0x0400 | 0x0200), GBATEK "GBA DMA Transfers". */
 #define DMA_FIFO_CONTROL 0xB600u
@@ -248,6 +250,20 @@ PTEST(m4aSoundVSync_ignores_a_sound_info_that_is_not_running)
         m4aSoundVSync();
         PT_ASSERT_EQ_U32(si->pcmDmaCounter, 1);
     }
+}
+
+PTEST(m4aSoundVSync_before_SoundInit_does_nothing)
+{
+    struct SoundInfo *si = M4aTestSetUp();
+
+    PT_ASSERT(si != NULL);
+    si->pcmDmaCounter = 1;
+    M4aTestWriteIo32(REG_OFFSET_DMA1CNT, (uint32_t)DMA_REPEAT << 16);
+    SOUND_INFO_PTR = NULL;
+    m4aSoundVSync();
+    SOUND_INFO_PTR = si;
+    PT_ASSERT_EQ_U32(si->pcmDmaCounter, 1);
+    PT_ASSERT_EQ_U32(M4aTestReadIo16(REG_OFFSET_DMA1CNT_H), DMA_REPEAT);
 }
 
 PTEST(m4aSoundVSync_counts_down_without_touching_the_dma)
@@ -557,6 +573,24 @@ PTEST(MPlayMain_note_commands_go_to_plynote)
     PT_ASSERT_EQ_U32(M4aTestCall(1)->playerIdentAtCall, ID_NUMBER + 1);
     PT_ASSERT_EQ_U32(sTracks[0].runningStatus, CMD_N24);
     PT_ASSERT_EQ_U32(sTracks[0].wait, 0);
+}
+
+PTEST(MPlayMain_a_data_byte_before_any_running_status_ends_the_track)
+{
+    /* The assembly would wait gClockTable[0x30 - 0x80], 80 bytes before the
+     * table; the C engine ends the track (README.md, departures). */
+    static uint8_t song[] = {0x30, CMD_W01};
+
+    PT_ASSERT(SetUpPlayer(1) != NULL);
+    sTracks[0].flags = MPT_FLG_EXIST | MPT_FLG_START;
+    sTracks[0].cmdPtr = song;
+
+    MPlayMain(&sPlayer);
+
+    PT_ASSERT_EQ_U32(sTracks[0].flags, 0);
+    PT_ASSERT_EQ_PTR(sTracks[0].cmdPtr, song);
+    PT_ASSERT_EQ_U32(sTracks[0].wait, 0);
+    PT_ASSERT_EQ_U32(sPlayer.status, 1);
 }
 
 PTEST(MPlayMain_status_has_one_bit_per_existing_track)
@@ -1102,6 +1136,50 @@ PTEST(ply_note_with_maxChans_0_still_looks_at_channel_0)
     ply_note(24, &sPlayer, &sTracks[1]);
     PT_ASSERT_EQ_PTR(sTracks[1].chan, NULL);
     PT_ASSERT_EQ_U32(si->chans[1].statusFlags, 0);
+}
+
+PTEST(ply_note_scans_at_most_the_12_channels_SoundInfo_holds)
+{
+    /* maxChans can be set up to 15 (m4aSoundMode's 4-bit field); the
+     * assembly would scan "channels" 12..14 inside pcmBuffer. */
+    static const uint8_t args[] = {60, CMD_FINE};
+    static uint8_t before[64];
+    struct SoundInfo *si = SetUpNote(args);
+
+    PT_ASSERT(si != NULL);
+    si->maxChans = 15;
+    sPlayer.priority = 0;
+    sTracks[0].priority = 0;
+    for (size_t k = 0; k < MAX_DIRECTSOUND_CHANNELS; k++)
+    {
+        si->chans[k].statusFlags = SF_PLAYING;
+        si->chans[k].priority = 50;
+    }
+    memset(si->pcmBuffer, 0, sizeof(before)); /* channel 12 would look free */
+    memcpy(before, si->pcmBuffer, sizeof(before));
+
+    ply_note(24, &sPlayer, &sTracks[0]);
+
+    PT_ASSERT_EQ_PTR(sTracks[0].chan, NULL);
+    PT_ASSERT_MEM_EQ(si->pcmBuffer, before, sizeof(before));
+    PT_ASSERT_EQ_U32(sTracks[0].key, 60);
+}
+
+PTEST(ply_note_beyond_the_clock_table_plays_nothing)
+{
+    /* MPlayMain passes 0..48; a larger value would index past gClockTable */
+    static const uint8_t args[] = {60, CMD_FINE};
+    struct SoundInfo *si = SetUpNote(args);
+
+    PT_ASSERT(si != NULL);
+    sTracks[0].gateTime = 7;
+    ply_note(MPLAY_CLOCK_TABLE_SIZE_FOR_TEST, &sPlayer, &sTracks[0]);
+    PT_ASSERT_EQ_U32(sTracks[0].gateTime, 7);
+    PT_ASSERT_EQ_PTR(sTracks[0].cmdPtr, args);
+    PT_ASSERT_EQ_U32(M4aTestCallCount(), 0);
+
+    ply_note(MPLAY_CLOCK_TABLE_SIZE_FOR_TEST - 1, &sPlayer, &sTracks[0]); /* the last valid one */
+    PT_ASSERT_EQ_U32(sTracks[0].gateTime, 96); /* gClockTable[48] */
 }
 
 PTEST(ply_note_starts_a_psg_channel)

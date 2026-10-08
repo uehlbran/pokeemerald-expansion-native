@@ -201,6 +201,20 @@ PTEST(SoundMain_does_nothing_when_ident_is_not_ID_NUMBER)
     PT_ASSERT_EQ_U32(si->chans[0].statusFlags, 0);
 }
 
+PTEST(SoundMain_before_SoundInit_does_nothing)
+{
+    /* SOUND_INFO_PTR is 0 until SoundInit; the GBA then reads the BIOS's
+     * first word as ident, which is never ID_NUMBER */
+    struct SoundInfo *si = M4aTestSetUp();
+
+    PT_ASSERT(si != NULL);
+    SOUND_INFO_PTR = NULL;
+    SoundMain();
+    SOUND_INFO_PTR = si;
+    PT_ASSERT_EQ_U32(M4aTestCallCount(), 0);
+    PT_ASSERT_EQ_U32(si->ident, ID_NUMBER);
+}
+
 PTEST(SoundMain_calls_MPlayMainHead_then_CgbSound_while_locked)
 {
     static struct MusicPlayerInfo player;
@@ -1267,6 +1281,29 @@ PTEST(Mixer_only_the_first_maxChans_channels_are_mixed)
 
     PT_ASSERT_EQ_U32(PcmBytes(si)[0], 63); /* channel 1 only */
     PT_ASSERT_EQ_U32(si->chans[2].statusFlags, SOUND_CHANNEL_SF_START);
+}
+
+PTEST(Mixer_maxChans_above_12_mixes_the_12_channels_SoundInfo_holds)
+{
+    /* the assembly would mix "channels" 12..14 out of pcmBuffer, which
+     * follows chans[11]; frame 1 leaves those bytes uncleared */
+    static union M4aTestWave w;
+    static uint8_t before[3 * sizeof(struct SoundChannel)];
+    struct SoundInfo *si = M4aTestSetUp();
+
+    PT_ASSERT(si != NULL);
+    M4aTestMakeWave(&w, 0, WAVE_STATUS_LOOP, 0, 0, 4);
+    si->maxChans = 15;
+    si->pcmDmaCounter = si->pcmDmaPeriod; /* frame 1 */
+    StartChannel(si, 11, &w.wave, TONEDATA_TYPE_FIX, STEP_ONE, 0);
+    memset(si->pcmBuffer, 0, sizeof(before));
+    si->pcmBuffer[0] = (s8)SOUND_CHANNEL_SF_STOP; /* "channel 12": releasing, envelope 0 */
+    memcpy(before, si->pcmBuffer, sizeof(before));
+
+    SoundMain();
+
+    PT_ASSERT_EQ_U32(si->chans[11].statusFlags, SOUND_CHANNEL_SF_LOOP | SF_DECAY_AFTER_START);
+    PT_ASSERT_MEM_EQ(si->pcmBuffer, before, sizeof(before));
 }
 
 PTEST(Mixer_reverb_and_a_channel_combine)
