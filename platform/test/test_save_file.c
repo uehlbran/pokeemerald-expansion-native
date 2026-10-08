@@ -1,8 +1,11 @@
 /*
- * Tests of the save file, save_file.c. The file format is the chip image
- * byte for byte (sector s at offset s * 4096), 131072 bytes for Emerald's
- * 1 Mbit chip (GBATEK "GBA Cart Backup Flash ROM"), which is what GBA
- * emulators write for such a cartridge.
+ * Tests of the save file, save_file.c. The format, written out here from
+ * save_file.h's description rather than taken from the module: a 28-byte
+ * version-1 header (magic "PENSAVE\0", then version, pointer width, layout
+ * id, image size and the image's CRC-32, each a little-endian u32), then the
+ * chip image byte for byte (sector s at 28 + s * 4096), 131072 bytes for
+ * Emerald's 1 Mbit chip (GBATEK "GBA Cart Backup Flash ROM"). A bare
+ * 131072-byte image, what GBA emulators write, is a legacy file.
  *
  * Each test works in a fresh directory under $TMPDIR (or /tmp) that it
  * creates and removes. It gathers what it checks into locals, cleans up, and
@@ -38,12 +41,26 @@
 #define ERASED 0xFFu
 #define TMP_SUFFIX ".tmp"
 
-_Static_assert(FLASH_CHIP_SIZE == CHIP_BYTES, "chip size");
+/* The version-1 header. */
+#define MAGIC "PENSAVE" /* with its terminator, the 8 magic bytes */
+#define MAGIC_BYTES 8u
+#define VERSION_OFFSET 8u
+#define POINTER_BITS_OFFSET 12u
+#define LAYOUT_ID_OFFSET 16u
+#define IMAGE_SIZE_OFFSET 20u
+#define CRC_OFFSET 24u
+#define HEADER_BYTES 28u
+#define FILE_BYTES (HEADER_BYTES + CHIP_BYTES)
 
-/* Whole images for expected and read-back contents; static because they are
- * 128 KiB each. */
+_Static_assert(FLASH_CHIP_SIZE == CHIP_BYTES, "chip size");
+_Static_assert(sizeof MAGIC == MAGIC_BYTES, "magic size");
+_Static_assert(SAVE_FILE_HEADER_SIZE == HEADER_BYTES, "header size");
+_Static_assert(SAVE_FILE_FORMAT_VERSION == 1, "these tests describe format version 1");
+
+/* Whole images and files for expected and read-back contents; static because
+ * they are 128 KiB each. */
 static uint8_t expected_image[CHIP_BYTES];
-static uint8_t file_bytes[CHIP_BYTES + 1];
+static uint8_t file_bytes[FILE_BYTES + 1];
 
 struct scratch {
     char dir[SAVE_FILE_PATH_SIZE];  /* a fresh directory */
@@ -163,6 +180,69 @@ static void set_image(uint8_t seed)
     memcpy(flash_image(), expected_image, CHIP_BYTES);
 }
 
+static uint32_t get_u32le(const uint8_t *bytes)
+{
+    return (uint32_t)bytes[0] | (uint32_t)bytes[1] << 8 | (uint32_t)bytes[2] << 16
+           | (uint32_t)bytes[3] << 24;
+}
+
+static void put_u32le(uint8_t *bytes, uint32_t value)
+{
+    for (size_t i = 0; i < 4; i++)
+        bytes[i] = (uint8_t)(value >> (8 * i));
+}
+
+static uint32_t native_pointer_bits(void)
+{
+    return (uint32_t)(sizeof(void *) * 8);
+}
+
+static uint32_t other_pointer_bits(void)
+{
+    return native_pointer_bits() == 32 ? 64 : 32;
+}
+
+/* Puts in file_bytes the version-1 file of expected_image with this layout
+ * tag, as the format says a store writes it. */
+static void build_file(uint32_t pointer_bits, uint32_t layout_id)
+{
+    memcpy(file_bytes, MAGIC, MAGIC_BYTES);
+    put_u32le(file_bytes + VERSION_OFFSET, 1);
+    put_u32le(file_bytes + POINTER_BITS_OFFSET, pointer_bits);
+    put_u32le(file_bytes + LAYOUT_ID_OFFSET, layout_id);
+    put_u32le(file_bytes + IMAGE_SIZE_OFFSET, CHIP_BYTES);
+    put_u32le(file_bytes + CRC_OFFSET, save_file_crc32(expected_image, CHIP_BYTES));
+    memcpy(file_bytes + HEADER_BYTES, expected_image, CHIP_BYTES);
+}
+
+/* ---- the CRC and the layout tag ---- */
+
+PTEST(crc32_matches_the_standard_check_values)
+{
+    static const uint8_t check[] = "123456789";
+    static const uint8_t fox[] = "The quick brown fox jumps over the lazy dog";
+    static const uint8_t a[] = "a";
+    PT_ASSERT_EQ_U32(save_file_crc32(check, sizeof check - 1), UINT32_C(0xCBF43926));
+    PT_ASSERT_EQ_U32(save_file_crc32(fox, sizeof fox - 1), UINT32_C(0x414FA339));
+    PT_ASSERT_EQ_U32(save_file_crc32(a, 1), UINT32_C(0xE8B7BE43));
+    PT_ASSERT_EQ_U32(save_file_crc32(check, 0), 0);
+}
+
+PTEST(native_layout_is_this_builds_pointer_width_and_layout_id)
+{
+    const struct save_file_layout native = save_file_native_layout();
+    PT_ASSERT_EQ_U32(native.pointer_bits, native_pointer_bits());
+    PT_ASSERT_EQ_U32(native.layout_id, SAVE_FILE_LAYOUT_ID);
+}
+
+PTEST(no_layout_is_reported_before_a_load)
+{
+    save_file_shutdown();
+    struct save_file_layout layout = { 7, 7 };
+    PT_ASSERT(!save_file_loaded_layout(&layout));
+    PT_ASSERT_EQ_U32(layout.pointer_bits, 7); /* untouched */
+}
+
 /* ---- before init ---- */
 
 PTEST(load_and_store_without_init_fail_and_touch_nothing)
@@ -246,9 +326,10 @@ PTEST(missing_file_loads_as_a_new_erased_chip)
     PT_ASSERT(removed);
 }
 
-/* A .sav as an emulator writes it: the chip's bytes in order. Loading it puts
- * sector s at s * 4096, banks included, and loading is not a game write. */
-PTEST(an_emulator_save_loads_byte_for_byte)
+/* A .sav as an emulator writes it: the chip's bytes in order, no header. It
+ * loads as a legacy file of unknown layout, sector s at s * 4096 with banks
+ * included, and loading is not a game write. */
+PTEST(an_emulator_save_loads_as_legacy_byte_for_byte)
 {
     struct scratch scratch;
     if (!scratch_create(&scratch))
@@ -260,6 +341,8 @@ PTEST(an_emulator_save_loads_byte_for_byte)
     const int load = save_file_load();
     const bool loaded = image_is_expected();
     const bool dirty = flash_take_dirty();
+    struct save_file_layout layout;
+    const bool has_layout = save_file_loaded_layout(&layout);
     uint8_t sector_17[SECTOR_BYTES];
     ReadFlash(17, 0, sector_17, SECTOR_BYTES);
     const bool sector_17_matches =
@@ -268,27 +351,30 @@ PTEST(an_emulator_save_loads_byte_for_byte)
     const bool removed = scratch_remove(&scratch);
     PT_ASSERT(written);
     PT_ASSERT_EQ_INT(init, SAVE_FILE_OK);
-    PT_ASSERT_EQ_INT(load, SAVE_FILE_OK);
+    PT_ASSERT_EQ_INT(load, SAVE_FILE_LEGACY);
     PT_ASSERT(loaded);
     PT_ASSERT(sector_17_matches);
     PT_ASSERT(!dirty);
+    PT_ASSERT(!has_layout);
     PT_ASSERT(removed);
 }
 
-/* A file of the wrong size is reported, the chip is left erased (not partly
- * loaded, not left as it was), nothing is marked dirty, and the file stays. */
-static void check_rejected_size(size_t size)
+/* The first size bytes of file_bytes, as a save file, are reported as
+ * corrupt: the chip is left erased (not partly loaded, not left as it was),
+ * nothing is marked dirty, no layout is reported, and the file stays. */
+static void check_rejected_file(size_t size)
 {
     struct scratch scratch;
     if (!scratch_create(&scratch))
         PT_FAIL("cannot create a scratch directory");
-    fill_pattern(file_bytes, size, 0x05);
     const bool written = write_file(scratch.path, file_bytes, size);
     set_image(0x06);
     const int init = save_file_init(scratch.path);
     const int load = save_file_load();
     const bool erased = image_is_erased();
     const bool dirty = flash_take_dirty();
+    struct save_file_layout layout;
+    const bool has_layout = save_file_loaded_layout(&layout);
     const intmax_t size_after = file_size(scratch.path);
     save_file_shutdown();
     const bool removed = scratch_remove(&scratch);
@@ -297,14 +383,231 @@ static void check_rejected_size(size_t size)
     PT_ASSERT_EQ_INT(load, SAVE_FILE_CORRUPT);
     PT_ASSERT(erased);
     PT_ASSERT(!dirty);
+    PT_ASSERT(!has_layout);
     PT_ASSERT_EQ_INT(size_after, (intmax_t)size);
     PT_ASSERT(removed);
+}
+
+/* A file with no header and the wrong size for a bare image. */
+static void check_rejected_size(size_t size)
+{
+    fill_pattern(file_bytes, size, 0x05);
+    check_rejected_file(size);
 }
 
 PTEST(a_512_kbit_save_is_rejected) { check_rejected_size(HALF_CHIP_BYTES); }
 PTEST(a_file_one_byte_too_long_is_rejected) { check_rejected_size(CHIP_BYTES + 1); }
 PTEST(a_file_one_byte_too_short_is_rejected) { check_rejected_size(CHIP_BYTES - 1); }
 PTEST(an_empty_file_is_rejected) { check_rejected_size(0); }
+
+/* ---- the header ---- */
+
+PTEST(a_crc_mismatch_in_the_image_is_rejected)
+{
+    fill_pattern(expected_image, CHIP_BYTES, 0x21);
+    build_file(native_pointer_bits(), SAVE_FILE_LAYOUT_ID);
+    file_bytes[HEADER_BYTES + 0x11234] ^= 0x04;
+    check_rejected_file(FILE_BYTES);
+}
+
+PTEST(a_wrong_crc_field_is_rejected)
+{
+    fill_pattern(expected_image, CHIP_BYTES, 0x22);
+    build_file(native_pointer_bits(), SAVE_FILE_LAYOUT_ID);
+    file_bytes[CRC_OFFSET + 3] ^= 0x80;
+    check_rejected_file(FILE_BYTES);
+}
+
+static void check_rejected_header_field(size_t offset, uint32_t value)
+{
+    fill_pattern(expected_image, CHIP_BYTES, 0x23);
+    build_file(native_pointer_bits(), SAVE_FILE_LAYOUT_ID);
+    put_u32le(file_bytes + offset, value);
+    check_rejected_file(FILE_BYTES);
+}
+
+PTEST(version_2_is_rejected) { check_rejected_header_field(VERSION_OFFSET, 2); }
+PTEST(version_0_is_rejected) { check_rejected_header_field(VERSION_OFFSET, 0); }
+PTEST(a_wrong_image_size_field_is_rejected)
+{
+    check_rejected_header_field(IMAGE_SIZE_OFFSET, HALF_CHIP_BYTES);
+}
+PTEST(a_pointer_width_other_than_32_or_64_is_rejected)
+{
+    check_rejected_header_field(POINTER_BITS_OFFSET, 48);
+}
+
+PTEST(a_truncated_header_is_rejected)
+{
+    fill_pattern(expected_image, CHIP_BYTES, 0x24);
+    build_file(native_pointer_bits(), SAVE_FILE_LAYOUT_ID);
+    check_rejected_file(HEADER_BYTES - 1);
+}
+
+PTEST(the_magic_alone_is_rejected)
+{
+    fill_pattern(expected_image, CHIP_BYTES, 0x25);
+    build_file(native_pointer_bits(), SAVE_FILE_LAYOUT_ID);
+    check_rejected_file(MAGIC_BYTES);
+}
+
+PTEST(a_truncated_image_is_rejected)
+{
+    fill_pattern(expected_image, CHIP_BYTES, 0x26);
+    build_file(native_pointer_bits(), SAVE_FILE_LAYOUT_ID);
+    check_rejected_file(FILE_BYTES - 1);
+}
+
+PTEST(a_headered_file_one_byte_too_long_is_rejected)
+{
+    fill_pattern(expected_image, CHIP_BYTES, 0x27);
+    build_file(native_pointer_bits(), SAVE_FILE_LAYOUT_ID);
+    file_bytes[FILE_BYTES] = 0x00;
+    check_rejected_file(FILE_BYTES + 1);
+}
+
+/* A bare image of exactly the chip's size that happens to start with the
+ * magic is a headered file of the wrong size, not a legacy file. */
+PTEST(a_bare_image_starting_with_the_magic_is_rejected)
+{
+    fill_pattern(file_bytes, CHIP_BYTES, 0x28);
+    memcpy(file_bytes, MAGIC, MAGIC_BYTES);
+    check_rejected_file(CHIP_BYTES);
+}
+
+struct layout_outcome {
+    int load;
+    bool loaded, dirty, has_layout;
+    struct save_file_layout layout;
+};
+
+/* Writes the version-1 file of a fresh image with this layout tag and loads
+ * it. */
+static bool load_tagged_file(uint32_t pointer_bits, uint32_t layout_id,
+                             struct layout_outcome *outcome)
+{
+    struct scratch scratch;
+    if (!scratch_create(&scratch))
+        return false;
+    fill_pattern(expected_image, CHIP_BYTES, 0x29);
+    build_file(pointer_bits, layout_id);
+    const bool written = write_file(scratch.path, file_bytes, FILE_BYTES);
+    flash_init();
+    const bool init = save_file_init(scratch.path) == SAVE_FILE_OK;
+    outcome->load = save_file_load();
+    outcome->loaded = image_is_expected();
+    outcome->dirty = flash_take_dirty();
+    outcome->has_layout = save_file_loaded_layout(&outcome->layout);
+    save_file_shutdown();
+    return scratch_remove(&scratch) && written && init;
+}
+
+PTEST(a_file_with_the_native_tag_loads_ok_and_reports_its_layout)
+{
+    struct layout_outcome outcome = { 0 };
+    PT_ASSERT(load_tagged_file(native_pointer_bits(), SAVE_FILE_LAYOUT_ID, &outcome));
+    PT_ASSERT_EQ_INT(outcome.load, SAVE_FILE_OK);
+    PT_ASSERT(outcome.loaded);
+    PT_ASSERT(!outcome.dirty);
+    PT_ASSERT(outcome.has_layout);
+    PT_ASSERT_EQ_U32(outcome.layout.pointer_bits, native_pointer_bits());
+    PT_ASSERT_EQ_U32(outcome.layout.layout_id, SAVE_FILE_LAYOUT_ID);
+}
+
+/* A save written by the other bit width loads, intact, but is reported as
+ * foreign with its tag, never as SAVE_FILE_OK. */
+PTEST(a_file_from_the_other_pointer_width_loads_as_foreign)
+{
+    struct layout_outcome outcome = { 0 };
+    PT_ASSERT(load_tagged_file(other_pointer_bits(), SAVE_FILE_LAYOUT_ID, &outcome));
+    PT_ASSERT_EQ_INT(outcome.load, SAVE_FILE_FOREIGN_LAYOUT);
+    PT_ASSERT(outcome.loaded);
+    PT_ASSERT(!outcome.dirty);
+    PT_ASSERT(outcome.has_layout);
+    PT_ASSERT_EQ_U32(outcome.layout.pointer_bits, other_pointer_bits());
+    PT_ASSERT_EQ_U32(outcome.layout.layout_id, SAVE_FILE_LAYOUT_ID);
+}
+
+PTEST(a_file_with_another_layout_id_loads_as_foreign)
+{
+    struct layout_outcome outcome = { 0 };
+    PT_ASSERT(load_tagged_file(native_pointer_bits(), SAVE_FILE_LAYOUT_ID + 1, &outcome));
+    PT_ASSERT_EQ_INT(outcome.load, SAVE_FILE_FOREIGN_LAYOUT);
+    PT_ASSERT(outcome.loaded);
+    PT_ASSERT(outcome.has_layout);
+    PT_ASSERT_EQ_U32(outcome.layout.pointer_bits, native_pointer_bits());
+    PT_ASSERT_EQ_U32(outcome.layout.layout_id, SAVE_FILE_LAYOUT_ID + 1);
+}
+
+/* A legacy file loads, and the next store writes it back with a header and
+ * this build's tag; loading that gives SAVE_FILE_OK. */
+PTEST(a_legacy_file_is_upgraded_by_the_next_store)
+{
+    struct scratch scratch;
+    if (!scratch_create(&scratch))
+        PT_FAIL("cannot create a scratch directory");
+    fill_pattern(expected_image, CHIP_BYTES, 0x2A);
+    const bool written = write_file(scratch.path, expected_image, CHIP_BYTES);
+    flash_init();
+    const int init = save_file_init(scratch.path);
+    const int first_load = save_file_load();
+    const int store = save_file_store();
+    const bool read = read_file(scratch.path, FILE_BYTES);
+    const bool has_magic = memcmp(file_bytes, MAGIC, MAGIC_BYTES) == 0;
+    const bool image_after_header =
+        memcmp(file_bytes + HEADER_BYTES, expected_image, CHIP_BYTES) == 0;
+    memset(flash_image(), 0x00, CHIP_BYTES);
+    const int second_load = save_file_load();
+    const bool loaded = image_is_expected();
+    struct save_file_layout layout = { 0 };
+    const bool has_layout = save_file_loaded_layout(&layout);
+    save_file_shutdown();
+    const bool removed = scratch_remove(&scratch);
+    PT_ASSERT(written);
+    PT_ASSERT_EQ_INT(init, SAVE_FILE_OK);
+    PT_ASSERT_EQ_INT(first_load, SAVE_FILE_LEGACY);
+    PT_ASSERT_EQ_INT(store, SAVE_FILE_OK);
+    PT_ASSERT(read);
+    PT_ASSERT(has_magic);
+    PT_ASSERT(image_after_header);
+    PT_ASSERT_EQ_INT(second_load, SAVE_FILE_OK);
+    PT_ASSERT(loaded);
+    PT_ASSERT(has_layout);
+    PT_ASSERT_EQ_U32(layout.pointer_bits, native_pointer_bits());
+    PT_ASSERT(removed);
+}
+
+/* After a headered load, a load that reads no header and a shutdown both
+ * forget the layout. */
+PTEST(the_loaded_layout_is_forgotten_by_a_headerless_load_and_shutdown)
+{
+    struct scratch scratch;
+    if (!scratch_create(&scratch))
+        PT_FAIL("cannot create a scratch directory");
+    set_image(0x2B);
+    struct save_file_layout layout;
+    const int init = save_file_init(scratch.path);
+    const int store = save_file_store();
+    const int headered = save_file_load();
+    const bool after_headered = save_file_loaded_layout(&layout);
+    const bool rewritten = write_file(scratch.path, expected_image, CHIP_BYTES);
+    const int legacy = save_file_load();
+    const bool after_legacy = save_file_loaded_layout(&layout);
+    const int headered_again = save_file_store() == SAVE_FILE_OK ? save_file_load() : -99;
+    save_file_shutdown();
+    const bool after_shutdown = save_file_loaded_layout(&layout);
+    const bool removed = scratch_remove(&scratch);
+    PT_ASSERT_EQ_INT(init, SAVE_FILE_OK);
+    PT_ASSERT_EQ_INT(store, SAVE_FILE_OK);
+    PT_ASSERT_EQ_INT(headered, SAVE_FILE_OK);
+    PT_ASSERT(after_headered);
+    PT_ASSERT(rewritten);
+    PT_ASSERT_EQ_INT(legacy, SAVE_FILE_LEGACY);
+    PT_ASSERT(!after_legacy);
+    PT_ASSERT_EQ_INT(headered_again, SAVE_FILE_OK);
+    PT_ASSERT(!after_shutdown);
+    PT_ASSERT(removed);
+}
 
 PTEST(a_directory_at_the_save_path_is_rejected)
 {
@@ -342,20 +645,26 @@ PTEST(store_then_load_round_trips_byte_exactly)
     memset(flash_image(), 0x00, CHIP_BYTES);
     const int load = save_file_load();
     const bool round_trip = image_is_expected();
+    struct save_file_layout layout = { 0 };
+    const bool has_layout = save_file_loaded_layout(&layout);
     save_file_shutdown();
     const bool removed = scratch_remove(&scratch);
     PT_ASSERT_EQ_INT(init, SAVE_FILE_OK);
     PT_ASSERT_EQ_INT(store, SAVE_FILE_OK);
-    PT_ASSERT_EQ_INT(size, CHIP_BYTES);
+    PT_ASSERT_EQ_INT(size, FILE_BYTES);
     PT_ASSERT(!tmp_left);
     PT_ASSERT_EQ_INT(load, SAVE_FILE_OK);
     PT_ASSERT(round_trip);
+    PT_ASSERT(has_layout);
+    PT_ASSERT_EQ_U32(layout.pointer_bits, native_pointer_bits());
+    PT_ASSERT_EQ_U32(layout.layout_id, SAVE_FILE_LAYOUT_ID);
     PT_ASSERT(removed);
 }
 
-/* The stored file is the chip's bytes in order, as an emulator expects, and
- * a game write through the driver is in it at its sector's offset. */
-PTEST(stored_file_is_the_chip_byte_for_byte)
+/* The stored file is the version-1 header, with this build's tag and the
+ * image's CRC, then the chip's bytes in order; a game write through the
+ * driver is in it at its sector's offset. */
+PTEST(stored_file_is_the_header_then_the_chip_byte_for_byte)
 {
     struct scratch scratch;
     if (!scratch_create(&scratch))
@@ -367,14 +676,21 @@ PTEST(stored_file_is_the_chip_byte_for_byte)
     memcpy(expected_image + 31 * SECTOR_BYTES, sector, SECTOR_BYTES);
     const int init = save_file_init(scratch.path);
     const int store = save_file_store();
-    const bool read = read_file(scratch.path, CHIP_BYTES);
-    const bool same = memcmp(file_bytes, expected_image, CHIP_BYTES) == 0;
+    const bool read = read_file(scratch.path, FILE_BYTES);
+    const bool same = memcmp(file_bytes + HEADER_BYTES, expected_image, CHIP_BYTES) == 0;
     save_file_shutdown();
     const bool removed = scratch_remove(&scratch);
     PT_ASSERT_EQ_U32(program, FLASH_STATUS_OK);
     PT_ASSERT_EQ_INT(init, SAVE_FILE_OK);
     PT_ASSERT_EQ_INT(store, SAVE_FILE_OK);
     PT_ASSERT(read);
+    PT_ASSERT_MEM_EQ(file_bytes, MAGIC, MAGIC_BYTES);
+    PT_ASSERT_EQ_U32(get_u32le(file_bytes + VERSION_OFFSET), 1);
+    PT_ASSERT_EQ_U32(get_u32le(file_bytes + POINTER_BITS_OFFSET), native_pointer_bits());
+    PT_ASSERT_EQ_U32(get_u32le(file_bytes + LAYOUT_ID_OFFSET), SAVE_FILE_LAYOUT_ID);
+    PT_ASSERT_EQ_U32(get_u32le(file_bytes + IMAGE_SIZE_OFFSET), CHIP_BYTES);
+    PT_ASSERT_EQ_U32(get_u32le(file_bytes + CRC_OFFSET),
+                     save_file_crc32(expected_image, CHIP_BYTES));
     PT_ASSERT(same);
     PT_ASSERT(removed);
 }
@@ -391,14 +707,14 @@ PTEST(store_replaces_the_previous_file)
     const int second = save_file_store();
     const intmax_t size = file_size(scratch.path);
     const bool tmp_left = exists(scratch.tmp);
-    const bool read = read_file(scratch.path, CHIP_BYTES);
-    const bool newest = memcmp(file_bytes, expected_image, CHIP_BYTES) == 0;
+    const bool read = read_file(scratch.path, FILE_BYTES);
+    const bool newest = memcmp(file_bytes + HEADER_BYTES, expected_image, CHIP_BYTES) == 0;
     save_file_shutdown();
     const bool removed = scratch_remove(&scratch);
     PT_ASSERT_EQ_INT(init, SAVE_FILE_OK);
     PT_ASSERT_EQ_INT(first, SAVE_FILE_OK);
     PT_ASSERT_EQ_INT(second, SAVE_FILE_OK);
-    PT_ASSERT_EQ_INT(size, CHIP_BYTES);
+    PT_ASSERT_EQ_INT(size, FILE_BYTES);
     PT_ASSERT(!tmp_left);
     PT_ASSERT(read);
     PT_ASSERT(newest);
@@ -428,8 +744,8 @@ PTEST(a_write_that_fails_part_way_leaves_the_old_file)
                           && old_handler != SIG_ERR && signal(SIGXFSZ, old_handler) != SIG_ERR;
 
     fill_pattern(expected_image, CHIP_BYTES, 0x0C); /* the old save */
-    const bool read = read_file(scratch.path, CHIP_BYTES);
-    const bool old_intact = memcmp(file_bytes, expected_image, CHIP_BYTES) == 0;
+    const bool read = read_file(scratch.path, FILE_BYTES);
+    const bool old_intact = memcmp(file_bytes + HEADER_BYTES, expected_image, CHIP_BYTES) == 0;
     const bool tmp_left = exists(scratch.tmp);
     save_file_shutdown();
     const bool removed = scratch_remove(&scratch);
@@ -458,8 +774,8 @@ PTEST(a_tmp_that_cannot_be_created_leaves_the_old_file)
     set_image(0x0F);
     const int second = save_file_store();
     fill_pattern(expected_image, CHIP_BYTES, 0x0E); /* the old save */
-    const bool read = read_file(scratch.path, CHIP_BYTES);
-    const bool old_intact = memcmp(file_bytes, expected_image, CHIP_BYTES) == 0;
+    const bool read = read_file(scratch.path, FILE_BYTES);
+    const bool old_intact = memcmp(file_bytes + HEADER_BYTES, expected_image, CHIP_BYTES) == 0;
     const bool directory_kept = rmdir(scratch.tmp) == 0;
     save_file_shutdown();
     const bool removed = scratch_remove(&scratch);
@@ -575,9 +891,9 @@ PTEST(a_bare_file_name_is_stored_in_the_working_directory)
     PT_ASSERT(ran);
     PT_ASSERT_EQ_INT(outcome.init, SAVE_FILE_OK);
     PT_ASSERT_EQ_INT(outcome.store, SAVE_FILE_OK);
-    PT_ASSERT_EQ_INT(outcome.size, CHIP_BYTES);
+    PT_ASSERT_EQ_INT(outcome.size, FILE_BYTES);
     PT_ASSERT(!outcome.tmp_left);
-    PT_ASSERT_EQ_INT(size, CHIP_BYTES);
+    PT_ASSERT_EQ_INT(size, FILE_BYTES);
     PT_ASSERT(removed);
 }
 

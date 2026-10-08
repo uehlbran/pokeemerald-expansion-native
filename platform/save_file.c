@@ -261,3 +261,22 @@ void save_file_shutdown(void)
     state.initialised = false;
     state.persistent = false;
 }
+
+/* Not yet implemented: the versioned format's tests come first. */
+bool save_file_loaded_layout(struct save_file_layout *out)
+{
+    (void)out;
+    return false;
+}
+
+struct save_file_layout save_file_native_layout(void)
+{
+    return (struct save_file_layout){ 0, 0 };
+}
+
+uint32_t save_file_crc32(const uint8_t *bytes, size_t length)
+{
+    (void)bytes;
+    (void)length;
+    return 0;
+}
