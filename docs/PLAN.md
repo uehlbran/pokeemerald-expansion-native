@@ -19,11 +19,12 @@ resumes by reading both and first posting what it believes is in flight.
 
 ## Milestone 2 work breakdown
 
-State on 2026-10-08 night: merged on main: foundation, build system,
-timer, transfer_bounds, input, rtc, video/audio/pacer, interrupt, psg,
-ppu, dma, flash/save_file. Fixing: m4a. Working: bios, integration (main,
-frame loop, link, first boot). Next: merge bios and m4a, then the
-integration branch once it links and runs frames.
+State on 2026-10-09: every platform module and the m4a engine are
+merged on main (commit a8c906700d). One worker remains: integration
+(work/integration: main.c, frame loop, game hooks, link script, the
+native link, first headless boot). Next: review and merge it once the
+executable runs frames; then boot debugging to the title screen and
+opening (milestone 2 exit), then milestone 3 (input replay).
 
 Wave 1 (no dependencies between them):
 
