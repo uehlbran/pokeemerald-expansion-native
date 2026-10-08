@@ -502,6 +502,12 @@ static u8 CopySaveSlotData(u16 sectorId, struct SaveSectorLocation *locations)
         if (id == 0)
             gLastWrittenSector = i;
 
+#if PLATFORM_NATIVE
+        // An erased or corrupt sector has an id outside the location table
+        if (id >= NUM_SECTORS_PER_SLOT)
+            continue;
+#endif
+#line 505
         checksum = CalculateChecksum(gReadWriteSector->data, locations[id].size);
 
         // Only copy data for sectors whose signature and checksum fields are correct
