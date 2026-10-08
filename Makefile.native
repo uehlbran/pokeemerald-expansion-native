@@ -145,8 +145,12 @@ ARCH_FLAGS := -m$(BITS) -funsigned-char
 CPP := $(HOST_CC) -E $(ARCH_FLAGS)
 
 INCLUDE_DIRS := include
-INCLUDE_CPP_ARGS := $(INCLUDE_DIRS:%=-iquote %)
-INCLUDE_SCANINC_ARGS := $(INCLUDE_DIRS:%=-I %)
+# The repository root is also on the quote path: the guarded modifications of
+# expansion's files include the platform hooks by that path, for example
+# "platform/dma_hooks.h" from include/gba/macro.h and "platform/rtc.h" from
+# src/siirtc.c (docs/UPSTREAM_MODIFICATIONS.md).
+INCLUDE_CPP_ARGS := $(INCLUDE_DIRS:%=-iquote %) -iquote .
+INCLUDE_SCANINC_ARGS := $(INCLUDE_DIRS:%=-I %) -I .
 
 # PLATFORM_NATIVE is the single guard macro (docs/RESEARCH.md, "Guard macro").
 CPPFLAGS := $(INCLUDE_CPP_ARGS) -Wno-trigraphs -DMODERN=1 -DTESTING=$(TEST) -D$(GAME_VERSION) -std=gnu17 -DPLATFORM_NATIVE=1
