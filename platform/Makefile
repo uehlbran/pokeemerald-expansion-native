@@ -7,7 +7,9 @@
 #   make -C platform clean         remove build/
 #
 # Layout: every platform/*.c is a module and goes into libplatform.a, so a new
-# module needs no edit here. Every platform/test/test_<name>.c is a test
+# module needs no edit here. The m4a engine (platform/m4a/m4a_*.c, the C
+# translation of src/m4a_1.s) goes into libplatform.a too; it calls into
+# expansion's src/m4a.c and src/m4a_tables.c, which the game link provides. Every platform/test/test_<name>.c is a test
 # binary, build/<bits>/test_<name>, linked with:
 #   - platform/<name>.c, if it exists (the module under test);
 #   - the files named on a "// deps:" line near the top of the test, paths
@@ -79,7 +81,7 @@ LDFLAGS_ALL := -m$(BITS) $(SANITIZERS) $(GBA_LDFLAGS)
 # cannot weaken them: leaks detected, no suppressions file, UBSan backtraces.
 override SANITIZER_ENV := ASAN_OPTIONS=detect_leaks=1 LSAN_OPTIONS= UBSAN_OPTIONS=print_stacktrace=1
 
-MODULE_SRCS := $(wildcard *.c)
+MODULE_SRCS := $(wildcard *.c) $(wildcard m4a/m4a_*.c)
 MODULE_OBJS := $(MODULE_SRCS:%.c=$(OBJ_DIR)/%.o)
 TEST_SRCS   := $(wildcard test/test_*.c)
 TEST_NAMES  := $(TEST_SRCS:test/%.c=%)
@@ -133,4 +135,4 @@ test: $(TEST_BINS)
 clean:
 	rm -rf build
 
--include $(wildcard $(OBJ_DIR)/*.d $(OBJ_DIR)/test/*.d)
+-include $(wildcard $(OBJ_DIR)/*.d $(OBJ_DIR)/test/*.d $(OBJ_DIR)/m4a/*.d)
