@@ -1,3 +1,4 @@
+// deps: m4a/m4a_mixer.c m4a/m4a_render.c m4a/m4a_sequencer.c m4a/m4a_note.c m4a/m4a_commands.c m4a/m4a_clear64.c m4a/test_m4a_support.c m4a/test_m4a_c_reference.c ../src/m4a_tables.c
 /*
  * Unit tests for the m4a engine's ply_note (src/m4a_1.s ply_note and
  * ChnVolSetAsm), translated to C in m4a_note.c: note arguments, voice
@@ -8,15 +9,8 @@
  */
 #include <string.h>
 
-#if __has_include("../test/ptest.h")
-#include "../test/ptest.h"
-#else
-#include "ptest_stub.h"
-#endif
-
-#include "test_m4a_support.h"
-
-_Static_assert(sizeof(void *) == 4, "key-split tables are 4-byte pointers in ToneData (32-bit milestone)");
+#include "m4a/test_m4a_support.h"
+#include "ptest.h"
 
 static struct MusicPlayerInfo sPlayer;
 static struct MusicPlayerTrack sTracks[4];
@@ -546,7 +540,6 @@ PTEST(ply_note_key_split_picks_the_voice_from_the_table)
 {
     static const uint8_t args[] = {60, 100, CMD_FINE};
     static uint8_t splitTable[128];
-    const uint8_t *tablePtr = splitTable;
     struct SoundInfo *si = SetUpNote(args);
 
     PT_ASSERT(si != NULL);
@@ -558,7 +551,8 @@ PTEST(ply_note_key_split_picks_the_voice_from_the_table)
     sSubVoices[1].attack = 77;
     sTracks[0].tone.type = TONEDATA_TYPE_SPL;
     sTracks[0].tone.wav = (struct WaveData *)(void *)sSubVoices;
-    memcpy((uint8_t *)&sTracks[0].tone + offsetof(struct ToneData, attack), &tablePtr, sizeof(tablePtr));
+    /* voice_keysplit: the table's address as .4byte in attack..release */
+    PT_ASSERT(M4aTestPutPointer(&sTracks[0].tone.attack, splitTable));
 
     ply_note(24, &sPlayer, &sTracks[0]);
 

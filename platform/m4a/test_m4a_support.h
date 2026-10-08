@@ -3,9 +3,10 @@
  *
  * The engine reaches its state the way the GBA code does: SoundInfo through
  * SOUND_INFO_PTR (IWRAM 0x03007FF0) and the hardware through the I/O
- * registers at 0x04000000 (GBATEK "GBA Memory Map"). The fixture maps those
- * two pages at their GBA addresses, as the native platform will, plus one
- * page below 0x02000000 so the BIOS-region read guard can be exercised.
+ * registers at 0x04000000 (GBATEK "GBA Memory Map"). The test binaries are
+ * linked as platform/Makefile links every test, with gba_regions.ld, so
+ * those regions exist at their GBA addresses; the fixture maps only one
+ * page below 0x02000000, so the BIOS-region read guard can be exercised.
  *
  * It also provides the src/m4a.c functions the engine calls, each recording
  * the call: MidiKeyToFreq and TrkVolPitSet then compute as m4a.c does
@@ -15,6 +16,7 @@
 #ifndef GUARD_PLATFORM_M4A_TEST_SUPPORT_H
 #define GUARD_PLATFORM_M4A_TEST_SUPPORT_H
 
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 
@@ -60,22 +62,23 @@ struct M4aCall
 #define M4A_CALL_LOG_SIZE 256
 
 /*
- * Resets the fixture: maps the pages on first use, zeroes the SoundInfo,
+ * Resets the fixture: maps the low page on first use, zeroes the SoundInfo,
  * points SOUND_INFO_PTR at it with ident ID_NUMBER, installs the recording
  * callbacks, copies the jump table template into gMPlayJumpTable, sets
  * VCOUNT to 160 and clears the DMA registers and the call log. Returns the
- * SoundInfo, or NULL if a page could not be mapped.
+ * SoundInfo, or NULL if the GBA regions are missing or the low page could
+ * not be mapped.
  */
 struct SoundInfo *M4aTestSetUp(void);
 
 /* The four CGB channels SoundInfo.cgbChans points at after M4aTestSetUp. */
 struct CgbChannel *M4aTestCgbChans(void);
 
-size_t M4aTestCallCount(void);
+uint32_t M4aTestCallCount(void);
 int M4aTestCallLogOverflowed(void);
-const struct M4aCall *M4aTestCall(size_t index);
+const struct M4aCall *M4aTestCall(uint32_t index);
 /* Number of logged calls of one kind. */
-size_t M4aTestCountCalls(enum M4aCallKind kind);
+uint32_t M4aTestCountCalls(enum M4aCallKind kind);
 
 /* Hooks run inside the recording doubles, after the call is logged. */
 void M4aTestSetCgbSoundHook(void (*hook)(void));
@@ -149,8 +152,10 @@ int32_t M4aTestWrapS8(int64_t value);
 /* 13379 Hz * 1024, the WaveData.freq of a sample recorded at 13379 Hz. */
 #define NOTE_WAVE_FREQ (13379u << 10)
 
-/* Writes target as the 4-byte little-endian address song data holds (32-bit). */
-void M4aTestPutPointer(uint8_t *dst, const void *target);
+/* Writes target as the 4-byte little-endian address song and voice data
+ * hold; returns false, writing nothing, if target is not below 4 GiB (on a
+ * 64-bit host the non-PIE test binaries keep their data there). */
+bool M4aTestPutPointer(uint8_t *dst, const void *target);
 /* Links chans[0..n) into track's chain in that order. */
 void M4aTestLinkChannels(struct MusicPlayerTrack *track, struct SoundChannel *const *chans, size_t n);
 /* M4aTestSetUp, then an open player with numTracks cleared tracks, trackCount

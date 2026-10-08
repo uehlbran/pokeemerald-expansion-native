@@ -1,3 +1,4 @@
+// deps: m4a/m4a_mixer.c m4a/m4a_render.c m4a/m4a_sequencer.c m4a/m4a_note.c m4a/m4a_commands.c m4a/m4a_clear64.c m4a/test_m4a_support.c m4a/test_m4a_c_reference.c ../src/m4a_tables.c
 /*
  * Unit tests for the m4a engine's mixer (src/m4a_1.s SoundMain, the frame,
  * reverb, channel-loop and envelope parts of SoundMainRAM, and
@@ -7,13 +8,8 @@
  */
 #include <string.h>
 
-#if __has_include("../test/ptest.h")
-#include "../test/ptest.h"
-#else
-#include "ptest_stub.h"
-#endif
-
-#include "test_m4a_support.h"
+#include "m4a/test_m4a_support.h"
+#include "ptest.h"
 
 /* DMA control the VSync leaves on DMA1/DMA2: enable, FIFO timing, 32-bit,
  * repeat (0x8000 | 0x3000 | 0x0400 | 0x0200), GBATEK "GBA DMA Transfers". */

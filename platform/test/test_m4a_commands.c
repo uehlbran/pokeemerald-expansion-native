@@ -1,3 +1,4 @@
+// deps: m4a/m4a_mixer.c m4a/m4a_render.c m4a/m4a_sequencer.c m4a/m4a_note.c m4a/m4a_commands.c m4a/m4a_clear64.c m4a/test_m4a_support.c m4a/test_m4a_c_reference.c ../src/m4a_tables.c
 /*
  * Unit tests for the m4a engine's track commands (src/m4a_1.s
  * MPlayJumpTableCopy's guard chk_adr_r2, ply_fine, goto, patt, pend, rept,
@@ -7,15 +8,8 @@
  */
 #include <string.h>
 
-#if __has_include("../test/ptest.h")
-#include "../test/ptest.h"
-#else
-#include "ptest_stub.h"
-#endif
-
-#include "test_m4a_support.h"
-
-_Static_assert(sizeof(void *) == 4, "song data in these tests holds 4-byte pointers (32-bit milestone)");
+#include "m4a/test_m4a_support.h"
+#include "ptest.h"
 
 static struct MusicPlayerInfo sPlayer;
 static struct MusicPlayerTrack sTracks[4];
@@ -60,7 +54,7 @@ static int SetUpCommand(void)
 PTEST(ply_goto_jumps_to_the_little_endian_address)
 {
     PT_ASSERT(SetUpCommand());
-    M4aTestPutPointer(sSong, sTarget);
+    PT_ASSERT(M4aTestPutPointer(sSong, sTarget));
     ply_goto(&sPlayer, &sTracks[0]);
     PT_ASSERT_EQ_PTR(sTracks[0].cmdPtr, sTarget);
 }
@@ -71,7 +65,7 @@ PTEST(ply_goto_from_the_bios_region_reads_the_low_byte_as_0)
     uintptr_t target = (uintptr_t)sTarget | 0x5A;
 
     PT_ASSERT(SetUpCommand());
-    M4aTestPutPointer(low, (const void *)target);
+    PT_ASSERT(M4aTestPutPointer(low, (const void *)target));
     sTracks[0].cmdPtr = low;
     ply_goto(&sPlayer, &sTracks[0]);
     PT_ASSERT_EQ_U32((uint32_t)(uintptr_t)sTracks[0].cmdPtr, (uint32_t)(target & ~(uintptr_t)0xFF));
@@ -80,7 +74,7 @@ PTEST(ply_goto_from_the_bios_region_reads_the_low_byte_as_0)
 PTEST(ply_patt_calls_a_pattern_and_ply_pend_returns)
 {
     PT_ASSERT(SetUpCommand());
-    M4aTestPutPointer(sSong, sTarget);
+    PT_ASSERT(M4aTestPutPointer(sSong, sTarget));
 
     ply_patt(&sPlayer, &sTracks[0]);
     PT_ASSERT_EQ_U32(sTracks[0].patternLevel, 1);
@@ -101,7 +95,7 @@ PTEST(ply_patt_nests_three_deep_and_a_fourth_ends_the_track)
     PT_ASSERT(SetUpCommand());
     for (int level = 0; level < 3; level++)
     {
-        M4aTestPutPointer(sSong + 8 * level, sSong + 8 * (level + 1));
+        PT_ASSERT(M4aTestPutPointer(sSong + 8 * level, sSong + 8 * (level + 1)));
         ply_patt(&sPlayer, &sTracks[0]);
         PT_ASSERT_EQ_U32(sTracks[0].patternLevel, (uint32_t)(level + 1));
         PT_ASSERT_EQ_PTR(sTracks[0].patternStack[level], sSong + 8 * level + 4);
@@ -118,7 +112,7 @@ PTEST(ply_rept_loops_count_times_then_falls_through)
 {
     PT_ASSERT(SetUpCommand());
     sSong[0] = 2;
-    M4aTestPutPointer(sSong + 1, sTarget);
+    PT_ASSERT(M4aTestPutPointer(sSong + 1, sTarget));
 
     ply_rept(&sPlayer, &sTracks[0]);
     PT_ASSERT_EQ_U32(sTracks[0].repN, 1);
@@ -134,7 +128,7 @@ PTEST(ply_rept_with_count_0_loops_forever)
 {
     PT_ASSERT(SetUpCommand());
     sSong[0] = 0;
-    M4aTestPutPointer(sSong + 1, sTarget);
+    PT_ASSERT(M4aTestPutPointer(sSong + 1, sTarget));
     sTracks[0].repN = 7;
 
     ply_rept(&sPlayer, &sTracks[0]);

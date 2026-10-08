@@ -10,9 +10,9 @@
 #include "test_m4a_c_reference.h"
 #include "test_m4a_support.h"
 
-/* IWRAM page holding SOUND_INFO_PTR (0x03007FF0), GBATEK "GBA Memory Map". */
-#define TEST_IWRAM_PAGE_ADDR 0x03007000u
-/* I/O register page, REG_BASE (GBATEK "GBA I/O Map"). */
+/* IWRAM (GBATEK "GBA Memory Map"), which holds SOUND_INFO_PTR at 0x03007FF0. */
+#define TEST_IWRAM_ADDR      0x03000000u
+/* The I/O register page, REG_BASE (GBATEK "GBA I/O Map"). */
 #define TEST_IO_PAGE_ADDR    0x04000000u
 /* VCOUNT while the native game runs (docs/ARCHITECTURE.md, "The frame"). */
 #define TEST_VCOUNT_IN_VBLANK 160u
@@ -27,7 +27,7 @@ static struct CgbChannel sCgbChans[TEST_NUM_CGB_CHANS];
 static struct M4aCall sCalls[M4A_CALL_LOG_SIZE];
 static size_t sCallCount;
 static int sCallLogOverflow;
-static int sPagesMapped;
+static int sLowPageMapped;
 static void (*sCgbSoundHook)(void);
 static void (*sFadeOutBodyHook)(struct MusicPlayerInfo *);
 
@@ -62,22 +62,36 @@ uint8_t *M4aTestLowPage(void)
     return (uint8_t *)(uintptr_t)TEST_LOW_PAGE_ADDR;
 }
 
-static int MapPageAt(uint32_t address)
+/* gba_regions.ld places the GBA regions; its symbols mark where. */
+extern char gba_linked_iwram_start[];
+extern char gba_linked_io_start[];
+
+static bool GbaRegionsLinked(void)
 {
-    void *wanted = (void *)(uintptr_t)address;
+    if ((uintptr_t)gba_linked_iwram_start != TEST_IWRAM_ADDR || (uintptr_t)gba_linked_io_start != TEST_IO_PAGE_ADDR)
+    {
+        fprintf(stderr, "test_m4a_support: GBA regions linked at %p and %p, not at their GBA addresses\n",
+                (void *)gba_linked_iwram_start, (void *)gba_linked_io_start);
+        return false;
+    }
+    return true;
+}
+
+static int MapLowPage(void)
+{
+    void *wanted = (void *)(uintptr_t)TEST_LOW_PAGE_ADDR;
     void *got = mmap(wanted, TEST_PAGE_SIZE, PROT_READ | PROT_WRITE,
                      MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED_NOREPLACE, -1, 0);
 
     if (got == MAP_FAILED)
     {
         fprintf(stderr, "test_m4a_support: mmap at 0x%08x failed: %s\n",
-                (unsigned)address, strerror(errno));
+                (unsigned)TEST_LOW_PAGE_ADDR, strerror(errno));
         return -1;
     }
     if (got != wanted)
     {
-        fprintf(stderr, "test_m4a_support: mmap at 0x%08x returned %p\n",
-                (unsigned)address, got);
+        fprintf(stderr, "test_m4a_support: mmap at 0x%08x returned %p\n", (unsigned)TEST_LOW_PAGE_ADDR, got);
         if (munmap(got, TEST_PAGE_SIZE) != 0)
             fprintf(stderr, "test_m4a_support: munmap failed: %s\n", strerror(errno));
         return -1;
@@ -85,41 +99,23 @@ static int MapPageAt(uint32_t address)
     return 0;
 }
 
-static void UnmapPageAt(uint32_t address)
+__attribute__((destructor)) static void UnmapLowPage(void)
 {
-    if (munmap((void *)(uintptr_t)address, TEST_PAGE_SIZE) != 0)
-        fprintf(stderr, "test_m4a_support: munmap at 0x%08x failed: %s\n",
-                (unsigned)address, strerror(errno));
-}
-
-__attribute__((destructor)) static void UnmapPages(void)
-{
-    if (!sPagesMapped)
+    if (!sLowPageMapped)
         return;
-    UnmapPageAt(TEST_IWRAM_PAGE_ADDR);
-    UnmapPageAt(TEST_IO_PAGE_ADDR);
-    UnmapPageAt(TEST_LOW_PAGE_ADDR);
-    sPagesMapped = 0;
+    if (munmap((void *)(uintptr_t)TEST_LOW_PAGE_ADDR, TEST_PAGE_SIZE) != 0)
+        fprintf(stderr, "test_m4a_support: munmap at 0x%08x failed: %s\n",
+                (unsigned)TEST_LOW_PAGE_ADDR, strerror(errno));
+    sLowPageMapped = 0;
 }
 
 static int MapPages(void)
 {
-    if (sPagesMapped)
+    if (sLowPageMapped)
         return 0;
-    if (MapPageAt(TEST_IWRAM_PAGE_ADDR) != 0)
+    if (!GbaRegionsLinked() || MapLowPage() != 0)
         return -1;
-    if (MapPageAt(TEST_IO_PAGE_ADDR) != 0)
-    {
-        UnmapPageAt(TEST_IWRAM_PAGE_ADDR);
-        return -1;
-    }
-    if (MapPageAt(TEST_LOW_PAGE_ADDR) != 0)
-    {
-        UnmapPageAt(TEST_IO_PAGE_ADDR);
-        UnmapPageAt(TEST_IWRAM_PAGE_ADDR);
-        return -1;
-    }
-    sPagesMapped = 1;
+    sLowPageMapped = 1;
     return 0;
 }
 
@@ -144,9 +140,9 @@ static void LogCall(enum M4aCallKind kind, const void *ptr0, const void *ptr1,
     call->playerIdentAtCall = playerIdent;
 }
 
-size_t M4aTestCallCount(void)
+uint32_t M4aTestCallCount(void)
 {
-    return sCallCount;
+    return (uint32_t)sCallCount;
 }
 
 int M4aTestCallLogOverflowed(void)
@@ -154,7 +150,7 @@ int M4aTestCallLogOverflowed(void)
     return sCallLogOverflow;
 }
 
-const struct M4aCall *M4aTestCall(size_t index)
+const struct M4aCall *M4aTestCall(uint32_t index)
 {
     static const struct M4aCall sNoCall = {0};
 
@@ -163,9 +159,9 @@ const struct M4aCall *M4aTestCall(size_t index)
     return &sCalls[index];
 }
 
-size_t M4aTestCountCalls(enum M4aCallKind kind)
+uint32_t M4aTestCountCalls(enum M4aCallKind kind)
 {
-    size_t count = 0;
+    uint32_t count = 0;
 
     for (size_t i = 0; i < sCallCount; i++)
     {
@@ -324,12 +320,15 @@ int32_t M4aTestWrapS8(int64_t value)
 
 /* Sequencer fixtures */
 
-void M4aTestPutPointer(uint8_t *dst, const void *target)
+bool M4aTestPutPointer(uint8_t *dst, const void *target)
 {
     uintptr_t bits = (uintptr_t)target;
 
+    if (bits > UINT32_MAX)
+        return false;
     for (size_t i = 0; i < 4; i++)
         dst[i] = (uint8_t)(bits >> (8 * i));
+    return true;
 }
 
 void M4aTestLinkChannels(struct MusicPlayerTrack *track, struct SoundChannel *const *chans, size_t n)

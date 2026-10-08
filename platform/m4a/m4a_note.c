@@ -52,6 +52,21 @@ static uintptr_t TrackAddress(const struct MusicPlayerTrack *track)
     return (uintptr_t)track;
 }
 
+/*
+ * voice_keysplit (asm/macros/music_voice.inc) stores the key-split table's
+ * address as .4byte in attack..release, little-endian; the assembly loads
+ * it as one word. Flagged 64-bit: a 4-byte address, which on a 64-bit host
+ * holds only for data linked below 4 GiB, as the native build links it
+ * (non-PIE, image at 0x40000000).
+ */
+static const u8 *KeySplitTable(const struct ToneData *tone)
+{
+    u32 address = (u32)tone->attack | ((u32)tone->decay << 8) | ((u32)tone->sustain << 16)
+                | ((u32)tone->release << 24);
+
+    return (const u8 *)(uintptr_t)address;
+}
+
 /* Key, velocity and gate-time extension, each present only while the
  * bytes stay below MPLAY_CMD_FIRST. */
 static void ReadNoteArguments(struct MusicPlayerTrack *track)
@@ -85,13 +100,7 @@ static bool SelectVoice(const struct MusicPlayerTrack *track, struct NoteVoice *
         return true;
 
     if (tone->type & TONEDATA_TYPE_SPL)
-    {
-        /* voice_keysplit keeps the table pointer in attack..release: flagged 64-bit */
-        const u8 *keySplitTable;
-
-        memcpy(&keySplitTable, (const u8 *)tone + offsetof(struct ToneData, attack), sizeof(keySplitTable));
-        index = keySplitTable[track->key];
-    }
+        index = KeySplitTable(tone)[track->key];
     /* a rhythm or key-split voice's wav points to its voicegroup */
     group = (const struct ToneData *)(const void *)tone->wav;
     voice->tone = &group[index];

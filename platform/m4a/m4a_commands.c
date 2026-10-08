@@ -28,7 +28,9 @@
 /* MPlayJumpTableCopy copies the 36 entries of gMPlayJumpTableTemplate. */
 #define MPLAY_JUMP_TABLE_SIZE 36u
 
-/* Song data holds addresses as 4 bytes, little-endian (flagged 64-bit). */
+/* Song data holds addresses as 4 bytes, little-endian. Flagged 64-bit: on a
+ * 64-bit host that holds only for data linked below 4 GiB, as the native
+ * build links it (non-PIE, image at 0x40000000). */
 #define SONG_ADDRESS_SIZE 4u
 /* REPT: a count byte, then the address to repeat from. */
 #define REPT_ARGS_SIZE (1u + SONG_ADDRESS_SIZE)

@@ -1,3 +1,4 @@
+// deps: m4a/m4a_mixer.c m4a/m4a_render.c m4a/m4a_sequencer.c m4a/m4a_note.c m4a/m4a_commands.c m4a/m4a_clear64.c m4a/test_m4a_support.c m4a/test_m4a_c_reference.c ../src/m4a_tables.c
 /*
  * Unit tests for the m4a engine's channel rendering (the sample loops of
  * src/m4a_1.s SoundMainRAM, SoundMainRAM_Unk1 and SoundMainRAM_Unk2),
@@ -9,13 +10,8 @@
  */
 #include <string.h>
 
-#if __has_include("../test/ptest.h")
-#include "../test/ptest.h"
-#else
-#include "ptest_stub.h"
-#endif
-
-#include "test_m4a_support.h"
+#include "m4a/test_m4a_support.h"
+#include "ptest.h"
 
 static uint8_t sExpected[PCM_DMA_BUF_SIZE * 2];
 

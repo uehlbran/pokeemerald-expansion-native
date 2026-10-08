@@ -26,16 +26,16 @@ instruction. The reference ports' C engines were not used.
 | File | Contents |
 |---|---|
 | `m4a_engine.h` | Internal header: constants the C header lacks, channel-chain accessors, ARM arithmetic helpers, shared declarations. Includes `m4a_layout.h`. |
-| `m4a_layout.h` | The struct-layout contract: `_Static_assert` on every offset and size the assembly hard-codes. |
+| `m4a_layout.h` | The struct-layout contract: `_Static_assert` on every offset and size the assembly hard-codes, in two groups (see below). |
 | `m4a_mixer.c` | `SoundMain`, `m4aSoundVSync`, and `SoundMainRAM` up to the samples: frame selection, reverb or clearing, the channel loop, the envelope. |
 | `m4a_render.c`, `m4a_render.h` | One channel's samples: the sample loops of `SoundMainRAM`, `SoundMainRAM_Unk1` (reversed and compressed samples) and `SoundMainRAM_Unk2` (DPCM decoding). |
 | `m4a_sequencer.c` | `MPlayMain`, `TrackStop`, `RealClearChain`, `ChnVolSetAsm`, `clear_modM`, `umul3232H32`. |
 | `m4a_note.c` | `ply_note`: voice selection, channel allocation and stealing, channel start. |
 | `m4a_commands.c` | `MPlayJumpTableCopy` and the `ply_*` track commands, with the BIOS-read guard `chk_adr_r2`. |
 | `m4a_clear64.c` | `SoundMainBTM`, in its own file (see "Notes for integration"). |
-| `test_m4a_*.c` | Unit tests: mixer, render, sequencer (`test_m4a_engine.c`), note, commands. |
+| `../test/test_m4a_*.c` | Unit tests: mixer, render, sequencer (`test_m4a_engine.c`), note, commands. They live with the other platform tests and follow their `// deps:` convention. |
 | `test_m4a_support.c/.h`, `test_m4a_c_reference.c/.h` | Test fixtures and the `src/m4a.c` functions the tests need. |
-| `ptest_stub.h` | Private copy of the `platform/test/ptest.h` API until that header lands. Delete it at merge; the tests switch to the real header automatically through `__has_include`. |
+| `Makefile` | Standalone build of the engine and its tests (`BITS=32` or `64`). |
 | `difftest/` | Differential test of the C against the original assembly (see "Tests"). |
 
 ## Assembly symbol to C
@@ -124,14 +124,19 @@ The assembly addresses `SoundInfo`, `SoundChannel`, `CgbChannel`,
 numeric offsets in `constants/m4a_constants.inc`. The C uses the structs
 in `include/gba/m4a_internal.h`. `m4a_layout.h` asserts, with
 `_Static_assert` and `offsetof`, every offset and size the assembly
-depends on, plus a few contracts it implies:
+depends on, in two groups. The first holds on every target: offsets
+before any pointer, and the relations the C itself relies on. The second
+is the assembly's exact layout, which the C structs have only where
+pointers are 4 bytes (`#if UINTPTR_MAX == UINT32_MAX`); everything in it
+is flagged 64-bit. It also asserts a few contracts the layout implies:
 
 - `SoundMainRAM` reads `masterVolume` as `[soundInfo, #o_SoundChannel_release]`,
   which works because both offsets are 7.
 - `Clear64byte` clears 64 bytes: all of a `MusicPlayerInfo`, and a
   starting `MusicPlayerTrack` up to its `cmdPtr`.
 - `sound/music_player_table.inc` reserves `TRACK_SIZE` 0x50 per track.
-- A key-split voice keeps its table pointer in `ToneData.attack..release`.
+- A key-split voice keeps its table's address in `ToneData.attack..release`
+  as `.4byte`; the engine reads those four bytes as a little-endian address.
 
 A track's channel chain mixes `SoundChannel` and `CgbChannel` nodes. The
 offsets the two structs share are asserted in `m4a_engine.h`. A node of
@@ -178,8 +183,11 @@ test.
 
 ## Flagged 64-bit
 
-This milestone is 32-bit. The 64-bit milestone must revisit the
-following.
+This milestone is 32-bit. The engine and its unit tests also build and
+pass with `BITS=64`, on data laid out as C structs. The game's assembled
+sound data keeps the 4-byte layout, so on 64-bit the C structs and that
+data disagree; the 64-bit milestone must reconcile them. It must revisit
+the following.
 
 - **Struct layout.** Every offset after the first pointer in each struct,
   and every struct size, depends on the pointer size. `m4a_layout.h`
@@ -187,12 +195,13 @@ following.
   `sound/music_player_table.inc` and the voicegroup stride of 12.
 - **`Clear64byte`.** It clears 64 bytes, which assumes
   `sizeof(MusicPlayerInfo) == 64` and `offsetof(MusicPlayerTrack, cmdPtr) == 64`.
-- **Key-split voices.** They store a 4-byte table pointer in
-  `ToneData.attack..release` (`voice_keysplit`). `SelectVoice` copies it
-  with `memcpy` (`m4a_note.c`).
+- **Key-split voices.** They store a 4-byte table address in
+  `ToneData.attack..release` (`voice_keysplit`). `KeySplitTable` reads it
+  as a 32-bit address (`m4a_note.c`).
 - **Song data.** It holds 4-byte addresses (`GOTO`, `PATT`, `REPT`).
   `JumpToAddressAt` converts the 32-bit value through `uintptr_t`
-  (`m4a_commands.c`).
+  (`m4a_commands.c`). On a 64-bit host both hold only for data linked
+  below 4 GiB, which the non-PIE build at 0x40000000 provides.
 - **Compressed samples.** `currentPointer` holds a sample index for them,
   stored as `uintptr_t` (`m4a_render.c`).
 - **Track tie-break.** Ties between equal priorities compare track
@@ -206,7 +215,10 @@ following.
 ## Notes for integration
 
 - **Leave `src/m4a_1.s` out of the native build** and link these files
-  instead.
+  instead. `platform/Makefile` already puts `m4a/m4a_*.c` into
+  `libplatform.a` and runs `test/test_m4a_*.c` with the other platform
+  tests. The engine's calls into `src/m4a.c` and `src/m4a_tables.c` are
+  resolved by the game link.
 - **`SoundMainBTM`'s prototype.** `include/gba/m4a_internal.h` declares
   `void SoundMainBTM(void)`, but every caller passes the address to clear
   (`Clear64byte` calls it as `void (*)(void *)`). The definition takes the
@@ -238,22 +250,25 @@ following.
 ## Tests
 
 ```
-make -C platform/m4a test        # 131 unit tests, five binaries
-make -C platform/m4a/difftest run  # needs arm-none-eabi-gcc (newlib) and qemu-arm
+make -C platform test [BITS=64]        # every platform test, the 131 m4a ones included
+make -C platform/m4a test [BITS=64]    # the m4a tests alone, five binaries
+make -C platform/m4a/difftest run      # needs arm-none-eabi-gcc (newlib) and qemu-arm
 ```
 
-**Build flags.** The unit tests build with `-m32 -std=gnu17 -Wall -Wextra
--Wshadow -Wstrict-prototypes -Wconversion -Werror` and run under
-AddressSanitizer, UndefinedBehaviorSanitizer and LeakSanitizer.
-Expansion's headers are system headers, but they come in with
-`-idirafter` instead of `-isystem`: `-isystem` searches them before
-libc's, and expansion's `include/strings.h` then shadows the
+**Build flags.** The tests build as `platform/Makefile` builds every
+test: `-m32` or `-m64`, `-std=gnu17 -Wall -Wextra -Wshadow
+-Wstrict-prototypes -Wconversion -Werror`, under AddressSanitizer,
+UndefinedBehaviorSanitizer and LeakSanitizer, linked non-PIE with
+`gba_regions.ld`. Expansion's headers are system headers, but they come
+in with `-idirafter` instead of `-isystem`: `-isystem` searches them
+before libc's, and expansion's `include/strings.h` then shadows the
 `<strings.h>` that glibc's `<string.h>` includes.
 
-**Fixtures.** The fixtures map the IWRAM page holding `SOUND_INFO_PTR`
-and the I/O page at their GBA addresses, as the native platform does.
-They also map one page below 0x02000000 for the BIOS-read guard. They
-link `src/m4a_tables.c` for the engine's tables. `src/m4a.c` cannot be
+**Fixtures.** The GBA regions (IWRAM with `SOUND_INFO_PTR`, the I/O
+registers) exist at their GBA addresses because `gba_regions.ld` puts
+them there, as for every platform test. The fixture maps one more page
+below 0x02000000 for the BIOS-read guard, and the tests link
+`src/m4a_tables.c` for the engine's tables. `src/m4a.c` cannot be
 built standalone (it includes `global.h` and an ARM `swi`), so the tests
 supply its functions: `MidiKeyToFreq` and `TrkVolPitSet` transcribed in
 `test_m4a_c_reference.c`, the others recording their calls.
@@ -269,7 +284,7 @@ products.
 - for ARM, with the original `src/m4a_1.s`, as a bare-metal newlib
   program run under `qemu-arm` with the IWRAM and I/O pages linked at
   their GBA addresses;
-- natively, with this C, under the sanitizers.
+- natively (32-bit), with this C, under the sanitizers.
 
 It runs 300 random mixer scenarios and 60 random sequencer scenarios.
 The mixer scenarios cover every channel type, envelope phase, reverb,

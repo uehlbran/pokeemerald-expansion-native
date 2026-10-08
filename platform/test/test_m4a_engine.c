@@ -1,3 +1,4 @@
+// deps: m4a/m4a_mixer.c m4a/m4a_render.c m4a/m4a_sequencer.c m4a/m4a_note.c m4a/m4a_commands.c m4a/m4a_clear64.c m4a/test_m4a_support.c m4a/test_m4a_c_reference.c ../src/m4a_tables.c
 /*
  * Unit tests for the m4a engine's sequencer (src/m4a_1.s umul3232H32,
  * SoundMainBTM, RealClearChain, MPlayJumpTableCopy, TrackStop, MPlayMain
@@ -8,13 +9,8 @@
  */
 #include <string.h>
 
-#if __has_include("../test/ptest.h")
-#include "../test/ptest.h"
-#else
-#include "ptest_stub.h"
-#endif
-
-#include "test_m4a_support.h"
+#include "m4a/test_m4a_support.h"
+#include "ptest.h"
 
 extern void *const gMPlayJumpTableTemplate[];
 
@@ -341,7 +337,7 @@ PTEST(MPlayMain_starts_a_track_runs_commands_and_pauses_at_the_end)
     PT_ASSERT_EQ_U32(M4aTestCall(0)->kind, CALL_FADE_OUT_BODY);
     PT_ASSERT_EQ_U32(M4aTestCall(1)->kind, CALL_CLEAR_64_BYTE);
     PT_ASSERT_EQ_PTR(M4aTestCall(1)->ptr0, &sTracks[0]);
-    PT_ASSERT_EQ_U32(sTracks[0].pan, 0);
+    PT_ASSERT_EQ_INT(sTracks[0].pan, 0); /* s8, relative to C_V: compared sign-extended */
     PT_ASSERT_EQ_U32(sTracks[0].bendRange, 2);
     PT_ASSERT_EQ_U32(sTracks[0].volX, 64);
     PT_ASSERT_EQ_U32(sTracks[0].lfoSpeed, 22);
@@ -709,7 +705,7 @@ PTEST(MPlayMain_pitch_below_key_0_is_clamped_to_key_0)
 
     MPlayMain(&sPlayer);
 
-    for (size_t i = 0; i < M4aTestCallCount(); i++)
+    for (uint32_t i = 0; i < M4aTestCallCount(); i++)
     {
         if (M4aTestCall(i)->kind == CALL_MIDI_KEY_TO_FREQ)
             PT_ASSERT_EQ_U32(M4aTestCall(i)->arg0, 0);

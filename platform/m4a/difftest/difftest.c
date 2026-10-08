@@ -436,7 +436,6 @@ static void PutAddress(uint8_t *dst, const void *target)
 
 static void MakeVoices(void)
 {
-    const uint8_t *table = sSplitTable;
     struct WaveData *loopWave = MakeWave(0, 0, 500, 1, 100, 13379u << 10);
     struct WaveData *shortWave = MakeWave(1, 0, 300, 0, 0, 10512u << 10);
     struct WaveData *cmpWave = MakeWave(5, 1, CMP_WAVE_SAMPLES, 0, 0, 10512u << 10);
@@ -454,7 +453,7 @@ static void MakeVoices(void)
     sVoices[5] = (struct ToneData){4, 60, 0, 0, (struct WaveData *)(uintptr_t)0, 0, 1, 8, 2};
     sVoices[6] = (struct ToneData){TONEDATA_TYPE_RHY, 0, 0, 0, (struct WaveData *)(void *)sDrums, 0, 0, 0, 0};
     sVoices[7] = (struct ToneData){TONEDATA_TYPE_SPL, 0, 0, 0, (struct WaveData *)(void *)sSplitVoices, 0, 0, 0, 0};
-    memcpy(&sVoices[7].attack, &table, sizeof(table));
+    PutAddress(&sVoices[7].attack, sSplitTable); /* voice_keysplit: .4byte in attack..release */
     sVoices[8] = (struct ToneData){TYPE_REV, 60, 0, 0, shortWave, 255, 0, 255, 200};
     sVoices[9] = (struct ToneData){TYPE_CMP, 60, 0, 0, cmpWave, 255, 0, 255, 0};
     sVoices[10] = (struct ToneData){TYPE_CMP | TONEDATA_TYPE_FIX, 60, 0, 0, cmpLoopWave, 255, 250, 200, 150};
