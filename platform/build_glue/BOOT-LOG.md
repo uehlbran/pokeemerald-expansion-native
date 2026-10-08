@@ -97,6 +97,21 @@ one frame late.
     unwinds to main as designed. The tests table is packed: 6294 entries of
     20 bytes, `test_test_runner.o`'s first.
 
+12. **The sanitized TEST=1 executable crashed before `main`** (SEGV in an
+    ASan module constructor, `_sub_I_00099_1` of `test/bag.o`). Its `call
+    __asan_init` had been assembled as the event script command `call`
+    (the byte 04h and a word): `include/test/overworld_script.h` gives the
+    tests' inline assembly the event macros through one top-level
+    `.include`, and GNU as looks macros up before instructions, so every
+    `call` (and `nop`, `lock`, `inc`) gcc emitted after it in a test object
+    became script bytes. The unsanitized TEST=1 build had the same broken
+    code and only got past it by exiting at frame 1. Fixed:
+    `platform/build_glue/overworld_macros.py` asks the host assembler which
+    macro names are instructions, purges those at the end of the top-level
+    include and puts them in two files that each `OVERWORLD_SCRIPT` block
+    includes around its script (`Makefile.native`; the header's native
+    branch). `test/bag.o` now has 110 `call` instructions instead of 2.
+
 ## Soft reset
 
 11. Exercised under gdb by holding A+B+Start+Select from frame 300

@@ -200,8 +200,9 @@ endif
 # function's locals stay where they are after it returns, and the runner
 # writes results into them (test/test_runner_battle.c, InvokeTestFunction;
 # platform/game_hooks.h, PlatformCallWithStack). So the test objects are
-# compiled without that detection; everything else keeps it.
-GAME_TEST_SANITIZER_FLAGS := -fsanitize-address-use-after-return=never
+# compiled without that detection (GCC's parameter; GCC 13 has no
+# -fsanitize-address-use-after-return); everything else keeps it.
+GAME_TEST_SANITIZER_FLAGS := --param=asan-use-after-return=0
 
 # preproc's COMPOUND_STRING output relies on '@' being the ARM assembler's
 # comment character; this rewrites it for x86 (see the script's comment).
@@ -464,14 +465,28 @@ ifeq ($(TEST),1)
 # macros through `.include`. Its native branch includes this one file
 # instead: the same files flattened by preproc (which also drops the '@'
 # comments) and rewritten by the asm filter, found on the test objects'
-# assembler include path.
+# assembler include path. The few macros named like x86 instructions
+# (call, nop, lock, inc) would replace those instructions in the rest of the
+# object, so overworld_macros.py purges them at the end of that file and
+# puts them in two more, which each OVERWORLD_SCRIPT block includes around
+# its script (see the script's comment).
+OVERWORLD_SCRIPT_FLAT := $(TEST_BUILDDIR)/overworld_script_flat.inc
 OVERWORLD_SCRIPT_MACROS := $(TEST_BUILDDIR)/overworld_script_macros.inc
+OVERWORLD_SCRIPT_X86_MACROS := $(TEST_BUILDDIR)/overworld_script_x86_macros.inc
+OVERWORLD_SCRIPT_X86_PURGE := $(TEST_BUILDDIR)/overworld_script_x86_purge.inc
 OVERWORLD_SCRIPT_MACRO_SRCS := constants/gba_constants.inc asm/macros/asm.inc asm/macros/event.inc
+OVERWORLD_MACROS_SCRIPT := platform/build_glue/overworld_macros.py
 
-$(OVERWORLD_SCRIPT_MACROS): $(OVERWORLD_SCRIPT_MACRO_SRCS) $(DATA_ASM_SUBDIR)/script_cmd_table.inc $(DATA_ASM_SUBDIR)/specials.inc $(ASM_FILTER_CHECKED)
+$(OVERWORLD_SCRIPT_FLAT): $(OVERWORLD_SCRIPT_MACRO_SRCS) $(DATA_ASM_SUBDIR)/script_cmd_table.inc $(DATA_ASM_SUBDIR)/specials.inc $(ASM_FILTER_CHECKED)
 	printf '.include "%s"\n' $(OVERWORLD_SCRIPT_MACRO_SRCS) | $(PREPROC) -i $(@:.inc=.s) charmap.txt | $(ASM_FILTER) > $@
 
-$(TEST_OBJS): $(OVERWORLD_SCRIPT_MACROS)
+$(OVERWORLD_SCRIPT_MACROS): $(OVERWORLD_SCRIPT_FLAT) $(OVERWORLD_MACROS_SCRIPT)
+	$(PYTHON) -I $(OVERWORLD_MACROS_SCRIPT) --self-test
+	$(PYTHON) -I $(OVERWORLD_MACROS_SCRIPT) --as "$(HOST_AS) --$(BITS)" $< $@ $(OVERWORLD_SCRIPT_X86_MACROS) $(OVERWORLD_SCRIPT_X86_PURGE)
+
+$(OVERWORLD_SCRIPT_X86_MACROS) $(OVERWORLD_SCRIPT_X86_PURGE): $(OVERWORLD_SCRIPT_MACROS) ;
+
+$(TEST_OBJS): $(OVERWORLD_SCRIPT_MACROS) $(OVERWORLD_SCRIPT_X86_MACROS) $(OVERWORLD_SCRIPT_X86_PURGE)
 $(TEST_OBJS): CFLAGS += -Wa,-I,$(TEST_BUILDDIR)
 ifeq ($(SANITIZE),1)
 $(TEST_OBJS): CFLAGS += $(GAME_TEST_SANITIZER_FLAGS)

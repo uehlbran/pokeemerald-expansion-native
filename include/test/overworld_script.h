@@ -31,14 +31,20 @@
 // instruction stream and reads pc to find it. Here the script goes to a
 // read-only data section and its address is loaded as an absolute
 // constant, which needs the non-PIE link (64-bit: below 2 GiB).
+// The script macros named like x86 instructions (call, nop, lock, inc)
+// exist only between the two .include lines, so the instructions the
+// compiler emits elsewhere stay instructions (Makefile.native,
+// OVERWORLD_SCRIPT_X86_MACROS).
 #define OVERWORLD_SCRIPT(...) \
     ({ \
         const u8 *_script; \
         asm(".pushsection .rodata.overworld_script, \"a\"\n" \
+            ".include \"overworld_script_x86_macros.inc\"\n" \
             "1:\n" \
             STR(__VA_ARGS__) \
             "\n" \
             "end\n" \
+            ".include \"overworld_script_x86_purge.inc\"\n" \
             ".popsection\n" \
             "mov $1b, %0\n" \
         : "=r" (_script)); \
