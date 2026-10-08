@@ -3,11 +3,10 @@
  * in place of its control-flow assembly (game_hooks.h says which, and why
  * each behaves as it does).
  *
- * Stands in for ARM and Thumb routines, not hardware, except the IRQ return
- * slot: GBATEK "BIOS RAM Usage" puts the BIOS's IRQ stack at the top of
- * IWRAM, where the test runner rewrites the saved return address. Followed:
- * expansion's own sources (test/test_runner.c, test/test_runner_battle.c,
- * src/main.c, src/multiboot.c); no reference port does these.
+ * Stands in for ARM and Thumb routines, not hardware; the debug registers
+ * the two debug hooks reach are debug_channel's. Followed: expansion's own
+ * sources (test/test_runner.c, test/test_runner_battle.c, src/main.c,
+ * src/multiboot.c); no reference port does these.
  *
  * Stack switching uses POSIX ucontext (getcontext, makecontext,
  * swapcontext, setcontext), which glibc provides on both widths, with
@@ -16,6 +15,8 @@
  * stack is current and does not misreport the switch.
  */
 #include "game_hooks.h"
+
+#include "debug_channel.h"
 
 #include <stdbool.h>
 #include <stddef.h>
@@ -26,11 +27,6 @@
 #ifdef __SANITIZE_ADDRESS__
 #include <sanitizer/common_interface_defs.h>
 #endif
-
-/* GBATEK "BIOS RAM Usage": 3007FA0h is the IRQ stack top; the BIOS IRQ
- * handler pushes r0-r3, r12 and lr below it, so the saved lr is at 3007F9Ch.
- * test/test_runner.c names it IRQ_LR. */
-#define GAME_HOOKS_IRQ_LR_ADDRESS UINT32_C(0x03007F9C)
 
 /* x86-64's ABI wants the stack 16-byte aligned (i386's GCC also keeps 16). */
 #define GAME_HOOKS_STACK_ALIGNMENT 16
@@ -162,13 +158,14 @@ void PlatformJumpToAgbMainLoop(void)
     game_hooks_unwind(&hooks.agb_main_loop, 1);
 }
 
-void game_hooks_take_irq_return(void)
+bool PlatformDebugOpen(void)
 {
-    volatile uint32_t *irq_lr = (volatile uint32_t *)(uintptr_t)GAME_HOOKS_IRQ_LR_ADDRESS;
-    if (*irq_lr == 0)
-        return;
-    *irq_lr = 0;
-    PlatformJumpToAgbMainLoop();
+    return debug_channel_open();
+}
+
+void PlatformDebugSend(uint16_t flags)
+{
+    debug_channel_send(flags);
 }
 
 /* Calls entry below GAME_HOOKS_CALL_STACK_GAP bytes of its own frame. Not

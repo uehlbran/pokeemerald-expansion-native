@@ -12,7 +12,8 @@
  * installed in a table laid out like expansion's gIntrTable record what
  * VCOUNT and DISPSTAT read when the interrupt controller calls them.
  */
-// deps: lcd_status.c gba_memmap.c interrupt.c timer.c dma.c transfer_bounds.c ppu.c ppu_bg.c ppu_obj.c ppu_window.c ppu_blend.c psg.c psg_channel.c psg_square.c psg_wave.c psg_noise.c audio.c video.c input.c flash.c save_file.c frame_pacer.c game_hooks.c m4a_output.c sound_mix.c
+// deps: lcd_status.c gba_memmap.c interrupt.c timer.c dma.c transfer_bounds.c ppu.c ppu_bg.c ppu_obj.c ppu_window.c ppu_blend.c psg.c psg_channel.c psg_square.c psg_wave.c psg_noise.c audio.c video.c input.c flash.c save_file.c frame_pacer.c game_hooks.c debug_channel.c m4a_output.c sound_mix.c
+#include <setjmp.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -30,6 +31,7 @@
 #include "flash.h"
 #include "frame.h"
 #include "frame_pacer.h"
+#include "game_hooks.h"
 #include "gba_memmap.h"
 #include "input.h"
 #include "interrupt.h"
@@ -46,12 +48,15 @@
 #define KEYINPUT_OFFSET UINT32_C(0x130)
 #define TM0CNT_L_OFFSET UINT32_C(0x100)
 #define TM0CNT_H_OFFSET UINT32_C(0x102)
+#define TM2CNT_L_OFFSET UINT32_C(0x108)
+#define TM2CNT_H_OFFSET UINT32_C(0x10A)
 
 /* IE/IF bits (GBATEK "GBA Interrupt Control"). */
 #define IE_VBLANK UINT16_C(0x0001)
 #define IE_HBLANK UINT16_C(0x0002)
 #define IE_VCOUNT UINT16_C(0x0004)
 #define IE_TIMER0 UINT16_C(0x0008)
+#define IE_TIMER2 UINT16_C(0x0020)
 
 /* TMxCNT_H: bit 6 IRQ enable, bit 7 start (GBATEK "GBA Timers"). */
 #define TIMER_START_WITH_IRQ UINT16_C(0x00C0)
@@ -73,7 +78,7 @@ static volatile uint16_t *io(uint32_t offset)
     return (volatile uint16_t *)(uintptr_t)(GBA_IO_BASE + offset);
 }
 
-enum event_kind { EVENT_VCOUNT, EVENT_HBLANK, EVENT_VBLANK, EVENT_TIMER0 };
+enum event_kind { EVENT_VCOUNT, EVENT_HBLANK, EVENT_VBLANK, EVENT_TIMER0, EVENT_TIMER2 };
 
 struct event {
     enum event_kind kind;
@@ -97,10 +102,21 @@ static void on_vblank(void) { record(EVENT_VBLANK); }
 static void on_timer0(void) { record(EVENT_TIMER0); }
 static void on_nothing(void) {}
 
+/* Set by a test: Timer 2's handler times the test out as the test runner's
+ * Intr_Timer2 does natively, by jumping to AgbMainLoop. */
+static bool timer2_times_out;
+
+static void on_timer2(void)
+{
+    record(EVENT_TIMER2);
+    if (timer2_times_out)
+        PlatformJumpToAgbMainLoop();
+}
+
 /* src/main.c gIntrTableTemplate's order (interrupt.h). */
 static interrupt_handler const table[INTERRUPT_TABLE_LENGTH] = {
     on_vcount, on_nothing, on_nothing, on_hblank, on_vblank, on_timer0, on_nothing,
-    on_nothing, on_nothing, on_nothing, on_nothing, on_nothing, on_nothing, on_nothing,
+    on_timer2, on_nothing, on_nothing, on_nothing, on_nothing, on_nothing, on_nothing,
 };
 
 static int count_events(enum event_kind kind)
@@ -353,6 +369,56 @@ PTEST(timers_advance_one_frame_of_cycles)
     PT_ASSERT_EQ_U32(*io(TM0CNT_L_OFFSET), 280896u % 0x10000u);
     PT_ASSERT_EQ_INT(count_events(EVENT_TIMER0), 1);
     stop();
+}
+
+/* VBlankIntrWait waiting a frame on the battle runner's stack. */
+static void run_frame_on_the_battle_stack(void *context)
+{
+    (void)context;
+    (void)frame_run();
+}
+
+static jmp_buf exit_target;
+
+PTEST(a_timeout_jump_from_the_timer_handler_leaves_the_frame)
+{
+    /* Timer 2 overflows within the frame (step 2, after the drawn lines); its
+     * handler jumps to AgbMainLoop, once from the game's stack and once from
+     * the battle runner's. The rest of each frame is not run; the next
+     * frame_run is a whole frame. */
+    volatile int arrivals = 0;
+    PT_ASSERT(start(0, NULL, NULL));
+    PT_ASSERT_EQ_INT(game_hooks_init(&exit_target), 0);
+    *io(GBA_IE_OFFSET) = IE_VBLANK | IE_TIMER2;
+    *io(TM2CNT_L_OFFSET) = 0;
+    *io(TM2CNT_H_OFFSET) = TIMER_START_WITH_IRQ; /* F/1: overflows four times a frame */
+    timer2_times_out = true;
+    setjmp(*PlatformAgbMainLoopTarget());
+    arrivals++;
+    if (arrivals == 1)
+        (void)frame_run();
+    else if (arrivals == 2)
+        PlatformCallWithStack(run_frame_on_the_battle_stack, NULL, NULL);
+    int vblanks_in_abandoned_frames = count_events(EVENT_VBLANK);
+    int timeouts = count_events(EVENT_TIMER2);
+    uint32_t frames_before = frame_count();
+    uint16_t ime = *io(GBA_IME_OFFSET);
+    timer2_times_out = false;
+    event_count = 0;
+    enum frame_result result = frame_run();
+    int vblanks = count_events(EVENT_VBLANK);
+    uint16_t vcount = *io(LCD_VCOUNT_OFFSET);
+    game_hooks_shutdown();
+    stop();
+    PT_ASSERT_EQ_INT(arrivals, 3);
+    PT_ASSERT_EQ_INT(timeouts, 2);
+    PT_ASSERT_EQ_INT(vblanks_in_abandoned_frames, 0);
+    PT_ASSERT_EQ_U32(frames_before, 0);
+    PT_ASSERT_EQ_U32(ime, GBA_IME_ENABLE);
+    PT_ASSERT_EQ_INT(result, FRAME_CONTINUE);
+    PT_ASSERT_EQ_INT(vblanks, 1);
+    PT_ASSERT_EQ_U32(vcount, LCD_LINE_GAME_LOGIC);
+    PT_ASSERT_EQ_U32(frame_count(), 1);
 }
 
 static volatile uint16_t hblank_destination;

@@ -37,8 +37,9 @@
  *  8. The pacer holds the GBA frame rate (frame_pacer_wait).
  *  9. The frame count; with a frame limit, the last frame ends the loop;
  *     at the end of the loop the screenshot, if asked for, is written.
- * After every dispatch, game_hooks_take_irq_return honours a handler that
- * redirected its return (the test runner's timeout).
+ * A handler may leave the frame by a jump (the test runner's timeout,
+ * PlatformJumpToAgbMainLoop): the rest of the frame is not run, and the next
+ * frame_run starts a new frame from line 0.
  *
  * Not simulated: lines 162..227 one by one, so their H-Blank interrupts and
  * a V-Counter setting of 162..227 never fire (expansion sets 150, and its
