@@ -169,15 +169,19 @@ static void draw_bgs(const struct ppu_regs *regs, enum bg_mode mode, uint16_t li
 
 /* ---- composition ---- */
 
+/* GBATEK "LCD I/O Color Special Effects": effects look at the top-most
+ * pixel (1st target) and the one directly under it (2nd target). */
+#define DOT_TARGETS 2u
+
 /* The first two visible pixels of a dot, front to back. */
 struct dot_stack {
-    struct ppu_target pixel[2];
+    struct ppu_target pixel[DOT_TARGETS];
     unsigned count;
 };
 
 static void stack_push(struct dot_stack *stack, uint16_t colour, enum ppu_layer layer)
 {
-    if (stack->count < 2)
+    if (stack->count < DOT_TARGETS)
         stack->pixel[stack->count++] = (struct ppu_target){ colour, layer };
 }
 
@@ -188,7 +192,7 @@ static struct ppu_pixel_targets dot_targets(const struct line_layers *layers, un
     const struct ppu_obj_line *obj = &layers->obj;
     bool obj_pending = (window & (1u << PPU_LAYER_OBJ)) && obj->colour[x] != PPU_TRANSPARENT;
     struct dot_stack stack = { .count = 0 };
-    for (unsigned i = 0; i < layers->bg_count && stack.count < 2; i++) {
+    for (unsigned i = 0; i < layers->bg_count && stack.count < DOT_TARGETS; i++) {
         const unsigned bg = layers->order[i];
         if (obj_pending && obj->priority[x] <= layers->bg_priority[bg]) {
             stack_push(&stack, obj->colour[x], PPU_LAYER_OBJ);
