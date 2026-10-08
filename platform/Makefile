@@ -49,8 +49,11 @@ override SANITIZERS := -fsanitize=address,undefined -fno-sanitize-recover=all -f
 # and menu.h, so with -isystem glibc's <string.h> picks up expansion's
 # strings.h and nothing compiles. -idirafter searches it after them; expansion's
 # headers are reached by their own paths, e.g. <gba/defines.h>. Our own
-# headers come from -I.
-INCLUDES := -I. -idirafter ../include
+# headers come from -I. The repository root is on the quote path (-iquote ..)
+# because expansion's include/gba/macro.h includes "platform/dma_hooks.h"
+# under PLATFORM_NATIVE, as Makefile.native compiles it; only quote includes
+# search it, and it is not a system directory, so dma_hooks.h keeps our warnings.
+INCLUDES := -I. -iquote .. -idirafter ../include
 
 # SDL2, for the modules that talk to the host (input, video, audio) and their
 # tests; harmless for the others. The i386 and amd64 dev packages share flags.
