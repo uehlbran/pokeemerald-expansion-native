@@ -5,6 +5,11 @@
 #include "gba/gba.h"
 #include "siirtc.h"
 #include "config/general.h"
+#if PLATFORM_NATIVE
+// The native build has no GPIO port: the SiiRtc* API below is served by the
+// platform layer's model of the S-3511A (platform/rtc.c) instead.
+#include "platform/rtc.h"
+#endif
 
 #define STATUS_INTFE  0x02 // frequency interrupt enable
 #define STATUS_INTME  0x08 // per-minute interrupt enable
@@ -60,32 +65,40 @@
 #define DIR_ALL_IN  (DIR_0_IN | DIR_1_IN | DIR_2_IN)
 #define DIR_ALL_OUT (DIR_0_OUT | DIR_1_OUT | DIR_2_OUT)
 
+#if !PLATFORM_NATIVE
 #define GPIO_PORT_DATA        (*(vu16 *)0x80000C4)
 #define GPIO_PORT_DIRECTION   (*(vu16 *)0x80000C6)
 #define GPIO_PORT_READ_ENABLE (*(vu16 *)0x80000C8)
 
 extern vu16 GPIOPortDirection;
+#endif
 
 static bool8 sLocked;
 
+#if !PLATFORM_NATIVE
 static int WriteCommand(u8 value);
 static int WriteData(u8 value);
 static u8 ReadData();
 
 static void EnableGpioPortRead();
 static void DisableGpioPortRead();
+#endif
 
 KEEP_SECTION USED static const char AgbLibRtcVersion[] = "SIIRTC_V001";
 
 void SiiRtcUnprotect(void)
 {
+#if !PLATFORM_NATIVE
     EnableGpioPortRead();
+#endif
     sLocked = FALSE;
 }
 
 void SiiRtcProtect(void)
 {
+#if !PLATFORM_NATIVE
     DisableGpioPortRead();
+#endif
     sLocked = TRUE;
 }
 
@@ -136,6 +149,19 @@ u8 SiiRtcProbe(void)
 
 bool8 SiiRtcReset(void)
 {
+#if PLATFORM_NATIVE
+    struct SiiRtcInfo rtc;
+
+    if (sLocked == TRUE)
+        return FALSE;
+
+    if (rtc_reset() != 0)
+        return FALSE;
+
+    rtc.status = SIIRTCINFO_24HOUR;
+
+    return SiiRtcSetStatus(&rtc);
+#else
     bool8 result;
     struct SiiRtcInfo rtc;
 
@@ -161,10 +187,21 @@ bool8 SiiRtcReset(void)
     result = SiiRtcSetStatus(&rtc);
 
     return result;
+#endif
 }
 
 bool8 SiiRtcGetStatus(struct SiiRtcInfo *rtc)
 {
+#if PLATFORM_NATIVE
+    u8 status;
+
+    if (sLocked == TRUE || rtc_get_status(&status) != 0)
+        return FALSE;
+
+    rtc->status = status;
+
+    return TRUE;
+#else
     u8 statusData;
 
     if (sLocked == TRUE)
@@ -194,10 +231,18 @@ bool8 SiiRtcGetStatus(struct SiiRtcInfo *rtc)
     sLocked = FALSE;
 
     return TRUE;
+#endif
 }
 
 bool8 SiiRtcSetStatus(struct SiiRtcInfo *rtc)
 {
+#if PLATFORM_NATIVE
+    if (sLocked == TRUE)
+        return FALSE;
+
+    return rtc_set_status(SIIRTCINFO_24HOUR
+                        | (rtc->status & (SIIRTCINFO_INTAE | SIIRTCINFO_INTME | SIIRTCINFO_INTFE))) == 0;
+#else
     u8 statusData;
 
     if (sLocked == TRUE)
@@ -225,10 +270,27 @@ bool8 SiiRtcSetStatus(struct SiiRtcInfo *rtc)
     sLocked = FALSE;
 
     return TRUE;
+#endif
 }
 
 bool8 SiiRtcGetDateTime(struct SiiRtcInfo *rtc)
 {
+#if PLATFORM_NATIVE
+    struct rtc_datetime dateTime;
+
+    if (sLocked == TRUE || rtc_get_datetime(&dateTime) != 0)
+        return FALSE;
+
+    rtc->year = dateTime.year_bcd;
+    rtc->month = dateTime.month_bcd;
+    rtc->day = dateTime.day_bcd;
+    rtc->dayOfWeek = dateTime.day_of_week_bcd;
+    rtc->hour = dateTime.hour_bcd & 0x7F;
+    rtc->minute = dateTime.minute_bcd;
+    rtc->second = dateTime.second_bcd;
+
+    return TRUE;
+#else
     u8 i;
 
     if (sLocked == TRUE)
@@ -256,10 +318,23 @@ bool8 SiiRtcGetDateTime(struct SiiRtcInfo *rtc)
     sLocked = FALSE;
 
     return TRUE;
+#endif
 }
 
 bool8 SiiRtcGetTime(struct SiiRtcInfo *rtc)
 {
+#if PLATFORM_NATIVE
+    struct rtc_datetime dateTime;
+
+    if (sLocked == TRUE || rtc_get_time(&dateTime) != 0)
+        return FALSE;
+
+    rtc->hour = dateTime.hour_bcd & 0x7F;
+    rtc->minute = dateTime.minute_bcd;
+    rtc->second = dateTime.second_bcd;
+
+    return TRUE;
+#else
     u8 i;
 
     if (sLocked == TRUE)
@@ -287,10 +362,22 @@ bool8 SiiRtcGetTime(struct SiiRtcInfo *rtc)
     sLocked = FALSE;
 
     return TRUE;
+#endif
 }
 
 static bool8 UNUSED SiiRtcSetAlarm(struct SiiRtcInfo *rtc)
 {
+#if PLATFORM_NATIVE
+    struct rtc_datetime alarm = {0};
+
+    if (sLocked == TRUE)
+        return FALSE;
+
+    alarm.hour_bcd = rtc->alarmHour;
+    alarm.minute_bcd = rtc->alarmMinute;
+
+    return rtc_set_alarm(&alarm) == 0;
+#else
     u8 i;
     u8 alarmData[2];
 
@@ -327,8 +414,10 @@ static bool8 UNUSED SiiRtcSetAlarm(struct SiiRtcInfo *rtc)
     sLocked = FALSE;
 
     return TRUE;
+#endif
 }
 
+#if !PLATFORM_NATIVE
 static int WriteCommand(u8 value)
 {
     u8 i;
@@ -406,3 +495,4 @@ static void DisableGpioPortRead()
 {
     GPIO_PORT_READ_ENABLE = FALSE;
 }
+#endif // !PLATFORM_NATIVE
