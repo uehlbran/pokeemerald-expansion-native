@@ -16,21 +16,27 @@
 #define PLATFORM_CRT0_H
 
 #include <stddef.h>
+#include <stdint.h>
 
-/* The most EWRAM_INIT data, and the most initialised game data, crt0 keeps
- * a copy of. Expansion 1.17.1 has one byte of the first (sNameboxWindowId,
- * src/field_name_box.c) and four of the second (an IWRAM_INIT variable in
- * src/load_save.c); a link with more makes crt0_init fail, so raise them. */
+/* The most EWRAM_INIT data crt0 keeps a copy of. Expansion 1.17.1 has one
+ * byte (sNameboxWindowId, src/field_name_box.c); a link with more makes
+ * crt0_init fail, so raise it. The game's initialised data has no fixed
+ * bound (four bytes, an IWRAM_INIT variable in src/load_save.c, but in the
+ * sanitized build every instrumented global with its redzones), so its copy
+ * is allocated at init. */
 #define CRT0_EWRAM_INIT_MAX_SIZE 0x1000u
-#define CRT0_GAME_DATA_MAX_SIZE 0x1000u
 
 /* Bytes of the IntrMain symbol (see crt0.c). */
 #define CRT0_INTR_MAIN_SIZE 0x800u
 
+/* src/crt0.s IntrMain, whose address src/main.c stores in INTR_VECTOR; data
+ * natively (crt0.c says why). */
+extern const uint32_t IntrMain[CRT0_INTR_MAIN_SIZE / sizeof(uint32_t)];
+
 enum crt0_error {
     CRT0_OK = 0,
     CRT0_ERR_EWRAM_INIT_SIZE = -1, /* the EWRAM_INIT data is larger than CRT0_EWRAM_INIT_MAX_SIZE */
-    CRT0_ERR_GAME_DATA_SIZE = -2   /* the game's initialised data is larger than CRT0_GAME_DATA_MAX_SIZE */
+    CRT0_ERR_NO_MEMORY = -2        /* no memory for the copy of the game's initialised data */
 };
 
 /* Copies the EWRAM_INIT data and the game's initialised data as the loader
@@ -38,7 +44,7 @@ enum crt0_error {
  * (reported). */
 int crt0_init(void);
 
-/* Forgets the copy. Safe at any time and twice. */
+/* Frees the copies. Safe at any time and twice. */
 void crt0_shutdown(void);
 
 /* The sizes the link placed (for tests and reports). */

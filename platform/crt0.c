@@ -26,6 +26,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
 
 /* gba_regions.ld: the EWRAM_INIT data, as loaded. gba_game.ld: the game's
  * initialised and zero-initialised variables. */
@@ -38,7 +39,7 @@ const uint32_t IntrMain[CRT0_INTR_MAIN_SIZE / sizeof(uint32_t)];
 static struct {
     unsigned char ewram_init[CRT0_EWRAM_INIT_MAX_SIZE];
     size_t ewram_init_size;
-    unsigned char game_data[CRT0_GAME_DATA_MAX_SIZE];
+    unsigned char *game_data; /* malloc'd by crt0_init, freed by crt0_shutdown */
     size_t game_data_size;
     bool initialised;
 } copies;
@@ -94,10 +95,13 @@ int crt0_init(void)
                 ewram_size, CRT0_EWRAM_INIT_MAX_SIZE);
         return CRT0_ERR_EWRAM_INIT_SIZE;
     }
-    if (data_size > sizeof copies.game_data) {
-        fprintf(stderr, "crt0: the game's initialised data is %zu bytes, more than CRT0_GAME_DATA_MAX_SIZE (%u)\n",
-                data_size, CRT0_GAME_DATA_MAX_SIZE);
-        return CRT0_ERR_GAME_DATA_SIZE;
+    crt0_shutdown();
+    if (data_size > 0) {
+        copies.game_data = malloc(data_size);
+        if (copies.game_data == NULL) {
+            fprintf(stderr, "crt0: malloc of %zu bytes for the game's initialised data failed\n", data_size);
+            return CRT0_ERR_NO_MEMORY;
+        }
     }
     copy_bytes(copies.ewram_init, gba_linked_ewram_init_start, ewram_size);
     copies.ewram_init_size = ewram_size;
@@ -109,9 +113,11 @@ int crt0_init(void)
 
 void crt0_shutdown(void)
 {
-    copies.initialised = false;
-    copies.ewram_init_size = 0;
+    free(copies.game_data);
+    copies.game_data = NULL;
     copies.game_data_size = 0;
+    copies.ewram_init_size = 0;
+    copies.initialised = false;
 }
 
 void ReInitializeEWRAM(void)

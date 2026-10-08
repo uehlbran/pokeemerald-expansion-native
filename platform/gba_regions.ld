@@ -43,7 +43,10 @@ SECTIONS
         *(.ewram .ewram.*)
         gba_linked_ewram_init_end = .;
     }
-    .gba_ewram (NOLOAD) :
+    /* At an explicit address: without EWRAM_INIT data the section above is
+     * discarded, and a section with no address would then follow the
+     * previous one elsewhere. The symbol keeps its value either way. */
+    .gba_ewram gba_linked_ewram_init_end (NOLOAD) :
     {
         *(.sbss .sbss.*)
         HIDDEN(gba_ewram_data_end = .);

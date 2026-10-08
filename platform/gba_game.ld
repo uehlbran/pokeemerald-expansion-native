@@ -57,14 +57,18 @@ INSERT AFTER .rodata;
  * variables are in the executable's .data and .bss, beside the platform's,
  * which must survive the reset. So the game's objects (those under src/,
  * data/, sound/ and test/ of Makefile.native's object directory; the
- * platform's come from libplatform.a) have their initialised data in
+ * platform's come from libplatform.a) have their initialised data (in the
+ * sanitized build that includes every instrumented global: AddressSanitizer
+ * moves them to .data with their redzones) in
  * game_data, of which crt0 keeps a copy, and their zero-initialised data in
  * game_bss, which crt0 zeroes.
  *
  * Both go before the default script's .data and .bss (INSERT BEFORE), whose
- * catch-all patterns would otherwise take the game's sections first, and
- * inside the span from __executable_start to _end that transfer_bounds
- * accepts.
+ * catch-all patterns would otherwise take the game's sections first;
+ * transfer_bounds counts game_data_start as the start of the writable
+ * globals for that reason. The objects are matched by Makefile.native's
+ * object directories (build/native<bits>[-test][-san]/), so the platform's
+ * own unit tests, whose objects are under platform/build/, have none.
  *
  * game_data holds .data (none at present: the GBA scripts discard .data, so
  * expansion has none) and .iwram (IWRAM_INIT). game_bss holds .bss and
@@ -78,10 +82,10 @@ SECTIONS
     game_data :
     {
         game_data_start = .;
-        */src/*.o(.data .data.* .iwram)
-        */data/*.o(.data .data.* .iwram)
-        */sound/*.o(.data .data.* .iwram)
-        */test/*.o(.data .data.* .iwram)
+        *native*/src/*.o(.data .data.* .iwram)
+        *native*/data/*.o(.data .data.* .iwram)
+        *native*/sound/*.o(.data .data.* .iwram)
+        *native*/test/*.o(.data .data.* .iwram)
         game_data_end = .;
     }
 }
@@ -92,14 +96,14 @@ SECTIONS
     game_bss (NOLOAD) :
     {
         game_bss_start = .;
-        */src/*.o(.bss .bss.*)
-        */data/*.o(.bss .bss.*)
-        */sound/*.o(.bss .bss.*)
-        */test/*.o(.bss .bss.*)
-        */src/*.o(common_data)
-        */data/*.o(common_data)
-        */sound/*.o(common_data)
-        */test/*.o(common_data)
+        *native*/src/*.o(.bss .bss.*)
+        *native*/data/*.o(.bss .bss.*)
+        *native*/sound/*.o(.bss .bss.*)
+        *native*/test/*.o(.bss .bss.*)
+        *native*/src/*.o(common_data)
+        *native*/data/*.o(common_data)
+        *native*/sound/*.o(common_data)
+        *native*/test/*.o(common_data)
         game_bss_end = .;
     }
 }

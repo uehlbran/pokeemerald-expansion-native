@@ -35,6 +35,13 @@
 /* x86-64's ABI wants the stack 16-byte aligned (i386's GCC also keeps 16). */
 #define GAME_HOOKS_STACK_ALIGNMENT 16
 
+/* Stack between run_entry's frame and entry's. Before and after entry,
+ * run_entry calls AddressSanitizer's fiber functions, whose frames go below
+ * its own; entry's locals must stay untouched between calls, so entry runs
+ * below this gap, which those calls stay within (they use well under a
+ * KiB). */
+#define GAME_HOOKS_CALL_STACK_GAP (64u * 1024u)
+
 static struct {
     jmp_buf *exit_target;
     uint32_t exit_code;
@@ -165,13 +172,25 @@ void game_hooks_take_irq_return(void)
     PlatformJumpToAgbMainLoop();
 }
 
+/* Calls entry below GAME_HOOKS_CALL_STACK_GAP bytes of its own frame. Not
+ * instrumented, so that AddressSanitizer's use-after-return detection does
+ * not move the gap off the stack. */
+__attribute__((noinline, no_sanitize("address"))) static void call_entry_below_gap(void)
+{
+    unsigned char gap[GAME_HOOKS_CALL_STACK_GAP];
+    /* An empty asm that takes the gap's address, so the compiler keeps it. */
+    __asm__ volatile("" : : "r"(gap) : "memory");
+    call.entry(call.context);
+}
+
 /* The first function on the call stack: makecontext passes no pointer
  * arguments portably, so it reads the call from `call`. Returning resumes
- * the caller through uc_link. */
+ * the caller through uc_link. Every call takes the same path from the same
+ * stack top, so entry's frame is at the same address each time. */
 static void run_entry(void)
 {
     fiber_finish_switch(NULL, &call.caller_stack_bottom, &call.caller_stack_size);
-    call.entry(call.context);
+    call_entry_below_gap();
     fiber_start_switch(NULL, call.caller_stack_bottom, call.caller_stack_size);
 }
 
