@@ -30,7 +30,6 @@ range.
 
 ## Source modifications
 
-None yet. Expected in milestone 2, each recorded here when merged:
-
 | File | Reason | What changed | Since |
 |---|---|---|---|
+| `src/siirtc.c` | The S-3511A is reached by bit-banging the cartridge GPIO port at 0x080000C4-0x080000C8, which the native build does not have; the `SiiRtc*` API is replaced at its own level by `platform/rtc` (RESEARCH.md "Timers and RTC") | Under `#if PLATFORM_NATIVE`: includes `platform/rtc.h`; `SiiRtcReset`, `GetStatus`, `SetStatus`, `GetDateTime`, `GetTime`, `SetAlarm` get native bodies that call `rtc_*` and convert to `struct SiiRtcInfo`, originals untouched in `#else`; `Unprotect`/`Protect` skip the GPIO calls; `sLocked` checks kept; `SiiRtcProbe` unchanged; the GPIO macros, `GPIOPortDirection` extern and the `WriteCommand`/`WriteData`/`ReadData`/`Enable/DisableGpioPortRead` helpers wrapped in `#if !PLATFORM_NATIVE`; `_Static_assert`s tie `RTC_STATUS_*` to `SIIRTCINFO_*`. Behaviour note: native `SiiRtcSetAlarm` returns FALSE on invalid BCD where the original returned TRUE (dead code in the game). Native build must put the repo root on the include path for `platform/rtc.h`. | M2 |
