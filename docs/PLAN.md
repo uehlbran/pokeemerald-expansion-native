@@ -19,10 +19,11 @@ resumes by reading both and first posting what it believes is in flight.
 
 ## Milestone 2 work breakdown
 
-State on 2026-10-08 evening: merged on main: foundation, timer,
-transfer_bounds, input. In review or fixing: sdlout, rtc. Working:
-interrupt, psg, save, ppu, dma, bios, W1-build, W1-m4a. Next: merge each
-as it lands, then main/frame loop and the first link.
+State on 2026-10-08 night: merged on main: foundation, build system,
+timer, transfer_bounds, input, rtc, video/audio/pacer, interrupt, psg,
+ppu, dma, flash/save_file. Fixing: m4a. Working: bios, integration (main,
+frame loop, link, first boot). Next: merge bios and m4a, then the
+integration branch once it links and runs frames.
 
 Wave 1 (no dependencies between them):
 

@@ -334,7 +334,12 @@ bool8 SiiRtcGetTime(struct SiiRtcInfo *rtc)
     struct rtc_datetime dateTime;
 
     if (sLocked == TRUE || rtc_get_time(&dateTime) != 0)
+    {
+        // The chip always answers; a failed native read answers with zeros
+        // so callers that ignore the return value read defined bytes.
+        rtc->hour = rtc->minute = rtc->second = 0;
         return FALSE;
+    }
 
     rtc->hour = dateTime.hour_bcd & 0x7F;
     rtc->minute = dateTime.minute_bcd;
