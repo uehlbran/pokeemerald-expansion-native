@@ -43,7 +43,11 @@ void CpuSet(const void *src, void *dest, u32 control);
 
 void CpuFastSet(const void *src, void *dest, u32 control);
 
-#if MODERN
+// The alignment checks below hold for the GBA's ARM ABI (-mabi=apcs-gnu),
+// where every struct is at least 4-byte aligned. On x86 a struct is aligned
+// to its largest member, so they would reject calls that are correct on the
+// GBA; the GBA build keeps them.
+#if MODERN && !PLATFORM_NATIVE
 #define CpuFastSet(src, dest, control) \
     do \
     { \
