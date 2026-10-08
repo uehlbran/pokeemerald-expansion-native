@@ -25,6 +25,8 @@
 
 #include <SDL.h>
 
+#include "gba_timing.h"
+
 #define MODULE "audio"
 
 #define CHANNELS 2u
@@ -32,9 +34,6 @@
 /* SDL wants a power of two. 512 frames is 11 ms at 44.1 kHz. */
 #define DEVICE_BUFFER_SAMPLES 512u
 
-/* GBATEK "LCD Dimensions and Timings": 308 x 228 dots of 4 cycles. */
-#define GBA_CPU_HZ UINT64_C(16777216)
-#define GBA_CYCLES_PER_FRAME UINT64_C(280896)
 #define MAX_QUEUED_VIDEO_FRAMES 4u
 
 static struct {
@@ -138,19 +137,20 @@ int audio_queue(const int16_t *stereo, size_t frames)
         state.dropped_frames += frames;
         return 0;
     }
-    state.total_frames += frames;
-    if (state.silent)
+    if (state.silent) {
+        state.total_frames += frames;
         return 0;
+    }
     uint32_t queued = SDL_GetQueuedAudioSize(state.device);
     if (queued == 0u && !state.paused)
         state.underruns++;
     if ((size_t)queued / BYTES_PER_SAMPLE_FRAME + frames > max_frames) {
-        state.total_frames -= frames;
         state.dropped_frames += frames;
         return 0;
     }
     if (SDL_QueueAudio(state.device, stereo, (Uint32)(frames * BYTES_PER_SAMPLE_FRAME)) != 0)
         return sdl_error("SDL_QueueAudio");
+    state.total_frames += frames;
     return 0;
 }
 

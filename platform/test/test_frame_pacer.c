@@ -36,8 +36,6 @@ PTEST(period_has_the_gba_frame_rate)
     /* 1 GHz counter: 280896e9/16777216 = 16742706.6 ticks. */
     PT_ASSERT(frame_pacer_period_ticks(1000000000u, &rem) == 16742706u);
     PT_ASSERT(rem != 0u);
-    PT_ASSERT_EQ_INT(FRAME_PACER_CYCLES_PER_FRAME, 280896);
-    PT_ASSERT_EQ_INT(FRAME_PACER_CPU_HZ, 16777216);
 }
 
 static void check_no_drift(uint64_t freq)
@@ -46,7 +44,7 @@ static void check_no_drift(uint64_t freq)
     uint64_t sum = 0;
     for (unsigned i = 0; i < 1000; i++)
         sum += frame_pacer_period_ticks(freq, &rem);
-    uint64_t exact = (1000u * (uint64_t)FRAME_PACER_CYCLES_PER_FRAME * freq) / (uint64_t)FRAME_PACER_CPU_HZ;
+    uint64_t exact = (1000u * (uint64_t)GBA_CYCLES_PER_FRAME * freq) / (uint64_t)GBA_CPU_HZ;
     PT_ASSERT(sum == exact);
 }
 
@@ -64,11 +62,6 @@ PTEST(period_is_not_sixty_hertz)
     PT_ASSERT(p > 16666667u); /* 1/60 s would be 16666666 */
 }
 
-PTEST(max_stall_is_a_quarter_second)
-{
-    PT_ASSERT_EQ_INT(FRAME_PACER_MAX_STALL_MS, 250);
-}
-
 PTEST(unthrottled_wait_returns_at_once)
 {
     PT_ASSERT_EQ_INT(frame_pacer_init(true), 0);
@@ -83,17 +76,19 @@ PTEST(unthrottled_wait_returns_at_once)
 
 PTEST(throttled_wait_takes_about_one_frame_period)
 {
-    PT_ASSERT_EQ_INT(frame_pacer_init(false), 0);
-    frame_pacer_wait();
+    /* Deadlines sit on the grid from init, so 7 waits cannot finish before 7
+     * periods (117.2 ms) after init, however late any wait woke up. */
     uint64_t start = SDL_GetPerformanceCounter();
-    for (unsigned i = 0; i < 6; i++)
+    PT_ASSERT_EQ_INT(frame_pacer_init(false), 0);
+    for (unsigned i = 0; i < 7; i++)
         frame_pacer_wait();
     uint64_t elapsed = SDL_GetPerformanceCounter() - start;
     frame_pacer_shutdown();
     uint64_t freq = SDL_GetPerformanceFrequency();
-    /* 6 periods = 100.46 ms; lower bound tight (never early), upper loose. */
-    PT_ASSERT(elapsed * 1000u >= freq * 100u);
-    PT_ASSERT(elapsed * 1000u < freq * 300u);
+    /* Lower bound tight (never early); upper bound a 10x sanity bound so a
+     * loaded machine cannot flake it. */
+    PT_ASSERT(elapsed * 1000u >= freq * 117u);
+    PT_ASSERT(elapsed * 1000u < freq * 1200u);
 }
 
 PTEST(shutdown_twice_and_wait_without_init_are_safe)

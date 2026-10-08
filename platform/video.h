@@ -27,8 +27,9 @@
 /* Upper bound: 16 gives 3840x2560, beyond any display; larger is a caller bug. */
 #define VIDEO_MAX_SCALE 16
 
-/* Forward declaration: callers that only want the frame API need no SDL headers
- * for it (SDL_Event is a typedef of this union). */
+/* Forward declaration of SDL's event union (SDL_Event is a typedef of it), so
+ * the event callback type needs no SDL_events.h. This header does include
+ * SDL_pixels.h, for VIDEO_TEXTURE_FORMAT. */
 union SDL_Event;
 
 struct video_config {

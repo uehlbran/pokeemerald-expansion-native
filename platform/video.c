@@ -20,7 +20,6 @@
 #include "video.h"
 
 #include <stdio.h>
-#include <stdlib.h>
 
 #include <SDL.h>
 
@@ -29,6 +28,8 @@
 
 /* GBATEK "LCD Color Settings": 5 bits per channel. */
 #define CHANNEL_BITS 5u
+#define BITS_PER_BYTE 8u
+#define RGB_BYTES_PER_PIXEL 3u
 #define CHANNEL_MASK 0x1Fu
 #define GREEN_SHIFT 5u
 #define BLUE_SHIFT 10u
@@ -154,7 +155,7 @@ void video_shutdown(void)
 static uint8_t expand_channel(uint16_t pixel, unsigned shift)
 {
     uint32_t v = ((uint32_t)pixel >> shift) & CHANNEL_MASK;
-    return (uint8_t)((v << (8u - CHANNEL_BITS)) | (v >> (2u * CHANNEL_BITS - 8u)));
+    return (uint8_t)((v << (BITS_PER_BYTE - CHANNEL_BITS)) | (v >> (2u * CHANNEL_BITS - BITS_PER_BYTE)));
 }
 
 int video_write_frame_ppm(const uint16_t *frame, const char *path)
@@ -171,13 +172,13 @@ int video_write_frame_ppm(const uint16_t *frame, const char *path)
     int result = 0;
     if (fprintf(f, PPM_MAGIC "\n%u %u\n%d\n", VIDEO_WIDTH, VIDEO_HEIGHT, PPM_MAX_VALUE) < 0)
         result = -1;
-    uint8_t row[VIDEO_WIDTH * 3u];
+    uint8_t row[VIDEO_WIDTH * RGB_BYTES_PER_PIXEL];
     for (uint32_t y = 0; y < VIDEO_HEIGHT && result == 0; y++) {
         for (uint32_t x = 0; x < VIDEO_WIDTH; x++) {
             uint16_t pixel = frame[y * VIDEO_WIDTH + x];
-            row[x * 3u + 0u] = expand_channel(pixel, 0u);
-            row[x * 3u + 1u] = expand_channel(pixel, GREEN_SHIFT);
-            row[x * 3u + 2u] = expand_channel(pixel, BLUE_SHIFT);
+            row[x * RGB_BYTES_PER_PIXEL + 0u] = expand_channel(pixel, 0u);
+            row[x * RGB_BYTES_PER_PIXEL + 1u] = expand_channel(pixel, GREEN_SHIFT);
+            row[x * RGB_BYTES_PER_PIXEL + 2u] = expand_channel(pixel, BLUE_SHIFT);
         }
         if (fwrite(row, 1, sizeof row, f) != sizeof row)
             result = -1;

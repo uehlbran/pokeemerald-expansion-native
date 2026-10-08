@@ -49,10 +49,14 @@ PTEST(windowed_init_present_shutdown_succeeds)
     struct video_config cfg = windowed_config();
     memset(frame_buffer, 0, sizeof frame_buffer);
     PT_ASSERT_EQ_INT(video_init(&cfg), 0);
+    Uint32 inited = SDL_WasInit(SDL_INIT_VIDEO);
     int present = video_present(frame_buffer);
     int present_again = video_present(frame_buffer);
     bool keep_running = video_poll_events(NULL, NULL);
     video_shutdown();
+    Uint32 after = SDL_WasInit(SDL_INIT_VIDEO);
+    PT_ASSERT(inited != 0u);
+    PT_ASSERT_EQ_U32(after, 0u);
     PT_ASSERT_EQ_INT(present, 0);
     PT_ASSERT_EQ_INT(present_again, 0);
     PT_ASSERT(keep_running);
@@ -90,7 +94,15 @@ PTEST(events_reach_the_callback_with_ctx_and_quit_returns_false)
     bool after_quit = video_poll_events(log_event, &log);
     int pushed_quit_null = SDL_PushEvent(&quit);
     bool null_callback_quit = video_poll_events(NULL, NULL);
+    SDL_Event close;
+    SDL_zero(close);
+    close.type = SDL_WINDOWEVENT;
+    close.window.event = SDL_WINDOWEVENT_CLOSE;
+    int pushed_close = SDL_PushEvent(&close);
+    bool after_close = video_poll_events(NULL, NULL);
     video_shutdown();
+    PT_ASSERT(pushed_close == 1);
+    PT_ASSERT(!after_close);
     PT_ASSERT(pushed_user == 1);
     PT_ASSERT(pushed_quit == 1);
     PT_ASSERT(pushed_quit_null == 1);
@@ -106,11 +118,25 @@ PTEST(headless_presents_without_a_window)
     /* No driver set on purpose: headless must not touch SDL's video. */
     struct video_config cfg = { .headless = true, .scale = 3, .title = "headless" };
     PT_ASSERT_EQ_INT(video_init(&cfg), 0);
+    Uint32 video_inited = SDL_WasInit(SDL_INIT_VIDEO);
     int present = video_present(frame_buffer);
     bool keep_running = video_poll_events(NULL, NULL);
     video_shutdown();
+    PT_ASSERT_EQ_U32(video_inited, 0u);
     PT_ASSERT_EQ_INT(present, 0);
     PT_ASSERT(keep_running);
+}
+
+PTEST(failed_driver_init_fails_and_leaves_no_subsystem)
+{
+    PT_ASSERT(setenv("SDL_VIDEODRIVER", "no_such_driver", 1) == 0);
+    struct video_config cfg = windowed_config();
+    int result = video_init(&cfg);
+    Uint32 inited = SDL_WasInit(SDL_INIT_VIDEO);
+    video_shutdown();
+    PT_ASSERT(result != 0);
+    PT_ASSERT_EQ_U32(inited, 0u);
+    PT_ASSERT_EQ_U32(SDL_WasInit(SDL_INIT_VIDEO), 0u);
 }
 
 PTEST(shutdown_twice_and_without_init_are_safe)
@@ -183,6 +209,8 @@ PTEST(ppm_of_two_pixel_frame_has_exact_bytes)
     memset(frame_buffer, 0, sizeof frame_buffer);
     frame_buffer[0] = 0x001F;                     /* pure red */
     frame_buffer[1] = (uint16_t)((1u << 10) | (16u << 5) | 8u); /* b=1 g=16 r=8 */
+    frame_buffer[LCD_WIDTH] = 0x0021;             /* row 1, column 0: r=1 g=1 b=0 */
+    frame_buffer[LCD_WIDTH * LCD_HEIGHT - 1u] = 0xFFFF; /* last pixel, bit 15 set */
     char path[] = "/tmp/video_ppm_XXXXXX";
     int fd = mkstemp(path);
     PT_ASSERT(fd >= 0);
@@ -202,6 +230,12 @@ PTEST(ppm_of_two_pixel_frame_has_exact_bytes)
     const unsigned char expected[] = { 255, 0, 0, 66, 132, 8, 0, 0, 0 };
     PT_ASSERT_MEM_EQ(bytes + header, expected, sizeof expected);
     /* 8 -> (64|2)=66, 16 -> (128|4)=132 */
+    const unsigned char row1[] = { 8, 8, 0 }; /* 1 -> (8|0)=8 */
+    PT_ASSERT_MEM_EQ(bytes + header + LCD_WIDTH * 3u, row1, sizeof row1);
+    const unsigned char last[] = { 255, 255, 255 };
+    PT_ASSERT_MEM_EQ(bytes + size - 3u, last, sizeof last);
+    const unsigned char before_last[] = { 0, 0, 0 };
+    PT_ASSERT_MEM_EQ(bytes + size - 6u, before_last, sizeof before_last);
 }
 
 PTEST(ppm_to_unwritable_path_fails)

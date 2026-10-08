@@ -57,10 +57,29 @@ PTEST(bound_skips_queuing_and_counts_the_drop)
     PT_ASSERT_EQ_INT(audio_queue(samples, 1), 0);   /* one more does not */
     uint32_t after_drop = audio_queued_bytes();
     uint64_t dropped = audio_dropped_frames();
+    uint64_t total = audio_total_frames();
     audio_shutdown();
+    PT_ASSERT(total == max);
     PT_ASSERT_EQ_U32(full, (uint32_t)max * BYTES_PER_SAMPLE_FRAME);
     PT_ASSERT_EQ_U32(after_drop, full);
     PT_ASSERT(dropped == 1u);
+}
+
+PTEST(block_larger_than_the_bound_is_dropped_whole)
+{
+    use_dummy_driver();
+    PT_ASSERT_EQ_INT(audio_init(TEST_RATE_HZ, false), 0);
+    const size_t too_big = audio_max_queued_frames(TEST_RATE_HZ) + 1u;
+    PT_ASSERT(too_big <= TEST_SAMPLE_FRAMES);
+    int result = audio_queue(samples, too_big);
+    uint64_t dropped = audio_dropped_frames();
+    uint64_t total = audio_total_frames();
+    uint32_t bytes = audio_queued_bytes();
+    audio_shutdown();
+    PT_ASSERT_EQ_INT(result, 0);
+    PT_ASSERT(dropped == too_big);
+    PT_ASSERT(total == 0u);
+    PT_ASSERT_EQ_U32(bytes, 0u);
 }
 
 PTEST(clear_empties_the_queue)
@@ -82,13 +101,17 @@ PTEST(underrun_counts_when_unpaused_and_queue_is_empty)
 {
     use_dummy_driver();
     PT_ASSERT_EQ_INT(audio_init(TEST_RATE_HZ, false), 0);
+    PT_ASSERT_EQ_U32(SDL_WasInit(SDL_INIT_AUDIO) & SDL_INIT_AUDIO, SDL_INIT_AUDIO);
     PT_ASSERT_EQ_INT(audio_queue(samples, 10), 0); /* paused: no underrun */
     uint64_t while_paused = audio_underruns();
     audio_clear();
     PT_ASSERT_EQ_INT(audio_set_paused(false), 0);
     PT_ASSERT_EQ_INT(audio_queue(samples, 10), 0); /* empty and running: underrun */
     uint64_t after = audio_underruns();
+    PT_ASSERT_EQ_INT(audio_queue(samples, 10), 0); /* data queued: no new underrun */
+    uint64_t after_second = audio_underruns();
     audio_shutdown();
+    PT_ASSERT(after_second == 1u);
     PT_ASSERT(while_paused == 0u);
     PT_ASSERT(after == 1u);
 }
@@ -97,6 +120,7 @@ PTEST(silent_mode_counts_frames_without_a_device)
 {
     /* No driver set and no SDL audio call allowed to be needed. */
     PT_ASSERT_EQ_INT(audio_init(TEST_RATE_HZ, true), 0);
+    PT_ASSERT_EQ_U32(SDL_WasInit(SDL_INIT_AUDIO), 0u);
     PT_ASSERT_EQ_INT(audio_queue(samples, 100), 0);
     PT_ASSERT_EQ_INT(audio_queue(samples, 25), 0);
     uint64_t total = audio_total_frames();
@@ -108,6 +132,17 @@ PTEST(silent_mode_counts_frames_without_a_device)
     PT_ASSERT_EQ_U32(bytes, 0u);
 }
 
+PTEST(failed_driver_init_fails_and_leaves_no_subsystem)
+{
+    PT_ASSERT(setenv("SDL_AUDIODRIVER", "no_such_driver", 1) == 0);
+    int result = audio_init(TEST_RATE_HZ, false);
+    Uint32 inited = SDL_WasInit(SDL_INIT_AUDIO);
+    audio_shutdown();
+    PT_ASSERT(result != 0);
+    PT_ASSERT_EQ_U32(inited, 0u);
+    PT_ASSERT_EQ_U32(SDL_WasInit(SDL_INIT_AUDIO), 0u);
+}
+
 PTEST(shutdown_twice_and_without_init_are_safe)
 {
     audio_shutdown();
@@ -115,6 +150,7 @@ PTEST(shutdown_twice_and_without_init_are_safe)
     PT_ASSERT_EQ_INT(audio_init(TEST_RATE_HZ, false), 0);
     audio_shutdown();
     audio_shutdown();
+    PT_ASSERT_EQ_U32(SDL_WasInit(SDL_INIT_AUDIO), 0u);
 }
 
 PTEST(invalid_arguments_fail_and_leave_a_safe_state)

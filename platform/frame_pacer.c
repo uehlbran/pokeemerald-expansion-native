@@ -39,16 +39,17 @@ uint64_t frame_pacer_next_deadline(uint64_t prev_deadline, uint64_t period, uint
 
 uint64_t frame_pacer_period_ticks(uint64_t counter_hz, uint32_t *remainder)
 {
-    uint64_t scaled = counter_hz * (uint64_t)FRAME_PACER_CYCLES_PER_FRAME + *remainder;
-    *remainder = (uint32_t)(scaled % (uint64_t)FRAME_PACER_CPU_HZ);
-    return scaled / (uint64_t)FRAME_PACER_CPU_HZ;
+    uint64_t scaled = counter_hz * (uint64_t)GBA_CYCLES_PER_FRAME + *remainder;
+    *remainder = (uint32_t)(scaled % (uint64_t)GBA_CPU_HZ);
+    return scaled / (uint64_t)GBA_CPU_HZ;
 }
 
 int frame_pacer_init(bool unthrottled)
 {
     uint64_t hz = SDL_GetPerformanceFrequency();
-    if (hz == 0u) {
-        fprintf(stderr, MODULE ": SDL_GetPerformanceFrequency returned 0\n");
+    if (hz == 0u || hz > FRAME_PACER_MAX_COUNTER_HZ) {
+        fprintf(stderr, MODULE ": SDL_GetPerformanceFrequency returned %llu, outside 1..%llu\n",
+                (unsigned long long)hz, (unsigned long long)FRAME_PACER_MAX_COUNTER_HZ);
         return -1;
     }
     state.counter_hz = hz;

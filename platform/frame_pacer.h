@@ -15,11 +15,16 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#define FRAME_PACER_CPU_HZ 16777216
-#define FRAME_PACER_CYCLES_PER_FRAME 280896
-#define FRAME_PACER_MAX_STALL_MS 250
+#include "gba_timing.h"
 
-/* unthrottled: frame_pacer_wait returns at once (headless gates). */
+#define FRAME_PACER_MAX_STALL_MS 250
+/* Highest counter rate accepted: the period arithmetic multiplies the rate by
+ * 280896 in 64 bits, which overflows near 6.5e13 Hz. Real counters are 1e3 to
+ * 1e9 Hz. */
+#define FRAME_PACER_MAX_COUNTER_HZ UINT64_C(60000000000000)
+
+/* unthrottled: frame_pacer_wait returns at once (headless gates). Fails if
+ * the performance counter rate is 0 or above FRAME_PACER_MAX_COUNTER_HZ. */
 int frame_pacer_init(bool unthrottled);
 
 /* Returns when the next frame boundary is reached; returns at once if the
@@ -36,7 +41,7 @@ uint64_t frame_pacer_next_deadline(uint64_t prev_deadline, uint64_t period, uint
 
 /* One frame period in ticks of a counter running at counter_hz. The period
  * is not a whole number of ticks; *remainder (start at 0) carries the
- * fraction, in units of 1/FRAME_PACER_CPU_HZ tick, so n calls sum to exactly
+ * fraction, in units of 1/GBA_CPU_HZ tick, so n calls sum to exactly
  * floor(n * 280896 * counter_hz / 16777216). */
 uint64_t frame_pacer_period_ticks(uint64_t counter_hz, uint32_t *remainder);
 
