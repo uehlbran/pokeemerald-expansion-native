@@ -291,9 +291,9 @@ PTEST(set_datetime_persists_the_offset_in_seconds)
     PT_ASSERT_EQ_INT(rtc_init(fake_source, g_path), 0);
     PT_ASSERT_EQ_INT(rtc_set_datetime(&in), 0);
     rtc_shutdown();
-    /* 2031-07-04 16:20:05 UTC = 1943030405; minus 1710510330. */
+    /* 2031-07-04 16:20:05 UTC = 1940948405; minus 1710510330. */
     read_file(g_path, text, sizeof text);
-    PT_ASSERT_EQ_STR(text, "232520075\n");
+    PT_ASSERT_EQ_STR(text, "230438075\n");
     PT_ASSERT(!file_exists(g_tmp_path));
 }
 
@@ -324,7 +324,7 @@ PTEST(negative_offset_round_trips)
     PT_ASSERT_EQ_INT(rtc_set_datetime(&in), 0);
     rtc_shutdown();
     read_file(g_path, text, sizeof text);
-    PT_ASSERT_EQ_STR(text, "-709852330\n"); /* 978307200 - 1710510330 */
+    PT_ASSERT_EQ_STR(text, "-732203130\n"); /* 978307200 - 1710510330 */
     PT_ASSERT_EQ_INT(rtc_init(fake_source, g_path), 0);
     PT_ASSERT_EQ_INT(rtc_get_datetime(&out), 0);
     rtc_shutdown();
@@ -360,11 +360,11 @@ PTEST(corrupt_offset_file_is_an_error)
         g_now = EPOCH_2024_03_15_13_45_30;
         if (rtc_init(fake_source, g_path) != -1)
             PT_FAIL(bad[i]);
-        rtc_shutdown();
         {
             struct rtc_datetime d;
             PT_ASSERT_EQ_INT(rtc_get_datetime(&d), -1); /* failed init leaves it uninitialised */
         }
+        rtc_shutdown();
     }
 }
 
@@ -390,19 +390,6 @@ PTEST(overlong_offset_path_is_an_error)
 }
 
 /* ---- invalid input ------------------------------------------------------ */
-
-/* Each bad datetime is rejected and leaves the offset and the file alone. */
-static void assert_rejected(const struct rtc_datetime *bad)
-{
-    struct rtc_datetime out;
-    char text[64];
-    PT_ASSERT_EQ_INT(rtc_set_datetime(bad), -1);
-    PT_ASSERT_EQ_INT(rtc_get_datetime(&out), 0);
-    assert_dt(&out, 0x24, 0x03, 0x15, 0x05, 0x93, 0x45, 0x30);
-    read_file(g_path, text, sizeof text);
-    PT_ASSERT_EQ_STR(text, "");
-    PT_ASSERT(!file_exists(g_path));
-}
 
 PTEST(invalid_bcd_and_ranges_are_rejected_without_changing_the_offset)
 {
@@ -440,15 +427,11 @@ PTEST(invalid_bcd_and_ranges_are_rejected_without_changing_the_offset)
         if (rtc_set_datetime(&d) != -1)
             PT_FAIL(label);
     }
-    for (i = 0; i < sizeof bad / sizeof bad[0]; i++)
-        (void)0;
     {
         struct rtc_datetime out;
-        char text[64];
         PT_ASSERT_EQ_INT(rtc_get_datetime(&out), 0);
         assert_dt(&out, 0x24, 0x03, 0x15, 0x05, 0x93, 0x45, 0x30);
-        PT_ASSERT(!file_exists(g_path));
-        read_file(g_path, text, sizeof text);
+        PT_ASSERT(!file_exists(g_path)); /* nothing was persisted */
     }
     rtc_shutdown();
 }
@@ -597,7 +580,7 @@ PTEST(reset_clears_status_and_sets_the_time_to_2000_01_01)
     PT_ASSERT_EQ_U32(out.second_bcd, 0x05u);
     rtc_shutdown();
     read_file(g_path, text, sizeof text);
-    PT_ASSERT_EQ_STR(text, "-763827930\n"); /* 946684800 - 1710510330 */
+    PT_ASSERT_EQ_STR(text, "-763825530\n"); /* 946684800 - 1710510330 */
 }
 
 PTEST(alarm_is_validated_and_stored)
@@ -703,7 +686,7 @@ PTEST(failed_write_leaves_the_old_file_and_the_offset_intact)
     PT_ASSERT_EQ_INT(rtc_set_time(&first), -1);
     PT_ASSERT_EQ_INT(rtc_reset(), -1);
     read_file(g_path, text, sizeof text);
-    PT_ASSERT_EQ_STR(text, "232520075\n");
+    PT_ASSERT_EQ_STR(text, "230438075\n");
     PT_ASSERT_EQ_INT(rtc_get_datetime(&out), 0);
     assert_dt(&out, 0x31, 0x07, 0x04, 0x05, 0x96, 0x20, 0x05); /* in-memory offset unchanged too */
     rtc_shutdown();
