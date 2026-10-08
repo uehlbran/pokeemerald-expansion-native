@@ -109,3 +109,35 @@ unless the Makefile were modified (regionalidades had to add a
 The C translation of `src/m4a_1.s` lives there too, under
 `platform/m4a/`, for the same reason, even though it is game code rather
 than hardware.
+
+## 2026-10-08: GBA regions come from a linker script, not runtime mmap
+
+`platform/gba_regions.ld` (a GNU ld fragment, `INSERT AFTER .bss`) declares
+each GBA region a NOLOAD section at its GBA address, so the kernel maps it
+zero-filled and writable when it loads the executable; `gba_memmap_init`
+only checks the link and `gba_memmap_shutdown` has nothing to release.
+Alternative: `mmap` with `MAP_FIXED_NOREPLACE` at init, as in
+`research/memory-map-experiment.md`. Both were tried with 32-bit and 64-bit
+binaries under ASan and UBSan, and both map every region. The linker script
+was chosen because EWRAM also has to hold expansion's `EWRAM_DATA` (section
+`.sbss`), which the linker places: with mmap the loader has already mapped
+those pages and mapping EWRAM fails with `EEXIST` (observed), so EWRAM would
+be split between two mechanisms, while one output section holds both here.
+The regions also exist before any code runs, so nothing (sanitizer runtime,
+loader, malloc) can take an address first and there is no runtime failure
+path, and LeakSanitizer scans them as globals, where an mmap'd region holding
+the only pointer to a heap block produced a false leak report (observed).
+Costs: GNU ld and a non-PIE link (`-no-pie -Wl,-Ttext-segment=0x40000000
+-Wl,-T,platform/gba_regions.ld`, which `Makefile.native` must also use); ld
+puts the ELF headers in the page below EWRAM (0x01FFF000, unused on the GBA);
+Windows and macOS will need init to reserve the regions at run time instead.
+Details in the header comment of `platform/gba_memmap.c`.
+
+## 2026-10-08: Platform builds include expansion's headers with -idirafter
+
+`docs/C-RULES.md` asks for expansion's headers as system headers via
+`-isystem`. `platform/Makefile` uses `-idirafter ../include`, which also
+marks them as system headers but searches them after the C library's:
+expansion's `include/` has `strings.h`, `malloc.h`, `link.h` and `menu.h`,
+and with `-isystem` glibc's `<string.h>` includes expansion's `strings.h`
+and nothing compiles.
