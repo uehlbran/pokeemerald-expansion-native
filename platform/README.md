@@ -277,3 +277,40 @@ reported as pressed, unfiltered.
 put a key into `SDL_GetKeyboardState` (a pushed `SDL_KEYDOWN` is only queued),
 so key translation is tested through the pure `input_keyboard_to_keys` and
 `input_pad_to_keys`; controllers are tested with SDL virtual joysticks.
+
+## The BIOS calls (`bios`)
+
+`bios.h` provides every function `include/gba/syscall.h` declares, with its
+exact signature, plus the libagbsyscall extras expansion could call (`Mod`,
+`DivArm`, `ModArm`, `ArcTan`, `HuffUnComp`, `BitUnPack`, the `Diff*UnFilter*`
+functions, `IntrWait`, `Halt`, `Stop`, `SoftResetRom`, `SoftResetExram`,
+`SoundBiasChange/Reset/Set`, `MidiKey2Freq`), so the native link uses them in
+place of libagbsyscall. `test/test_bios.c` includes `bios.h` and expansion's
+`gba/gba.h` together, so a signature that drifts is a compile error. The
+BIOS's own sound driver (SWI 1Ah-1Eh, 20h-24h, 28h-2Ah) is not provided.
+
+| File | GBATEK group | Functions |
+|---|---|---|
+| `bios_arith.c` | BIOS Arithmetic Functions | Div, Mod, DivArm, ModArm, Sqrt, ArcTan, ArcTan2 |
+| `bios_affine.c` | BIOS Rotation/Scaling Functions | BgAffineSet, ObjAffineSet |
+| `bios_memory.c` | BIOS Memory Copy | CpuSet, CpuFastSet |
+| `bios_decompress.c` | BIOS Decompression Functions | LZ77UnComp*, RLUnComp*, HuffUnComp |
+| `bios_unfilter.c` | BIOS Decompression Functions | BitUnPack, Diff8bitUnFilter*, Diff16bitUnFilter |
+| `bios_control.c` | BIOS Reset/Halt Functions, Multi Boot | RegisterRamReset, SoftReset*, VBlankIntrWait, IntrWait, Halt, Stop, MultiBoot |
+| `bios_sound.c` | BIOS Sound Functions | SoundBias*, MidiKey2Freq |
+| `bios_stream.c`, `bios_internal.c` | (internal) | stream header, source bound, 8/16-bit writers; range checks, 32-bit fixed point |
+
+For the frame loop: `bios_init(run_frame)` registers the function
+`VBlankIntrWait`, `IntrWait` and `Halt` call to let a frame pass (they then
+check `INTR_CHECK` at 3007FF8h as the BIOS does; with `NULL` they return at
+once), and `bios_set_reset_target(&jmp_buf)` registers where `SoftReset`
+longjmps after clearing what the BIOS clears. Without a target `SoftReset`
+prints and returns; `bios_soft_reset()` returns `BIOS_ERR_NO_RESET_TARGET`.
+
+Every range a call touches whose length comes from the game is checked with
+`transfer_bounds_ok()` first (so `transfer_bounds_init()` must have run); a
+refused call prints one line and does nothing. Alignment is deliberately not
+enforced (expansion's GBA build pads structs to 4 bytes, the native ABI does
+not). The "Vram" decompressors write 16-bit units only. The tests' expected
+values are worked by hand from GBATEK; where GBATEK leaves a behaviour open,
+`bios.h` says what was chosen.
