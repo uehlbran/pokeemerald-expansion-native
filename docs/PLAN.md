@@ -9,8 +9,8 @@ resumes by reading both and first posting what it believes is in flight.
 | # | Milestone | State |
 |---|---|---|
 | 1 | Research, `RESEARCH.md`, per-subsystem decisions, license | done 2026-10-08 |
-| 2 | Fork, build system, 32-bit build that boots and plays the opening | in progress |
-| 3 | Input-replay smoke test, save round-trip, root-cause fixes | not started |
+| 2 | Fork, build system, 32-bit build that boots to the title screen (plain and sanitized); playing the opening needs milestone 3's replay | done 2026-10-09 |
+| 3 | Input-replay smoke test, save round-trip, root-cause fixes | in progress |
 | 4 | Native test-runner integration; suite matches the GBA baseline | not started |
 | 5 | Debug-menu gate | not started |
 | 6 | Unit tests under sanitizers, clang-tidy, cppcheck, `.clang-format` enforced in the gate, docs, the refactoring pass (below); 32-bit done | not started |
@@ -19,12 +19,9 @@ resumes by reading both and first posting what it believes is in flight.
 
 ## Milestone 2 work breakdown
 
-State on 2026-10-09: every platform module and the m4a engine are
-merged on main (commit a8c906700d). One worker remains: integration
-(work/integration: main.c, frame loop, game hooks, link script, the
-native link, first headless boot). Next: review and merge it once the
-executable runs frames; then boot debugging to the title screen and
-opening (milestone 2 exit), then milestone 3 (input replay).
+State on 2026-10-09: milestone 2 done; the native build boots to the
+title screen plain and sanitized. Milestone 3 (replay smoke test) is
+being dispatched to one worker in worktree replay.
 
 Wave 1 (no dependencies between them):
 
