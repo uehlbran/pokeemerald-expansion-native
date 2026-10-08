@@ -295,3 +295,5 @@ status. The driver prints the engine's whole state after every frame.
 The two outputs are identical over all 11400 frames. The scenarios stay
 inside the behaviour both sides define, so they avoid the departures
 listed above.
+
+Note: `make -C platform test` does not run the differential test, because it needs `arm-none-eabi-gcc` with newlib and `qemu-arm`; run `make -C platform/m4a/difftest run` by hand after changing the engine, and before every release.

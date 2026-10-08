@@ -289,3 +289,36 @@ and the OBJ that exhausts it is drawn partially. Modes 2 to 7 are not
 supported and render a black line with an error. Not modelled: the
 "garbage" quirk for out-of-order OBJ priorities and the one-frame delay
 before a newly enabled BG appears.
+
+## 2026-10-08: The m4a engine is a C translation of src/m4a_1.s, proven by a differential test
+
+The ARM sound engine (`SoundMain`, `MPlayMain`, the `ply_*` commands) is
+translated to C under `platform/m4a/`, with every struct offset the
+assembly hard-codes asserted against `include/gba/m4a_internal.h` and
+the pointer-dependent ones flagged for the 64-bit milestone. Where the
+assembly would read outside its data for state the game never produces
+(compressed samples past either end, a data byte before any running
+status, more than 12 channels, PSG voice types 5 to 7, a ring frame out
+of range, `SOUND_INFO_PTR` still 0), the C guards and does nothing, with
+a test per case. Evidence: a differential test builds one driver twice,
+for ARM with the original `src/m4a_1.s` under `qemu-arm` and natively
+with the C, and compares the whole engine state after every frame of 300
+mixer and 60 sequencer scenarios: identical. It is not part of the
+standard gate because it needs the ARM toolchain and QEMU; it is run by
+hand before releases. `ptest.h`'s equality macros do not cast their
+arguments, which is how the one sign-conversion the author's private
+stub had hidden was found.
+
+## 2026-10-08: BIOS interpretation points
+
+The sine table is 1.14 fixed point (65 quarter entries, round(sin x
+4000h)), products shifted right by 14, matching ArcTan's 14 fractional
+bits; GBATEK gives neither the table nor its precision. The ArcTan
+polynomial coefficients are the BIOS's own eight constants, supplied
+from knowledge of the BIOS rather than from GBATEK or tonc, and checked
+by ArcTan(4000h) == 2000h and the error bound. Div by zero returns zeros
+with a one-time message. A wrong decompression type nibble is refused.
+SoftReset longjmps to a target the frame loop registers; without one it
+prints and returns. Bounded decompressor variants exist for the tests
+only. CpuSet, CpuFastSet and the Vram writers do not enforce alignment
+(host-ABI decision above).
