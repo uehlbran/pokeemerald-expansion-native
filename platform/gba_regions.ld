@@ -22,20 +22,26 @@ SECTIONS
 {
     HIDDEN(gba_regions_saved_dot = .);
 
-    /* EWRAM. Expansion's EWRAM_DATA is __attribute__((section(".sbss")))
+    /* EWRAM: GBATEK "GBA Memory Map", 02000000-0203FFFF, 256 KBytes.
+     * Expansion's EWRAM_DATA is __attribute__((section(".sbss")))
      * (include/gba/defines.h), so the game's EWRAM variables land here at the
      * bottom of the region, as ld_script_modern.ld places them on the GBA; the
-     * rest of the 256 KiB stays free for gHeap and the game's fixed uses. */
+     * rest of the 256 KiB stays free for gHeap and the game's fixed uses.
+     * MAX keeps an oversized .sbss from stopping the layout with "cannot move
+     * location counter backwards"; the ASSERT after the section then fails
+     * the link with a message that says what is wrong. */
     .gba_ewram 0x02000000 (NOLOAD) :
     {
         gba_linked_ewram_start = .;
         *(.sbss .sbss.*)
-        ASSERT(. <= gba_linked_ewram_start + 0x40000, "EWRAM_DATA (.sbss) exceeds the 256 KiB of EWRAM");
-        . = gba_linked_ewram_start + 0x40000;
+        HIDDEN(gba_ewram_data_end = .);
+        . = MAX(., gba_linked_ewram_start + 0x40000);
         gba_linked_ewram_end = .;
     }
+    ASSERT(gba_ewram_data_end <= gba_linked_ewram_start + 0x40000,
+           "gba_regions.ld: EWRAM_DATA (.sbss) is larger than the 256 KiB of EWRAM")
 
-    /* IWRAM, 32 KiB. */
+    /* IWRAM: GBATEK "GBA Memory Map", 03000000-03007FFF, 32 KBytes. */
     .gba_iwram 0x03000000 (NOLOAD) :
     {
         gba_linked_iwram_start = .;
@@ -43,7 +49,7 @@ SECTIONS
         gba_linked_iwram_end = .;
     }
 
-    /* I/O registers, 1 KiB, mapped as one 4 KiB page. */
+    /* I/O registers: GBATEK "GBA Memory Map", 04000000-040003FE, 1 KiB; one 4 KiB page. */
     .gba_io 0x04000000 (NOLOAD) :
     {
         gba_linked_io_start = .;
@@ -51,7 +57,7 @@ SECTIONS
         gba_linked_io_end = .;
     }
 
-    /* mGBA debug registers, one 4 KiB page. */
+    /* mGBA debug registers 04FFF600-04FFF781 (mGBA src/gba/io.c); their 4 KiB page. */
     .gba_mgba_debug 0x04FFF000 (NOLOAD) :
     {
         gba_linked_mgba_debug_start = .;
@@ -59,7 +65,7 @@ SECTIONS
         gba_linked_mgba_debug_end = .;
     }
 
-    /* BG/OBJ palette RAM, 1 KiB, mapped as one 4 KiB page. */
+    /* Palette RAM: GBATEK "GBA Memory Map", 05000000-050003FF, 1 Kbyte; one 4 KiB page. */
     .gba_palette_ram 0x05000000 (NOLOAD) :
     {
         gba_linked_palette_ram_start = .;
@@ -67,7 +73,7 @@ SECTIONS
         gba_linked_palette_ram_end = .;
     }
 
-    /* VRAM, 96 KiB. */
+    /* VRAM: GBATEK "GBA Memory Map", 06000000-06017FFF, 96 KBytes. */
     .gba_vram 0x06000000 (NOLOAD) :
     {
         gba_linked_vram_start = .;
@@ -75,7 +81,7 @@ SECTIONS
         gba_linked_vram_end = .;
     }
 
-    /* OAM, 1 KiB, mapped as one 4 KiB page. */
+    /* OAM: GBATEK "GBA Memory Map", 07000000-070003FF, 1 Kbyte; one 4 KiB page. */
     .gba_oam 0x07000000 (NOLOAD) :
     {
         gba_linked_oam_start = .;
@@ -83,7 +89,7 @@ SECTIONS
         gba_linked_oam_end = .;
     }
 
-    /* Game Pak SRAM window, backed by the whole 128 KiB flash chip. */
+    /* SRAM window: GBATEK "GBA Cart Backup Flash ROM", 128 KBytes (1 Mbit), both banks. */
     .gba_sram 0x0E000000 (NOLOAD) :
     {
         gba_linked_sram_start = .;
