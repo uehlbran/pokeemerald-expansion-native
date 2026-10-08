@@ -117,7 +117,7 @@ PTEST(script_source_writes_keyinput_exactly)
     PT_ASSERT_EQ_U32(idle, 0x03FFu);
     PT_ASSERT_EQ_U32(first, input_keys_to_keyinput(INPUT_KEY_A | INPUT_KEY_START));
     PT_ASSERT_EQ_U32(first, 0x03F6u);
-    PT_ASSERT_EQ_U32(second, 0x033Fu & ~0u);
+    PT_ASSERT_EQ_U32(second, 0x013Fu);
     PT_ASSERT_EQ_U32(all, 0u);
 }
 
@@ -158,7 +158,7 @@ PTEST(second_init_without_shutdown_fails_and_keeps_the_first)
     uint16_t seen = *keyinput();
     input_shutdown();
     *keyinput() = 0;
-    PT_ASSERT_EQ_U32(seen, 0x02FFu & ~0u ? input_keys_to_keyinput(INPUT_KEY_R) : 0u);
+    PT_ASSERT_EQ_U32(seen, 0x02FFu);
 }
 
 PTEST(init_after_shutdown_works)
@@ -401,7 +401,7 @@ PTEST(event_handler_before_init_and_with_null_is_safe)
     SDL_zero(event);
     event.type = SDL_CONTROLLERDEVICEADDED;
     input_shutdown();
-    PT_ASSERT(input_handle_event(&event) != 0 || 1);
+    PT_ASSERT_EQ_INT(input_handle_event(&event), 0); /* not initialised: ignored */
     PT_ASSERT(input_handle_event(NULL) != 0);
 }
 
