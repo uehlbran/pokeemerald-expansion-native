@@ -1,6 +1,6 @@
 # Status
 
-Last updated 2026-10-08 night (milestone 2 in progress: 15 modules merged; bios, m4a and the first link in progress).
+Last updated 2026-10-09 (milestone 2 in progress: every platform module merged; the first link and boot in progress).
 
 This file is the honest ledger. A thing is listed as verified only with
 the gate that proved it. Anything without a gate is unverified, whatever
@@ -15,7 +15,7 @@ we believe about it.
 | Every native object compiles from a clean clone with the host compiler, 32-bit, TEST=0 and TEST=1 | `make -f Makefile.native -j32 objects BITS=32` (and `TEST=1`) | 928 and 1895 objects, 0 warnings; no link yet |
 | GBA ROM unchanged by the guarded modifications | sha1 of `pokeemerald.gba` before and after | identical (e2d4600d4e7b1269ac50c28bc96ece2b758ded9e); `make check` equal to the baseline |
 | GBA memory regions can be mapped at their addresses in a native process on 32-bit and 64-bit, with ASan and UBSan | `research/memory-map-experiment.md` | works |
-| Platform modules merged so far: `gba_memmap` (region layout via linker script), `ptest.h` self-test, `timer`, `transfer_bounds`, `input`, `rtc`, `video`, `audio`, `frame_pacer`, `interrupt`, `psg`, `ppu`, `dma`, `flash`, `save_file` | `make -C platform test BITS=32` and `BITS=64`, every test under ASan+UBSan with leak detection, after a Sonnet first-pass review and orchestrator merge | green on both widths at merge time |
+| Every platform module is merged: `gba_memmap` (region layout via linker script), `ptest.h` self-test, `timer`, `transfer_bounds`, `input`, `rtc`, `video`, `audio`, `frame_pacer`, `interrupt`, `psg`, `ppu`, `dma`, `flash`, `save_file`, `bios`, and the `m4a` engine translation (also proven by a differential test against the ARM original under qemu-arm, run by hand) | `make -C platform test BITS=32` and `BITS=64`, every test under ASan+UBSan with leak detection, after a Sonnet first-pass review and orchestrator merge | green on both widths at merge time |
 
 ## Not verified
 
@@ -63,7 +63,7 @@ Nothing yet; nothing exists to be broken.
 |---|---|---|
 | foundation (ptest.h, platform Makefile, gba_memmap, region layout) | Opus | Sonnet |
 | build (Makefile.native, asm filter, eight guarded modifications) | Opus | Sonnet |
-| m4a (m4a_1.s translated to C) | Opus | pending |
+| m4a (m4a_1.s translated to C) | Opus | Sonnet |
 | timer | Sonnet | Sonnet |
 | transfer_bounds | Sonnet | Sonnet |
 | input | Sonnet | Sonnet |
@@ -74,7 +74,7 @@ Nothing yet; nothing exists to be broken.
 | save (flash, save_file) | Opus | Sonnet |
 | ppu | Opus | Sonnet |
 | dma | Opus | Sonnet |
-| bios | Opus | pending |
+| bios | Opus | Sonnet |
 | integration (main, frame loop, link) | Opus | pending |
 | Research, synthesis, decisions, merges | Fable (orchestrator) | |
 
