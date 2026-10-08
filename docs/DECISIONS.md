@@ -228,3 +228,22 @@ is rewritten with a header on the next store. Gate (h), run in milestone
 7: a save written by the 32-bit native build loads correctly in the
 64-bit build, which will need a layout conversion keyed on the tag. The
 header makes any future layout change detectable instead of silent.
+
+## 2026-10-08: PSG trigger, wave-bank and output-scale rules
+
+The PSG module consumes a trigger by clearing NRx4 bit 7 in the I/O
+region after acting on it (the bit is write-only and reads 0 on
+hardware), because m4a rewrites NRx4 with bit 7 on every volume change
+and every note and expects a retrigger each time; remembering the bit
+would silence those. Wave RAM bytes changed since the last call go into
+the bank selected for playback at that call, which reproduces the result
+of m4a's load sequence (select the other bank, write, select back within
+one frame); GBATEK's literal rule (writes go to the unselected bank at
+the moment of each write) cannot be applied to state sampled once per
+frame. Length is loaded from NRx1 on each trigger for the same reason.
+Output is 16 int16 units per GBA output unit (GBATEK "Max Output
+Levels"), maximum 15360 for four channels at full volume, leaving room
+for the two Direct Sound FIFOs in the same int16 range; the audio mix
+must remove DC after summing, as the GBA's output capacitor did. The PSG
+is generated at the output rate with point sampling and an exact cycle
+remainder, never at m4a's 13379 Hz mixer rate, which would alias badly.
