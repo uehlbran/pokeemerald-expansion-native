@@ -81,13 +81,17 @@ union SDL_Event;
 /* Selects the source. Returns 0, or a negative value after printing the
  * reason to stderr (unknown source, already initialised, HOST without SDL's
  * events subsystem initialised by the caller, a failed SDL call). HOST opens
- * the game controllers present (up to INPUT_MAX_CONTROLLERS); if SDL's game
+ * the game controllers present (up to INPUT_MAX_CONTROLLERS; a pad that
+ * cannot be opened, or one too many, is reported on stderr and skipped, and
+ * only SDL_NumJoysticks failing fails init); if SDL's game
  * controller subsystem cannot start it says so and carries on keyboard-only.
  * SCRIPT needs no SDL. After a failed init nothing is held. */
 int input_init(enum input_source source);
 
 /* Closes every controller and the controller subsystem. Safe before init,
- * after a failed init, and more than once. */
+ * after a failed init, and more than once. Call it before SDL_Quit: SDL
+ * frees controllers still held at quit, and this module must not close them
+ * afterwards. */
 void input_shutdown(void);
 
 /* Writes KEYINPUT (4000130h) from the source. Does nothing if the module is

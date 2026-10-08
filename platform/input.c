@@ -118,6 +118,11 @@ static uint16_t read_host_keys(void)
 {
     int numkeys = 0;
     const uint8_t *keyboard = SDL_GetKeyboardState(&numkeys);
+    static bool reported_no_keyboard_state;
+    if (keyboard == NULL && !reported_no_keyboard_state) {
+        fprintf(stderr, "input: SDL_GetKeyboardState returned NULL; keyboard reads as no keys\n");
+        reported_no_keyboard_state = true;
+    }
     uint16_t keys = input_keyboard_to_keys(keyboard, numkeys);
     for (size_t i = 0; i < INPUT_MAX_CONTROLLERS; i++) {
         if (state.controllers[i] != NULL) {
@@ -185,8 +190,10 @@ static int open_present_controllers(void)
         return -1;
     }
     for (int i = 0; i < count; i++) {
-        if (SDL_IsGameController(i) == SDL_TRUE && open_controller(i) != 0) {
-            return -1;
+        if (SDL_IsGameController(i) == SDL_TRUE) {
+            /* A pad that cannot be opened, or one too many, is reported by
+             * open_controller and skipped: the keyboard still works. */
+            (void)open_controller(i);
         }
     }
     return 0;

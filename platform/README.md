@@ -146,4 +146,4 @@ reported as pressed, unfiltered.
 `test_input.c` sets `SDL_VIDEODRIVER=dummy` itself. SDL's dummy driver cannot
 put a key into `SDL_GetKeyboardState` (a pushed `SDL_KEYDOWN` is only queued),
 so key translation is tested through the pure `input_keyboard_to_keys` and
-`input_pad_to_keys`.
+`input_pad_to_keys`; controllers are tested with SDL virtual joysticks.
