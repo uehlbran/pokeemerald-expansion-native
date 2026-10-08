@@ -99,12 +99,29 @@ static bool condition_holds(struct replay *replay, const struct replay_command *
     return strcmp(actual, command->value) == 0;
 }
 
+static void begin_wait_frames(struct replay *replay, uint32_t target)
+{
+    replay->wait = REPLAY_WAIT_FRAME;
+    replay->wait_until = target;
+}
+
 static void fail_timeout(struct replay *replay, const struct replay_command *command)
 {
     char actual[REPLAY_FACT_BUFFER_SIZE] = "";
     (void)replay->host.get_fact(replay->host.context, command->fact, actual, sizeof actual);
-    fail(replay, command->line, "wait-until %s=%s timed out after %u frames; the game has %s=%s", command->fact,
-         command->value, (unsigned)command->number, command->fact, actual);
+    fail(replay, command->line, "%s %s=%s timed out after %u frames; the game has %s=%s",
+         command->kind == REPLAY_CMD_MASH ? "mash until" : "wait-until", command->fact, command->value,
+         (unsigned)command->number, command->fact, actual);
+}
+
+/* The keys of a mash for the current frame: down for the first
+ * REPLAY_MASH_DOWN_FRAMES of each cycle. */
+static void mash_keys(struct replay *replay)
+{
+    const uint32_t cycle = REPLAY_MASH_DOWN_FRAMES + REPLAY_MASH_UP_FRAMES;
+    const bool down = (replay->tick - replay->wait_started) % cycle < REPLAY_MASH_DOWN_FRAMES;
+    replay->transient = down ? replay->waiting_command->keys : 0;
+    replay->release_at = UINT32_MAX; /* the mash itself releases */
 }
 
 static void run_wait_until(struct replay *replay, const struct replay_command *command)
@@ -117,7 +134,10 @@ static void run_wait_until(struct replay *replay, const struct replay_command *c
     }
     replay->wait = REPLAY_WAIT_FACT;
     replay->wait_until = replay->tick + command->number;
+    replay->wait_started = replay->tick;
     replay->waiting_command = command;
+    if (command->kind == REPLAY_CMD_MASH)
+        mash_keys(replay);
 }
 
 /* A wait-until in progress: true if it is still waiting. */
@@ -126,6 +146,12 @@ static bool still_waiting_for_fact(struct replay *replay)
     const struct replay_command *command = replay->waiting_command;
     if (condition_holds(replay, command)) {
         replay->wait = REPLAY_WAIT_NONE;
+        replay->transient = 0;
+        if (command->kind == REPLAY_CMD_MASH) {
+            /* the keys stay up one frame, so a press that follows is a new press */
+            begin_wait_frames(replay, replay->tick + REPLAY_MASH_END_UP_FRAMES);
+            return true;
+        }
         return false;
     }
     if (replay->status == REPLAY_FAILED)
@@ -134,6 +160,8 @@ static bool still_waiting_for_fact(struct replay *replay)
         fail_timeout(replay, command);
         return false;
     }
+    if (command->kind == REPLAY_CMD_MASH)
+        mash_keys(replay);
     return true;
 }
 
@@ -168,12 +196,6 @@ static void run_write(struct replay *replay, const struct replay_command *comman
         fail(replay, command->line, "dump: could not write %s", path);
 }
 
-static void begin_wait_frames(struct replay *replay, uint32_t target)
-{
-    replay->wait = REPLAY_WAIT_FRAME;
-    replay->wait_until = target;
-}
-
 static void run_command(struct replay *replay, const struct replay_command *command)
 {
     switch (command->kind) {
@@ -204,6 +226,7 @@ static void run_command(struct replay *replay, const struct replay_command *comm
         begin_wait_frames(replay, replay->release_at);
         break;
     case REPLAY_CMD_WAIT_UNTIL:
+    case REPLAY_CMD_MASH:
         run_wait_until(replay, command);
         break;
     case REPLAY_CMD_EXPECT:

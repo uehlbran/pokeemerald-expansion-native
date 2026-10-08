@@ -27,6 +27,7 @@
 #include "main_menu.h"
 #include "option_menu.h"
 #include "overworld.h"
+#include "palette.h"
 #include "pokemon.h"
 #include "save.h"
 #include "script.h"
@@ -106,9 +107,48 @@ static void fact_task_first(char *out, size_t size)
     snprintf(out, size, "%s", none_text);
 }
 
+/* Every active task's function, by task id, comma separated; cut at the end
+ * of the value ("..." marks a cut). */
+static void fact_tasks(char *out, size_t size)
+{
+    size_t used = 0;
+    out[0] = '\0';
+    for (size_t i = 0; i < NUM_TASKS; i++) {
+        char name[INSPECT_VALUE_SIZE];
+        if (!gTasks[i].isActive)
+            continue;
+        name_function((uintptr_t)gTasks[i].func, name, sizeof name);
+        int written = snprintf(out + used, size - used, "%s%s", used > 0 ? "," : "", name);
+        if (written < 0 || (size_t)written >= size - used) {
+            snprintf(out + (size > 4 ? size - 4 : 0), size > 4 ? 4 : size, "...");
+            return;
+        }
+        used += (size_t)written;
+    }
+    if (used == 0)
+        snprintf(out, size, "%s", none_text);
+}
+
+static void fact_keys_held(char *out, size_t size)
+{
+    snprintf(out, size, "0x%04X", (unsigned)gMain.heldKeysRaw);
+}
+
+static void fact_keys_new(char *out, size_t size)
+{
+    snprintf(out, size, "0x%04X", (unsigned)gMain.newKeysRaw);
+}
+
+static void fact_fade_active(char *out, size_t size)
+{
+    snprintf(out, size, "%u", gPaletteFade.active ? 1u : 0u);
+}
+
 static void fact_player_name(char *out, size_t size)
 {
-    (void)inspect_decode_text(gSaveBlock2Ptr->playerName, sizeof gSaveBlock2Ptr->playerName, out, size);
+    size_t length = inspect_decode_text(gSaveBlock2Ptr->playerName, sizeof gSaveBlock2Ptr->playerName, out, size);
+    while (length > 0 && out[length - 1] == ' ')
+        out[--length] = '\0'; /* a name is padded with spaces (byte 0) on a new game */
 }
 
 static void fact_player_gender(char *out, size_t size)
@@ -199,6 +239,10 @@ static const struct fact facts[] = {
     { "callback2", fact_callback2 },
     { "task_count", fact_task_count },
     { "task_first", fact_task_first },
+    { "tasks", fact_tasks },
+    { "fade_active", fact_fade_active },
+    { "keys_held", fact_keys_held },
+    { "keys_new", fact_keys_new },
     { "player_name", fact_player_name },
     { "player_gender", fact_player_gender },
     { "map", fact_map },

@@ -18,6 +18,13 @@
  *   expect FACT=VALUE          fail the run if the fact differs
  *   screenshot NAME            write NAME.ppm in the output directory
  *   dump NAME                  write every fact, as key=value lines, to NAME.txt
+ *   mash KEYS until FACT=VALUE max N
+ *                              press KEYS over and over (REPLAY_MASH_DOWN_FRAMES
+ *                              down, REPLAY_MASH_UP_FRAMES up, so each cycle is a
+ *                              new press, and held long enough to speed text up)
+ *                              until the fact equals the value (then the keys
+ *                              stay up one frame); fail after N frames. For dialogue, whose number of pages the
+ *                              script should not have to count.
  *   restart                    end this process and start the game again from
  *                              a cold start with the same save, continuing
  *                              the script after this line (replay_restart_line)
@@ -39,6 +46,12 @@
 #include <stddef.h>
 #include <stdint.h>
 
+/* `mash`: a cycle is this many frames with the keys down, then this many up. */
+#define REPLAY_MASH_DOWN_FRAMES 4u
+#define REPLAY_MASH_UP_FRAMES 4u
+/* A finished mash leaves the keys up this long, so the next press is new. */
+#define REPLAY_MASH_END_UP_FRAMES 1u
+
 /* Limits, each reported by the parser when exceeded. */
 #define REPLAY_MAX_COMMANDS 2048u
 #define REPLAY_MAX_LINE_LENGTH 255u
@@ -58,6 +71,7 @@ enum replay_command_kind {
     REPLAY_CMD_RELEASE,
     REPLAY_CMD_HOLD_FOR,
     REPLAY_CMD_WAIT_UNTIL,
+    REPLAY_CMD_MASH,
     REPLAY_CMD_EXPECT,
     REPLAY_CMD_SCREENSHOT,
     REPLAY_CMD_DUMP,
@@ -67,7 +81,7 @@ enum replay_command_kind {
 struct replay_command {
     enum replay_command_kind kind;
     uint32_t line;                              /* 1-based line in the script */
-    uint32_t number;                            /* frame: N; wait: N; hold for: N; wait-until: max N */
+    uint32_t number;                            /* frame: N; wait: N; hold for: N; wait-until, mash: max N */
     uint16_t keys;                              /* INPUT_KEY_* bits, for press/hold/release/hold for */
     char fact[REPLAY_MAX_FACT_LENGTH + 1u];     /* expect, wait-until */
     char value[REPLAY_MAX_VALUE_LENGTH + 1u];   /* expect, wait-until */
@@ -112,7 +126,7 @@ enum replay_status {
 enum replay_wait {
     REPLAY_WAIT_NONE,
     REPLAY_WAIT_FRAME, /* until replay_step call wait_until */
-    REPLAY_WAIT_FACT   /* until the fact equals the value, or call wait_until passed */
+    REPLAY_WAIT_FACT   /* until the fact equals the value, or call wait_until passed (wait-until, mash) */
 };
 
 struct replay {
@@ -123,6 +137,7 @@ struct replay {
     uint32_t tick;
     enum replay_wait wait;
     uint32_t wait_until;
+    uint32_t wait_started; /* the tick a mash began */
     uint32_t release_at;
     uint16_t held;
     uint16_t transient;

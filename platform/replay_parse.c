@@ -204,14 +204,14 @@ static bool parse_hold(struct replay_command *command, char *rest, struct replay
     return true;
 }
 
-/* wait-until FACT=VALUE max N */
-static bool parse_wait_until(struct replay_command *command, char *rest, struct replay_parse_error *error)
+/* wait-until FACT=VALUE max N, and the tail of mash KEYS until FACT=VALUE max N */
+static bool parse_condition_and_max(struct replay_command *command, char *rest, struct replay_parse_error *error)
 {
     char *max_at = NULL;
     for (char *at = strstr(rest, " max "); at != NULL; at = strstr(at + 1, " max "))
         max_at = at;
     if (max_at == NULL) {
-        set_error(error, command->line, "wait-until needs 'max N' after the condition");
+        set_error(error, command->line, "%s needs 'max N' after the condition", command->kind == REPLAY_CMD_MASH ? "mash" : "wait-until");
         return false;
     }
     *max_at = '\0';
@@ -220,6 +220,23 @@ static bool parse_wait_until(struct replay_command *command, char *rest, struct 
         return false;
     }
     return parse_condition(rest, command, error);
+}
+
+/* mash KEYS until FACT=VALUE max N */
+static bool parse_mash(struct replay_command *command, char *rest, struct replay_parse_error *error)
+{
+    const char *bad;
+    char *until_at = strstr(rest, " until ");
+    if (until_at == NULL) {
+        set_error(error, command->line, "mash needs 'until FACT=VALUE max N' after the keys");
+        return false;
+    }
+    *until_at = '\0';
+    if (!parse_keys(trim(rest), &command->keys, &bad)) {
+        set_error(error, command->line, "unknown key '%s'", bad);
+        return false;
+    }
+    return parse_condition_and_max(command, trim(until_at + strlen(" until ")), error);
 }
 
 static bool parse_name_command(struct replay_command *command, char *rest, struct replay_parse_error *error)
@@ -254,7 +271,11 @@ static bool parse_command(char *text, struct replay_command *command, struct rep
         return parse_hold(command, rest, error);
     if (strcmp(word, "wait-until") == 0) {
         command->kind = REPLAY_CMD_WAIT_UNTIL;
-        return parse_wait_until(command, rest, error);
+        return parse_condition_and_max(command, rest, error);
+    }
+    if (strcmp(word, "mash") == 0) {
+        command->kind = REPLAY_CMD_MASH;
+        return parse_mash(command, rest, error);
     }
     if (strcmp(word, "expect") == 0) {
         command->kind = REPLAY_CMD_EXPECT;

@@ -612,7 +612,13 @@ struct ScriptEffectContext *gScriptEffectContext = NULL;
 static bool32 Script_IsEffectInstrumentedCommand(ScrCmdFunc func)
 {
     // In ROM mirror 1.
+#if PLATFORM_NATIVE
+    // The code is at 0x40000000 and up, its mirror (platform/rom_mirror.h) at +ROM_SIZE.
+    return (((uintptr_t)func) & 0xE000000) == 0x2000000;
+#else
     return (((uintptr_t)func) & 0xE000000) == 0xA000000;
+#endif
+#line 616
 }
 
 /* 'setjmp' and 'longjmp' cause link errors, so we use

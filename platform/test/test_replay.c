@@ -109,6 +109,17 @@ PTEST(a_value_may_contain_max_as_a_word)
     PT_ASSERT_EQ_INT(c->number, 5);
 }
 
+PTEST(parses_mash)
+{
+    const struct replay_command *c = only_command("mash A,B until task_first=Task_X max 900");
+    PT_ASSERT(c != NULL);
+    PT_ASSERT_EQ_INT(c->kind, REPLAY_CMD_MASH);
+    PT_ASSERT_EQ_U32(c->keys, INPUT_KEY_A | INPUT_KEY_B);
+    PT_ASSERT_EQ_STR(c->fact, "task_first");
+    PT_ASSERT_EQ_STR(c->value, "Task_X");
+    PT_ASSERT_EQ_INT(c->number, 900);
+}
+
 PTEST(parses_screenshot_dump_and_restart)
 {
     const struct replay_command *c = only_command("screenshot 01_title-a");
@@ -186,6 +197,17 @@ PTEST(rejects_bad_wait_until)
     assert_parse_error("wait-until callback2 max 5", 1, "expected FACT=VALUE");
     assert_parse_error("wait-until Bad=X max 5", 1, "bad fact name");
     assert_parse_error("wait-until a= max 5", 1, "empty or too long");
+}
+
+PTEST(rejects_bad_mash)
+{
+    assert_parse_error("mash A", 1, "mash needs 'until");
+    assert_parse_error("mash A until", 1, "mash needs 'until");
+    assert_parse_error("mash until a=b max 3", 1, "mash needs 'until");
+    assert_parse_error("mash X until a=b max 3", 1, "unknown key 'X'");
+    assert_parse_error("mash A until a=b", 1, "mash needs 'max N'");
+    assert_parse_error("mash A until a=b max x", 1, "'max' needs");
+    assert_parse_error("mash A until ab max 3", 1, "expected FACT=VALUE");
 }
 
 PTEST(rejects_bad_expect)
@@ -491,6 +513,68 @@ PTEST(wait_until_max_zero_requires_the_fact_now)
     PT_ASSERT_EQ_INT(start(&replay, &fake, "wait-until alpha=go max 0", 0), 0);
     PT_ASSERT_EQ_INT(run(&replay, &fake, 100), REPLAY_FAILED);
     PT_ASSERT_EQ_INT(fake.steps, 1);
+}
+
+PTEST(mash_presses_in_cycles_until_the_fact_holds_then_releases)
+{
+    struct replay replay;
+    struct fake fake;
+    PT_ASSERT_EQ_INT(start(&replay, &fake, "mash A until alpha=go max 100\nrestart", 0), 0);
+    PT_ASSERT_EQ_INT(run(&replay, &fake, 12), REPLAY_RUNNING);
+    for (size_t step = 0; step < 12; step++) {
+        uint16_t expected = step % (REPLAY_MASH_DOWN_FRAMES + REPLAY_MASH_UP_FRAMES) < REPLAY_MASH_DOWN_FRAMES ? INPUT_KEY_A : 0;
+        PT_ASSERT_EQ_U32(fake.keys_at[step], expected);
+    }
+    strcpy(fake.values[0], "go");
+    PT_ASSERT_EQ_INT(run(&replay, &fake, 100), REPLAY_RESTART);
+    PT_ASSERT_EQ_INT(fake.steps, 14); /* the keys stay up one frame after the mash */
+    PT_ASSERT_EQ_U32(fake.keys, 0);
+}
+
+PTEST(mash_that_already_holds_presses_nothing)
+{
+    struct replay replay;
+    struct fake fake;
+    PT_ASSERT_EQ_INT(start(&replay, &fake, "mash A until alpha=one max 100\nrestart", 0), 0);
+    PT_ASSERT_EQ_INT(run(&replay, &fake, 100), REPLAY_RESTART);
+    PT_ASSERT_EQ_INT(fake.steps, 1);
+    PT_ASSERT_EQ_U32(fake.keys_at[0], 0);
+}
+
+PTEST(mash_times_out_and_keeps_held_keys_while_running)
+{
+    struct replay replay;
+    struct fake fake;
+    PT_ASSERT_EQ_INT(start(&replay, &fake, "hold UP\nmash A until alpha=never max 9\nrestart", 0), 0);
+    PT_ASSERT_EQ_INT(run(&replay, &fake, 100), REPLAY_FAILED);
+    PT_ASSERT_EQ_U32(fake.keys_at[0], INPUT_KEY_UP | INPUT_KEY_A);
+    PT_ASSERT_EQ_U32(fake.keys_at[REPLAY_MASH_DOWN_FRAMES], INPUT_KEY_UP);
+    PT_ASSERT_EQ_INT(fake.steps, 10);
+    PT_ASSERT(strstr(replay_message(&replay), "line 2: mash until alpha=never timed out after 9 frames") != NULL);
+    PT_ASSERT_EQ_U32(fake.keys, 0);
+}
+
+PTEST(a_press_after_a_mash_releases_on_its_own_schedule)
+{
+    struct replay replay;
+    struct fake fake;
+    PT_ASSERT_EQ_INT(start(&replay, &fake, "mash A until alpha=one max 9\npress B\nwait 1\nrestart", 0), 0);
+    PT_ASSERT_EQ_INT(run(&replay, &fake, 100), REPLAY_RESTART);
+    PT_ASSERT_EQ_U32(fake.keys_at[0], INPUT_KEY_B);
+    PT_ASSERT_EQ_U32(fake.keys_at[1], 0);
+}
+
+PTEST(a_press_right_after_a_mash_is_a_new_press)
+{
+    struct replay replay;
+    struct fake fake;
+    PT_ASSERT_EQ_INT(start(&replay, &fake, "mash A until alpha=go max 100\npress A\nrestart", 0), 0);
+    PT_ASSERT_EQ_INT(run(&replay, &fake, 3), REPLAY_RUNNING); /* A is down at step 1 */
+    strcpy(fake.values[0], "go");
+    PT_ASSERT_EQ_INT(run(&replay, &fake, 4), REPLAY_RUNNING); /* step 4: the mash ends, keys up */
+    PT_ASSERT_EQ_U32(fake.keys_at[3], 0);
+    PT_ASSERT_EQ_INT(run(&replay, &fake, 5), REPLAY_RUNNING); /* step 5: the press goes down */
+    PT_ASSERT_EQ_U32(fake.keys_at[4], INPUT_KEY_A);
 }
 
 PTEST(wait_until_and_expect_report_an_unknown_fact)

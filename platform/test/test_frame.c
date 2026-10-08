@@ -449,6 +449,7 @@ PTEST(the_step_hook_runs_once_a_frame_before_keyinput_is_written)
     struct hook_log log = { .answer_at_third = FRAME_STEP_CONTINUE };
     PT_ASSERT(start(0, NULL, NULL));
     frame_set_step_hook(step_hook, &log);
+    *io(KEYINPUT_OFFSET) = KEYINPUT_NONE;
     input_script_set(INPUT_KEY_A);
     PT_ASSERT_EQ_INT(frame_run(), FRAME_CONTINUE);
     PT_ASSERT_EQ_INT(log.calls, 1);

@@ -19,7 +19,12 @@
  *   task_count        active tasks (gTasks)
  *   task_first        the function of the active task with the lowest id,
  *                     named as callback2 is ("none" without one)
- *   player_name       gSaveBlock2Ptr->playerName as ASCII
+ *   tasks             every active task's function, by id, comma separated
+ *                     (cut with "..." at the value's size)
+ *   fade_active       whether a palette fade is in progress, 0 or 1
+ *   keys_held         the keys the game's last ReadKeys saw held (gMain.heldKeysRaw), "0x%04X"
+ *   keys_new          the keys it saw newly pressed that frame (gMain.newKeysRaw)
+ *   player_name       gSaveBlock2Ptr->playerName as ASCII, trailing spaces cut
  *   player_gender     MALE or FEMALE
  *   map               gSaveBlock1Ptr->location as "group.number"
  *   pos               gSaveBlock1Ptr->pos as "x,y" (map tiles)
