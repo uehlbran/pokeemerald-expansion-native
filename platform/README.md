@@ -123,6 +123,33 @@ Sizes are what the hardware decodes, and are what `contains()` checks
 against; the 4 KiB pages are only the native mapping granularity. The
 executable itself starts at 0x40000000, above every region.
 
+## The LCD controller's drawing (`ppu`)
+
+`ppu.h` draws one visible line at a time from the mapped regions, as the
+GBA's LCD controller does (GBATEK "LCD Video Controller"): BG modes 0 and 1
+(the only ones the game sets; modes 2-7 return `PPU_ERR_UNSUPPORTED_MODE`
+and a black line), text and rotation/scaling backgrounds, the 128 OBJs
+within the per-line OBJ cycle budget, WIN0, WIN1, the OBJ window, alpha
+blending, brightness and mosaic. Forced blank draws white.
+
+| Call | When the frame loop makes it |
+|---|---|
+| `ppu_init()` / `ppu_shutdown()` | at start-up and exit |
+| `ppu_render_line(line, out)` | for lines 0 to 159, in order, once each; HBlank DMA and the HBlank and VCount handlers run between calls |
+| `ppu_latch_vblank()` | at the start of VBlank: copies BG2X/BG2Y/BG3X/BG3Y to the internal reference points |
+
+`ppu_render_line` writes `out` (BGR555, bit 15 clear) and nothing else: VCOUNT
+and the DISPSTAT flags belong to the frame loop. A mid-frame write to a
+reference point register is noticed by its value changing (register writes
+are plain stores), so a mid-frame write of the value already there is not.
+
+The module is split by hardware unit: `ppu.c` (registers, composition,
+reference points), `ppu_bg.c`, `ppu_obj.c`, `ppu_window.c`, `ppu_blend.c`;
+`ppu_internal.h` is what they share, including the bounds-checked readers of
+VRAM, palette RAM, OAM and I/O. Each file's header comment lists where it
+interprets GBATEK. The tests (`test/test_ppu*.c`) build tiny scenes in the
+regions with `test/ppu_scene.h`; an all-zero OAM entry is a displayed 8x8 OBJ
+at (0,0), as on hardware, so scenes hide every OBJ first.
 ## The interrupt controller (`interrupt`)
 
 `interrupt.h` stands in for the CPU's IRQ line, IE, IF and IME (GBATEK "GBA
