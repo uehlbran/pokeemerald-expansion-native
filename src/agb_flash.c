@@ -27,6 +27,10 @@ void SwitchFlashBank(u8 bankNum)
     FLASH_WRITE(0x0000, bankNum);
 }
 
+#if PLATFORM_NATIVE
+// ReadFlashId is platform/flash.c's: the native flash region is plain memory
+// with no ID mode, and the command writes below would land in the save image.
+#else
 #define DELAY()                  \
 do {                             \
     vu16 i;                      \
@@ -61,6 +65,7 @@ u16 ReadFlashId(void)
 
     return flashId;
 }
+#endif
 
 void FlashTimerIntr(void)
 {
@@ -127,6 +132,15 @@ void SetReadFlash1(u16 *dest)
     }
 }
 
+#if PLATFORM_NATIVE
+// ReadFlash and VerifyFlashSector are platform/flash.c's, reading the native
+// region directly with bounds checks. The versions below run copies of their
+// loops from a stack buffer (GBATEK: flash is readable only by code in WRAM)
+// and switch 64 KiB banks with command writes; native code cannot run from a
+// data buffer, and the native region holds the whole chip unbanked.
+// VerifyFlashSectorNBytes has no caller in expansion and no native version.
+u32 VerifyFlashSector(u16 sectorNum, u8 *src);
+#else
 // Using volatile here to make sure the flash memory will ONLY be read as bytes, to prevent any compiler optimizations.
 void ReadFlash_Core(vu8 *src, u8 *dest, u32 size)
 {
@@ -256,6 +270,7 @@ u32 VerifyFlashSectorNBytes(u16 sectorNum, u8 *src, u32 n)
 
     return verifyFlashSector_Core(src, tgt, n);
 }
+#endif
 
 u32 ProgramFlashSectorAndVerify(u16 sectorNum, u8 *src)
 {

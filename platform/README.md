@@ -123,6 +123,61 @@ Sizes are what the hardware decodes, and are what `contains()` checks
 against; the 4 KiB pages are only the native mapping granularity. The
 executable itself starts at 0x40000000, above every region.
 
+## The flash chip (`flash`) and the save file (`save_file`)
+
+`flash` is the cartridge's 1 Mbit flash chip as an entry of expansion's own
+driver table: `NativeFlash`, a `struct FlashSetupInfo`
+(`include/gba/flash_internal.h`), whose program and erase functions work on
+the 128 KiB SRAM region. The region holds both 64 KiB banks back to back, so
+bank switching is a no-op and sector n is at `0x0E000000 + n * 4096`. Under
+`PLATFORM_NATIVE`, `src/agb_flash_1m.c` lists `NativeFlash` first and
+`src/agb_flash.c` leaves `ReadFlashId`, `ReadFlash` and `VerifyFlashSector`
+to this module, so `IdentifyFlash` always selects it. Erase fills with 0xFF;
+a byte program that would turn a 0 bit into a 1 is rejected as on hardware;
+every sector index, offset and length is bounds-checked. Each program and
+erase marks its sector dirty.
+
+`save_file` persists the chip in a versioned `.sav`. Stores go to
+`<path>.tmp`, are fsynced, renamed over `<path>`, and the directory is
+fsynced. A NULL path keeps everything in memory (tests, the test runner).
+Format version 1 is a 28-byte header followed by the chip image, every
+header integer an unsigned 32-bit little-endian value:
+
+| Offset | Field | Value |
+|---|---|---|
+| 0 | magic | the 8 bytes `PENSAVE\0` |
+| 8 | format version | 1 (`SAVE_FILE_FORMAT_VERSION`) |
+| 12 | layout tag: pointer width | `sizeof(void *) * 8` of the build that wrote it, 32 or 64 |
+| 16 | layout tag: layout id | that build's `SAVE_FILE_LAYOUT_ID` (1) |
+| 20 | image size | 131072 |
+| 24 | image CRC | CRC-32/ISO-HDLC of the image (`save_file_crc32`; check value 0xCBF43926) |
+| 28 | image | 131072 bytes, byte n of the chip, sector s at 28 + s * 4096 |
+
+A file with the magic loads only if its version is 1, its sizes are exact,
+its pointer width is 32 or 64 and its CRC matches; with this build's layout
+tag the load returns `SAVE_FILE_OK`, with another (say a 32-bit save in the
+64-bit build) `SAVE_FILE_FOREIGN_LAYOUT`, and `save_file_loaded_layout`
+reports the tag so main can refuse or convert. A bare 131072-byte image
+without the magic, what GBA emulators write, loads as `SAVE_FILE_LEGACY`
+(layout unknown) and gets a header on the next store; for an emulator, our
+image is the file's last 131072 bytes. Anything else is `SAVE_FILE_CORRUPT`
+and leaves an erased chip.
+
+The frame loop must call `save_file_store()` whenever `flash_take_dirty()`
+returns true; that is what persists every path that writes flash, including
+the link saves and `TryWriteSpecialSaveSector`. Full contract: `flash.h`,
+`save_file.h`.
+
+| Constant | Value | Source |
+|---|---|---|
+| `FLASH_SECTOR_SIZE` | 4096 | GBATEK "GBA Cart Backup Flash ROM", "Erase 4Kbyte Sector" |
+| `FLASH_SECTOR_COUNT` | 32 | 128 KiB / 4 KiB; expansion's `MX29L010` entry |
+| `FLASH_CHIP_SIZE` | 131072 | GBATEK, "128 KBytes - 1Mbit Flash ROM"; expansion's `FLASH_ROM_SIZE_1M` |
+| `FLASH_ERASED_BYTE` | 0xFF | GBATEK, "erased memory is FFh-filled" |
+| `FLASH_NATIVE_ID` | 0x314E | ours: no real chip's ID, maker byte non-zero |
+| `FLASH_STATUS_BAD_SECTOR` | 0x80FF | `EraseFlashSector_MX`, `ProgramFlashSector_MX` |
+| `FLASH_STATUS_BAD_ARGUMENT` | 0x8000 | `ProgramFlashByte_MX` |
+| `FLASH_STATUS_TIME_LIMIT`, `FLASH_STATUS_TIMEOUT` | 0xA000, 0xC000, ORed with the phase | `WaitForFlashWrite_Common` |
 ## The LCD controller's drawing (`ppu`)
 
 `ppu.h` draws one visible line at a time from the mapped regions, as the
