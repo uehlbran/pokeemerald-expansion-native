@@ -212,3 +212,15 @@ are queued. The frame pacer, not vsync, sets the rate, using an
 accumulator of the exact GBA period (280896 cycles at 16777216 Hz) so
 there is no long-run drift, and it resynchronises after a stall longer
 than 250 ms instead of running frames back to back.
+
+## 2026-10-08: The native save file is versioned, and 32-bit saves must load in the 64-bit build
+
+Requested by the project owner after the host-ABI decision. The native
+save file carries a small header (magic, format version, a layout tag
+naming the pointer width and struct-layout identifier the image was
+written with, image size, CRC32) ahead of the 128 KiB flash image. A
+bare 131072-byte file is accepted as legacy with an unknown layout and
+is rewritten with a header on the next store. Gate (h), run in milestone
+7: a save written by the 32-bit native build loads correctly in the
+64-bit build, which will need a layout conversion keyed on the tag. The
+header makes any future layout change detectable instead of silent.
