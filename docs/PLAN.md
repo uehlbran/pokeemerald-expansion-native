@@ -14,10 +14,15 @@ resumes by reading both and first posting what it believes is in flight.
 | 4 | Native test-runner integration; suite matches the GBA baseline | not started |
 | 5 | Debug-menu gate | not started |
 | 6 | Unit tests under sanitizers, clang-tidy, cppcheck, docs; 32-bit done | not started |
-| 7 | 64-bit audit and build; every gate again; 64-bit done | not started |
+| 7 | 64-bit audit and build; every gate again, plus the cross-width save round-trip gate (h); 64-bit done | not started |
 | 8 | CI for both targets; Windows (MinGW) and macOS | later |
 
 ## Milestone 2 work breakdown
+
+State on 2026-10-08 evening: merged on main: foundation, timer,
+transfer_bounds, input. In review or fixing: sdlout, rtc. Working:
+interrupt, psg, save, ppu, dma, bios, W1-build, W1-m4a. Next: merge each
+as it lands, then main/frame loop and the first link.
 
 Wave 1 (no dependencies between them):
 
@@ -32,10 +37,14 @@ Wave 1 (no dependencies between them):
 - W1-m4a: C translation of `src/m4a_1.s` into `platform/m4a/`, with
   static assertions against `include/gba/m4a_internal.h`. Opus.
 
-Wave 2 (after W1-foundation merges): `interrupt`, `timer`+`rtc`, `dma`,
-`bios`, `input`, `psg`, `flash`+`save_file`, `ppu`+`video`+`audio`,
-`main`. TDD modules on Sonnet where the spec is plain; `dma`,
-`interrupt`, `bios`, `psg`, `save_file`, `ppu` on Opus.
+Wave 2 (after W1-foundation merged): `transfer_bounds` (Sonnet, shared
+range policy for DMA and CpuSet), `interrupt` (Opus), `timer` (Sonnet),
+`rtc` (Sonnet, includes the guarded src/siirtc.c change), `input`
+(Sonnet), `psg` (Opus), `flash`+`save_file` (Opus, includes the guarded
+agb_flash changes), `ppu` (Opus), `video`+`audio`+`frame_pacer` (Sonnet).
+Then, after `transfer_bounds` merges: `dma` (Opus, includes the guarded
+include/gba/macro.h change) and `bios` (Opus). Then `main` and the frame
+loop, and the link.
 
 Wave 3: integration and boot debugging on main (orchestrator plus one
 Opus worker), recorded modifications, `STATUS.md`.
