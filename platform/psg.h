@@ -13,6 +13,9 @@
  * How the register state is interpreted, the timing model and the output
  * scale: psg.c. The Direct Sound FIFOs are not here; the m4a mixer produces
  * that half of the output.
+ *
+ * Not thread-safe, by design: call it from the thread that runs the game and
+ * writes the registers (docs/DECISIONS.md, "Single thread").
  */
 #ifndef PSG_H
 #define PSG_H

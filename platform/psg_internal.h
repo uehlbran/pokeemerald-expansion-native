@@ -32,6 +32,7 @@
 #define PSG_SEQUENCER_HZ 512u
 #define PSG_CYCLES_PER_SEQUENCER_STEP (PSG_SYSTEM_CLOCK_HZ / PSG_SEQUENCER_HZ)
 #define PSG_SEQUENCER_STEPS 8u
+#define PSG_LENGTH_HZ 256u /* on every second step, from step 0 */
 #define PSG_SEQUENCER_SWEEP_STEP_A 2u
 #define PSG_SEQUENCER_SWEEP_STEP_B 6u
 #define PSG_SEQUENCER_ENVELOPE_STEP 7u
@@ -107,15 +108,14 @@ uint32_t psg_timer_run(uint32_t *countdown, uint32_t period, uint32_t cycles);
 
 /* --- Channels 1 and 2: tone (psg_square.c) ------------------------------- */
 
-/* The registers of one square channel as the game left them. nrx0 is NR10
- * (sweep) for channel 1 and unused for channel 2. */
+/* The registers of one square channel as the game left them (channel 1's
+ * NR10 goes to its sweep, struct psg_sweep). */
 struct psg_square_registers {
     uint8_t nrx1, nrx2, nrx3, nrx4;
 };
 
 struct psg_square {
     bool on;               /* SOUNDCNT_X status bit */
-    bool dac;              /* NRx2 bits 3-7 not all zero */
     uint8_t duty;          /* NRx1 bits 6-7 */
     uint8_t duty_step;     /* 0-7, position in the duty pattern */
     uint16_t frequency;    /* 11 bits from NRx3 and NRx4 */
@@ -217,7 +217,6 @@ struct psg_noise_registers {
 
 struct psg_noise {
     bool on;
-    bool dac;
     uint8_t nr43;          /* divider, width, shift; as of the last update */
     uint16_t lfsr;
     bool high;             /* the last bit shifted out */

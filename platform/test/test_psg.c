@@ -198,15 +198,17 @@ static bool all_zero(size_t frames)
     return true;
 }
 
-/* Channel 1 or 2: NRx1, NRx2, then the frequency and NRx4's flags. */
-static void square(uint32_t nrx1, uint8_t duty_length, uint8_t envelope, uint16_t frequency,
+/* Channel 1 or 2: NRx1, NRx2, then the frequency and NRx4's flags. The two
+ * channels' registers are not laid out alike (06Ah is unused). */
+static void square(unsigned channel, uint8_t duty_length, uint8_t envelope, uint16_t frequency,
                    uint8_t control)
 {
-    /* NRx1 is followed by NRx2, then NRx3 and NRx4 at +2 and +3. */
-    poke(nrx1, duty_length);
-    poke(nrx1 + 1, envelope);
-    poke(nrx1 + 2, (uint8_t)(frequency & 0xFFu));
-    poke(nrx1 + 3, (uint8_t)(control | (frequency >> 8)));
+    static const uint32_t at[2][4] = { { NR11, NR12, NR13, NR14 }, { NR21, NR22, NR23, NR24 } };
+    const uint32_t *const nr = at[channel - 1];
+    poke(nr[0], duty_length);
+    poke(nr[1], envelope);
+    poke(nr[2], (uint8_t)(frequency & 0xFFu));
+    poke(nr[3], (uint8_t)(control | (frequency >> 8)));
 }
 
 static uint16_t channel1_frequency(void)
@@ -293,7 +295,7 @@ PTEST(shutdown_without_init_is_safe_and_generate_then_writes_nothing)
 PTEST(zero_frames_writes_nothing_but_applies_the_registers)
 {
     PT_ASSERT(start(RATE_EXACT));
-    square(NR11, duty(2), NRX2_FULL_STEADY, 1536, INITIAL);
+    square(1, duty(2), NRX2_FULL_STEADY, 1536, INITIAL);
     buffer[0] = 0x1234;
     PT_ASSERT(psg_generate(buffer, 0) == 0);
     PT_ASSERT_EQ_INT(buffer[0], 0x1234);
@@ -316,7 +318,7 @@ PTEST(null_buffer_with_frames_is_rejected)
 static void check_square_periods(uint32_t rate, uint16_t frequency, size_t periods_per_second)
 {
     PT_ASSERT(start(rate));
-    square(NR11, duty(2), NRX2_FULL_STEADY, frequency, INITIAL);
+    square(1, duty(2), NRX2_FULL_STEADY, frequency, INITIAL);
     PT_ASSERT(run(rate));
     const size_t edges = rising_edges_left(rate);
     PT_ASSERT(edges + 1 >= periods_per_second && edges <= periods_per_second + 1);
@@ -338,7 +340,7 @@ PTEST(square_duty_cycles_have_gbatek_high_fractions)
     static const size_t high_per_eight[4] = { 1, 2, 4, 6 };
     for (uint8_t pattern = 0; pattern < 4; pattern++) {
         PT_ASSERT(start(RATE_EXACT));
-        square(NR11, duty(pattern), NRX2_FULL_STEADY, SQUARE_ONE_STEP_PER_SAMPLE, INITIAL);
+        square(1, duty(pattern), NRX2_FULL_STEADY, SQUARE_ONE_STEP_PER_SAMPLE, INITIAL);
         PT_ASSERT(run(800));
         PT_ASSERT(nonzero_left(800) == 100 * high_per_eight[pattern]);
         PT_ASSERT_EQ_INT(max_left(0, 800), 15 * LEVEL_STEP);
@@ -348,7 +350,7 @@ PTEST(square_duty_cycles_have_gbatek_high_fractions)
 PTEST(channel_2_is_a_square_channel_at_its_own_registers)
 {
     PT_ASSERT(start(RATE_EXACT));
-    square(NR21, duty(1), NRX2_FULL_STEADY, SQUARE_ONE_STEP_PER_SAMPLE, INITIAL);
+    square(2, duty(1), NRX2_FULL_STEADY, SQUARE_ONE_STEP_PER_SAMPLE, INITIAL);
     PT_ASSERT(run(800));
     PT_ASSERT(nonzero_left(800) == 200);
     PT_ASSERT_EQ_U32(peek(NR52), MASTER_ENABLE | 0x02u);
@@ -360,11 +362,11 @@ PTEST(channel_2_is_a_square_channel_at_its_own_registers)
 PTEST(frequency_change_without_trigger_takes_effect)
 {
     PT_ASSERT(start(48000));
-    square(NR11, duty(2), NRX2_FULL_STEADY, 1536, INITIAL);
+    square(1, duty(2), NRX2_FULL_STEADY, 1536, INITIAL);
     PT_ASSERT(run(24000));
     size_t edges = rising_edges_left(24000);
     PT_ASSERT(edges + 1 >= 128 && edges <= 129);
-    square(NR11, duty(2), NRX2_FULL_STEADY, 1792, 0);
+    square(1, duty(2), NRX2_FULL_STEADY, 1792, 0);
     PT_ASSERT(run(24000));
     edges = rising_edges_left(24000);
     PT_ASSERT(edges + 1 >= 256 && edges <= 257);
@@ -376,7 +378,7 @@ PTEST(frequency_change_without_trigger_takes_effect)
  * 1024-sample intervals at RATE_EXACT (8 sequencer steps of 128). */
 static void start_decaying_square(void)
 {
-    square(NR11, duty(2), 0xF1, SQUARE_FOUR_SAMPLE_PERIOD, INITIAL);
+    square(1, duty(2), 0xF1, SQUARE_FOUR_SAMPLE_PERIOD, INITIAL);
 }
 
 PTEST(trigger_acts_once_and_reads_back_clear)
@@ -413,11 +415,11 @@ PTEST(rewriting_the_same_trigger_value_restarts_the_channel)
 PTEST(dac_off_blocks_trigger_and_stops_the_channel)
 {
     PT_ASSERT(start(RATE_EXACT));
-    square(NR11, duty(2), 0x00, 1536, INITIAL);
+    square(1, duty(2), 0x00, 1536, INITIAL);
     PT_ASSERT(run(64));
     PT_ASSERT_EQ_U32(peek(NR52), MASTER_ENABLE);
     PT_ASSERT(all_zero(64));
-    square(NR11, duty(2), 0x08, 1536, INITIAL);
+    square(1, duty(2), 0x08, 1536, INITIAL);
     PT_ASSERT(run(64));
     PT_ASSERT_EQ_U32(peek(NR52), MASTER_ENABLE | 0x01u);
     PT_ASSERT(all_zero(64));
@@ -433,7 +435,7 @@ PTEST(dac_off_blocks_trigger_and_stops_the_channel)
 PTEST(length_counter_stops_the_channel_after_exactly_its_ticks)
 {
     PT_ASSERT(start(RATE_EXACT));
-    square(NR11, (uint8_t)(duty(2) | 60), NRX2_FULL_STEADY, SQUARE_FOUR_SAMPLE_PERIOD,
+    square(1, (uint8_t)(duty(2) | 60), NRX2_FULL_STEADY, SQUARE_FOUR_SAMPLE_PERIOD,
            INITIAL | LENGTH_ENABLE);
     PT_ASSERT(run(895));
     PT_ASSERT_EQ_U32(peek(NR52), MASTER_ENABLE | 0x01u);
@@ -447,7 +449,7 @@ PTEST(length_counter_stops_the_channel_after_exactly_its_ticks)
 PTEST(length_zero_means_sixty_four_ticks)
 {
     PT_ASSERT(start(RATE_EXACT));
-    square(NR11, duty(2), NRX2_FULL_STEADY, SQUARE_FOUR_SAMPLE_PERIOD, INITIAL | LENGTH_ENABLE);
+    square(1, duty(2), NRX2_FULL_STEADY, SQUARE_FOUR_SAMPLE_PERIOD, INITIAL | LENGTH_ENABLE);
     PT_ASSERT(run(16255));
     PT_ASSERT_EQ_U32(peek(NR52), MASTER_ENABLE | 0x01u);
     PT_ASSERT(run(1));
@@ -458,7 +460,7 @@ PTEST(length_zero_means_sixty_four_ticks)
 PTEST(length_counter_is_ignored_while_length_enable_is_clear)
 {
     PT_ASSERT(start(RATE_EXACT));
-    square(NR11, (uint8_t)(duty(2) | 60), NRX2_FULL_STEADY, SQUARE_FOUR_SAMPLE_PERIOD, INITIAL);
+    square(1, (uint8_t)(duty(2) | 60), NRX2_FULL_STEADY, SQUARE_FOUR_SAMPLE_PERIOD, INITIAL);
     PT_ASSERT(run(MAX_FRAMES));
     PT_ASSERT(run(MAX_FRAMES));
     PT_ASSERT_EQ_U32(peek(NR52), MASTER_ENABLE | 0x01u);
@@ -519,7 +521,7 @@ PTEST(envelope_decreases_one_level_per_period_and_stops_at_zero)
 PTEST(envelope_increases_every_step_time_ticks_and_stops_at_fifteen)
 {
     PT_ASSERT(start(RATE_EXACT));
-    square(NR11, duty(2), 0x0A, SQUARE_FOUR_SAMPLE_PERIOD, INITIAL);
+    square(1, duty(2), 0x0A, SQUARE_FOUR_SAMPLE_PERIOD, INITIAL);
     PT_ASSERT(run(2000));
     PT_ASSERT_EQ_INT(max_left(1992, 8), 0);
     for (int steps = 1; steps <= 18; steps++) {
@@ -550,7 +552,7 @@ PTEST(sweep_increases_frequency_by_the_shifted_amount)
 {
     PT_ASSERT(start(RATE_EXACT));
     poke(NR10, 0x12); /* time 1, increase, shift 2 */
-    square(NR11, duty(2), NRX2_FULL_STEADY, 256, INITIAL);
+    square(1, duty(2), NRX2_FULL_STEADY, 256, INITIAL);
     PT_ASSERT(run(383));
     PT_ASSERT_EQ_U32(channel1_frequency(), 256);
     PT_ASSERT(run(1));
@@ -564,7 +566,7 @@ PTEST(sweep_decreases_frequency_when_direction_is_set)
 {
     PT_ASSERT(start(RATE_EXACT));
     poke(NR10, 0x19); /* time 1, decrease, shift 1 */
-    square(NR11, duty(2), NRX2_FULL_STEADY, 1024, INITIAL);
+    square(1, duty(2), NRX2_FULL_STEADY, 1024, INITIAL);
     PT_ASSERT(run(384));
     PT_ASSERT_EQ_U32(channel1_frequency(), 512);
     PT_ASSERT(run(512));
@@ -577,7 +579,7 @@ PTEST(sweep_time_counts_128_hz_ticks)
 {
     PT_ASSERT(start(RATE_EXACT));
     poke(NR10, 0x22); /* time 2, increase, shift 2 */
-    square(NR11, duty(2), NRX2_FULL_STEADY, 256, INITIAL);
+    square(1, duty(2), NRX2_FULL_STEADY, 256, INITIAL);
     PT_ASSERT(run(895));
     PT_ASSERT_EQ_U32(channel1_frequency(), 256);
     PT_ASSERT(run(1));
@@ -592,7 +594,7 @@ PTEST(sweep_overflow_past_2047_disables_the_channel)
 {
     PT_ASSERT(start(RATE_EXACT));
     poke(NR10, 0x12);
-    square(NR11, duty(2), NRX2_FULL_STEADY, 1024, INITIAL);
+    square(1, duty(2), NRX2_FULL_STEADY, 1024, INITIAL);
     PT_ASSERT(run(1407));
     PT_ASSERT_EQ_U32(channel1_frequency(), 1600);
     PT_ASSERT_EQ_U32(peek(NR52), MASTER_ENABLE | 0x01u);
@@ -609,10 +611,10 @@ PTEST(sweep_overflow_check_runs_at_trigger)
 {
     PT_ASSERT(start(RATE_EXACT));
     poke(NR10, 0x11); /* time 1, increase, shift 1 */
-    square(NR11, duty(2), NRX2_FULL_STEADY, 1366, INITIAL);
+    square(1, duty(2), NRX2_FULL_STEADY, 1366, INITIAL);
     PT_ASSERT(psg_generate(buffer, 0) == 0);
     PT_ASSERT_EQ_U32(peek(NR52), MASTER_ENABLE);
-    square(NR11, duty(2), NRX2_FULL_STEADY, 1365, INITIAL);
+    square(1, duty(2), NRX2_FULL_STEADY, 1365, INITIAL);
     PT_ASSERT(psg_generate(buffer, 0) == 0);
     PT_ASSERT_EQ_U32(peek(NR52), MASTER_ENABLE | 0x01u);
 }
@@ -815,8 +817,8 @@ PTEST(left_and_right_enables_route_each_channel)
     for (unsigned channel = 0; channel < 4; channel++) {
         for (unsigned side = 0; side < 2; side++) { /* 0 right, 1 left */
             PT_ASSERT(start(RATE_EXACT));
-            square(NR11, duty(2), NRX2_FULL_STEADY, SQUARE_ONE_STEP_PER_SAMPLE, INITIAL);
-            square(NR21, duty(2), NRX2_FULL_STEADY, SQUARE_ONE_STEP_PER_SAMPLE, INITIAL);
+            square(1, duty(2), NRX2_FULL_STEADY, SQUARE_ONE_STEP_PER_SAMPLE, INITIAL);
+            square(2, duty(2), NRX2_FULL_STEADY, SQUARE_ONE_STEP_PER_SAMPLE, INITIAL);
             start_constant_wave();
             poke(NR42, NRX2_FULL_STEADY);
             poke(NR43, NOISE_7_BIT | 0x21u);
@@ -881,8 +883,8 @@ PTEST(four_channels_at_full_volume_reach_the_documented_maximum)
 {
     PT_ASSERT_EQ_INT(PSG_MAX_OUTPUT_LEVEL, 4 * 15 * LEVEL_STEP);
     PT_ASSERT(start(RATE_EXACT));
-    square(NR11, duty(3), NRX2_FULL_STEADY, SQUARE_ONE_STEP_PER_SAMPLE, INITIAL);
-    square(NR21, duty(3), NRX2_FULL_STEADY, SQUARE_ONE_STEP_PER_SAMPLE, INITIAL);
+    square(1, duty(3), NRX2_FULL_STEADY, SQUARE_ONE_STEP_PER_SAMPLE, INITIAL);
+    square(2, duty(3), NRX2_FULL_STEADY, SQUARE_ONE_STEP_PER_SAMPLE, INITIAL);
     start_constant_wave();
     poke(NR42, NRX2_FULL_STEADY);
     poke(NR43, NOISE_7_BIT | 0x21u);
@@ -900,7 +902,7 @@ PTEST(four_channels_at_full_volume_reach_the_documented_maximum)
 PTEST(master_disable_silences_resets_registers_and_clears_status)
 {
     PT_ASSERT(start(RATE_EXACT));
-    square(NR11, duty(2), NRX2_FULL_STEADY, SQUARE_ONE_STEP_PER_SAMPLE, INITIAL);
+    square(1, duty(2), NRX2_FULL_STEADY, SQUARE_ONE_STEP_PER_SAMPLE, INITIAL);
     start_constant_wave();
     PT_ASSERT(run(16));
     PT_ASSERT_EQ_U32(peek(NR52), MASTER_ENABLE | 0x05u);
@@ -922,14 +924,14 @@ PTEST(master_disable_silences_resets_registers_and_clears_status)
 PTEST(master_reenable_leaves_channels_off_until_triggered)
 {
     PT_ASSERT(start(RATE_EXACT));
-    square(NR11, duty(2), NRX2_FULL_STEADY, SQUARE_ONE_STEP_PER_SAMPLE, INITIAL);
+    square(1, duty(2), NRX2_FULL_STEADY, SQUARE_ONE_STEP_PER_SAMPLE, INITIAL);
     PT_ASSERT(run(16));
     poke(NR52, 0);
     PT_ASSERT(run(16));
     poke(NR52, MASTER_ENABLE);
     poke(NR50, NR50_FULL);
     poke(NR51, NR51_ALL);
-    square(NR11, duty(2), NRX2_FULL_STEADY, SQUARE_ONE_STEP_PER_SAMPLE, 0);
+    square(1, duty(2), NRX2_FULL_STEADY, SQUARE_ONE_STEP_PER_SAMPLE, 0);
     PT_ASSERT(run(16));
     PT_ASSERT_EQ_U32(peek(NR52), MASTER_ENABLE);
     PT_ASSERT(all_zero(16));
@@ -947,10 +949,10 @@ PTEST(status_bits_reflect_the_channels_that_are_on)
     poke(NR52, 0xFF);
     PT_ASSERT(run(1));
     PT_ASSERT_EQ_U32(peek(NR52), MASTER_ENABLE);
-    square(NR11, duty(2), NRX2_FULL_STEADY, 1536, INITIAL);
+    square(1, duty(2), NRX2_FULL_STEADY, 1536, INITIAL);
     PT_ASSERT(run(1));
     PT_ASSERT_EQ_U32(peek(NR52), MASTER_ENABLE | 0x01u);
-    square(NR21, duty(2), NRX2_FULL_STEADY, 1536, INITIAL);
+    square(2, duty(2), NRX2_FULL_STEADY, 1536, INITIAL);
     PT_ASSERT(run(1));
     PT_ASSERT_EQ_U32(peek(NR52), MASTER_ENABLE | 0x03u);
     start_constant_wave();
@@ -972,7 +974,7 @@ PTEST(status_bits_reflect_the_channels_that_are_on)
 PTEST(fractional_cycles_per_sample_accumulate_exactly)
 {
     PT_ASSERT(start(48000));
-    square(NR11, duty(2), NRX2_FULL_STEADY, 1536, INITIAL | LENGTH_ENABLE);
+    square(1, duty(2), NRX2_FULL_STEADY, 1536, INITIAL | LENGTH_ENABLE);
     PT_ASSERT(run(11906));
     PT_ASSERT_EQ_U32(peek(NR52), MASTER_ENABLE | 0x01u);
     PT_ASSERT(run(1));
@@ -984,18 +986,18 @@ PTEST(fractional_cycles_per_sample_accumulate_exactly)
 PTEST(a_slow_output_rate_crosses_many_sequencer_steps_per_sample)
 {
     PT_ASSERT(start(1));
-    square(NR11, duty(2), NRX2_FULL_STEADY, 1536, INITIAL | LENGTH_ENABLE);
+    square(1, duty(2), NRX2_FULL_STEADY, 1536, INITIAL | LENGTH_ENABLE);
     PT_ASSERT(run(1));
     PT_ASSERT_EQ_U32(peek(NR52), MASTER_ENABLE);
 }
 
-/* The highest frequencies (n = 2047; noise r = 0, s = 0, 1048576 Hz) at a low
+/* The highest frequencies (n = 2047; noise r = 0, s = 0, 524288 Hz) at a low
  * output rate step many times per sample; every sample stays within range. */
 PTEST(highest_frequencies_at_a_low_rate_stay_in_range)
 {
     PT_ASSERT(start(8000));
-    square(NR11, duty(2), NRX2_FULL_STEADY, 2047, INITIAL);
-    square(NR21, duty(1), NRX2_FULL_STEADY, 2047, INITIAL);
+    square(1, duty(2), NRX2_FULL_STEADY, 2047, INITIAL);
+    square(2, duty(1), NRX2_FULL_STEADY, 2047, INITIAL);
     uint8_t bytes[WAVE_RAM_BYTES];
     pack_nibbles(bytes, triangle_nibble);
     write_wave_ram(bytes);
@@ -1013,7 +1015,7 @@ PTEST(highest_frequencies_at_a_low_rate_stay_in_range)
 PTEST(output_rate_equal_to_the_system_clock_works)
 {
     PT_ASSERT(start(PSG_MAX_OUTPUT_RATE_HZ));
-    square(NR11, duty(2), NRX2_FULL_STEADY, 2047, INITIAL);
+    square(1, duty(2), NRX2_FULL_STEADY, 2047, INITIAL);
     /* 16-cycle duty steps, 50% duty: high 64 cycles in every 128. */
     PT_ASSERT(run(1024));
     PT_ASSERT(nonzero_left(1024) == 512);
