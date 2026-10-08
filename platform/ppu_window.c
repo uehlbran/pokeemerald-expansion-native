@@ -24,11 +24,6 @@
  */
 #include "ppu_internal.h"
 
-/* GBATEK "LCD I/O Display Control", DISPCNT bits 13-15. */
-#define DISPCNT_WIN0_ON 0x2000u
-#define DISPCNT_WIN1_ON 0x4000u
-#define DISPCNT_OBJWIN_ON 0x8000u
-
 /* GBATEK "LCD I/O Window Feature": WINxH/WINxV bits 8-15 the first
  * coordinate, bits 0-7 one past the last. WININ bits 0-5 Window 0, 8-13
  * Window 1; WINOUT bits 0-5 outside, 8-13 the OBJ window. */
@@ -66,21 +61,21 @@ static void apply_rectangle(const struct ppu_regs *regs, unsigned window, uint16
 void ppu_window_render_line(const struct ppu_regs *regs, uint16_t line,
                             const struct ppu_obj_line *obj, uint8_t control[PPU_SCREEN_WIDTH])
 {
-    const uint16_t enabled = regs->dispcnt & (DISPCNT_WIN0_ON | DISPCNT_WIN1_ON | DISPCNT_OBJWIN_ON);
+    const uint16_t enabled = regs->dispcnt & (PPU_DISPCNT_WIN0_ON | PPU_DISPCNT_WIN1_ON | PPU_DISPCNT_OBJWIN_ON);
     if (enabled == 0) {
         memset(control, PPU_WINDOW_ALL_ENABLED, PPU_SCREEN_WIDTH);
         return;
     }
     /* From the lowest priority region up, so a higher one overwrites. */
     memset(control, control_byte(regs->winout, false), PPU_SCREEN_WIDTH);
-    if (enabled & DISPCNT_OBJWIN_ON) {
+    if (enabled & PPU_DISPCNT_OBJWIN_ON) {
         const uint8_t obj_window = control_byte(regs->winout, true);
         for (unsigned x = 0; x < PPU_SCREEN_WIDTH; x++)
             if (obj->in_obj_window[x])
                 control[x] = obj_window;
     }
-    if (enabled & DISPCNT_WIN1_ON)
+    if (enabled & PPU_DISPCNT_WIN1_ON)
         apply_rectangle(regs, 1, line, control);
-    if (enabled & DISPCNT_WIN0_ON)
+    if (enabled & PPU_DISPCNT_WIN0_ON)
         apply_rectangle(regs, 0, line, control);
 }

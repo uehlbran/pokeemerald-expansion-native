@@ -54,14 +54,37 @@
  * bits, so bit 15 never occurs in one. */
 #define PPU_TRANSPARENT 0x8000u
 
-/* GBATEK "LCD I/O Display Control", DISPCNT bits 0-2: BG mode. */
-#define PPU_DISPCNT_MODE_MASK 0x0007u
+/* GBATEK "LCD I/O Display Control", DISPCNT. */
+#define PPU_DISPCNT_MODE_MASK 0x0007u     /* bits 0-2: BG mode */
+#define PPU_DISPCNT_HBLANK_FREE 0x0020u   /* H-Blank Interval Free */
+#define PPU_DISPCNT_OBJ_1D 0x0040u        /* OBJ Character VRAM Mapping: 1 = one dimensional */
+#define PPU_DISPCNT_FORCED_BLANK 0x0080u
+#define PPU_DISPCNT_BG0_ON 0x0100u        /* BGn display at bit 8 + n */
+#define PPU_DISPCNT_OBJ_ON 0x1000u
+#define PPU_DISPCNT_WIN0_ON 0x2000u
+#define PPU_DISPCNT_WIN1_ON 0x4000u
+#define PPU_DISPCNT_OBJWIN_ON 0x8000u
 
-/* GBATEK "LCD VRAM Character Data": 8x8 dots per tile, 32 bytes at 4bpp
- * (two dots per byte, the left dot in the low nibble), 64 bytes at 8bpp. */
+/* GBATEK "LCD I/O BG Rotation/Scaling" and "LCD OBJ - OAM Rotation/Scaling
+ * Parameters": reference points and PA-PD have 8 fraction bits. */
+#define PPU_FRACTION_BITS 8u
+
+/* GBATEK "LCD I/O Mosaic Function", MOSAIC: four 4-bit sizes, each minus 1. */
+#define PPU_MOSAIC_BG_H_SHIFT 0u
+#define PPU_MOSAIC_BG_V_SHIFT 4u
+#define PPU_MOSAIC_OBJ_H_SHIFT 8u
+#define PPU_MOSAIC_OBJ_V_SHIFT 12u
+#define PPU_MOSAIC_SIZE_MASK 0xFu
+
+/* GBATEK "LCD VRAM Character Data": 8x8 dots per tile; 4bpp tiles are 32
+ * bytes, 4 per row, two dots per byte with the left dot in the low nibble;
+ * 8bpp tiles are 64 bytes, 8 per row, one dot per byte. */
 #define PPU_TILE_SIZE 8u
 #define PPU_TILE_BYTES_4BPP 32u
 #define PPU_TILE_BYTES_8BPP 64u
+#define PPU_TILE_ROW_BYTES_4BPP 4u
+#define PPU_TILE_ROW_BYTES_8BPP 8u
+#define PPU_DOTS_PER_BYTE_4BPP 2u
 #define PPU_NIBBLE_BITS 4u
 #define PPU_NIBBLE_MASK 0x0Fu
 
@@ -113,10 +136,27 @@ struct ppu_regs {
 
 /* ---- bounds-checked reads of the GBA regions ---- */
 
+/* The native object at a GBA address: the regions are mapped at their GBA
+ * addresses (gba_memmap.h), so the conversion is the identity. The only
+ * integer-to-pointer conversion in the module; flagged for the 64-bit
+ * milestone with gba_memmap.h's (GBA addresses fit in 32 bits). Callers
+ * bound the address to a region first. */
+static inline const void *ppu_gba_pointer(uint32_t address)
+{
+    return (const void *)(uintptr_t)address;
+}
+
+static inline uint8_t ppu_read_byte_at(uint32_t address)
+{
+    uint8_t value;
+    memcpy(&value, ppu_gba_pointer(address), sizeof value);
+    return value;
+}
+
 static inline uint16_t ppu_read_halfword_at(uint32_t address)
 {
     uint16_t value;
-    memcpy(&value, (const void *)(uintptr_t)address, sizeof value);
+    memcpy(&value, ppu_gba_pointer(address), sizeof value);
     return value;
 }
 
@@ -128,9 +168,7 @@ static inline uint8_t ppu_bg_vram_byte(uint32_t offset)
 {
     if (offset >= PPU_BG_VRAM_SIZE)
         return 0;
-    uint8_t value;
-    memcpy(&value, (const void *)(uintptr_t)(GBA_VRAM_BASE + offset), sizeof value);
-    return value;
+    return ppu_read_byte_at(GBA_VRAM_BASE + offset);
 }
 
 /* A halfword of BG map data, 0 beyond the BG area as above. */
@@ -148,11 +186,8 @@ static inline uint16_t ppu_bg_vram_halfword(uint32_t offset)
  * 06018000-0601FFFF (GBATEK "GBA Memory Map"). */
 static inline uint8_t ppu_obj_vram_byte(uint32_t offset)
 {
-    uint8_t value;
     const uint32_t wrapped = offset & (PPU_OBJ_VRAM_SIZE - 1);
-    memcpy(&value, (const void *)(uintptr_t)(GBA_VRAM_BASE + PPU_OBJ_VRAM_BASE + wrapped),
-           sizeof value);
-    return value;
+    return ppu_read_byte_at(GBA_VRAM_BASE + PPU_OBJ_VRAM_BASE + wrapped);
 }
 
 /* Palette colour index (0-255 BG, 256-511 OBJ) as BGR555, bit 15 cleared.
@@ -179,6 +214,13 @@ static inline uint16_t ppu_io_halfword(uint32_t offset)
     if (offset > GBA_IO_SIZE - sizeof(uint16_t))
         return 0;
     return ppu_read_halfword_at(GBA_IO_BASE + offset);
+}
+
+/* The block size (1-16) a mosaic field gives, the register holding size
+ * minus 1. The caller checks the layer's own mosaic enable. */
+static inline uint32_t ppu_mosaic_block(uint16_t mosaic, unsigned shift)
+{
+    return (((uint32_t)mosaic >> shift) & PPU_MOSAIC_SIZE_MASK) + 1u;
 }
 
 /* A 16-bit two's complement value as a signed number, without relying on the

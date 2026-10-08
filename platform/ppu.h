@@ -12,8 +12,8 @@
  * handler writing WIN0H) takes effect on the next line as on hardware.
  *
  * Supported: BG modes 0 and 1, the only modes the game sets (src/ sets
- * DISPCNT_MODE_0 and DISPCNT_MODE_1 only). Modes 2 to 5 render nothing and
- * return PPU_ERR_UNSUPPORTED_MODE. Written from GBATEK, clean room; the
+ * DISPCNT_MODE_0 and DISPCNT_MODE_1 only). Modes 2 to 7 draw a black line
+ * and return PPU_ERR_UNSUPPORTED_MODE. Written from GBATEK, clean room; the
  * reference ports' renderers are derived from GPL code and were not read
  * (docs/C-RULES.md, licensing). Where GBATEK is silent or ambiguous the
  * choice made is written next to the code that makes it.

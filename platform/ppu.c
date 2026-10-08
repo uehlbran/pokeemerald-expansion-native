@@ -62,10 +62,6 @@
 #define REG_HIGH_HALF 2u /* a 32-bit register's upper halfword */
 #define HALFWORD_BITS 16u
 
-/* GBATEK "LCD I/O Display Control", DISPCNT. */
-#define DISPCNT_FORCED_BLANK 0x0080u
-#define DISPCNT_BG0_ON 0x0100u /* BGn on at bit 8 + n */
-#define DISPCNT_OBJ_ON 0x1000u
 enum bg_mode { MODE_0 = 0, MODE_1 = 1 }; /* the modes drawn; 2-7 are not */
 
 /* GBATEK "LCD I/O BG Control", BGxCNT bits 0-1. */
@@ -155,7 +151,7 @@ static void draw_bgs(const struct ppu_regs *regs, enum bg_mode mode, uint16_t li
 {
     layers->bg_count = 0;
     for (unsigned bg = 0; bg < PPU_BG_COUNT; bg++) {
-        if (!(regs->dispcnt & (DISPCNT_BG0_ON << bg)) || !bg_in_mode(bg, mode))
+        if (!(regs->dispcnt & (PPU_DISPCNT_BG0_ON << bg)) || !bg_in_mode(bg, mode))
             continue;
         draw_bg(regs, mode, bg, line, layers->bg_dots[bg]);
         const unsigned priority = regs->bgcnt[bg] & BGCNT_PRIORITY_MASK;
@@ -221,7 +217,7 @@ static void fill(uint16_t out[PPU_SCREEN_WIDTH], uint16_t colour)
 
 static int draw_line(const struct ppu_regs *regs, uint16_t line, uint16_t out[PPU_SCREEN_WIDTH])
 {
-    if (regs->dispcnt & DISPCNT_FORCED_BLANK) {
+    if (regs->dispcnt & PPU_DISPCNT_FORCED_BLANK) {
         fill(out, FORCED_BLANK_COLOUR);
         return PPU_OK;
     }
@@ -232,7 +228,7 @@ static int draw_line(const struct ppu_regs *regs, uint16_t line, uint16_t out[PP
     }
     struct line_layers layers;
     draw_bgs(regs, (enum bg_mode)mode, line, &layers);
-    if (regs->dispcnt & DISPCNT_OBJ_ON)
+    if (regs->dispcnt & PPU_DISPCNT_OBJ_ON)
         ppu_obj_render_line(regs, line, &layers.obj);
     else
         ppu_obj_clear_line(&layers.obj);

@@ -45,6 +45,7 @@
 #define TEXT_SIZE_WIDE 0x1u
 #define TEXT_SIZE_TALL 0x2u
 #define SCREEN_BLOCK_DOTS 256u
+#define TWO_SCREEN_BLOCKS_DOTS 512u /* a wide map's width, a tall map's height */
 #define SCREEN_BLOCK_ENTRIES_ACROSS 32u
 #define TEXT_ENTRY_BYTES 2u
 
@@ -57,14 +58,9 @@
 /* GBATEK "LCD I/O BG Control", rotation/scaling sizes 0-3: 128 << size dots. */
 #define AFFINE_SMALLEST_DOTS 128u
 
-/* GBATEK "LCD I/O BG Rotation/Scaling": 8 fraction bits; reference points
- * use bits 0-27, bit 27 the sign. */
-#define FRACTION_BITS 8u
+/* GBATEK "LCD I/O BG Rotation/Scaling": reference points use bits 0-27,
+ * bit 27 the sign. */
 #define REFERENCE_SIGN 0x08000000u
-
-/* GBATEK "LCD I/O Mosaic Function": bits 0-3 BG H-Size, 4-7 BG V-Size, minus 1. */
-#define MOSAIC_SIZE_MASK 0xFu
-#define MOSAIC_BG_V_SHIFT 4u
 
 #define TILE_LAST_DOT (PPU_TILE_SIZE - 1u)
 
@@ -114,9 +110,7 @@ void ppu_affine_reference_step(struct ppu_affine_reference *ref, const struct pp
 /* The mosaic block size along one axis for a BG: 1 unless BGxCNT enables it. */
 static uint32_t mosaic_size(uint16_t bgcnt, uint16_t mosaic, unsigned shift)
 {
-    if (!(bgcnt & BGCNT_MOSAIC))
-        return 1;
-    return ((uint32_t)(mosaic >> shift) & MOSAIC_SIZE_MASK) + 1u;
+    return (bgcnt & BGCNT_MOSAIC) ? ppu_mosaic_block(mosaic, shift) : 1u;
 }
 
 static uint32_t char_base(uint16_t bgcnt)
@@ -138,7 +132,7 @@ static uint32_t size_field(uint16_t bgcnt)
 static uint16_t dot_8bpp(uint32_t chars, uint32_t tile, uint32_t col, uint32_t row)
 {
     const uint8_t index =
-        ppu_bg_vram_byte(chars + tile * PPU_TILE_BYTES_8BPP + row * PPU_TILE_SIZE + col);
+        ppu_bg_vram_byte(chars + tile * PPU_TILE_BYTES_8BPP + row * PPU_TILE_ROW_BYTES_8BPP + col);
     return index == 0 ? PPU_TRANSPARENT : ppu_palette_colour(index);
 }
 
@@ -154,8 +148,8 @@ struct text_layout {
 static struct text_layout text_layout(uint16_t bgcnt)
 {
     const uint32_t size = size_field(bgcnt);
-    const uint32_t width = (size & TEXT_SIZE_WIDE) ? 2 * SCREEN_BLOCK_DOTS : SCREEN_BLOCK_DOTS;
-    const uint32_t height = (size & TEXT_SIZE_TALL) ? 2 * SCREEN_BLOCK_DOTS : SCREEN_BLOCK_DOTS;
+    const uint32_t width = (size & TEXT_SIZE_WIDE) ? TWO_SCREEN_BLOCKS_DOTS : SCREEN_BLOCK_DOTS;
+    const uint32_t height = (size & TEXT_SIZE_TALL) ? TWO_SCREEN_BLOCKS_DOTS : SCREEN_BLOCK_DOTS;
     return (struct text_layout){
         .chars = char_base(bgcnt),
         .screens = screen_base(bgcnt),
@@ -183,7 +177,7 @@ static uint16_t text_dot(const struct text_layout *bg, uint32_t mx, uint32_t my)
     if (bg->eight_bpp) /* the entry's palette number is not used */
         return dot_8bpp(bg->chars, tile, col, row);
     const uint8_t pair = ppu_bg_vram_byte(bg->chars + tile * PPU_TILE_BYTES_4BPP
-                                          + row * (PPU_TILE_SIZE / 2) + col / 2);
+                                          + row * PPU_TILE_ROW_BYTES_4BPP + col / PPU_DOTS_PER_BYTE_4BPP);
     const uint32_t index = (col & 1u) ? (uint32_t)pair >> PPU_NIBBLE_BITS : pair & PPU_NIBBLE_MASK;
     if (index == 0)
         return PPU_TRANSPARENT;
@@ -195,8 +189,8 @@ void ppu_bg_render_text(const struct ppu_regs *regs, unsigned bg, uint16_t line,
 {
     const uint16_t bgcnt = regs->bgcnt[bg];
     const struct text_layout layout = text_layout(bgcnt);
-    const uint32_t mosaic_w = mosaic_size(bgcnt, regs->mosaic, 0);
-    const uint32_t mosaic_h = mosaic_size(bgcnt, regs->mosaic, MOSAIC_BG_V_SHIFT);
+    const uint32_t mosaic_w = mosaic_size(bgcnt, regs->mosaic, PPU_MOSAIC_BG_H_SHIFT);
+    const uint32_t mosaic_h = mosaic_size(bgcnt, regs->mosaic, PPU_MOSAIC_BG_V_SHIFT);
     const uint32_t hofs = regs->hofs[bg] & SCROLL_MASK, vofs = regs->vofs[bg] & SCROLL_MASK;
     const uint32_t screen_y = line - line % mosaic_h;
     const uint32_t my = (screen_y + vofs) & layout.height_mask;
@@ -221,13 +215,13 @@ static uint16_t affine_dot(const struct affine_layout *bg, int32_t tx, int32_t t
     if (bg->wrap) {
         /* Two's complement: (uint32_t)t >> 8 is floor(t / 256) modulo 2^24,
          * and size divides 2^24. */
-        mx = ((uint32_t)tx >> FRACTION_BITS) & (bg->size - 1);
-        my = ((uint32_t)ty >> FRACTION_BITS) & (bg->size - 1);
+        mx = ((uint32_t)tx >> PPU_FRACTION_BITS) & (bg->size - 1);
+        my = ((uint32_t)ty >> PPU_FRACTION_BITS) & (bg->size - 1);
     } else {
         if (tx < 0 || ty < 0)
             return PPU_TRANSPARENT;
-        mx = (uint32_t)tx >> FRACTION_BITS;
-        my = (uint32_t)ty >> FRACTION_BITS;
+        mx = (uint32_t)tx >> PPU_FRACTION_BITS;
+        my = (uint32_t)ty >> PPU_FRACTION_BITS;
         if (mx >= bg->size || my >= bg->size)
             return PPU_TRANSPARENT;
     }
@@ -249,8 +243,8 @@ void ppu_bg_render_affine(const struct ppu_regs *regs, unsigned bg,
         .size = AFFINE_SMALLEST_DOTS << size_field(bgcnt),
         .wrap = (bgcnt & BGCNT_OVERFLOW_WRAP) != 0,
     };
-    const uint32_t mosaic_w = mosaic_size(bgcnt, regs->mosaic, 0);
-    const uint32_t mosaic_h = mosaic_size(bgcnt, regs->mosaic, MOSAIC_BG_V_SHIFT);
+    const uint32_t mosaic_w = mosaic_size(bgcnt, regs->mosaic, PPU_MOSAIC_BG_H_SHIFT);
+    const uint32_t mosaic_h = mosaic_size(bgcnt, regs->mosaic, PPU_MOSAIC_BG_V_SHIFT);
     /* Vertical mosaic: the reference point of the block's first line, from
      * the steps taken since (interpretation; mGBA does the same). */
     const int32_t lines_back = (int32_t)(line % mosaic_h);

@@ -91,13 +91,9 @@ enum obj_mode { MODE_NORMAL = 0, MODE_SEMI_TRANSPARENT = 1, MODE_OBJ_WINDOW = 2,
  * take two numbers, and in 2D mapping bit 0 of the number "is completely
  * ignored". */
 #define TILE_NUMBER_BYTES 32u
-#define MATRIX_ROW_BYTES (32u * TILE_NUMBER_BYTES)
+#define MATRIX_TILES_ACROSS 32u /* "a matrix of 32x32 tiles" */
+#define MATRIX_ROW_BYTES (MATRIX_TILES_ACROSS * TILE_NUMBER_BYTES)
 #define TILE_8BPP_EVEN_MASK (~1u)
-
-/* GBATEK "LCD I/O Display Control" DISPCNT bit 5 H-Blank Interval Free,
- * bit 6 OBJ Character VRAM Mapping (1 = one dimensional). */
-#define DISPCNT_HBLANK_FREE 0x0020u
-#define DISPCNT_OBJ_1D 0x0040u
 
 /* GBATEK "LCD OBJ - Overview", OBJ rendering cycles per line. */
 #define CYCLES_PER_LINE 1210            /* 304 * 4 - 6 */
@@ -105,12 +101,6 @@ enum obj_mode { MODE_NORMAL = 0, MODE_SEMI_TRANSPARENT = 1, MODE_OBJ_WINDOW = 2,
 #define AFFINE_SETUP_CYCLES 10
 #define AFFINE_CYCLES_PER_DOT 2
 
-/* GBATEK "LCD I/O Mosaic Function": bits 8-11 OBJ H-Size, 12-15 OBJ V-Size, minus 1. */
-#define MOSAIC_OBJ_H_SHIFT 8u
-#define MOSAIC_OBJ_V_SHIFT 12u
-#define MOSAIC_SIZE_MASK 0xFu
-
-#define FRACTION_BITS 8u
 #define HALF_IN_FIXED_POINT 7u /* n << 7 is n / 2 in 8.8 fixed point */
 
 /* GBATEK "LCD OBJ - OAM Attributes": [shape][size] = { width, height }. */
@@ -211,7 +201,7 @@ static int32_t affordable_columns(const struct obj *obj, int32_t cycles)
 /* The OBJs on line, in OAM order, cut by the cycle budget. Returns how many. */
 static unsigned collect_line_objs(uint16_t dispcnt, uint16_t line, struct line_obj list[OAM_OBJ_COUNT])
 {
-    int32_t cycles = (dispcnt & DISPCNT_HBLANK_FREE) ? CYCLES_PER_LINE_HBLANK_FREE : CYCLES_PER_LINE;
+    int32_t cycles = (dispcnt & PPU_DISPCNT_HBLANK_FREE) ? CYCLES_PER_LINE_HBLANK_FREE : CYCLES_PER_LINE;
     unsigned count = 0;
     for (uint32_t index = 0; index < OAM_OBJ_COUNT && cycles > 0; index++) {
         struct obj obj;
@@ -240,8 +230,8 @@ static bool image_dot(const struct obj *obj, int32_t col, int32_t row, int32_t *
     const int32_t fy = obj->pc * dx + obj->pd * dy + (obj->height << HALF_IN_FIXED_POINT);
     if (fx < 0 || fy < 0)
         return false;
-    *tx = fx >> FRACTION_BITS;
-    *ty = fy >> FRACTION_BITS;
+    *tx = fx >> PPU_FRACTION_BITS;
+    *ty = fy >> PPU_FRACTION_BITS;
     return *tx < obj->width && *ty < obj->height;
 }
 
@@ -258,11 +248,12 @@ static uint32_t colour_index(const struct obj *obj, bool one_dimensional, uint32
                                          + (tile_row * tiles_across + tile_col) * PPU_TILE_BYTES_8BPP
                                    : (tile & TILE_8BPP_EVEN_MASK) * TILE_NUMBER_BYTES
                                          + tile_row * MATRIX_ROW_BYTES + tile_col * PPU_TILE_BYTES_8BPP;
-        return ppu_obj_vram_byte(first + dot_y * PPU_TILE_SIZE + dot_x);
+        return ppu_obj_vram_byte(first + dot_y * PPU_TILE_ROW_BYTES_8BPP + dot_x);
     }
     const uint32_t row_stride = one_dimensional ? tiles_across * TILE_NUMBER_BYTES : MATRIX_ROW_BYTES;
     const uint32_t first = tile * TILE_NUMBER_BYTES + tile_row * row_stride + tile_col * PPU_TILE_BYTES_4BPP;
-    const uint8_t pair = ppu_obj_vram_byte(first + dot_y * (PPU_TILE_SIZE / 2) + dot_x / 2);
+    const uint8_t pair =
+        ppu_obj_vram_byte(first + dot_y * PPU_TILE_ROW_BYTES_4BPP + dot_x / PPU_DOTS_PER_BYTE_4BPP);
     return (dot_x & 1u) ? (uint32_t)pair >> PPU_NIBBLE_BITS : pair & PPU_NIBBLE_MASK;
 }
 
@@ -277,9 +268,7 @@ static uint16_t obj_colour(const struct obj *obj, uint32_t index)
 /* The mosaic block size along one axis for obj: 1 unless it has mosaic on. */
 static int32_t mosaic_size(const struct obj *obj, uint16_t mosaic, unsigned shift)
 {
-    if (!(obj->attr0 & ATTR0_MOSAIC))
-        return 1;
-    return (int32_t)(((uint32_t)mosaic >> shift) & MOSAIC_SIZE_MASK) + 1;
+    return (obj->attr0 & ATTR0_MOSAIC) ? (int32_t)ppu_mosaic_block(mosaic, shift) : 1;
 }
 
 /* Writes one dot of obj at screen x, if it wins against what is there. */
@@ -302,9 +291,9 @@ static void draw_obj(const struct ppu_regs *regs, const struct line_obj *entry, 
                      struct ppu_obj_line *out)
 {
     const struct obj *obj = &entry->obj;
-    const bool one_dimensional = (regs->dispcnt & DISPCNT_OBJ_1D) != 0;
-    const int32_t mosaic_w = mosaic_size(obj, regs->mosaic, MOSAIC_OBJ_H_SHIFT);
-    const int32_t mosaic_h = mosaic_size(obj, regs->mosaic, MOSAIC_OBJ_V_SHIFT);
+    const bool one_dimensional = (regs->dispcnt & PPU_DISPCNT_OBJ_1D) != 0;
+    const int32_t mosaic_w = mosaic_size(obj, regs->mosaic, PPU_MOSAIC_OBJ_H_SHIFT);
+    const int32_t mosaic_h = mosaic_size(obj, regs->mosaic, PPU_MOSAIC_OBJ_V_SHIFT);
     int32_t sample_line = line - line % mosaic_h;
     if (sample_line < obj->y)
         sample_line = obj->y;
