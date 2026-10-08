@@ -30,6 +30,7 @@
 #define IF_ADDRESS 0x04000202u
 #define IME_ADDRESS 0x04000208u
 #define ALL_SOURCES 0x3FFFu /* IE and IF bits 0-13; 14-15 not used */
+#define IF_BIT_15 0x8000u   /* not used by the hardware; interrupt.h's marker */
 /* GBATEK "GBA Sound Control Registers": SOUNDCNT_X at 4000084h, bit 7 is the
  * PSG/FIFO master enable. */
 #define SOUNDCNT_X_ADDRESS 0x04000084u
@@ -78,6 +79,7 @@ _Static_assert(GBA_IE_OFFSET == REG_OFFSET_IE, "IE offset is not expansion's");
 _Static_assert(GBA_IF_OFFSET == REG_OFFSET_IF, "IF offset is not expansion's");
 _Static_assert(GBA_IME_OFFSET == REG_OFFSET_IME, "IME offset is not expansion's");
 _Static_assert(GBA_IME_ENABLE == 1u, "IME enable is bit 0");
+_Static_assert(INTERRUPT_IF_MARKER == IF_BIT_15, "the IF marker is bit 15, unused by the GBA");
 _Static_assert(INTERRUPT_TABLE_LENGTH == TABLE_LENGTH, "gIntrTable has 14 slots");
 _Static_assert(INTERRUPT_DISPATCH_CAP > GBA_IRQ_COUNT, "the cap must allow every source once");
 
@@ -108,6 +110,13 @@ static uint16_t bit_of(enum gba_irq source)
     return (uint16_t)(1u << source);
 }
 
+/* The requests, as a game read of REG_IF masked with INTR_FLAG_* bits sees
+ * them. Bit 15 of the raw value is the module's marker (interrupt.h). */
+static uint16_t requested(void)
+{
+    return (uint16_t)(read16(IF_ADDRESS) & ALL_SOURCES);
+}
+
 /* ---- Counting handlers ---- */
 
 #define LOG_CAPACITY (INTERRUPT_DISPATCH_CAP + 32u)
@@ -126,7 +135,7 @@ static void handler_ran(size_t slot)
     if (record.log_length < LOG_CAPACITY)
         record.log[record.log_length++] = slot;
     record.ime_seen[slot] = read16(IME_ADDRESS);
-    record.if_seen[slot] = read16(IF_ADDRESS);
+    record.if_seen[slot] = requested();
 }
 
 static void count_slot_0(void) { handler_ran(0); }
@@ -168,6 +177,14 @@ static void vblank_acknowledging_itself(void)
     handler_ran(SLOT_VBLANK);
     write16(IF_ADDRESS, (uint16_t)INTR_FLAG_VBLANK);
     write16(INTR_CHECK_ADDRESS, (uint16_t)(read16(INTR_CHECK_ADDRESS) | INTR_FLAG_VBLANK));
+}
+
+/* A handler that discards another source's request, as the game's
+ * stale-request writes do. */
+static void vblank_acknowledging_timer0(void)
+{
+    handler_ran(SLOT_VBLANK);
+    write16(IF_ADDRESS, (uint16_t)INTR_FLAG_TIMER0);
 }
 
 static void vblank_raising_timer0(void)
@@ -268,9 +285,11 @@ static struct report stderr_of(void (*action)(void *), void *context)
         return report;
     }
     action(context);
-    const bool restored = fflush(stderr) == 0 && dup2(saved, STDERR_FILENO) >= 0;
-    const bool closed = close(saved) == 0;
-    if (restored && closed && fseek(file, 0, SEEK_SET) == 0) {
+    /* stderr is put back whether or not the flush worked. */
+    bool restored = fflush(stderr) == 0;
+    restored = dup2(saved, STDERR_FILENO) >= 0 && restored;
+    restored = close(saved) == 0 && restored;
+    if (restored && fseek(file, 0, SEEK_SET) == 0) {
         const size_t length = fread(report.text, 1, sizeof report.text - 1, file);
         report.text[length] = '\0';
         report.captured = !ferror(file) && length < sizeof report.text - 1;
@@ -336,7 +355,7 @@ PTEST(init_with_a_null_table_fails_and_is_reported)
     enum gba_irq source = GBA_IRQ_VBLANK;
     const struct report raise_report = stderr_of(raise_source, &source);
     PT_ASSERT(reports(&raise_report, "interrupt_raise"));
-    PT_ASSERT_EQ_U32(read16(IF_ADDRESS), 0u);
+    PT_ASSERT_EQ_U32(requested(), 0u);
     teardown();
 }
 
@@ -364,7 +383,8 @@ PTEST(init_clears_if_and_is_silent)
     const struct report report = stderr_of(init_with, &call);
     PT_ASSERT_EQ_INT(call.status, INTERRUPT_OK);
     PT_ASSERT(silent(&report));
-    PT_ASSERT_EQ_U32(read16(IF_ADDRESS), 0u);
+    PT_ASSERT_EQ_U32(requested(), 0u);
+    PT_ASSERT_EQ_U32(read16(IF_ADDRESS), IF_BIT_15); /* the marker alone */
     PT_ASSERT(!interrupt_halted());
     teardown();
 }
@@ -385,7 +405,7 @@ PTEST(raise_and_dispatch_after_shutdown_do_nothing_and_are_reported)
     enum gba_irq source = GBA_IRQ_VBLANK;
     const struct report raise_report = stderr_of(raise_source, &source);
     PT_ASSERT(reports(&raise_report, "interrupt_raise"));
-    PT_ASSERT_EQ_U32(read16(IF_ADDRESS), 0u);
+    PT_ASSERT_EQ_U32(requested(), 0u);
     write16(IF_ADDRESS, (uint16_t)INTR_FLAG_VBLANK); /* as if requested before shutdown */
     unsigned handlers_run = 99;
     const struct report dispatch_report = stderr_of(dispatch_into, &handlers_run);
@@ -405,10 +425,27 @@ PTEST(raise_sets_exactly_the_source_bit_and_does_not_dispatch)
         enum gba_irq raised = (enum gba_irq)source;
         const struct report report = stderr_of(raise_source, &raised);
         PT_ASSERT(silent(&report));
-        PT_ASSERT_EQ_U32(read16(IF_ADDRESS), bit_of(raised));
+        PT_ASSERT_EQ_U32(requested(), bit_of(raised));
         PT_ASSERT_EQ_U32(total_calls(), 0u);
         teardown();
     }
+}
+
+/* Raw IF is the requests plus the marker, bit 15; a game read masked with
+ * INTR_FLAG_* bits, the way game code tests a flag, sees only the requests. */
+PTEST(a_game_read_of_if_masked_with_the_flags_sees_only_the_requests)
+{
+    setup();
+    interrupt_raise(GBA_IRQ_SERIAL);
+    interrupt_raise(GBA_IRQ_VBLANK);
+    const uint16_t raw = read16(IF_ADDRESS);
+    PT_ASSERT_EQ_U32(raw, (uint32_t)(INTR_FLAG_SERIAL | INTR_FLAG_VBLANK) | IF_BIT_15);
+    for (int source = 0; source < GBA_IRQ_COUNT; source++) {
+        const uint16_t flag = bit_of((enum gba_irq)source);
+        const bool requested_source = source == GBA_IRQ_SERIAL || source == GBA_IRQ_VBLANK;
+        PT_ASSERT(((raw & flag) != 0) == requested_source);
+    }
+    teardown();
 }
 
 PTEST(raise_keeps_the_bits_already_requested)
@@ -417,7 +454,7 @@ PTEST(raise_keeps_the_bits_already_requested)
     interrupt_raise(GBA_IRQ_VBLANK);
     interrupt_raise(GBA_IRQ_TIMER3);
     interrupt_raise(GBA_IRQ_VBLANK);
-    PT_ASSERT_EQ_U32(read16(IF_ADDRESS), (uint32_t)(INTR_FLAG_VBLANK | INTR_FLAG_TIMER3));
+    PT_ASSERT_EQ_U32(requested(), (uint32_t)(INTR_FLAG_VBLANK | INTR_FLAG_TIMER3));
     teardown();
 }
 
@@ -429,16 +466,16 @@ PTEST(raise_of_a_source_beyond_the_table_is_rejected_and_reported)
     enum gba_irq timer0 = GBA_IRQ_TIMER0; /* slot 5 */
     const struct report report = stderr_of(raise_source, &timer0);
     PT_ASSERT(reports(&report, "interrupt_raise"));
-    PT_ASSERT_EQ_U32(read16(IF_ADDRESS), 0u);
+    PT_ASSERT_EQ_U32(requested(), 0u);
     enum gba_irq gamepak = GBA_IRQ_GAMEPAK; /* slot 13 */
     const struct report gamepak_report = stderr_of(raise_source, &gamepak);
     PT_ASSERT(reports(&gamepak_report, "interrupt_raise"));
-    PT_ASSERT_EQ_U32(read16(IF_ADDRESS), 0u);
+    PT_ASSERT_EQ_U32(requested(), 0u);
     /* The last slot the table has is accepted. */
     enum gba_irq vblank = GBA_IRQ_VBLANK; /* slot 4 */
     const struct report vblank_report = stderr_of(raise_source, &vblank);
     PT_ASSERT(silent(&vblank_report));
-    PT_ASSERT_EQ_U32(read16(IF_ADDRESS), (uint32_t)INTR_FLAG_VBLANK);
+    PT_ASSERT_EQ_U32(requested(), (uint32_t)INTR_FLAG_VBLANK);
     teardown();
 }
 
@@ -451,7 +488,7 @@ PTEST(raise_of_a_value_that_is_not_a_source_is_rejected_and_reported)
     enum gba_irq negative = (enum gba_irq)-1;
     const struct report negative_report = stderr_of(raise_source, &negative);
     PT_ASSERT(reports(&negative_report, "interrupt_raise"));
-    PT_ASSERT_EQ_U32(read16(IF_ADDRESS), 0u);
+    PT_ASSERT_EQ_U32(requested(), 0u);
     teardown();
 }
 
@@ -465,7 +502,7 @@ PTEST(dispatch_with_ime_clear_runs_nothing_and_leaves_if)
     interrupt_raise(GBA_IRQ_VBLANK);
     PT_ASSERT_EQ_U32(interrupt_dispatch(), 0u);
     PT_ASSERT_EQ_U32(total_calls(), 0u);
-    PT_ASSERT_EQ_U32(read16(IF_ADDRESS), (uint32_t)INTR_FLAG_VBLANK);
+    PT_ASSERT_EQ_U32(requested(), (uint32_t)INTR_FLAG_VBLANK);
     PT_ASSERT_EQ_U32(read16(IME_ADDRESS), 0xFFFEu);
     teardown();
 }
@@ -478,7 +515,7 @@ PTEST(dispatch_with_the_source_disabled_in_ie_runs_nothing_and_leaves_if)
     interrupt_raise(GBA_IRQ_VBLANK);
     PT_ASSERT_EQ_U32(interrupt_dispatch(), 0u);
     PT_ASSERT_EQ_U32(total_calls(), 0u);
-    PT_ASSERT_EQ_U32(read16(IF_ADDRESS), (uint32_t)INTR_FLAG_VBLANK);
+    PT_ASSERT_EQ_U32(requested(), (uint32_t)INTR_FLAG_VBLANK);
     teardown();
 }
 
@@ -509,7 +546,7 @@ PTEST(dispatch_runs_the_handler_and_its_own_acknowledge_leaves_if_clear)
     PT_ASSERT_EQ_U32(handlers_run, 1u);
     PT_ASSERT_EQ_U32(record.calls[SLOT_VBLANK], 1u);
     PT_ASSERT_EQ_U32(total_calls(), 1u);
-    PT_ASSERT_EQ_U32(read16(IF_ADDRESS), 0u);
+    PT_ASSERT_EQ_U32(requested(), 0u);
     PT_ASSERT_EQ_U32(read16(INTR_CHECK_ADDRESS), (uint32_t)INTR_FLAG_VBLANK);
     teardown();
 }
@@ -525,7 +562,7 @@ PTEST(dispatch_acknowledges_the_request_before_the_handler_runs)
     PT_ASSERT_EQ_U32(interrupt_dispatch(), 2u);
     PT_ASSERT_EQ_U32(record.if_seen[SLOT_VBLANK], (uint32_t)INTR_FLAG_TIMER0);
     PT_ASSERT_EQ_U32(record.if_seen[SLOT_TIMER0], 0u);
-    PT_ASSERT_EQ_U32(read16(IF_ADDRESS), 0u);
+    PT_ASSERT_EQ_U32(requested(), 0u);
     teardown();
 }
 
@@ -538,7 +575,7 @@ PTEST(each_source_runs_the_gIntrTable_slot_intr_main_gives_it)
         PT_ASSERT_EQ_U32(interrupt_dispatch(), 1u);
         PT_ASSERT_EQ_U32(total_calls(), 1u);
         PT_ASSERT_EQ_U32(record.calls[slot], 1u);
-        PT_ASSERT_EQ_U32(read16(IF_ADDRESS), 0u);
+        PT_ASSERT_EQ_U32(requested(), 0u);
         teardown();
     }
 }
@@ -557,7 +594,7 @@ PTEST(two_sources_run_in_intr_main_order_not_bit_order)
     PT_ASSERT(record.log_length == 2);
     PT_ASSERT(record.log[0] == SLOT_HBLANK);
     PT_ASSERT(record.log[1] == SLOT_VBLANK);
-    PT_ASSERT_EQ_U32(read16(IF_ADDRESS), 0u);
+    PT_ASSERT_EQ_U32(requested(), 0u);
     teardown();
 }
 
@@ -572,7 +609,7 @@ PTEST(every_source_pending_runs_in_intr_main_order)
     PT_ASSERT(record.log_length == HANDLED_SOURCE_COUNT);
     for (size_t position = 0; position < HANDLED_SOURCE_COUNT; position++)
         PT_ASSERT(record.log[position] == position);
-    PT_ASSERT_EQ_U32(read16(IF_ADDRESS), 0u);
+    PT_ASSERT_EQ_U32(requested(), 0u);
     teardown();
 }
 
@@ -588,7 +625,7 @@ PTEST(a_source_raised_inside_a_handler_runs_in_the_same_call)
     PT_ASSERT(record.log_length == 2);
     PT_ASSERT(record.log[0] == SLOT_VBLANK);
     PT_ASSERT(record.log[1] == SLOT_TIMER0);
-    PT_ASSERT_EQ_U32(read16(IF_ADDRESS), 0u);
+    PT_ASSERT_EQ_U32(requested(), 0u);
     teardown();
 }
 
@@ -602,7 +639,7 @@ PTEST(a_handler_re_raising_its_own_source_runs_again)
     interrupt_raise(GBA_IRQ_VBLANK);
     PT_ASSERT_EQ_U32(interrupt_dispatch(), 2u);
     PT_ASSERT_EQ_U32(record.calls[SLOT_VBLANK], 2u);
-    PT_ASSERT_EQ_U32(read16(IF_ADDRESS), 0u);
+    PT_ASSERT_EQ_U32(requested(), 0u);
     teardown();
 }
 
@@ -622,7 +659,7 @@ PTEST(the_cap_stops_a_handler_that_re_raises_forever_and_is_reported)
     PT_ASSERT(cap_length > 0 && (size_t)cap_length < sizeof cap);
     PT_ASSERT(strstr(report.text, cap) != NULL); /* the report gives the cap */
     /* The runaway request is left pending, and IE and IME as they were. */
-    PT_ASSERT_EQ_U32(read16(IF_ADDRESS), (uint32_t)INTR_FLAG_VBLANK);
+    PT_ASSERT_EQ_U32(requested(), (uint32_t)INTR_FLAG_VBLANK);
     PT_ASSERT_EQ_U32(read16(IE_ADDRESS), ALL_SOURCES);
     PT_ASSERT_EQ_U32(read16(IME_ADDRESS), 1u);
     teardown();
@@ -668,7 +705,7 @@ PTEST(a_handlers_writes_to_ie_and_ime_are_undone_when_it_returns)
     teardown();
 }
 
-/* ---- IF acknowledged by the game outside dispatch ---- */
+/* ---- IF acknowledged by the game ---- */
 
 /* GBATEK: writing 1 to an IF bit clears it, as link.c's DisableSerial does
  * with REG_IF = INTR_FLAG_TIMER3 | INTR_FLAG_SERIAL. */
@@ -679,7 +716,7 @@ PTEST(a_game_write_of_ones_to_if_clears_those_requests)
     interrupt_raise(GBA_IRQ_TIMER3);
     write16(IF_ADDRESS, (uint16_t)(INTR_FLAG_TIMER3 | INTR_FLAG_SERIAL));
     interrupt_raise(GBA_IRQ_HBLANK);
-    PT_ASSERT_EQ_U32(read16(IF_ADDRESS), (uint32_t)(INTR_FLAG_VBLANK | INTR_FLAG_HBLANK));
+    PT_ASSERT_EQ_U32(requested(), (uint32_t)(INTR_FLAG_VBLANK | INTR_FLAG_HBLANK));
     enable_all();
     PT_ASSERT_EQ_U32(interrupt_dispatch(), 2u);
     PT_ASSERT_EQ_U32(record.calls[SLOT_TIMER3], 0u);
@@ -698,7 +735,44 @@ PTEST(a_game_write_to_if_before_dispatch_is_applied_by_dispatch)
     PT_ASSERT_EQ_U32(interrupt_dispatch(), 1u);
     PT_ASSERT_EQ_U32(record.calls[SLOT_VBLANK], 1u);
     PT_ASSERT_EQ_U32(record.calls[SLOT_TIMER3], 0u);
-    PT_ASSERT_EQ_U32(read16(IF_ADDRESS), 0u);
+    PT_ASSERT_EQ_U32(requested(), 0u);
+    teardown();
+}
+
+/* The stale-request idiom, REG_IF = INTR_FLAG_SERIAL before enabling Serial
+ * (librfu_sio32id.c:68 and :103), when that request is the only one: the
+ * write stores the value the requests alone would have, and is still seen.
+ * The same for every source. */
+PTEST(a_game_write_of_the_only_pending_request_discards_it)
+{
+    for (int source = 0; source < GBA_IRQ_COUNT; source++) {
+        setup();
+        const enum gba_irq stale = (enum gba_irq)source;
+        write16(IME_ADDRESS, GBA_IME_ENABLE);
+        interrupt_raise(stale); /* IE clear: stays pending */
+        write16(IF_ADDRESS, bit_of(stale));
+        write16(IE_ADDRESS, ALL_SOURCES);
+        unsigned handlers_run = 99;
+        const struct report report = stderr_of(dispatch_into, &handlers_run);
+        PT_ASSERT(silent(&report));
+        PT_ASSERT_EQ_U32(handlers_run, 0u);
+        PT_ASSERT_EQ_U32(total_calls(), 0u);
+        PT_ASSERT(!interrupt_halted());
+        PT_ASSERT_EQ_U32(requested(), 0u);
+        teardown();
+    }
+}
+
+PTEST(a_game_write_to_if_inside_a_handler_clears_another_request)
+{
+    setup();
+    table[SLOT_VBLANK] = vblank_acknowledging_timer0;
+    enable_all();
+    interrupt_raise(GBA_IRQ_VBLANK);
+    interrupt_raise(GBA_IRQ_TIMER0); /* after VBlank in IntrMain's order */
+    PT_ASSERT_EQ_U32(interrupt_dispatch(), 1u);
+    PT_ASSERT_EQ_U32(record.calls[SLOT_TIMER0], 0u);
+    PT_ASSERT_EQ_U32(requested(), 0u);
     teardown();
 }
 
@@ -720,7 +794,7 @@ PTEST(a_null_table_entry_is_reported_and_skipped)
     PT_ASSERT_EQ_U32(handlers_run, 1u);
     PT_ASSERT_EQ_U32(record.calls[SLOT_TIMER0], 1u);
     PT_ASSERT_EQ_U32(total_calls(), 1u);
-    PT_ASSERT_EQ_U32(read16(IF_ADDRESS), 0u);
+    PT_ASSERT_EQ_U32(requested(), 0u);
     PT_ASSERT_EQ_U32(read16(IME_ADDRESS), 1u);
     teardown();
 }
@@ -741,7 +815,7 @@ PTEST(a_game_pak_request_turns_the_sound_off_and_halts)
     PT_ASSERT_EQ_U32(record.calls[SLOT_VBLANK], 1u);
     PT_ASSERT_EQ_U32(record.calls[SLOT_SPURIOUS], 0u);
     PT_ASSERT_EQ_U32(read16(SOUNDCNT_X_ADDRESS), 0u);
-    PT_ASSERT_EQ_U32(read16(IF_ADDRESS), (uint32_t)INTR_FLAG_GAMEPAK);
+    PT_ASSERT_EQ_U32(requested(), (uint32_t)INTR_FLAG_GAMEPAK);
     PT_ASSERT_EQ_U32(read16(IME_ADDRESS), 1u);
     PT_ASSERT(interrupt_halted());
     /* Halted: nothing runs again, and the halt is not reported again. */
@@ -753,7 +827,22 @@ PTEST(a_game_pak_request_turns_the_sound_off_and_halts)
     /* Powering on again ends the halt. */
     PT_ASSERT_EQ_INT(interrupt_init(table, TABLE_LENGTH), INTERRUPT_OK);
     PT_ASSERT(!interrupt_halted());
-    PT_ASSERT_EQ_U32(read16(IF_ADDRESS), 0u);
+    PT_ASSERT_EQ_U32(requested(), 0u);
+    teardown();
+}
+
+PTEST(a_game_pak_request_disabled_in_ie_does_not_halt)
+{
+    setup();
+    enable_all();
+    write16(IE_ADDRESS, (uint16_t)(ALL_SOURCES & ~(unsigned)INTR_FLAG_GAMEPAK));
+    write16(SOUNDCNT_X_ADDRESS, SOUNDCNT_X_MASTER_ENABLE);
+    interrupt_raise(GBA_IRQ_GAMEPAK);
+    interrupt_raise(GBA_IRQ_VBLANK);
+    PT_ASSERT_EQ_U32(interrupt_dispatch(), 1u);
+    PT_ASSERT(!interrupt_halted());
+    PT_ASSERT_EQ_U32(read16(SOUNDCNT_X_ADDRESS), SOUNDCNT_X_MASTER_ENABLE);
+    PT_ASSERT_EQ_U32(requested(), (uint32_t)INTR_FLAG_GAMEPAK);
     teardown();
 }
 

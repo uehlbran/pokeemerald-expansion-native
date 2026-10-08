@@ -144,10 +144,14 @@ walks through `IntrMain` line by line.
 | IE narrowed to the nestable sources while a handler runs (99-108) | not done: there is no nesting; a request raised by a handler runs after it returns |
 
 IF is write-1-to-clear on the GBA but a plain store here, so the module keeps
-the requests and stores them at IF; a value at IF that differs from what it
-stored is a game write, and its 1 bits are acknowledged. A game write of
-exactly the value already at IF is not seen. `INTERRUPT_DISPATCH_CAP` (256)
-stops a call whose handler re-raises itself forever, with a report on stderr.
+the requests and stores them at IF with bit 15 (`INTERRUPT_IF_MARKER`, unused
+by the hardware) set; a value at IF that differs from what it stored is a game
+write, and its 1 bits are acknowledged. The game only ever writes
+`INTR_FLAG_*` bits, so every write is seen. A raw read of IF shows bit 15; of
+several game writes between two calls into the module only the last is seen
+(the header lists the call sites). `INTERRUPT_DISPATCH_CAP` (256) stops a call
+whose handler re-raises itself forever, with a report on stderr.
+
 ## The keypad (`input`)
 
 `input_update_keyinput()` writes `REG_KEYINPUT` (0x04000130, GBATEK "GBA

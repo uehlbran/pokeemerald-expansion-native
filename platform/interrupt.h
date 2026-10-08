@@ -58,14 +58,28 @@
  *    expansion reads it.
  *  - IF is write-1-to-clear on the GBA, but the game's REG_IF writes are
  *    plain stores into the mapped I/O page. This module keeps the real
- *    request bits and stores them at IF after every change, so reads of IF
- *    see the requests; before using them it compares IF with what it last
- *    stored, and a different value is a game write whose 1 bits it clears.
- *    It cannot see a game write that stores exactly the value already there
- *    (a write of every pending bit, which should clear them all), and of
- *    several game writes between two calls into this module it sees only the
- *    last. Handler acknowledgements are always seen, because line 98 has
- *    already cleared the handler's own bit from IF when it runs.
+ *    request bits and, after every change, stores them at IF together with
+ *    INTERRUPT_IF_MARKER, bit 15, which the hardware never sets. Before
+ *    using the requests it compares IF with what it stored: a different
+ *    value is a game write, and the requests that write names are cleared.
+ *    Every game write of REG_IF in expansion stores INTR_FLAG_* bits only
+ *    (bits 0-13), so it always differs from the stored value and is seen,
+ *    including the stale-request idiom REG_IF = INTR_FLAG_SERIAL with
+ *    Serial the only request (librfu_sio32id.c:68 and :103; also
+ *    agb_flash.c:93, link.c:1812, ereader_helpers.c:511, librfu_stwi.c:467,
+ *    librfu_intr.c:370, libgcnmultiboot.s:324 and :614). What remains:
+ *     * Of several game writes between two calls into this module, only the
+ *       last is seen: two of the sites above with different bits in one
+ *       frame, with no raise or dispatch between them, lose the first one's
+ *       acknowledgement.
+ *     * A raw read of IF sees bit 15 set (GBATEK: not used); a read masked
+ *       with INTR_FLAG_* sees exactly the requests. Expansion never reads IF
+ *       (no read of REG_IF in src/ or include/, checked 2026-10-08).
+ *     * A read-modify-write would carry the marker back. REG_IF &= x is
+ *       still seen and clears the requests in x, as on the GBA; REG_IF |= x
+ *       is seen and clears every request, as on the GBA, unless x is 0 or
+ *       already pending, when it equals the stored value and is missed.
+ *       Expansion has no read-modify-write of IF.
  *
  * Registers are read and written as halfwords at their GBA addresses, which
  * gba_memmap.h maps natively; this module never includes expansion's headers.
@@ -89,6 +103,12 @@
  * (0=Disable All, 1=See IE register)"; bits 1-31 not used. */
 #define GBA_IME_ENABLE UINT16_C(0x0001)
 
+/* Kept set in the value this module stores at IF, so that every game store
+ * of request bits differs from it and is seen (above). GBATEK "GBA Interrupt
+ * Control", IF: "14-15 Not used"; the hardware never sets bit 15 and
+ * expansion never writes it. */
+#define INTERRUPT_IF_MARKER UINT16_C(0x8000)
+
 /* The length of expansion's gIntrTable (src/main.c INTR_COUNT): IntrMain's
  * fourteen slots, r12 = 0 to 13 * 4 at src/crt0.s:113-115. */
 #define INTERRUPT_TABLE_LENGTH 14u
@@ -108,7 +128,8 @@ enum interrupt_error {
 
 typedef void (*interrupt_handler)(void);
 
-/* Powers the controller on: no requests (IF reads 0), not halted. table is
+/* Powers the controller on: no requests (IF holds only INTERRUPT_IF_MARKER),
+ * not halted. table is
  * the game's handler table in gIntrTable order (src/main.c), and count its
  * length, at most INTERRUPT_TABLE_LENGTH. The table is read at each dispatch,
  * not copied, because the game fills and changes gIntrTable as it runs

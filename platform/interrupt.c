@@ -12,10 +12,11 @@
  * live, in the mapped I/O page. IF is not: on the GBA a write to it clears
  * the 1 bits written, but the game's writes land in that page as plain
  * stores. So the requests live here (controller.requests) and are stored at
- * IF after every change, so IF reads as the hardware's would; before they
- * are used, IF is compared with what was last stored, and a difference is a
- * game write whose 1 bits are acknowledged (interrupt.h says what this
- * cannot see).
+ * IF after every change, with INTERRUPT_IF_MARKER (bit 15) set beside them;
+ * before they are used, IF is compared with what was last stored, and a
+ * difference is a game write whose 1 bits are acknowledged. The game never
+ * writes bit 15, so each of its writes differs from the stored value
+ * (interrupt.h says what this still cannot see).
  */
 #include <stdio.h>
 
@@ -28,9 +29,6 @@
 #define SOUNDCNT_X_OFFSET UINT32_C(0x084)
 #define SOUNDCNT_X_ALL_OFF UINT8_C(0x00)
 
-/* GBATEK "GBA Interrupt Control": IE and IF bits 0-13 are the sources,
- * bits 14-15 are not used. */
-#define ALL_SOURCES ((uint16_t)((1u << GBA_IRQ_COUNT) - 1u))
 /* What crt0.s:49-50 writes to IME. */
 #define IME_DISABLED UINT16_C(0x0000)
 
@@ -38,6 +36,8 @@ _Static_assert(GBA_IE_OFFSET + sizeof(uint16_t) <= GBA_IO_SIZE, "IE is outside t
 _Static_assert(GBA_IF_OFFSET + sizeof(uint16_t) <= GBA_IO_SIZE, "IF is outside the I/O region");
 _Static_assert(GBA_IME_OFFSET + sizeof(uint16_t) <= GBA_IO_SIZE, "IME is outside the I/O region");
 _Static_assert(SOUNDCNT_X_OFFSET < GBA_IO_SIZE, "SOUNDCNT_X is outside the I/O region");
+/* GBATEK: the sources are IF bits 0-13; the marker must be none of them. */
+_Static_assert(INTERRUPT_IF_MARKER >= (1u << GBA_IRQ_COUNT), "the IF marker is a source bit");
 
 /* IntrMain's search order, src/crt0.s:53-96. The source at position i is
  * handled by gIntrTable[i] (r12 = 4 * i at crt0.s:113-115), except Game Pak,
@@ -113,10 +113,11 @@ static size_t slot_of(enum gba_irq source)
     return slot;
 }
 
+/* controller.requests only ever holds source bits (bit_of), never the marker. */
 static void store_requests(void)
 {
-    write_register(GBA_IF_OFFSET, controller.requests);
-    controller.stored = controller.requests;
+    controller.stored = controller.requests | INTERRUPT_IF_MARKER;
+    write_register(GBA_IF_OFFSET, controller.stored);
 }
 
 /* Applies a game write to IF made since the last store. GBATEK, IF:
@@ -135,7 +136,7 @@ static uint16_t enabled_requests(void)
 {
     if ((read_register(GBA_IME_OFFSET) & GBA_IME_ENABLE) == 0)
         return 0;
-    return read_register(GBA_IE_OFFSET) & controller.requests & ALL_SOURCES;
+    return read_register(GBA_IE_OFFSET) & controller.requests;
 }
 
 /* The slot of the source IntrMain picks from pending, which is not 0. */
@@ -209,7 +210,7 @@ int interrupt_init(interrupt_handler const *table, size_t count)
     }
     controller.table = table;
     controller.count = count;
-    store_requests(); /* GBATEK: IF is 0 at power-on */
+    store_requests(); /* no requests: GBATEK, IF is 0 at power-on */
     controller.initialised = true;
     return INTERRUPT_OK;
 }
