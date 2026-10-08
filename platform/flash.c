@@ -104,6 +104,16 @@ static bool is_range_in_sector(uint32_t offset, uint32_t length)
     return length != 0 && offset < FLASH_SECTOR_SIZE && length <= FLASH_SECTOR_SIZE - offset;
 }
 
+/* [bytes, bytes + length) shares a byte with the chip. Pointer to integer,
+ * flagged: native addresses are compared with the region's GBA addresses. */
+static bool overlaps_chip(const void *bytes, size_t length)
+{
+    const uintptr_t start = (uintptr_t)bytes;
+    const uintptr_t chip_start = GBA_SRAM_BASE;
+    const uintptr_t chip_end = chip_start + FLASH_CHIP_SIZE;
+    return length != 0 && start < chip_end && (start >= chip_start || chip_start - start < length);
+}
+
 static uint8_t *sector_bytes(uint32_t sector)
 {
     return chip() + (size_t)sector * FLASH_SECTOR_SIZE;
@@ -136,12 +146,14 @@ static u16 program_flash_byte(u16 sectorNum, u32 offset, u8 data)
     return FLASH_STATUS_OK;
 }
 
-/* src is non-const only because the table's type says so. */
+/* src is non-const only because the table's type says so. A src inside the
+ * chip is rejected rather than copied with memmove: the sector is erased
+ * before the copy, so such a source would be destroyed first either way. */
 static u16 program_flash_sector(u16 sectorNum, u8 *src)
 {
     if (!is_sector(sectorNum))
         return FLASH_STATUS_BAD_SECTOR;
-    if (src == NULL)
+    if (src == NULL || overlaps_chip(src, FLASH_SECTOR_SIZE))
         return FLASH_STATUS_BAD_ARGUMENT;
     erase(sectorNum); /* every byte FFh, so programming any value only clears bits */
     memcpy(sector_bytes(sectorNum), src, FLASH_SECTOR_SIZE);
@@ -203,11 +215,12 @@ u16 ReadFlashId(void)
 
 void ReadFlash(u16 sectorNum, u32 offset, u8 *dest, u32 size)
 {
-    if (!is_sector(sectorNum) || dest == NULL || !is_range_in_sector(offset, size)) {
+    if (!is_sector(sectorNum) || !is_range_in_sector(offset, size) || dest == NULL
+        || overlaps_chip(dest, size)) {
         (void)fprintf(stderr,
                       "flash: ReadFlash(sector %" PRIu16 ", offset %" PRIu32 ", %s, size %" PRIu32
                       "): rejected, a read is 1 to %u bytes inside one of the chip's %u "
-                      "sectors into a buffer; nothing read\n",
+                      "sectors into a buffer outside the chip; nothing read\n",
                       sectorNum, offset, dest == NULL ? "NULL" : "dest", size,
                       FLASH_SECTOR_SIZE, FLASH_SECTOR_COUNT); /* best-effort */
         return;

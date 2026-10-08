@@ -18,6 +18,7 @@
 #include <dirent.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <limits.h>
 #include <signal.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -50,6 +51,7 @@
 #define IMAGE_SIZE_OFFSET 20u
 #define CRC_OFFSET 24u
 #define HEADER_BYTES 28u
+#define U32_BYTES 4u /* each header integer, least significant byte first */
 #define FILE_BYTES (HEADER_BYTES + CHIP_BYTES)
 
 _Static_assert(FLASH_CHIP_SIZE == CHIP_BYTES, "chip size");
@@ -182,24 +184,29 @@ static void set_image(uint8_t seed)
 
 static uint32_t get_u32le(const uint8_t *bytes)
 {
-    return (uint32_t)bytes[0] | (uint32_t)bytes[1] << 8 | (uint32_t)bytes[2] << 16
-           | (uint32_t)bytes[3] << 24;
+    uint32_t value = 0;
+    for (unsigned i = 0; i < U32_BYTES; i++)
+        value |= (uint32_t)bytes[i] << (CHAR_BIT * i);
+    return value;
 }
 
 static void put_u32le(uint8_t *bytes, uint32_t value)
 {
-    for (size_t i = 0; i < 4; i++)
-        bytes[i] = (uint8_t)(value >> (8 * i));
+    for (unsigned i = 0; i < U32_BYTES; i++)
+        bytes[i] = (uint8_t)(value >> (CHAR_BIT * i));
 }
+
+#define POINTER_BITS_32 32u
+#define POINTER_BITS_64 64u
 
 static uint32_t native_pointer_bits(void)
 {
-    return (uint32_t)(sizeof(void *) * 8);
+    return (uint32_t)(sizeof(void *) * CHAR_BIT);
 }
 
 static uint32_t other_pointer_bits(void)
 {
-    return native_pointer_bits() == 32 ? 64 : 32;
+    return native_pointer_bits() == POINTER_BITS_32 ? POINTER_BITS_64 : POINTER_BITS_32;
 }
 
 /* Puts in file_bytes the version-1 file of expected_image with this layout
@@ -449,6 +456,14 @@ PTEST(the_magic_alone_is_rejected)
     fill_pattern(expected_image, CHIP_BYTES, 0x25);
     build_file(native_pointer_bits(), SAVE_FILE_LAYOUT_ID);
     check_rejected_file(MAGIC_BYTES);
+}
+
+/* Seven bytes of the magic, without its terminator: no header, and too short
+ * for a bare image. */
+PTEST(the_magic_without_its_last_byte_is_rejected)
+{
+    memcpy(file_bytes, MAGIC, MAGIC_BYTES - 1);
+    check_rejected_file(MAGIC_BYTES - 1);
 }
 
 PTEST(a_truncated_image_is_rejected)

@@ -93,7 +93,9 @@
  *       this only catches bugs).
  *   programFlashSector(sector, src)  erases the sector, then programs its
  *       FLASH_SECTOR_SIZE bytes from src, as ProgramFlashSector_MX does (save.c
- *       relies on it erasing).
+ *       relies on it erasing). src must not overlap the chip, since the
+ *       erase would destroy it before the copy: such a src, like NULL, is
+ *       rejected with FLASH_STATUS_BAD_ARGUMENT.
  *   eraseFlashChip(), eraseFlashSector(sector)  fill with FLASH_ERASED_BYTE.
  *   WaitForFlashWrite(phase, addr, lastData)  operations finish inside their
  *       call, so this only checks: FLASH_STATUS_OK if the byte at addr (a
@@ -109,9 +111,12 @@ extern const struct FlashSetupInfo NativeFlash;
 /* FLASH_NATIVE_ID: the chip ID IdentifyFlash compares with each entry. */
 uint16_t ReadFlashId(void);
 
-/* Copies size bytes at offset in sector sectorNum to dest. Rejects, printing
- * to stderr and copying nothing, a sector index of FLASH_SECTOR_COUNT or more,
- * a NULL dest, a size of 0, or a range past the sector's end. */
+/* Copies size bytes at offset in sector sectorNum to dest. Rejects, copying
+ * nothing, a sector index of FLASH_SECTOR_COUNT or more, a size of 0, a range
+ * past the sector's end, a NULL dest, or a dest overlapping the chip; the
+ * function returns nothing, so it prints the rejection to stderr as
+ * "flash: ReadFlash(sector S, offset O, dest|NULL, size N): rejected, ...;
+ * nothing read". */
 void ReadFlash(uint16_t sectorNum, uint32_t offset, uint8_t *dest, uint32_t size);
 
 /* Compares sector sectorNum with the FLASH_SECTOR_SIZE bytes at src: 0 if

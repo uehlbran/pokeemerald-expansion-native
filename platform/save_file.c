@@ -73,14 +73,17 @@ _Static_assert(__BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__,
 #define MAGIC_SIZE 8u
 static const uint8_t magic[MAGIC_SIZE] = { 'P', 'E', 'N', 'S', 'A', 'V', 'E', '\0' };
 
-/* The header as it is in the file: each u32 is 4 little-endian bytes. */
+/* Bytes of each header integer, a u32 stored least significant byte first. */
+#define SAVE_FILE_U32_BYTES 4u
+
+/* The header as it is in the file. */
 struct header_bytes {
     uint8_t magic[MAGIC_SIZE];
-    uint8_t version[4];
-    uint8_t pointer_bits[4];
-    uint8_t layout_id[4];
-    uint8_t image_size[4];
-    uint8_t image_crc32[4];
+    uint8_t version[SAVE_FILE_U32_BYTES];
+    uint8_t pointer_bits[SAVE_FILE_U32_BYTES];
+    uint8_t layout_id[SAVE_FILE_U32_BYTES];
+    uint8_t image_size[SAVE_FILE_U32_BYTES];
+    uint8_t image_crc32[SAVE_FILE_U32_BYTES];
 };
 _Static_assert(sizeof(struct header_bytes) == SAVE_FILE_HEADER_SIZE, "header size");
 _Static_assert(offsetof(struct header_bytes, version) == 8, "version offset");
@@ -106,16 +109,18 @@ static void report(const char *call, const char *path, int error)
                   strerror(error)); /* best-effort: this is the error report */
 }
 
-static uint32_t get_u32le(const uint8_t bytes[4])
+static uint32_t get_u32le(const uint8_t bytes[SAVE_FILE_U32_BYTES])
 {
-    return (uint32_t)bytes[0] | (uint32_t)bytes[1] << 8 | (uint32_t)bytes[2] << 16
-           | (uint32_t)bytes[3] << 24;
+    uint32_t value = 0;
+    for (unsigned i = 0; i < SAVE_FILE_U32_BYTES; i++)
+        value |= (uint32_t)bytes[i] << (CHAR_BIT * i);
+    return value;
 }
 
-static void put_u32le(uint8_t bytes[4], uint32_t value)
+static void put_u32le(uint8_t bytes[SAVE_FILE_U32_BYTES], uint32_t value)
 {
-    for (unsigned i = 0; i < 4; i++)
-        bytes[i] = (uint8_t)(value >> (8 * i));
+    for (unsigned i = 0; i < SAVE_FILE_U32_BYTES; i++)
+        bytes[i] = (uint8_t)(value >> (CHAR_BIT * i));
 }
 
 uint32_t save_file_crc32(const uint8_t *bytes, size_t length)
@@ -123,7 +128,7 @@ uint32_t save_file_crc32(const uint8_t *bytes, size_t length)
     uint32_t crc = CRC32_INITIAL;
     for (size_t i = 0; i < length; i++) {
         crc ^= bytes[i];
-        for (unsigned bit = 0; bit < 8; bit++)
+        for (unsigned bit = 0; bit < CHAR_BIT; bit++)
             crc = (crc & 1u) != 0 ? (crc >> 1) ^ CRC32_REFLECTED_POLYNOMIAL : crc >> 1;
     }
     return crc ^ CRC32_FINAL_XOR;
@@ -291,7 +296,7 @@ static int read_save(FILE *file)
         return corrupt("not a regular file");
     const intmax_t file_size = (intmax_t)info.st_size;
 
-    struct header_bytes header;
+    struct header_bytes header = { 0 }; /* only header_length bytes are read */
     const size_t header_length = file_size < (intmax_t)sizeof header ? (size_t)file_size
                                                                        : sizeof header;
     if (!read_exactly(file, &header, header_length))
@@ -371,7 +376,7 @@ static void discard_tmp(FILE *tmp)
 /* Writes the header and the image to the tmp file and makes it durable. */
 static int write_tmp(void)
 {
-    struct header_bytes header;
+    struct header_bytes header = { 0 };
     encode_header(&header);
     FILE *const tmp = fopen(state.tmp_path, "wb");
     if (tmp == NULL) {

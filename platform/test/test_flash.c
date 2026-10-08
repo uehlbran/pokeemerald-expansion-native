@@ -11,7 +11,9 @@
  */
 // deps: gba_memmap.c
 #include <stdint.h>
+#include <stdio.h>
 #include <string.h>
+#include <unistd.h>
 
 #include <gba/types.h>
 #include <gba/flash_internal.h>
@@ -284,6 +286,22 @@ PTEST(program_sector_rejects_a_null_source)
     PT_ASSERT(!flash_take_dirty());
 }
 
+/* The sector is erased before the copy, so a source in the chip would be
+ * destroyed first; it is rejected, and nothing is erased. */
+PTEST(program_sector_rejects_a_source_inside_the_chip)
+{
+    flash_init();
+    memset(chip(), 0x00, CHIP_BYTES);
+    PT_ASSERT_EQ_U32(NativeFlash.programFlashSector(4, sector_at(4)), BAD_OFFSET);
+    PT_ASSERT_EQ_U32(NativeFlash.programFlashSector(4, sector_at(3)), BAD_OFFSET);
+    PT_ASSERT_EQ_U32(NativeFlash.programFlashSector(4, sector_at(3) + 1), BAD_OFFSET);
+    PT_ASSERT_EQ_U32(NativeFlash.programFlashSector(
+                         4, (uint8_t *)(uintptr_t)(CHIP_ADDRESS - SECTOR_BYTES + 1)),
+                     BAD_OFFSET); /* its last byte is the chip's first */
+    PT_ASSERT(first_byte_not(chip(), CHIP_BYTES, 0x00) == CHIP_BYTES);
+    PT_ASSERT(!flash_take_dirty());
+}
+
 /* ---- sector bounds ---- */
 
 PTEST(sector_31_is_the_last_valid_sector)
@@ -359,6 +377,109 @@ PTEST(read_rejects_zero_length_and_ranges_past_the_sector_end)
     ReadFlash(1, 0, NULL, 1);
     PT_ASSERT(first_byte_not(dest, sizeof dest, 0xEE) == sizeof dest);
     PT_ASSERT(!flash_take_dirty());
+}
+
+PTEST(read_rejects_a_destination_inside_the_chip)
+{
+    flash_init();
+    uint8_t source[SECTOR_BYTES];
+    fill_pattern(source, sizeof source, 0x51);
+    PT_ASSERT_EQ_U32(NativeFlash.programFlashSector(1, source), FLASH_STATUS_OK);
+    PT_ASSERT(flash_take_dirty());
+    ReadFlash(1, 0, sector_at(5), 16);                          /* another sector */
+    ReadFlash(1, 0, sector_at(1) + 8, 16);                      /* overlapping its source */
+    ReadFlash(1, 0, chip() + CHIP_BYTES - 8, 16);               /* across the chip's end */
+    ReadFlash(1, 0, (uint8_t *)(uintptr_t)(CHIP_ADDRESS - 8), 16); /* across its start */
+    PT_ASSERT(first_byte_not(sector_at(5), SECTOR_BYTES, ERASED) == SECTOR_BYTES);
+    PT_ASSERT_MEM_EQ(sector_at(1), source, SECTOR_BYTES);
+    PT_ASSERT(first_byte_not(chip() + CHIP_BYTES - 8, 8, ERASED) == 8);
+    PT_ASSERT(!flash_take_dirty());
+}
+
+/* ---- what ReadFlash, which returns nothing, writes to stderr ---- */
+
+#define REPORT_SIZE 1024
+
+struct report {
+    bool captured; /* stderr was redirected and read back whole */
+    char text[REPORT_SIZE];
+};
+
+/* Runs action(context) with stderr sent to a temporary file, and returns
+ * what was written to it (the pattern of test_interrupt.c). */
+static struct report stderr_of(void (*action)(void *), void *context)
+{
+    struct report report = { .captured = false, .text = "" };
+    FILE *const file = tmpfile();
+    if (file == NULL)
+        return report;
+    const int saved = fflush(stderr) == 0 ? dup(STDERR_FILENO) : -1;
+    if (saved < 0 || dup2(fileno(file), STDERR_FILENO) < 0) {
+        if (saved >= 0)
+            (void)close(saved); /* nothing redirected yet; captured stays false */
+        (void)fclose(file);
+        return report;
+    }
+    action(context);
+    /* stderr is put back whether or not the flush worked. */
+    bool restored = fflush(stderr) == 0;
+    restored = dup2(saved, STDERR_FILENO) >= 0 && restored;
+    restored = close(saved) == 0 && restored;
+    if (restored && fseek(file, 0, SEEK_SET) == 0) {
+        const size_t length = fread(report.text, 1, sizeof report.text - 1, file);
+        report.text[length] = '\0';
+        report.captured = !ferror(file) && length < sizeof report.text - 1;
+    }
+    if (fclose(file) != 0)
+        report.captured = false;
+    return report;
+}
+
+struct read_call {
+    uint16_t sector;
+    uint32_t offset;
+    uint8_t *dest;
+    uint32_t size;
+};
+
+static void read_with(void *call)
+{
+    const struct read_call *const c = call;
+    ReadFlash(c->sector, c->offset, c->dest, c->size);
+}
+
+static void check_read_report(struct read_call call, const char *expected)
+{
+    const struct report report = stderr_of(read_with, &call);
+    PT_ASSERT(report.captured);
+    if (strstr(report.text, expected) == NULL || strstr(report.text, "; nothing read\n") == NULL)
+        PT_ASSERT_EQ_STR(report.text, expected);
+}
+
+PTEST(rejected_reads_are_reported_on_stderr)
+{
+    flash_init();
+    uint8_t dest[SECTOR_BYTES];
+    check_read_report((struct read_call){ 1, 0, dest, 0 },
+                      "flash: ReadFlash(sector 1, offset 0, dest, size 0): rejected");
+    check_read_report((struct read_call){ 1, 1, dest, SECTOR_BYTES },
+                      "flash: ReadFlash(sector 1, offset 1, dest, size 4096): rejected");
+    check_read_report((struct read_call){ SECTORS, 0, dest, 1 },
+                      "flash: ReadFlash(sector 32, offset 0, dest, size 1): rejected");
+    check_read_report((struct read_call){ 1, 0, NULL, 1 },
+                      "flash: ReadFlash(sector 1, offset 0, NULL, size 1): rejected");
+    check_read_report((struct read_call){ 1, 0, sector_at(2), 1 },
+                      "flash: ReadFlash(sector 1, offset 0, dest, size 1): rejected");
+}
+
+PTEST(a_valid_read_reports_nothing)
+{
+    flash_init();
+    uint8_t dest[SECTOR_BYTES];
+    struct read_call call = { LAST_SECTOR, 0, dest, SECTOR_BYTES };
+    const struct report report = stderr_of(read_with, &call);
+    PT_ASSERT(report.captured);
+    PT_ASSERT_EQ_STR(report.text, "");
 }
 
 /* ---- verify ---- */
