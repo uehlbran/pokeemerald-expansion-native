@@ -17,11 +17,14 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include "gba_timing.h"
+
 /* --- Timing --------------------------------------------------------------- */
 
 /* GBATEK "LCD Dimensions and Timings", System Clock: "16.78MHz
- * (16*1024*1024 Hz)". Every PSG timer here counts these cycles. */
-#define PSG_SYSTEM_CLOCK_HZ UINT32_C(16777216)
+ * (16*1024*1024 Hz)" (gba_timing.h). Every PSG timer here counts these
+ * cycles. */
+#define PSG_SYSTEM_CLOCK_HZ GBA_CPU_HZ
 
 /* The frame sequencer. GBATEK gives the units of the three things it clocks:
  * length in "units of (64-n)/256s", sweep time in "units of 7.8ms" (1/128 s),
@@ -56,6 +59,10 @@
 #define PSG_NRX4_FREQUENCY_HIGH_MASK 0x07u
 #define PSG_NRX4_FREQUENCY_HIGH_SHIFT 8u
 
+/* NRx3 (low byte of SOUND1CNT_X, SOUND2CNT_H, SOUND3CNT_X): the frequency's
+ * low eight bits, GBATEK "Frequency ... (0-2047)" bits 0-7. */
+#define PSG_NRX3_FREQUENCY_LOW_MASK 0xFFu
+
 /* NRx2 of channels 1, 2 and 4 (high byte of SOUND1CNT_H, SOUND2CNT_L,
  * SOUND4CNT_L): bits 0-2 "Envelope Step-Time; units of n/64s (1-7, 0=No
  * Envelope)", bit 3 "Envelope Direction (0=Decrease, 1=Increase)", bits 4-7
@@ -75,12 +82,25 @@ struct psg_length {
     bool enabled;       /* NRx4 bit 6, applied at every update */
 };
 
-/* Loads the counter with the ticks the game's length field asks for. */
-void psg_length_load(struct psg_length *length, uint16_t ticks);
+/* What all four channels share: the on flag SOUNDCNT_X reports, and the
+ * length counter and DAC that can clear it. */
+struct psg_channel {
+    bool on;
+    struct psg_length length;
+};
 
-/* One 256 Hz tick. Returns true when this tick expires the counter, meaning
- * the channel stops now; false otherwise, including when disabled. */
-bool psg_length_clock(struct psg_length *length);
+/* The common part of a trigger. While the DAC is off it does nothing and
+ * returns false; otherwise it switches the channel on, loads the length
+ * counter with length_ticks and returns true, and the caller restarts the
+ * rest of the channel. */
+bool psg_channel_start(struct psg_channel *channel, bool dac_enabled, uint16_t length_ticks);
+
+/* Takes NRx4's length enable, which acts at once, and the DAC: switching it
+ * off stops the channel. */
+void psg_channel_update(struct psg_channel *channel, uint8_t nrx4, bool dac_enabled);
+
+/* One 256 Hz tick: the channel stops when its enabled length runs out. */
+void psg_channel_clock_length(struct psg_channel *channel);
 
 /* Volume envelope of channels 1, 2 and 4. */
 struct psg_envelope {
@@ -94,7 +114,8 @@ struct psg_envelope {
 void psg_envelope_trigger(struct psg_envelope *envelope, uint8_t nrx2);
 
 /* One 64 Hz tick: every step_time ticks, one level up or down, stopping at
- * 15 or 0. */
+ * 15 or 0. Harmless on a stopped channel: its level is not heard and a
+ * trigger restarts the envelope. */
 void psg_envelope_clock(struct psg_envelope *envelope);
 
 /* Whether NRx2 leaves the channel's DAC on. */
@@ -115,12 +136,11 @@ struct psg_square_registers {
 };
 
 struct psg_square {
-    bool on;               /* SOUNDCNT_X status bit */
+    struct psg_channel channel;
     uint8_t duty;          /* NRx1 bits 6-7 */
     uint8_t duty_step;     /* 0-7, position in the duty pattern */
     uint16_t frequency;    /* 11 bits from NRx3 and NRx4 */
     uint32_t countdown;    /* cycles until the next duty step */
-    struct psg_length length;
     struct psg_envelope envelope;
 };
 
@@ -132,8 +152,6 @@ void psg_square_update(struct psg_square *square, const struct psg_square_regist
 void psg_square_trigger(struct psg_square *square, const struct psg_square_registers *registers);
 
 void psg_square_run(struct psg_square *square, uint32_t cycles);
-void psg_square_clock_length(struct psg_square *square);
-void psg_square_clock_envelope(struct psg_square *square);
 
 /* Digital output, 0-15: the envelope's level while the duty pattern is high,
  * 0 while it is low or the channel is off. */
@@ -170,13 +188,12 @@ struct psg_wave_registers {
 };
 
 struct psg_wave {
-    bool on;
+    struct psg_channel channel;
     uint8_t nr30;          /* dimension, bank, DAC; as of the last update */
     uint8_t nr32;          /* volume; as of the last update */
     uint16_t frequency;
     uint32_t countdown;    /* cycles until the next sample */
     uint8_t position;      /* sample index, 0-31, or 0-63 in two-bank mode */
-    struct psg_length length;
     uint8_t banks[PSG_WAVE_BANK_COUNT][PSG_WAVE_BANK_BYTES];
     uint8_t window_seen[PSG_WAVE_BANK_BYTES]; /* the window at the last update */
 };
@@ -186,7 +203,6 @@ struct psg_wave {
 void psg_wave_update(struct psg_wave *wave, const struct psg_wave_registers *registers);
 void psg_wave_trigger(struct psg_wave *wave, const struct psg_wave_registers *registers);
 void psg_wave_run(struct psg_wave *wave, uint32_t cycles);
-void psg_wave_clock_length(struct psg_wave *wave);
 
 /* Digital output, 0-15: the current sample scaled by NR32's volume. */
 uint8_t psg_wave_level(const struct psg_wave *wave);
@@ -216,20 +232,17 @@ struct psg_noise_registers {
 };
 
 struct psg_noise {
-    bool on;
+    struct psg_channel channel;
     uint8_t nr43;          /* divider, width, shift; as of the last update */
     uint16_t lfsr;
     bool high;             /* the last bit shifted out */
     uint32_t countdown;    /* cycles until the next LFSR clock */
-    struct psg_length length;
     struct psg_envelope envelope;
 };
 
 void psg_noise_update(struct psg_noise *noise, const struct psg_noise_registers *registers);
 void psg_noise_trigger(struct psg_noise *noise, const struct psg_noise_registers *registers);
 void psg_noise_run(struct psg_noise *noise, uint32_t cycles);
-void psg_noise_clock_length(struct psg_noise *noise);
-void psg_noise_clock_envelope(struct psg_noise *noise);
 uint8_t psg_noise_level(const struct psg_noise *noise);
 
 #endif /* PSG_INTERNAL_H */

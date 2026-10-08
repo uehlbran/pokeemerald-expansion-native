@@ -1,7 +1,8 @@
 /*
- * psg_channel.c: the units every PSG channel is built from: the length
- * counter (all four channels), the volume envelope (channels 1, 2 and 4), the
- * DAC enable (channels 1, 2 and 4) and the frequency timer (all four).
+ * psg_channel.c: the units every PSG channel is built from: the on flag with
+ * its length counter and DAC (all four channels), the volume envelope
+ * (channels 1, 2 and 4), the NRx2 DAC enable (channels 1, 2 and 4) and the
+ * frequency timer (all four).
  *
  * Stands in for those parts of GBATEK "GBA Sound Channel 1 - Tone & Sweep"
  * (https://problemkaputt.de/gbatek.htm#gbasoundchannel1tonesweep), which the
@@ -17,17 +18,30 @@
  */
 #include "psg_internal.h"
 
-void psg_length_load(struct psg_length *length, uint16_t ticks)
+bool psg_channel_start(struct psg_channel *channel, bool dac_enabled, uint16_t length_ticks)
 {
-    length->remaining = ticks;
+    if (!dac_enabled)
+        return false;
+    channel->on = true;
+    channel->length.remaining = length_ticks;
+    return true;
 }
 
-bool psg_length_clock(struct psg_length *length)
+void psg_channel_update(struct psg_channel *channel, uint8_t nrx4, bool dac_enabled)
 {
+    channel->length.enabled = (nrx4 & PSG_NRX4_LENGTH_ENABLE) != 0;
+    if (!dac_enabled)
+        channel->on = false;
+}
+
+void psg_channel_clock_length(struct psg_channel *channel)
+{
+    struct psg_length *const length = &channel->length;
     if (!length->enabled || length->remaining == 0)
-        return false;
+        return;
     length->remaining--;
-    return length->remaining == 0;
+    if (length->remaining == 0)
+        channel->on = false;
 }
 
 void psg_envelope_trigger(struct psg_envelope *envelope, uint8_t nrx2)

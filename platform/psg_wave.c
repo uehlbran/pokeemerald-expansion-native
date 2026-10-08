@@ -112,35 +112,26 @@ void psg_wave_update(struct psg_wave *wave, const struct psg_wave_registers *reg
     wave->nr32 = registers->nr32;
     wave->frequency = (uint16_t)(registers->nr33 | (registers->nr34 & PSG_NRX4_FREQUENCY_HIGH_MASK)
                                                        << PSG_NRX4_FREQUENCY_HIGH_SHIFT);
-    wave->length.enabled = (registers->nr34 & PSG_NRX4_LENGTH_ENABLE) != 0;
     latch_window(wave, registers->window);
-    if (!(registers->nr30 & NR30_PLAYBACK))
-        wave->on = false;
+    psg_channel_update(&wave->channel, registers->nr34, (registers->nr30 & NR30_PLAYBACK) != 0);
 }
 
 void psg_wave_trigger(struct psg_wave *wave, const struct psg_wave_registers *registers)
 {
-    if (!(registers->nr30 & NR30_PLAYBACK))
+    const uint16_t length = (uint16_t)(WAVE_LENGTH_UNITS - registers->nr31);
+    if (!psg_channel_start(&wave->channel, (registers->nr30 & NR30_PLAYBACK) != 0, length))
         return;
-    wave->on = true;
     wave->position = 0;
     wave->countdown = sample_period(wave->frequency);
-    psg_length_load(&wave->length, (uint16_t)(WAVE_LENGTH_UNITS - registers->nr31));
 }
 
 void psg_wave_run(struct psg_wave *wave, uint32_t cycles)
 {
-    if (!wave->on)
+    if (!wave->channel.on)
         return;
     const uint32_t steps = psg_timer_run(&wave->countdown, sample_period(wave->frequency), cycles);
     const unsigned samples = samples_in_play(wave);
     wave->position = (uint8_t)((wave->position + steps % samples) % samples);
-}
-
-void psg_wave_clock_length(struct psg_wave *wave)
-{
-    if (psg_length_clock(&wave->length))
-        wave->on = false;
 }
 
 /* The 4-bit sample at the current position: the selected bank's 32, then, in
@@ -157,7 +148,7 @@ static uint8_t current_sample(const struct psg_wave *wave)
 
 uint8_t psg_wave_level(const struct psg_wave *wave)
 {
-    if (!wave->on)
+    if (!wave->channel.on)
         return 0;
     const uint8_t sample = current_sample(wave);
     if (wave->nr32 & NR32_FORCE_75)
@@ -170,11 +161,10 @@ uint8_t psg_wave_level(const struct psg_wave *wave)
 
 void psg_wave_power_off(struct psg_wave *wave)
 {
-    wave->on = false;
+    wave->channel = (struct psg_channel){ 0 };
     wave->nr30 = 0;
     wave->nr32 = 0;
     wave->frequency = 0;
     wave->countdown = 0;
     wave->position = 0;
-    wave->length = (struct psg_length){ 0 };
 }

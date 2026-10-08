@@ -102,8 +102,9 @@
  * derived maximum). The other choices are in the channel files' headers.
  *
  * Not modelled: the Direct Sound FIFOs (the m4a mixer's output replaces
- * them), SOUNDBIAS, and the Game Boy's power-on and trigger-timing quirks
- * (Pan Docs "Audio Details", Obscure Behavior).
+ * them), SOUNDBIAS, the Game Boy's power-on and trigger-timing quirks, and
+ * its NR10 negate quirk (clearing the sweep direction bit after a decreasing
+ * calculation stops channel 1; Pan Docs "Audio Details", Obscure Behavior).
  */
 #include <string.h>
 
@@ -335,19 +336,19 @@ static void publish_registers(void)
 {
     const uint16_t frequency = psg.square_1.frequency;
     if (psg.powered && frequency != psg.channel_1_frequency_read) {
-        write_register(REG_NR13, (uint8_t)(frequency & 0xFFu));
+        write_register(REG_NR13, (uint8_t)(frequency & PSG_NRX3_FREQUENCY_LOW_MASK));
         const uint8_t nr14 = read_register(REG_NR14);
         write_register(REG_NR14, (uint8_t)((nr14 & ~PSG_NRX4_FREQUENCY_HIGH_MASK) |
                                            frequency >> PSG_NRX4_FREQUENCY_HIGH_SHIFT));
     }
     uint8_t status = read_register(REG_NR52) & NR52_MASTER_ENABLE;
-    if (psg.square_1.on)
+    if (psg.square_1.channel.on)
         status |= NR52_SOUND_1_ON;
-    if (psg.square_2.on)
+    if (psg.square_2.channel.on)
         status |= NR52_SOUND_2_ON;
-    if (psg.wave.on)
+    if (psg.wave.channel.on)
         status |= NR52_SOUND_3_ON;
-    if (psg.noise.on)
+    if (psg.noise.channel.on)
         status |= NR52_SOUND_4_ON;
     write_register(REG_NR52, status);
 }
@@ -358,17 +359,17 @@ static void clock_frame_sequencer(void)
 {
     const uint8_t step = psg.sequencer.step;
     if (step % (PSG_SEQUENCER_HZ / PSG_LENGTH_HZ) == 0) {
-        psg_square_clock_length(&psg.square_1);
-        psg_square_clock_length(&psg.square_2);
-        psg_wave_clock_length(&psg.wave);
-        psg_noise_clock_length(&psg.noise);
+        psg_channel_clock_length(&psg.square_1.channel);
+        psg_channel_clock_length(&psg.square_2.channel);
+        psg_channel_clock_length(&psg.wave.channel);
+        psg_channel_clock_length(&psg.noise.channel);
     }
     if (step == PSG_SEQUENCER_SWEEP_STEP_A || step == PSG_SEQUENCER_SWEEP_STEP_B)
         psg_sweep_clock(&psg.sweep, &psg.square_1);
     if (step == PSG_SEQUENCER_ENVELOPE_STEP) {
-        psg_square_clock_envelope(&psg.square_1);
-        psg_square_clock_envelope(&psg.square_2);
-        psg_noise_clock_envelope(&psg.noise);
+        psg_envelope_clock(&psg.square_1.envelope);
+        psg_envelope_clock(&psg.square_2.envelope);
+        psg_envelope_clock(&psg.noise.envelope);
     }
     psg.sequencer.step = (uint8_t)((step + 1u) % PSG_SEQUENCER_STEPS);
 }

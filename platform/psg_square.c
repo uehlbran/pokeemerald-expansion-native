@@ -23,6 +23,11 @@
  * Pan Docs: a trigger restarts the frequency timer but not the duty step,
  * which only power-off resets. Written from those documents; no reference
  * port's code.
+ *
+ * Not modelled: the Game Boy's negate quirk, where clearing NR10's direction
+ * bit after a decreasing calculation since the last trigger stops channel 1
+ * at once (Pan Docs "Audio Details", Obscure Behavior); GBATEK does not
+ * describe it for the GBA.
  */
 #include "psg_internal.h"
 
@@ -70,45 +75,29 @@ void psg_square_update(struct psg_square *square, const struct psg_square_regist
 {
     square->duty = (uint8_t)(registers->nrx1 >> NRX1_DUTY_SHIFT);
     square->frequency = frequency_of(registers);
-    square->length.enabled = (registers->nrx4 & PSG_NRX4_LENGTH_ENABLE) != 0;
-    if (!psg_dac_enabled(registers->nrx2))
-        square->on = false;
+    psg_channel_update(&square->channel, registers->nrx4, psg_dac_enabled(registers->nrx2));
 }
 
 void psg_square_trigger(struct psg_square *square, const struct psg_square_registers *registers)
 {
-    if (!psg_dac_enabled(registers->nrx2))
+    const uint16_t length = (uint16_t)(SQUARE_LENGTH_UNITS - (registers->nrx1 & NRX1_LENGTH_MASK));
+    if (!psg_channel_start(&square->channel, psg_dac_enabled(registers->nrx2), length))
         return;
-    square->on = true;
     square->countdown = step_period(square->frequency);
-    psg_length_load(&square->length,
-                    (uint16_t)(SQUARE_LENGTH_UNITS - (registers->nrx1 & NRX1_LENGTH_MASK)));
     psg_envelope_trigger(&square->envelope, registers->nrx2);
 }
 
 void psg_square_run(struct psg_square *square, uint32_t cycles)
 {
-    if (!square->on)
+    if (!square->channel.on)
         return;
     const uint32_t steps = psg_timer_run(&square->countdown, step_period(square->frequency), cycles);
     square->duty_step = (uint8_t)((square->duty_step + steps % DUTY_STEPS) % DUTY_STEPS);
 }
 
-void psg_square_clock_length(struct psg_square *square)
-{
-    if (psg_length_clock(&square->length))
-        square->on = false;
-}
-
-void psg_square_clock_envelope(struct psg_square *square)
-{
-    if (square->on)
-        psg_envelope_clock(&square->envelope);
-}
-
 uint8_t psg_square_level(const struct psg_square *square)
 {
-    if (!square->on || !(duty_patterns[square->duty] >> square->duty_step & 1u))
+    if (!square->channel.on || !(duty_patterns[square->duty] >> square->duty_step & 1u))
         return 0;
     return square->envelope.volume;
 }
@@ -141,7 +130,7 @@ static uint32_t next_frequency(const struct psg_sweep *sweep)
 static void check_overflow(const struct psg_sweep *sweep, struct psg_square *square)
 {
     if (next_frequency(sweep) > PSG_FREQUENCY_MAX)
-        square->on = false;
+        square->channel.on = false;
 }
 
 void psg_sweep_update(struct psg_sweep *sweep, uint8_t nr10)
@@ -151,7 +140,7 @@ void psg_sweep_update(struct psg_sweep *sweep, uint8_t nr10)
 
 void psg_sweep_trigger(struct psg_sweep *sweep, struct psg_square *square)
 {
-    if (!square->on)
+    if (!square->channel.on)
         return;
     sweep->shadow = square->frequency;
     reload_sweep_timer(sweep);
@@ -162,7 +151,7 @@ void psg_sweep_trigger(struct psg_sweep *sweep, struct psg_square *square)
 
 void psg_sweep_clock(struct psg_sweep *sweep, struct psg_square *square)
 {
-    if (!square->on)
+    if (!square->channel.on)
         return;
     if (sweep->timer > 1) {
         sweep->timer--;
@@ -173,7 +162,7 @@ void psg_sweep_clock(struct psg_sweep *sweep, struct psg_square *square)
         return;
     const uint32_t next = next_frequency(sweep);
     if (next > PSG_FREQUENCY_MAX) {
-        square->on = false;
+        square->channel.on = false;
         return;
     }
     if (sweep_shift(sweep) == 0)

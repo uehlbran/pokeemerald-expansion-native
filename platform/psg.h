@@ -23,10 +23,12 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "gba_timing.h"
+
 /* Highest output rate psg_init() accepts: the system clock itself (GBATEK
- * "LCD Dimensions and Timings", System Clock, 16*1024*1024 Hz). Above it
- * consecutive output samples would repeat the same hardware state. */
-#define PSG_MAX_OUTPUT_RATE_HZ UINT32_C(16777216)
+ * "LCD Dimensions and Timings", System Clock, 16*1024*1024 Hz; gba_timing.h).
+ * Above it consecutive output samples would repeat the same hardware state. */
+#define PSG_MAX_OUTPUT_RATE_HZ GBA_CPU_HZ
 
 /* Largest magnitude psg_generate() writes: four channels at level 15 with
  * every volume at maximum. The derivation is in psg.c ("OUTPUT SCALE"); it

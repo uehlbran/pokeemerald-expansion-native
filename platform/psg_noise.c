@@ -69,27 +69,23 @@ static uint32_t clock_period(uint8_t nr43)
 void psg_noise_update(struct psg_noise *noise, const struct psg_noise_registers *registers)
 {
     noise->nr43 = registers->nr43;
-    noise->length.enabled = (registers->nr44 & PSG_NRX4_LENGTH_ENABLE) != 0;
-    if (!psg_dac_enabled(registers->nr42))
-        noise->on = false;
+    psg_channel_update(&noise->channel, registers->nr44, psg_dac_enabled(registers->nr42));
 }
 
 void psg_noise_trigger(struct psg_noise *noise, const struct psg_noise_registers *registers)
 {
-    if (!psg_dac_enabled(registers->nr42))
+    const uint16_t length = (uint16_t)(NOISE_LENGTH_UNITS - (registers->nr41 & NR41_LENGTH_MASK));
+    if (!psg_channel_start(&noise->channel, psg_dac_enabled(registers->nr42), length))
         return;
-    noise->on = true;
     noise->lfsr = psg_lfsr_seed(width_of(noise->nr43));
     noise->high = false;
     noise->countdown = clock_period(noise->nr43);
-    psg_length_load(&noise->length,
-                    (uint16_t)(NOISE_LENGTH_UNITS - (registers->nr41 & NR41_LENGTH_MASK)));
     psg_envelope_trigger(&noise->envelope, registers->nr42);
 }
 
 void psg_noise_run(struct psg_noise *noise, uint32_t cycles)
 {
-    if (!noise->on)
+    if (!noise->channel.on)
         return;
     const uint32_t clocks = psg_timer_run(&noise->countdown, clock_period(noise->nr43), cycles);
     const enum psg_lfsr_width width = width_of(noise->nr43);
@@ -99,19 +95,7 @@ void psg_noise_run(struct psg_noise *noise, uint32_t cycles)
     }
 }
 
-void psg_noise_clock_length(struct psg_noise *noise)
-{
-    if (psg_length_clock(&noise->length))
-        noise->on = false;
-}
-
-void psg_noise_clock_envelope(struct psg_noise *noise)
-{
-    if (noise->on)
-        psg_envelope_clock(&noise->envelope);
-}
-
 uint8_t psg_noise_level(const struct psg_noise *noise)
 {
-    return noise->on && noise->high ? noise->envelope.volume : 0;
+    return noise->channel.on && noise->high ? noise->envelope.volume : 0;
 }
