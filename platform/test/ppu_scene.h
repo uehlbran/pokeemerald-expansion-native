@@ -7,8 +7,8 @@
  * independently of the module's own constants, so those are under test too.
  *
  * Every test starts with scene_reset(), which zeroes the regions the PPU
- * reads (I/O, palette RAM, VRAM, OAM) and re-initialises the module, so a
- * test that fails half-way leaves nothing that another test can see.
+ * reads (I/O, palette RAM, VRAM, OAM), hides every OBJ and re-initialises the
+ * module, so a test that fails half-way leaves nothing another test can see.
  *
  * Values go into the regions with memcpy in host byte order, as the game's
  * own stores put them there.
@@ -279,12 +279,17 @@ static inline void put_map_entry(uint32_t block_offset, unsigned col, unsigned r
 
 /* ---- the scene ---- */
 
+/* Zeroes the regions and hides all 128 OBJs: an all-zero OAM entry is a
+ * displayed 8x8 OBJ at (0,0) using tile 0, so every OBJ gets the disable bit,
+ * as the game's own hidden OBJs do. */
 static inline void scene_reset(void)
 {
     memset(gba_pointer(GBA_IO_BASE), 0, GBA_IO_SIZE);
     memset(gba_pointer(GBA_PALETTE_RAM_BASE), 0, GBA_PALETTE_RAM_SIZE);
     memset(gba_pointer(GBA_VRAM_BASE), 0, GBA_VRAM_SIZE);
     memset(gba_pointer(GBA_OAM_BASE), 0, GBA_OAM_SIZE);
+    for (unsigned i = 0; i < 128; i++)
+        obj_set(i, A0_DISABLE, 0, 0);
     (void)ppu_init(); /* tested in test_ppu.c */
     ppu_latch_vblank();
 }

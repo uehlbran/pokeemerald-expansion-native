@@ -182,6 +182,18 @@ PTEST(prohibited_shape_3_is_not_drawn)
     PT_ASSERT_EQ_INT(first_mismatch(out, 0, SCREEN_W, BACKDROP), -1);
 }
 
+PTEST(an_all_zero_oam_entry_is_an_8x8_obj_at_the_top_left)
+{
+    /* Attribute 0, 1 and 2 all zero: Y 0, X 0, square 8x8, tile 0, palette 0. */
+    uint16_t out[SCREEN_W];
+    obj_scene(DISP_OBJ_1D);
+    solid_obj_tiles_4bpp(0, 1, 1);
+    obj_set(127, 0, 0, 0);
+    PT_ASSERT_EQ_INT(ppu_render_line(7, out), PPU_OK);
+    PT_ASSERT_EQ_INT(first_mismatch(out, 0, 8, objc(0, 1)), -1);
+    PT_ASSERT_EQ_U32(out[8], BACKDROP);
+}
+
 PTEST(the_disable_bit_hides_a_regular_obj)
 {
     uint16_t out[SCREEN_W];

@@ -8,9 +8,8 @@
  *
  * Interpretation tested here (see ppu_window.c): GBATEK says "Garbage values
  * of X2>240 or X1>X2 are interpreted as X2=240"; the hardware (and mGBA)
- * wrap around instead when X1 > X2, and the game's battle transitions write
- * such spans, so a span with first > end covers [first, end of line) and
- * [0, end). The same for Y.
+ * wrap around instead when X1 > X2, so a span with first > end covers
+ * [first, end of line) and [0, end). The same for Y.
  */
 // deps: gba_memmap.c ppu.c ppu_bg.c ppu_obj.c ppu_blend.c
 #include "ppu_internal.h"
