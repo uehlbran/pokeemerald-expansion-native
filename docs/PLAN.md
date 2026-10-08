@@ -19,6 +19,12 @@ resumes by reading both and first posting what it believes is in flight.
 
 ## Milestone 2 work breakdown
 
+State on 2026-10-08 ~16:00 MDT: W1-foundation merged (9fcf8e007e). W1-build
+and W1-m4a still running. Wave 2 launched in worktrees transfer,
+interrupt, timer, rtc, input, psg, save, ppu, sdlout (see "Wave 2" below;
+dma and bios wait for transfer to merge). Next: merge wave 2 as each
+reports, then dma and bios, then main/frame loop and the link.
+
 Wave 1 (no dependencies between them):
 
 - W1-foundation: `platform/Makefile` with the warning and sanitizer
@@ -32,10 +38,14 @@ Wave 1 (no dependencies between them):
 - W1-m4a: C translation of `src/m4a_1.s` into `platform/m4a/`, with
   static assertions against `include/gba/m4a_internal.h`. Opus.
 
-Wave 2 (after W1-foundation merges): `interrupt`, `timer`+`rtc`, `dma`,
-`bios`, `input`, `psg`, `flash`+`save_file`, `ppu`+`video`+`audio`,
-`main`. TDD modules on Sonnet where the spec is plain; `dma`,
-`interrupt`, `bios`, `psg`, `save_file`, `ppu` on Opus.
+Wave 2 (after W1-foundation merged): `transfer_bounds` (Sonnet, shared
+range policy for DMA and CpuSet), `interrupt` (Opus), `timer` (Sonnet),
+`rtc` (Sonnet, includes the guarded src/siirtc.c change), `input`
+(Sonnet), `psg` (Opus), `flash`+`save_file` (Opus, includes the guarded
+agb_flash changes), `ppu` (Opus), `video`+`audio`+`frame_pacer` (Sonnet).
+Then, after `transfer_bounds` merges: `dma` (Opus, includes the guarded
+include/gba/macro.h change) and `bios` (Opus). Then `main` and the frame
+loop, and the link.
 
 Wave 3: integration and boot debugging on main (orchestrator plus one
 Opus worker), recorded modifications, `STATUS.md`.

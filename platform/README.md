@@ -122,3 +122,28 @@ than `mmap` at run time: the header comment of `gba_memmap.c` and
 Sizes are what the hardware decodes, and are what `contains()` checks
 against; the 4 KiB pages are only the native mapping granularity. The
 executable itself starts at 0x40000000, above every region.
+
+## The keypad (`input`)
+
+`input_update_keyinput()` writes `REG_KEYINPUT` (0x04000130, GBATEK "GBA
+Keypad Input") once per frame from the host (SDL keyboard and game
+controllers) or, for the headless replay, from `input_script_set()`.
+`main` initialises SDL, pumps events, passes each event to
+`input_handle_event()` (controller hot-plug), then calls
+`input_update_keyinput()`. Bits 10-15 read 0; opposite directions are
+reported as pressed, unfiltered.
+
+| GBA key | Keyboard (SDL scancode) | Controller |
+|---|---|---|
+| A | Z | A |
+| B | X | B |
+| Select | Backspace | Back |
+| Start | Return | Start |
+| L | A | left shoulder |
+| R | S | right shoulder |
+| Up/Down/Left/Right | arrow keys | D-pad, or left stick beyond `INPUT_STICK_DEADZONE` (16000) |
+
+`test_input.c` sets `SDL_VIDEODRIVER=dummy` itself. SDL's dummy driver cannot
+put a key into `SDL_GetKeyboardState` (a pushed `SDL_KEYDOWN` is only queued),
+so key translation is tested through the pure `input_keyboard_to_keys` and
+`input_pad_to_keys`; controllers are tested with SDL virtual joysticks.
