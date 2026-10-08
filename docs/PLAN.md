@@ -51,6 +51,35 @@ loop, and the link.
 Wave 3: integration and boot debugging on main (orchestrator plus one
 Opus worker), recorded modifications, `STATUS.md`.
 
+## Milestone 3 design: the input-replay smoke test (gate d)
+
+The replay is a text script of frames and key states consumed by the
+input module's SCRIPT source, plus checkpoints that read game state
+through a small platform inspection API. One worker (Sonnet) builds:
+
+- `platform/replay.{h,c}`: parses a script (`frame N keys A,START`,
+  `hold`/`release` forms, `check <name>` lines), feeds
+  `input_script_set` each frame, and at each `check` calls an
+  inspection hook; deterministic: the RTC time source is fixed by a
+  `--rtc-fixed EPOCH` option, the frame pacer is unthrottled, audio
+  silent, video headless.
+- `platform/inspect.{h,c}`: reads named facts from expansion's globals
+  through the symbols the game exports (`gMain.callback2` address
+  compared against known callbacks, `gSaveBlock2Ptr->playerName`,
+  `gSaveBlock1Ptr->location`, party count and species, the current map
+  group and number, the save sector's counter) and writes them as
+  `key=value` lines for the script's `expect` checks. Guarded reads
+  only; no modification of expansion.
+- `tests/smoke/opening.replay`: boot, title, new game, the professor's
+  speech, truck, Littleroot, the first battle (Poochyena in the
+  professor's bag), save, then `restart` (a process re-exec with the
+  same save path) and load, with `expect` checks after each step.
+- `tests/smoke/run.sh`: runs the plain and the sanitized builds and
+  compares the per-step screenshots and state dumps with the checked-in
+  expectations; the gate.
+
+Bugs found on that path are fixed at the root and recorded.
+
 ## Worker protocol
 
 Each worker gets its own worktree under `../pen-worktrees/<task>` on
