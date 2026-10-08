@@ -75,6 +75,73 @@ static void PrintAiMoveLog(enum BattlerId battlerId, u32 moveSlot, enum Move mov
 static void ClearAiLog(enum BattlerId battlerId);
 static const char *BattlerIdentifier(enum BattlerId battlerId);
 
+#if PLATFORM_NATIVE
+// The Thumb routines in the #else branch call the test function with its
+// stack pointer at `stack`, so its locals outlive the call. Switching
+// stacks is the platform layer's job: it calls entry(context) with the
+// stack pointer at stackTop and returns when entry returns.
+void PlatformCallWithStack(void (*entry)(void *context), void *context, void *stackTop);
+
+struct SingleTestCall
+{
+    void *results;
+    u32 i;
+    struct BattlePokemon *player;
+    struct BattlePokemon *opponent;
+    SingleBattleTestFunction function;
+};
+
+// Doubles, multi, two-vs-one and one-vs-two test functions share one type.
+struct DoubleTestCall
+{
+    void *results;
+    u32 i;
+    struct BattlePokemon *playerLeft;
+    struct BattlePokemon *opponentLeft;
+    struct BattlePokemon *playerRight;
+    struct BattlePokemon *opponentRight;
+    DoubleBattleTestFunction function;
+};
+
+static void CallSingleTestFunction(void *context)
+{
+    struct SingleTestCall *call = context;
+    call->function(call->results, call->i, call->player, call->opponent);
+}
+
+static void CallDoubleTestFunction(void *context)
+{
+    struct DoubleTestCall *call = context;
+    call->function(call->results, call->i, call->playerLeft, call->opponentLeft, call->playerRight, call->opponentRight);
+}
+
+static void InvokeSingleTestFunctionWithStack(void *results, u32 i, struct BattlePokemon *player, struct BattlePokemon *opponent, SingleBattleTestFunction function, void *stack)
+{
+    struct SingleTestCall call = { results, i, player, opponent, function };
+    PlatformCallWithStack(CallSingleTestFunction, &call, stack);
+}
+
+static void InvokeDoubleTestFunctionWithStack(void *results, u32 i, struct BattlePokemon *playerLeft, struct BattlePokemon *opponentLeft, struct BattlePokemon *playerRight, struct BattlePokemon *opponentRight, DoubleBattleTestFunction function, void *stack)
+{
+    struct DoubleTestCall call = { results, i, playerLeft, opponentLeft, playerRight, opponentRight, function };
+    PlatformCallWithStack(CallDoubleTestFunction, &call, stack);
+}
+
+static void InvokeMultiTestFunctionWithStack(void *results, u32 i, struct BattlePokemon *playerLeft, struct BattlePokemon *opponentLeft, struct BattlePokemon *playerRight, struct BattlePokemon *opponentRight, MultiBattleTestFunction function, void *stack)
+{
+    InvokeDoubleTestFunctionWithStack(results, i, playerLeft, opponentLeft, playerRight, opponentRight, function, stack);
+}
+
+static void InvokeTwoVsOneTestFunctionWithStack(void *results, u32 i, struct BattlePokemon *playerLeft, struct BattlePokemon *opponentLeft, struct BattlePokemon *playerRight, struct BattlePokemon *opponentRight, TwoVsOneBattleTestFunction function, void *stack)
+{
+    InvokeDoubleTestFunctionWithStack(results, i, playerLeft, opponentLeft, playerRight, opponentRight, function, stack);
+}
+
+static void InvokeOneVsTwoTestFunctionWithStack(void *results, u32 i, struct BattlePokemon *playerLeft, struct BattlePokemon *opponentLeft, struct BattlePokemon *playerRight, struct BattlePokemon *opponentRight, OneVsTwoBattleTestFunction function, void *stack)
+{
+    InvokeDoubleTestFunctionWithStack(results, i, playerLeft, opponentLeft, playerRight, opponentRight, function, stack);
+}
+#else
 NAKED static void InvokeSingleTestFunctionWithStack(void *results, u32 i, struct BattlePokemon *player, struct BattlePokemon *opponent, SingleBattleTestFunction function, void *stack)
 {
     asm("push {r4-r6,lr}\n\
@@ -190,6 +257,7 @@ NAKED static void InvokeOneVsTwoTestFunctionWithStack(void *results, u32 i, stru
          bx r0\n\
         .pool");
 }
+#endif
 
 // Calls test->function, but pointing its stack at DATA.stack so that
 // local variables are live after the function returns (and so can be
