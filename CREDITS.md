@@ -1,3 +1,27 @@
+# Credits
+
+## pokeemerald-expansion-native
+
+The native platform layer builds on three earlier native ports of the
+decompilation. We studied their code and documentation and credit them
+here; see docs/RESEARCH.md for what each one taught us.
+
+- NTx86, for the original SDL2 port of pokeemerald, and fuddlesworth for
+  continuing it as pokeemerald-native
+  (https://github.com/fuddlesworth/pokeemerald-native).
+- Kurausukun, MCboy, froggestspirit and the pokeemerald-multiplatform
+  contributors, including gradenGnostic, JadeHarley and GrandDiJay
+  (https://github.com/gradenGnostic/pokeemerald-multiplatform).
+- hirata-producoes, for pokemon-regionalidades, the first port of the
+  platform layer into pokeemerald-expansion, and its technical report
+  (https://github.com/hirata-producoes/pokemon-regionalidades).
+- Martin Korth, for GBATEK, and Jasper Vijn, for Tonc.
+- The mGBA project, whose rom-test tool and debug protocol the test suite
+  runs on.
+
+The sections below are upstream pokeemerald-expansion's credits, kept
+verbatim.
+
 ## Credits ✨
 
 Thanks goes to these wonderful people ([emoji key](https://allcontributors.org/en/reference/emoji-key/)):

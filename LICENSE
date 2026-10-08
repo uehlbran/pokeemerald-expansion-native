@@ -1,0 +1,39 @@
+MIT License (scoped)
+
+Copyright (c) 2026 pokeemerald-expansion-native contributors
+
+Scope. This license covers only the files this project adds on top of
+pokeemerald-expansion (the "Platform Layer"): everything under
+src/platform/, the native build files (Makefile.native and the files it
+includes that are not part of upstream pokeemerald-expansion), the native
+tests, the native input-replay and gate scripts, and the documentation
+under docs/ that this project wrote. It also covers the modifications this
+project made to upstream files, which are listed in
+docs/UPSTREAM_MODIFICATIONS.md, to the extent those modifications are
+separable from the upstream code.
+
+It does not cover, and this project claims no rights over: the
+pret/pokeemerald decompilation and the pokeemerald-expansion project and
+their contributors' work; any code, graphics, audio, text or other
+material owned by Nintendo, Creatures Inc. or GAME FREAK inc.; or any
+third-party software such as SDL2. Those remain under whatever terms
+apply to them.
+
+Permission is hereby granted, free of charge, to any person obtaining a
+copy of the Platform Layer, to deal in the Platform Layer without
+restriction, including without limitation the rights to use, copy,
+modify, merge, publish, distribute, sublicense, and/or sell copies of the
+Platform Layer, and to permit persons to whom the Platform Layer is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice, this scope statement and this permission
+notice shall be included in all copies or substantial portions of the
+Platform Layer.
+
+THE PLATFORM LAYER IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
+TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
+PLATFORM LAYER OR THE USE OR OTHER DEALINGS IN THE PLATFORM LAYER.
