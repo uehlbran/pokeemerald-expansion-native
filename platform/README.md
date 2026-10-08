@@ -123,6 +123,136 @@ Sizes are what the hardware decodes, and are what `contains()` checks
 against; the 4 KiB pages are only the native mapping granularity. The
 executable itself starts at 0x40000000, above every region.
 
+## The flash chip (`flash`) and the save file (`save_file`)
+
+`flash` is the cartridge's 1 Mbit flash chip as an entry of expansion's own
+driver table: `NativeFlash`, a `struct FlashSetupInfo`
+(`include/gba/flash_internal.h`), whose program and erase functions work on
+the 128 KiB SRAM region. The region holds both 64 KiB banks back to back, so
+bank switching is a no-op and sector n is at `0x0E000000 + n * 4096`. Under
+`PLATFORM_NATIVE`, `src/agb_flash_1m.c` lists `NativeFlash` first and
+`src/agb_flash.c` leaves `ReadFlashId`, `ReadFlash` and `VerifyFlashSector`
+to this module, so `IdentifyFlash` always selects it. Erase fills with 0xFF;
+a byte program that would turn a 0 bit into a 1 is rejected as on hardware;
+every sector index, offset and length is bounds-checked. Each program and
+erase marks its sector dirty.
+
+`save_file` persists the chip in a versioned `.sav`. Stores go to
+`<path>.tmp`, are fsynced, renamed over `<path>`, and the directory is
+fsynced. A NULL path keeps everything in memory (tests, the test runner).
+Format version 1 is a 28-byte header followed by the chip image, every
+header integer an unsigned 32-bit little-endian value:
+
+| Offset | Field | Value |
+|---|---|---|
+| 0 | magic | the 8 bytes `PENSAVE\0` |
+| 8 | format version | 1 (`SAVE_FILE_FORMAT_VERSION`) |
+| 12 | layout tag: pointer width | `sizeof(void *) * 8` of the build that wrote it, 32 or 64 |
+| 16 | layout tag: layout id | that build's `SAVE_FILE_LAYOUT_ID` (1) |
+| 20 | image size | 131072 |
+| 24 | image CRC | CRC-32/ISO-HDLC of the image (`save_file_crc32`; check value 0xCBF43926) |
+| 28 | image | 131072 bytes, byte n of the chip, sector s at 28 + s * 4096 |
+
+A file with the magic loads only if its version is 1, its sizes are exact,
+its pointer width is 32 or 64 and its CRC matches; with this build's layout
+tag the load returns `SAVE_FILE_OK`, with another (say a 32-bit save in the
+64-bit build) `SAVE_FILE_FOREIGN_LAYOUT`, and `save_file_loaded_layout`
+reports the tag so main can refuse or convert. A bare 131072-byte image
+without the magic, what GBA emulators write, loads as `SAVE_FILE_LEGACY`
+(layout unknown) and gets a header on the next store; for an emulator, our
+image is the file's last 131072 bytes. Anything else is `SAVE_FILE_CORRUPT`
+and leaves an erased chip.
+
+The frame loop must call `save_file_store()` whenever `flash_take_dirty()`
+returns true; that is what persists every path that writes flash, including
+the link saves and `TryWriteSpecialSaveSector`. Full contract: `flash.h`,
+`save_file.h`.
+
+| Constant | Value | Source |
+|---|---|---|
+| `FLASH_SECTOR_SIZE` | 4096 | GBATEK "GBA Cart Backup Flash ROM", "Erase 4Kbyte Sector" |
+| `FLASH_SECTOR_COUNT` | 32 | 128 KiB / 4 KiB; expansion's `MX29L010` entry |
+| `FLASH_CHIP_SIZE` | 131072 | GBATEK, "128 KBytes - 1Mbit Flash ROM"; expansion's `FLASH_ROM_SIZE_1M` |
+| `FLASH_ERASED_BYTE` | 0xFF | GBATEK, "erased memory is FFh-filled" |
+| `FLASH_NATIVE_ID` | 0x314E | ours: no real chip's ID, maker byte non-zero |
+| `FLASH_STATUS_BAD_SECTOR` | 0x80FF | `EraseFlashSector_MX`, `ProgramFlashSector_MX` |
+| `FLASH_STATUS_BAD_ARGUMENT` | 0x8000 | `ProgramFlashByte_MX` |
+| `FLASH_STATUS_TIME_LIMIT`, `FLASH_STATUS_TIMEOUT` | 0xA000, 0xC000, ORed with the phase | `WaitForFlashWrite_Common` |
+## The LCD controller's drawing (`ppu`)
+
+`ppu.h` draws one visible line at a time from the mapped regions, as the
+GBA's LCD controller does (GBATEK "LCD Video Controller"): BG modes 0 and 1
+(the only ones the game sets; modes 2-7 return `PPU_ERR_UNSUPPORTED_MODE`
+and a black line), text and rotation/scaling backgrounds, the 128 OBJs
+within the per-line OBJ cycle budget, WIN0, WIN1, the OBJ window, alpha
+blending, brightness and mosaic. Forced blank draws white.
+
+| Call | When the frame loop makes it |
+|---|---|
+| `ppu_init()` / `ppu_shutdown()` | at start-up and exit |
+| `ppu_render_line(line, out)` | for lines 0 to 159, in order, once each; HBlank DMA and the HBlank and VCount handlers run between calls |
+| `ppu_latch_vblank()` | at the start of VBlank: copies BG2X/BG2Y/BG3X/BG3Y to the internal reference points |
+
+`ppu_render_line` writes `out` (BGR555, bit 15 clear) and nothing else: VCOUNT
+and the DISPSTAT flags belong to the frame loop. A mid-frame write to a
+reference point register is noticed by its value changing (register writes
+are plain stores), so a mid-frame write of the value already there is not.
+
+The module is split by hardware unit: `ppu.c` (registers, composition,
+reference points), `ppu_bg.c`, `ppu_obj.c`, `ppu_window.c`, `ppu_blend.c`;
+`ppu_internal.h` is what they share, including the bounds-checked readers of
+VRAM, palette RAM, OAM and I/O. Each file's header comment lists where it
+interprets GBATEK. The tests (`test/test_ppu*.c`) build tiny scenes in the
+regions with `test/ppu_scene.h`; an all-zero OAM entry is a displayed 8x8 OBJ
+at (0,0), as on hardware, so scenes hide every OBJ first.
+## DMA (`dma`)
+
+`dma_set()` and `dma_stop()`, declared in `dma_hooks.h`, are what expansion's
+`DmaSetUnchecked` and `DmaStop` become under `PLATFORM_NATIVE`
+(`include/gba/macro.h`), so every `DmaSet`, `DmaCopy*`, `DmaFill*` and
+`DmaClear*` reaches them; macro.h includes the header as
+`"platform/dma_hooks.h"`, so a build compiling the game puts the repository
+root on its quote include path (`platform/Makefile` uses `-iquote ..`).
+`main` calls `dma_init(interrupt_raise)`; the frame loop calls
+`dma_run_timing(DMA_TIMING_HBLANK)` between scanlines and
+`dma_run_timing(DMA_TIMING_VBLANK)` on entering VBlank (GBATEK "GBA DMA
+Transfers"). Every block is checked whole with `transfer_bounds_ok()` before
+a byte moves; a refused one prints to stderr, returns a negative
+`enum dma_error` (the macros discard it) and touches no memory. What is
+relaxed (alignment, address masks), what is not emulated ("special" start
+timing, Game Pak DRQ), and why: `dma.h`.
+
+`test_dma_macro.c` compiles expansion's `macro.h` as the native build does
+and checks that the game's own macros reach the module.
+## The interrupt controller (`interrupt`)
+
+`interrupt.h` stands in for the CPU's IRQ line, IE, IF and IME (GBATEK "GBA
+Interrupt Control") and expansion's IRQ handler `IntrMain` (`src/crt0.s`).
+The sources are `enum gba_irq` in `gba_irq.h`, valued by their IE/IF bit.
+`interrupt_init(gIntrTable, 14)` keeps a pointer to the game's table (the game
+fills it later); `interrupt_raise()` latches a request in IF;
+`interrupt_dispatch()` runs the game's handlers synchronously, as `IntrMain`
+would, until nothing enabled is pending. The header comment of `interrupt.h`
+walks through `IntrMain` line by line.
+
+| `IntrMain` (src/crt0.s) | Here |
+|---|---|
+| sources searched VCount, Serial, Timer 3, HBlank, VBlank, Timer 0-2, DMA 0-3, Keypad (53-93); the one at position i runs `gIntrTable[i]` | same order and slots |
+| IME 0 during the VCount handler, 1 during the others (49-57) | same |
+| the bit written to IF before the handler (98); `main.c`'s handlers never write IF | same |
+| IE and IME restored after the handler, undoing its writes to them (126-127) | same |
+| Game Pak: zero byte to SOUNDCNT_X, spin forever (94-96) | same, then `interrupt_halted()` is true and nothing more runs |
+| IE narrowed to the nestable sources while a handler runs (99-108) | not done: there is no nesting; a request raised by a handler runs after it returns |
+
+IF is write-1-to-clear on the GBA but a plain store here, so the module keeps
+the requests and stores them at IF with bit 15 (`INTERRUPT_IF_MARKER`, unused
+by the hardware) set; a value at IF that differs from what it stored is a game
+write, and its 1 bits are acknowledged. The game only ever writes
+`INTR_FLAG_*` bits, so every write is seen. A raw read of IF shows bit 15; of
+several game writes between two calls into the module only the last is seen
+(the header lists the call sites). `INTERRUPT_DISPATCH_CAP` (256) stops a call
+whose handler re-raises itself forever, with a report on stderr.
+
 ## The keypad (`input`)
 
 `input_update_keyinput()` writes `REG_KEYINPUT` (0x04000130, GBATEK "GBA

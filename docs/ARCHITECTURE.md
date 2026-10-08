@@ -89,7 +89,7 @@ returned to the caller (`main` decides what to do; modules never call
 | `dma` | DMA channels 0 to 3 | GBA DMA Transfers | yes |
 | `bios` | the BIOS SWI functions | BIOS Functions | yes |
 | `input` | the keypad | GBA Keypad Input | yes (mapping, replay source) |
-| `ppu` | the LCD controller, drawing | LCD Video Controller | partly (pure helpers) |
+| `ppu` | the LCD controller, drawing | LCD Video Controller | yes (synthetic scenes in the regions) |
 | `video` | the LCD panel, via SDL | n/a | no |
 | `psg` | the four Game Boy sound channels | GBA Sound Controller, Sound Channels 1 to 4 | yes |
 | `audio` | the speaker, via SDL | n/a | no |

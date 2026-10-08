@@ -141,3 +141,151 @@ marks them as system headers but searches them after the C library's:
 expansion's `include/` has `strings.h`, `malloc.h`, `link.h` and `menu.h`,
 and with `-isystem` glibc's `<string.h>` includes expansion's `strings.h`
 and nothing compiles.
+
+## 2026-10-08: Native structs follow the host ABI; GBA save interchange is out of scope for now
+
+Expansion compiles the GBA with `-mabi=apcs-gnu`, which rounds every
+struct to 4-byte alignment and size. x86 has no equivalent flag, so
+natively `SaveBlock1` is 15496 bytes against 15568 on the GBA, and
+structs without 4-byte members are 2-byte aligned. Alternatives: hand
+`ALIGNED(4)` on the save structs (what pokeemerald-multiplatform did;
+incomplete because nested structs keep their native stride), or a
+conversion layer between native and GBA layouts (what native-vanilla did
+for 64-bit). Decision: the native build uses the host ABI as its own
+format, its save file is the native layout, and interchange with GBA
+`.sav` files is listed in `STATUS.md` as not supported until a
+conversion layer exists. Consequence for the platform layer: `CpuSet`,
+`CpuFastSet` and DMA must accept 2-byte-aligned addresses (the game
+passes them legitimately now) and must copy with `memcpy` rather than
+reject or mask them; the `CpuFastSet` alignment static assert in
+`include/gba/syscall.h` is disabled under `PLATFORM_NATIVE`. Flagged
+64-bit: the same reasoning applies with 8-byte pointers.
+
+## 2026-10-08: `-funsigned-char` for expansion's sources on x86
+
+Plain `char` is unsigned on ARM and signed on x86. Expansion's code was
+written against the ARM behaviour, so the native build compiles
+expansion's sources with `-funsigned-char`. The platform layer uses
+explicit `uint8_t`/`int8_t` and does not depend on it.
+
+## 2026-10-08: Interrupt controller keeps the request bits itself
+
+`REG_IF` clears on write-1 on hardware; natively a write is a store. The
+controller holds the pending bits in its own state, stores them to
+`REG_IF` after every change together with a marker in bit 15 (unused by
+the hardware, never written by the game), and treats a differing
+`REG_IF` as a game write whose 1 bits clear requests. Because of the
+marker, every game write differs from the stored value, so expansion's
+stale-request idiom (`REG_IF = INTR_FLAG_x` before enabling a source) is
+seen even when that bit is the only one pending. Residual blind spots,
+documented in `platform/interrupt.h`: several game writes between two
+platform calls (only the last counts), a raw read of `REG_IF` shows bit
+15 (expansion never reads `REG_IF`), and a `REG_IF |= x` read-modify-write
+(expansion has none). The alternative, routing every `REG_IF` write
+through a guarded call, would touch nine game files. Also decided: no interrupt nesting
+(`crt0.s` lines 99-108 narrow `IE` while a handler runs; a request
+raised inside a handler runs after it in the same dispatch); a Game Pak
+request halts as `IntrMain` does; a dispatch cap of 256 requests per
+call guards against a handler that re-raises forever.
+
+## 2026-10-08: RTC runs on UTC plus a persisted offset
+
+A cartridge clock is set once and never knows time zones or DST. The
+model's seconds are UTC plus an offset persisted next to the save; on
+first run the offset is initialised to the host's local-minus-UTC
+difference so the in-game clock reads wall time, after which host zone
+or DST changes do not move it. The alternative, host local time (what
+every reference port does), jumps an hour at DST changes.
+
+## 2026-10-08: Keypad details
+
+`KEYINPUT` bits 10-15 read as 0 (GBATEK says "not used"; mGBA does the
+same; expansion masks with `KEYS_MASK`). Opposite directions are not
+filtered, as the hardware does not. Up to four controllers are held open.
+A failure to start SDL's controller subsystem is reported and the
+keyboard continues; a single controller that fails to open is reported
+and skipped.
+
+## 2026-10-08: Audio queue bound of four frames; no vsync pacing
+
+Audio is pushed with `SDL_QueueAudio`; a block that would push the queue
+past four GBA frames of samples is dropped and counted rather than
+queued, so latency cannot grow without bound (the reference ports let it).
+The device starts paused and `main` unpauses it after the first frames
+are queued. The frame pacer, not vsync, sets the rate, using an
+accumulator of the exact GBA period (280896 cycles at 16777216 Hz) so
+there is no long-run drift, and it resynchronises after a stall longer
+than 250 ms instead of running frames back to back.
+
+## 2026-10-08: The native save file is versioned, and 32-bit saves must load in the 64-bit build
+
+Requested by the project owner after the host-ABI decision. The native
+save file carries a small header (magic, format version, a layout tag
+naming the pointer width and struct-layout identifier the image was
+written with, image size, CRC32) ahead of the 128 KiB flash image. A
+bare 131072-byte file is accepted as legacy with an unknown layout and
+is rewritten with a header on the next store. Gate (h), run in milestone
+7: a save written by the 32-bit native build loads correctly in the
+64-bit build, which will need a layout conversion keyed on the tag. The
+header makes any future layout change detectable instead of silent.
+
+## 2026-10-08: PSG trigger, wave-bank and output-scale rules
+
+The PSG module consumes a trigger by clearing NRx4 bit 7 in the I/O
+region after acting on it (the bit is write-only and reads 0 on
+hardware), because m4a rewrites NRx4 with bit 7 on every volume change
+and every note and expects a retrigger each time; remembering the bit
+would silence those. Wave RAM bytes changed since the last call go into
+the bank selected for playback at that call, which reproduces the result
+of m4a's load sequence (select the other bank, write, select back within
+one frame); GBATEK's literal rule (writes go to the unselected bank at
+the moment of each write) cannot be applied to state sampled once per
+frame. Length is loaded from NRx1 on each trigger for the same reason.
+Output is 16 int16 units per GBA output unit (GBATEK "Max Output
+Levels"), maximum 15360 for four channels at full volume, leaving room
+for the two Direct Sound FIFOs in the same int16 range; the audio mix
+must remove DC after summing, as the GBA's output capacitor did. The PSG
+is generated at the output rate with point sampling and an exact cycle
+remainder, never at m4a's 13379 Hz mixer rate, which would alias badly.
+
+## 2026-10-08: UBSan shift-base is disabled for expansion's objects only
+
+Expansion's DMA macros (`include/gba/macro.h`) and several source files
+compute `(DMA_ENABLE | ...) << 16`, which shifts a signed `int` into
+its sign bit. GNU C defines that result and expansion relies on it, but
+UndefinedBehaviorSanitizer's `shift-base` check aborts on it even with
+constant operands, so a sanitized native game would die at its first
+DMA. The sanitized build therefore compiles expansion's objects with
+`-fno-sanitize=shift-base` and keeps every other check; the platform
+layer keeps all checks, including `shift-base`. Alternatives: a guarded
+change to every site (dozens of files, pure noise), or dropping UBSan
+from the game build (loses every other check). Recorded next to the flag
+in `Makefile.native`.
+
+## 2026-10-08: DMA module state is authoritative
+
+The DMA channels act on the state recorded by `dma_set` and `dma_stop`
+(reached from expansion's macros through the guarded `DmaSetUnchecked`),
+never on direct stores to the DMA registers (m4a's `SoundInit` writes
+DMA1/2 for the sound FIFOs, which are not emulated). Refused transfers
+print the reason and are discarded by the macros rather than asserted,
+because the game never checks DMA results and an abort would kill it
+where hardware would have transferred. The 27/28-bit address masks are
+not applied because native addresses are not GBA bus addresses; the
+transfer-bounds policy replaces them.
+
+## 2026-10-08: PPU interpretation points
+
+Windows with X1 > X2 or Y1 > Y2 wrap around (hardware and mGBA
+behaviour; GBATEK's literal "X2 = 240" wording is not followed). OBJ tile
+reads wrap inside the 32 KiB OBJ area; BG map and tile reads beyond the
+64 KiB BG area read 0. Affine reference points are copied in when
+BGxX/BGxY differ from the last value copied (plain memory cannot show a
+write of the same value; the game writes them through SetGpuReg at
+VBlank, picked up at line 0) and step by PB/PD after every line. The OBJ
+cycle budget (1210, or 954 with the H-Blank Interval Free bit) is
+charged per OBJ in OAM order including horizontally off-screen ones,
+and the OBJ that exhausts it is drawn partially. Modes 2 to 7 are not
+supported and render a black line with an error. Not modelled: the
+"garbage" quirk for out-of-order OBJ priorities and the one-frame delay
+before a newly enabled BG appears.

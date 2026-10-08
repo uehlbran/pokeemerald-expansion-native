@@ -14,16 +14,16 @@ resumes by reading both and first posting what it believes is in flight.
 | 4 | Native test-runner integration; suite matches the GBA baseline | not started |
 | 5 | Debug-menu gate | not started |
 | 6 | Unit tests under sanitizers, clang-tidy, cppcheck, docs; 32-bit done | not started |
-| 7 | 64-bit audit and build; every gate again; 64-bit done | not started |
+| 7 | 64-bit audit and build; every gate again, plus the cross-width save round-trip gate (h); 64-bit done | not started |
 | 8 | CI for both targets; Windows (MinGW) and macOS | later |
 
 ## Milestone 2 work breakdown
 
-State on 2026-10-08 ~16:00 MDT: W1-foundation merged (9fcf8e007e). W1-build
-and W1-m4a still running. Wave 2 launched in worktrees transfer,
-interrupt, timer, rtc, input, psg, save, ppu, sdlout (see "Wave 2" below;
-dma and bios wait for transfer to merge). Next: merge wave 2 as each
-reports, then dma and bios, then main/frame loop and the link.
+State on 2026-10-08 night: merged on main: foundation, build system,
+timer, transfer_bounds, input, rtc, video/audio/pacer, interrupt, psg,
+ppu, dma, flash/save_file. Fixing: m4a. Working: bios, integration (main,
+frame loop, link, first boot). Next: merge bios and m4a, then the
+integration branch once it links and runs frames.
 
 Wave 1 (no dependencies between them):
 
