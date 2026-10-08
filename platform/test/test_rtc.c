@@ -208,16 +208,16 @@ PTEST(year_2099_wraps_to_2000_and_the_chip_treats_2100_as_leap)
 {
     /* The chip has a two-digit year and no century: 99 -> 00. */
     check_at(EPOCH_2099_12_31_235959, 0x99, 0x12, 0x31, 0x04, 0xA3, 0x59, 0x59);
-    check_at(EPOCH_2099_12_31_235959 + 1, 0x00, 0x01, 0x01, 0x06, 0x00, 0x00, 0x00);
+    check_at(EPOCH_2099_12_31_235959 + 1, 0x00, 0x01, 0x01, 0x05, 0x00, 0x00, 0x00);
     /* Year 00 divisible by 4: the chip has a Feb 29 in "2100" (a real 2100
      * does not); real 2100-02-28 23:59:59 + 1 s is the chip's 00-02-29. */
-    check_at(EPOCH_2100_02_28_235959 + 1, 0x00, 0x02, 0x29, 0x02, 0x00, 0x00, 0x00);
-    check_at(EPOCH_2100_02_28_235959 + 1 + 86400, 0x00, 0x03, 0x01, 0x03, 0x00, 0x00, 0x00);
+    check_at(EPOCH_2100_02_28_235959 + 1, 0x00, 0x02, 0x29, 0x01, 0x00, 0x00, 0x00);
+    check_at(EPOCH_2100_02_28_235959 + 1 + 86400, 0x00, 0x03, 0x01, 0x02, 0x00, 0x00, 0x00);
 }
 
 PTEST(time_before_2000_wraps_into_2099)
 {
-    check_at(EPOCH_2000_01_01 - 1, 0x99, 0x12, 0x31, 0x04, 0xA3, 0x59, 0x59);
+    check_at(EPOCH_2000_01_01 - 1, 0x99, 0x12, 0x31, 0x05, 0xA3, 0x59, 0x59);
 }
 
 PTEST(get_time_reports_hour_minute_second_only)
@@ -411,6 +411,8 @@ PTEST(corrupt_offset_file_is_an_error)
     static const char *const bad[] = {
         "", "\n", "abc\n", "12abc\n", "12\n34\n", "12", "1 2\n", "-\n", "+5\n",
         "99999999999999999999999\n", "-99999999999999999999999\n",
+        "0000000000000000000000000000005\n",   /* 32 bytes, valid prefix: file may continue unseen */
+        "5\n000000000000000000000000000000000000",
         "9223372036854775807\n", "1125899906842625\n", /* beyond +-2^50 */
         "123456789012345678901234567890123456789012345678901234567890\n",
     };
@@ -600,7 +602,7 @@ PTEST(status_round_trips_the_writable_bits)
     };
     size_t i;
     start_at(EPOCH_2000_01_01);
-    for (i = 0; i < sizeof values; i++) {
+    for (i = 0; i < sizeof values / sizeof values[0]; i++) {
         uint8_t s = 0xFF;
         PT_ASSERT_EQ_INT(rtc_set_status(values[i]), 0);
         PT_ASSERT_EQ_INT(rtc_get_status(&s), 0);
@@ -714,13 +716,51 @@ PTEST(null_pointers_are_errors)
 PTEST(init_restores_the_default_status_and_clears_the_alarm)
 {
     uint8_t s;
+    struct rtc_datetime alarm = { 0, 0, 0, 0, 0x17, 0x30, 0 };
     start_at(EPOCH_2000_01_01);
     PT_ASSERT_EQ_INT(rtc_set_status(RTC_STATUS_INTFE), 0);
+    PT_ASSERT_EQ_INT(rtc_set_alarm(&alarm), 0);
     rtc_shutdown();
     start_at(EPOCH_2000_01_01);
     PT_ASSERT_EQ_INT(rtc_get_status(&s), 0);
     PT_ASSERT_EQ_U32(s, RTC_STATUS_24HOUR);
+    PT_ASSERT_EQ_INT(rtc_get_alarm(&alarm), 0);
+    assert_dt(&alarm, 0, 0, 0, 0, 0, 0, 0);
     rtc_shutdown();
+}
+
+PTEST(reset_clears_the_alarm)
+{
+    struct rtc_datetime alarm = { 0, 0, 0, 0, 0x17, 0x30, 0 };
+    start_at(EPOCH_2000_01_01);
+    PT_ASSERT_EQ_INT(rtc_set_alarm(&alarm), 0);
+    PT_ASSERT_EQ_INT(rtc_reset(), 0);
+    PT_ASSERT_EQ_INT(rtc_get_alarm(&alarm), 0);
+    assert_dt(&alarm, 0, 0, 0, 0, 0, 0, 0);
+    rtc_shutdown();
+}
+
+PTEST(alarm_hour_bit_6_is_rejected)
+{
+    struct rtc_datetime alarm = { 0, 0, 0, 0, 0x40, 0x00, 0 };
+    start_at(EPOCH_2000_01_01);
+    PT_ASSERT_EQ_INT(rtc_set_alarm(&alarm), -1);
+    rtc_shutdown();
+}
+
+PTEST(save_over_a_longer_stale_temporary_file_writes_exactly_the_offset)
+{
+    struct rtc_datetime in = sample();
+    char text[256];
+    new_scratch();
+    pin_utc();
+    write_file(g_tmp_path, "stale stale stale stale stale stale stale stale stale stale stale stale\n");
+    g_now = EPOCH_2024_03_15_13_45_30;
+    PT_ASSERT_EQ_INT(rtc_init(fake_source, g_path), 0);
+    PT_ASSERT_EQ_INT(rtc_set_datetime(&in), 0);
+    rtc_shutdown();
+    read_file(g_path, text, sizeof text);
+    PT_ASSERT_EQ_STR(text, "230438075\n");
 }
 
 PTEST(null_source_uses_the_system_clock)

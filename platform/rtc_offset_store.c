@@ -77,11 +77,15 @@ int rtc_offset_store_load(const char *path, int64_t *offset, int *found)
     } while (length < 0 && errno == EINTR);
     if (length < 0) {
         rtc_report_call_failure("read (offset file)");
-        close(fd);
+        (void)close(fd); /* already failing */
         return -1;
     }
     if (close(fd) != 0) {
         rtc_report_call_failure("close (offset file)");
+        return -1;
+    }
+    if ((size_t)length == sizeof text) { /* longer than any valid file: trailing data unseen */
+        report_corrupt(path);
         return -1;
     }
     if (parse_offset(text, (size_t)length, &parsed) != 0) {
@@ -122,10 +126,10 @@ static int sync_directory(const char *path)
     char *slash;
     int fd;
 
-    snprintf(dir, sizeof dir, "%s", path);
+    (void)snprintf(dir, sizeof dir, "%s", path); /* path length already checked */
     slash = strrchr(dir, '/');
     if (slash == NULL)
-        snprintf(dir, sizeof dir, ".");
+        (void)snprintf(dir, sizeof dir, "."); /* fits */
     else if (slash == dir)
         slash[1] = '\0';
     else
@@ -137,7 +141,7 @@ static int sync_directory(const char *path)
     }
     if (fsync(fd) != 0) {
         rtc_report_call_failure("fsync (offset file directory)");
-        close(fd);
+        (void)close(fd); /* already failing */
         return -1;
     }
     if (close(fd) != 0) {
@@ -158,7 +162,7 @@ int rtc_offset_store_save(const char *path, int64_t offset)
         fprintf(stderr, "rtc: offset file path is longer than %d bytes\n", PATH_MAX - 1);
         return -1;
     }
-    snprintf(temp_path, sizeof temp_path, "%s%s", path, TEMP_SUFFIX);
+    (void)snprintf(temp_path, sizeof temp_path, "%s%s", path, TEMP_SUFFIX); /* sized for it */
     text_length = snprintf(text, sizeof text, "%lld\n", (long long)offset);
     if (text_length < 0 || (size_t)text_length >= sizeof text) {
         fprintf(stderr, "rtc: offset does not fit the file format\n");
@@ -171,13 +175,13 @@ int rtc_offset_store_save(const char *path, int64_t offset)
         return -1;
     }
     if (write_all(fd, text, (size_t)text_length) != 0) {
-        close(fd);
+        (void)close(fd); /* already failing */
         discard_temp(temp_path);
         return -1;
     }
     if (fsync(fd) != 0) {
         rtc_report_call_failure("fsync (temporary offset file)");
-        close(fd);
+        (void)close(fd); /* already failing */
         discard_temp(temp_path);
         return -1;
     }

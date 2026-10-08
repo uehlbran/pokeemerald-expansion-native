@@ -36,9 +36,12 @@
  *    followed by 2000-01-01 00:00:00, and a time before 2000 shows as
  *    2099-style years. Real 2100 (not leap) therefore differs from the chip,
  *    which has a 2100-02-29 (shown as year 00).
- *  - Day of week: 0 = Sunday (expansion's enum Weekday), computed from the
- *    date; 2000-01-01 is a Saturday. The chip lets software assign any
- *    sequence ("custom assignment") and expansion never sets it.
+ *  - Day of week: 0 = Sunday (expansion's enum Weekday), computed from a
+ *    continuously counting day number as the chip's septenary counter does,
+ *    so it does not notice the century wrap (2099-12-31 Thursday is followed
+ *    by 2000-01-01 Friday). 2000-01-01 itself is a Saturday. The chip lets
+ *    software assign any sequence ("custom assignment") and expansion never
+ *    sets it.
  *  - Hour register: see rtc.h (PM flag in bit 7, derived).
  *  - Status after init is 24-hour, power-off flag clear: the offset file
  *    stands in for the battery, so the model never loses power (expansion's
@@ -88,7 +91,7 @@ _Static_assert(sizeof(time_t) >= 8, "rtc.c needs a 64-bit time_t (_TIME_BITS=64)
 #define BCD_BASE           10
 #define BCD_NIBBLE_BITS    4
 #define BCD_NIBBLE_MASK    0x0Fu
-#define CHIP_YEAR_ZERO     2000
+#define BCD_MAX_DIGIT      9
 
 /* Status bits the game may write: everything but the read-only power flag. */
 #define STATUS_WRITABLE (RTC_STATUS_INTFE | RTC_STATUS_INTME | RTC_STATUS_INTAE | RTC_STATUS_24HOUR)
@@ -134,7 +137,7 @@ static int from_bcd(unsigned bcd)
 {
     unsigned tens = bcd >> BCD_NIBBLE_BITS;
     unsigned ones = bcd & BCD_NIBBLE_MASK;
-    if (tens > 9 || ones > 9 || bcd > 0xFFu)
+    if (tens > BCD_MAX_DIGIT || ones > BCD_MAX_DIGIT || bcd > 0xFFu)
         return -1;
     return (int)(tens * BCD_BASE + ones);
 }
@@ -174,15 +177,32 @@ static int days_from_chip_date(int year, int month, int day)
     return days + day - 1;
 }
 
-/* Days since 1970-01-01 of a proleptic Gregorian date (civil calendar algorithm). */
+/* Days since 1970-01-01 of a proleptic Gregorian date: the public-domain
+ * days_from_civil algorithm (H. Hinnant, "chrono-Compatible Low-Level Date
+ * Algorithms", https://howardhinnant.github.io/date_algorithms.html). Years
+ * run from 1 March so the leap day is the last day of the year; an era is 400
+ * years, 146097 days. */
+#define GREGORIAN_ERA_YEARS       400
+#define GREGORIAN_ERA_DAYS        146097
+#define DAYS_0000_03_01_TO_1970   719468  /* days from 0000-03-01 to 1970-01-01 */
+#define MARCH_BASED_MONTH_MAR     3       /* months counted from March: Mar = 0 */
+#define MARCH_BASED_MONTH_WRAP    9       /* Jan -> 10, Feb -> 11 */
+#define MONTH_DAYS_NUMERATOR      153     /* (153 * m + 2) / 5 = days before month m, March based */
+#define MONTH_DAYS_BIAS           2
+#define MONTH_DAYS_DENOMINATOR    5
+#define LAST_MONTH_OF_OLD_YEAR    2       /* Jan and Feb belong to the previous March-based year */
+#define CENTURY_YEARS             100
+
 static int64_t unix_days_from_civil(int64_t year, int month, int day)
 {
-    int64_t y = month <= 2 ? year - 1 : year;
-    int64_t era = floor_div(y, 400);
-    int64_t year_of_era = y - era * 400;
-    int64_t day_of_year = (153 * (month + (month > 2 ? -3 : 9)) + 2) / 5 + day - 1;
-    int64_t day_of_era = year_of_era * 365 + year_of_era / 4 - year_of_era / 100 + day_of_year;
-    return era * 146097 + day_of_era - 719468;
+    int64_t y = month <= LAST_MONTH_OF_OLD_YEAR ? year - 1 : year;
+    int64_t era = floor_div(y, GREGORIAN_ERA_YEARS);
+    int64_t year_of_era = y - era * GREGORIAN_ERA_YEARS;
+    int64_t march_month = month > LAST_MONTH_OF_OLD_YEAR ? month - MARCH_BASED_MONTH_MAR : month + MARCH_BASED_MONTH_WRAP;
+    int64_t day_of_year = (MONTH_DAYS_NUMERATOR * march_month + MONTH_DAYS_BIAS) / MONTH_DAYS_DENOMINATOR + day - 1;
+    int64_t day_of_era = year_of_era * DAYS_PER_YEAR + year_of_era / CHIP_LEAP_PERIOD
+                       - year_of_era / CENTURY_YEARS + day_of_year;
+    return era * GREGORIAN_ERA_DAYS + day_of_era - DAYS_0000_03_01_TO_1970;
 }
 
 /* Seconds counter value for a chip date and time of day. */
@@ -195,11 +215,13 @@ static int64_t chip_seconds_from(int year, int month, int day, int hour, int min
 static struct chip_time chip_time_from_seconds(int64_t chip_seconds)
 {
     struct chip_time t;
-    int64_t day_index = floor_mod(floor_div(chip_seconds, SECONDS_PER_DAY) - UNIX_DAYS_TO_2000, CHIP_CYCLE_DAYS);
+    int64_t day_count = floor_div(chip_seconds, SECONDS_PER_DAY) - UNIX_DAYS_TO_2000; /* the chip's continuous day counter */
+    int64_t day_index = floor_mod(day_count, CHIP_CYCLE_DAYS);
     int64_t second_of_day = floor_mod(chip_seconds, SECONDS_PER_DAY);
     int remaining = (int)day_index;
 
-    t.weekday = (int)((day_index + CHIP_WEEKDAY_OF_DAY_ZERO) % DAYS_PER_WEEK);
+    /* The weekday counter never sees the century wrap, so it runs on day_count. */
+    t.weekday = (int)floor_mod(day_count + CHIP_WEEKDAY_OF_DAY_ZERO, DAYS_PER_WEEK);
     for (t.year = 0; ; t.year++) {
         int year_days = DAYS_PER_YEAR + (is_chip_leap_year(t.year) ? 1 : 0);
         if (remaining < year_days)
@@ -266,13 +288,10 @@ static int chip_seconds_now(int64_t *out)
 }
 
 /* Makes the chip read chip_seconds now, persisting before committing. */
-static int set_chip_seconds(int64_t chip_seconds)
+static int set_chip_seconds_at(int64_t chip_seconds, int64_t utc)
 {
-    int64_t utc;
     int64_t new_offset;
 
-    if (host_utc_seconds(&utc) != 0)
-        return -1;
     new_offset = chip_seconds - utc;
     if (new_offset < -RTC_OFFSET_LIMIT || new_offset > RTC_OFFSET_LIMIT) {
         fprintf(stderr, "rtc: offset %lld out of range\n", (long long)new_offset);
@@ -282,6 +301,15 @@ static int set_chip_seconds(int64_t chip_seconds)
         return -1;
     chip.offset = new_offset;
     return 0;
+}
+
+static int set_chip_seconds(int64_t chip_seconds)
+{
+    int64_t utc;
+
+    if (host_utc_seconds(&utc) != 0)
+        return -1;
+    return set_chip_seconds_at(chip_seconds, utc);
 }
 
 /* ---- hour register ------------------------------------------------------------- */
@@ -439,13 +467,14 @@ int rtc_get_time(struct rtc_datetime *out)
 int rtc_set_time(const struct rtc_datetime *in)
 {
     int hour, minute, second;
-    int64_t seconds;
+    int64_t utc;
 
     if (!chip.initialised || in == NULL || decode_time_fields(in, &hour, &minute, &second) != 0
-        || chip_seconds_now(&seconds) != 0)
+        || host_utc_seconds(&utc) != 0)
         return -1;
-    return set_chip_seconds(floor_div(seconds, SECONDS_PER_DAY) * SECONDS_PER_DAY
-                            + ((int64_t)hour * MINUTES_PER_HOUR + minute) * SECONDS_PER_MINUTE + second);
+    /* One time-source sample for both the current date and the new offset. */
+    return set_chip_seconds_at(floor_div(utc + chip.offset, SECONDS_PER_DAY) * SECONDS_PER_DAY
+                               + ((int64_t)hour * MINUTES_PER_HOUR + minute) * SECONDS_PER_MINUTE + second, utc);
 }
 
 int rtc_reset(void)
@@ -465,6 +494,8 @@ int rtc_set_alarm(const struct rtc_datetime *in)
     int hour, minute;
 
     if (!chip.initialised || in == NULL)
+        return -1;
+    if (in->hour_bcd & ~(RTC_HOUR_PM | RTC_HOUR_MASK))
         return -1;
     hour = from_bcd(in->hour_bcd & RTC_HOUR_MASK);
     minute = from_bcd(in->minute_bcd);

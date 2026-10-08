@@ -9,6 +9,13 @@
 // The native build has no GPIO port: the SiiRtc* API below is served by the
 // platform layer's model of the S-3511A (platform/rtc.c) instead.
 #include "platform/rtc.h"
+
+// The platform layer duplicates the status bit layout; keep it from drifting.
+_Static_assert(RTC_STATUS_INTFE == SIIRTCINFO_INTFE, "RTC_STATUS_INTFE != SIIRTCINFO_INTFE");
+_Static_assert(RTC_STATUS_INTME == SIIRTCINFO_INTME, "RTC_STATUS_INTME != SIIRTCINFO_INTME");
+_Static_assert(RTC_STATUS_INTAE == SIIRTCINFO_INTAE, "RTC_STATUS_INTAE != SIIRTCINFO_INTAE");
+_Static_assert(RTC_STATUS_24HOUR == SIIRTCINFO_24HOUR, "RTC_STATUS_24HOUR != SIIRTCINFO_24HOUR");
+_Static_assert(RTC_STATUS_POWER == SIIRTCINFO_POWER, "RTC_STATUS_POWER != SIIRTCINFO_POWER");
 #endif
 
 #define STATUS_INTFE  0x02 // frequency interrupt enable
