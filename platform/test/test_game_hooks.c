@@ -177,6 +177,43 @@ PTEST(test_runner_exit_unwinds_from_the_battle_stack)
     game_hooks_shutdown();
 }
 
+/* main's frame hook unwinds to its exit target through game_hooks_unwind,
+ * and so does the BIOS's SoftReset; a battle test body can be waiting a
+ * frame on the platform stack when that happens. */
+static jmp_buf frame_exit_target;
+#define FRAME_EXIT_JUMP 2
+
+static void exit_from_a_frame(void *context)
+{
+    (void)context;
+    game_hooks_unwind(&frame_exit_target, FRAME_EXIT_JUMP);
+}
+
+PTEST(an_unwind_from_the_battle_stack_ends_the_call)
+{
+    volatile int jumps = 0;
+    struct probe probe = { 0 };
+    if (setjmp(frame_exit_target) == FRAME_EXIT_JUMP)
+        jumps++;
+    if (jumps == 0)
+        PlatformCallWithStack(exit_from_a_frame, NULL, NULL);
+    PT_ASSERT_EQ_INT(jumps, 1);
+    /* The next call is a normal one: on the platform stack, not nested. */
+    PlatformCallWithStack(record_local, &probe, NULL);
+    PT_ASSERT_EQ_INT(probe.calls, 1);
+    PT_ASSERT(in_image(address_of(probe.local_address)));
+}
+
+PTEST(an_unwind_outside_a_call_is_a_longjmp)
+{
+    volatile int jumps = 0;
+    if (setjmp(frame_exit_target) == FRAME_EXIT_JUMP)
+        jumps++;
+    if (jumps == 0)
+        game_hooks_unwind(&frame_exit_target, FRAME_EXIT_JUMP);
+    PT_ASSERT_EQ_INT(jumps, 1);
+}
+
 PTEST(test_runner_exit_without_a_target_returns)
 {
     game_hooks_shutdown();
@@ -282,11 +319,37 @@ PTEST(reinitialize_ewram_restores_the_initial_value)
     crt0_shutdown(); /* twice is safe */
 }
 
-PTEST(the_unit_tests_have_no_game_variables)
+/* A COMMON_DATA and an IWRAM_INIT variable (include/gba/defines.h):
+ * gba_game.ld puts them in game_bss and game_data whatever object they come
+ * from, as it does the game's. */
+static __attribute__((section("common_data"), used)) volatile uint32_t game_bss_word;
+static __attribute__((section(".iwram"), used)) volatile uint32_t game_data_word = UINT32_C(0x1234ABCD);
+
+extern unsigned char game_data_start[], game_data_end[], game_bss_start[], game_bss_end[];
+
+PTEST(game_variables_are_bracketed)
 {
-    /* gba_game.ld brackets only Makefile.native's objects. */
-    PT_ASSERT(crt0_game_data_size() == 0);
-    PT_ASSERT(crt0_game_bss_size() == 0);
+    PT_ASSERT(address_of(&game_bss_word) >= address_of(game_bss_start));
+    PT_ASSERT(address_of(&game_bss_word) + sizeof game_bss_word <= address_of(game_bss_end));
+    PT_ASSERT(address_of(&game_data_word) >= address_of(game_data_start));
+    PT_ASSERT(address_of(&game_data_word) + sizeof game_data_word <= address_of(game_data_end));
+    PT_ASSERT(crt0_game_bss_size() >= sizeof game_bss_word);
+    PT_ASSERT(crt0_game_data_size() >= sizeof game_data_word);
+}
+
+PTEST(crt0_restart_zeroes_game_bss_and_restores_game_data)
+{
+    PT_ASSERT_EQ_INT(crt0_init(), CRT0_OK); /* not the game: no object check */
+    game_bss_word = UINT32_C(0xDEADBEEF);
+    game_data_word = 7;
+    crt0_restart();
+    PT_ASSERT_EQ_U32(game_bss_word, 0);
+    PT_ASSERT_EQ_U32(game_data_word, UINT32_C(0x1234ABCD));
+    crt0_shutdown();
+    game_data_word = 9;
+    crt0_restart(); /* after shutdown: nothing happens */
+    PT_ASSERT_EQ_U32(game_data_word, 9);
+    game_data_word = UINT32_C(0x1234ABCD);
 }
 
 /* --- FastUnsafeCopy32 ---------------------------------------------------- */

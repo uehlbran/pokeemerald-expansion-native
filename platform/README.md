@@ -343,7 +343,9 @@ lands; after a soft reset `main` does what `src/crt0.s` does
 (`RegisterRamReset(RESET_ALL)`, then `crt0_restart`, which zeroes the
 game's variables and restores its initialised ones and the EWRAM_INIT data)
 and restarts the modules that mirror registers (interrupt, timer, dma, ppu,
-psg), but never flash, the RTC or the host side. `main` is the only place
+psg), but never flash, the RTC or the host side. Both jumps, and the BIOS's
+`SoftReset`, go through `game_hooks_unwind`, which first leaves the battle
+runner's stack if a test body is running on it. `main` is the only place
 the process ends.
 
 `frame_run` (`frame.h`, which lists the order) is the frame: lines 0-159

@@ -32,7 +32,10 @@
  * initialised and zero-initialised variables. */
 extern unsigned char gba_linked_ewram_init_start[], gba_linked_ewram_init_end[];
 extern unsigned char game_data_start[], game_data_end[];
-extern unsigned char game_bss_start[], game_bss_end[];
+extern unsigned char game_bss_start[], game_bss_objects_end[], game_bss_end[];
+/* gba_game.ld: its address is 1 in the game executable (Makefile.native's
+ * --defsym), 0 elsewhere. */
+extern const unsigned char gba_game_objects_linked[];
 
 const uint32_t IntrMain[CRT0_INTR_MAIN_SIZE / sizeof(uint32_t)];
 
@@ -88,6 +91,12 @@ size_t crt0_game_bss_size(void)
 
 int crt0_init(void)
 {
+    if ((uintptr_t)gba_game_objects_linked != 0 && span(game_bss_start, game_bss_objects_end) == 0) {
+        fprintf(stderr, "crt0: no .bss from the game's objects in game_bss: gba_game.ld's object-path patterns "
+                "do not match Makefile.native's object directories, so a soft reset would leave the game's "
+                "variables stale\n");
+        return CRT0_ERR_NO_GAME_OBJECTS;
+    }
     size_t ewram_size = crt0_ewram_init_size();
     size_t data_size = crt0_game_data_size();
     if (ewram_size > sizeof copies.ewram_init) {

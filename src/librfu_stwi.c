@@ -74,8 +74,8 @@ void AgbRFU_SoftReset(void)
     *timerH = TIMER_ENABLE | TIMER_1024CLK;
 #if PLATFORM_NATIVE
     // Natively the timers advance only between frames, so the timer would
-    // never pass 0x11 here: hold the line for the same 0x12 ticks of 1024
-    // cycles through the platform's delay.
+    // never pass 0x11 here: skip the wait (PlatformWaitCycles returns at
+    // once; natively game logic takes no emulated time).
     REG_RCNT = 0x80A2;
     PlatformWaitCycles(0x12 * 1024);
 #else

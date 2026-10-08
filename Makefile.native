@@ -4,6 +4,7 @@
 #                                       [O_LEVEL=2] [DINFO=1]
 #   make -f Makefile.native -j$(nproc) objects ...   # compile only
 #   make -f Makefile.native clean      # removes build/native*/ and nothing else
+#                                      # (the platform library: make -C platform clean)
 #
 # Objects go to build/native<bits>/ (build/native<bits>-test/ with TEST=1,
 # and -san appended with SANITIZE=1), mirroring the source tree. `native`
@@ -322,7 +323,9 @@ clean:
 # the game (gNumMusicPlayers, gMaxLines, __rom_end, __iwram_end, the tests
 # table) and brackets the game's own variables for a soft reset.
 # gInitialMainCB2 is the first main callback, as ld_script_modern.ld and
-# ld_script_test.ld set it. SDL2 from pkg-config, libm for the platform.
+# ld_script_test.ld set it; gba_game_objects_linked tells crt0 this is the
+# game, whose objects gba_game.ld must find (crt0.h). SDL2 from pkg-config,
+# libm for the platform.
 ifeq ($(TEST),1)
   NATIVE_EXE_NAME := pokeemerald-native-test
   INITIAL_MAIN_CB2 := CB2_TestRunner
@@ -333,7 +336,9 @@ endif
 NATIVE_EXE := $(OBJ_DIR)/$(NATIVE_EXE_NAME)
 
 # The platform library is built by platform/Makefile, sanitized or not to
-# match (NOSAN=1 puts it in its own directory).
+# match (NOSAN=1 puts it in its own directory). It lives under
+# platform/build/, not build/: `make -f Makefile.native clean` leaves it, and
+# `make -C platform clean` removes it (and the unit tests).
 ifeq ($(SANITIZE),1)
   PLATFORM_LIB := platform/build/$(BITS)/libplatform.a
   PLATFORM_LIB_ARGS := BITS=$(BITS)
@@ -347,7 +352,8 @@ endif
 NATIVE_LINKER_SCRIPTS := platform/gba_regions.ld platform/gba_game.ld
 NATIVE_LDFLAGS := -m$(BITS) -no-pie -Wl,-Ttext-segment=0x40000000 \
                   $(NATIVE_LINKER_SCRIPTS:%=-Wl,-T,%) \
-                  -Wl,--defsym,gInitialMainCB2=$(INITIAL_MAIN_CB2) $(NATIVE_LINK_SANITIZERS)
+                  -Wl,--defsym,gInitialMainCB2=$(INITIAL_MAIN_CB2) \
+                  -Wl,--defsym,gba_game_objects_linked=1 $(NATIVE_LINK_SANITIZERS)
 NATIVE_LDLIBS := $(shell pkg-config --libs sdl2) -lm
 
 native: $(NATIVE_EXE)
@@ -484,7 +490,12 @@ $(OVERWORLD_SCRIPT_MACROS): $(OVERWORLD_SCRIPT_FLAT) $(OVERWORLD_MACROS_SCRIPT)
 	$(PYTHON) -I $(OVERWORLD_MACROS_SCRIPT) --self-test
 	$(PYTHON) -I $(OVERWORLD_MACROS_SCRIPT) --as "$(HOST_AS) --$(BITS)" $< $@ $(OVERWORLD_SCRIPT_X86_MACROS) $(OVERWORLD_SCRIPT_X86_PURGE)
 
-$(OVERWORLD_SCRIPT_X86_MACROS) $(OVERWORLD_SCRIPT_X86_PURGE): $(OVERWORLD_SCRIPT_MACROS) ;
+# overworld_macros.py writes all three files in one run. GNU make before 4.3
+# (which Makefile.native still supports) has no grouped targets, and an empty
+# recipe here would let a deleted file count as made; this recipe only checks
+# the file is there, and says how to get it back if it is not.
+$(OVERWORLD_SCRIPT_X86_MACROS) $(OVERWORLD_SCRIPT_X86_PURGE): $(OVERWORLD_SCRIPT_MACROS)
+	@test -f $@ || { echo "$@ is missing: delete $(OVERWORLD_SCRIPT_MACROS) and build again" >&2; exit 1; }
 
 $(TEST_OBJS): $(OVERWORLD_SCRIPT_MACROS) $(OVERWORLD_SCRIPT_X86_MACROS) $(OVERWORLD_SCRIPT_X86_PURGE)
 $(TEST_OBJS): CFLAGS += -Wa,-I,$(TEST_BUILDDIR)

@@ -83,17 +83,21 @@ struct options {
     const char *screenshot_path;
 };
 
-static const char usage_text[] =
-    "usage: pokeemerald-native [options]\n"
-    "  --headless         no window (input reads no keys); the frames still run\n"
-    "  --silent           no audio device\n"
-    "  --save PATH        the save file (default " MAIN_DEFAULT_SAVE_PATH ")\n"
-    "  --rtc-offset PATH  the real-time clock's offset file (default " MAIN_DEFAULT_RTC_OFFSET_PATH ")\n"
-    "  --scale N          window scale, 1 to 16 (default 3)\n"
-    "  --unthrottled      do not hold the GBA frame rate\n"
-    "  --frames N         exit after N frames (exit status 0)\n"
-    "  --screenshot PATH  write the last frame to PATH as a PPM when the game ends\n"
-    "  --help             this text\n";
+static void print_usage(FILE *out)
+{
+    fprintf(out,
+            "usage: pokeemerald-native [options]\n"
+            "  --headless         no window (input reads no keys); the frames still run\n"
+            "  --silent           no audio device\n"
+            "  --save PATH        the save file (default %s)\n"
+            "  --rtc-offset PATH  the real-time clock's offset file (default %s)\n"
+            "  --scale N          window scale, 1 to %d (default %d)\n"
+            "  --unthrottled      do not hold the GBA frame rate\n"
+            "  --frames N         exit after N frames (exit status 0)\n"
+            "  --screenshot PATH  write the last frame to PATH as a PPM when the game ends\n"
+            "  --help             this text\n",
+            MAIN_DEFAULT_SAVE_PATH, MAIN_DEFAULT_RTC_OFFSET_PATH, VIDEO_MAX_SCALE, MAIN_DEFAULT_SCALE);
+}
 
 /* main's two jump targets: the end of the game, and SoftReset. */
 static jmp_buf exit_target;
@@ -149,8 +153,8 @@ static int parse_options(int argc, char **argv, struct options *out)
             out->frame_limit = (uint32_t)number;
             i++;
         } else {
-            fprintf(stderr, "main: bad argument '%s'%s\n%s", arg,
-                    value == NULL ? "" : " (or its value)", usage_text);
+            fprintf(stderr, "main: bad argument '%s'%s\n", arg, value == NULL ? "" : " (or its value)");
+            print_usage(stderr);
             return MAIN_EXIT_USAGE;
         }
     }
@@ -274,27 +278,31 @@ static void stop_modules(size_t started)
         module_steps[--started].stop();
 }
 
-/* Starts every module; on a failure stops the ones already started.
- * Returns the number started, MODULE_STEP_COUNT on success. */
-static size_t start_modules(const struct options *options)
+/* Starts every module; on a failure stops the ones already started and the
+ * one that failed (shutdown is safe on a partially initialised module, and
+ * releases what its init acquired before failing). Returns true if all
+ * started. */
+static bool start_modules(const struct options *options)
 {
     for (size_t i = 0; i < MODULE_STEP_COUNT; i++) {
         if (module_steps[i].start(options) != 0) {
             fprintf(stderr, "main: starting %s failed\n", module_steps[i].name);
-            stop_modules(i);
-            return i;
+            stop_modules(i + 1);
+            return false;
         }
     }
-    return MODULE_STEP_COUNT;
+    return true;
 }
 
 /* --- Running the game ---------------------------------------------------- */
 
-/* The BIOS's frame hook (VBlankIntrWait). */
+/* The BIOS's frame hook (VBlankIntrWait). The jump goes through game_hooks,
+ * which first leaves the battle runner's stack if a test body is waiting a
+ * frame on it. */
 static void run_frame(void)
 {
     if (frame_run() == FRAME_EXIT)
-        longjmp(exit_target, MAIN_JUMP_FRAME_EXIT);
+        game_hooks_unwind(&exit_target, MAIN_JUMP_FRAME_EXIT);
 }
 
 /* What happens between SoftReset and AgbMain on the GBA, in order:
@@ -361,18 +369,17 @@ int main(int argc, char **argv)
     if (status != 0)
         return status;
     if (options.help) {
-        fputs(usage_text, stdout);
+        print_usage(stdout);
         return MAIN_EXIT_OK;
     }
 
-    size_t started = start_modules(&options);
-    if (started != MODULE_STEP_COUNT)
+    if (!start_modules(&options))
         return MAIN_EXIT_FAILURE;
 
     status = run_game();
     if (frame_flush_save() != 0 && status == MAIN_EXIT_OK)
         status = MAIN_EXIT_FAILURE;
     printf("main: %u frames\n", frame_count());
-    stop_modules(started);
+    stop_modules(MODULE_STEP_COUNT);
     return status;
 }

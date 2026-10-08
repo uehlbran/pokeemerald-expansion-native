@@ -51,8 +51,8 @@ s32 AgbRFU_checkID(u8 maxTries)
         regTMCNTL[1] = TIMER_1024CLK | TIMER_ENABLE;
 #if PLATFORM_NATIVE
         // Natively the timers advance only between frames, so the timer
-        // would never reach 32 here: wait the same 32 ticks of 1024 cycles
-        // through the platform's delay.
+        // would never reach 32 here: skip the wait (PlatformWaitCycles
+        // returns at once; natively game logic takes no emulated time).
         PlatformWaitCycles(32 * 1024);
 #else
         while (regTMCNTL[0] < 32)

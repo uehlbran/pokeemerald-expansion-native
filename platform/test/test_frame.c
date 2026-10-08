@@ -23,6 +23,7 @@
 
 #include <gba/types.h>
 #include <gba/flash_internal.h>
+#include <gba/m4a_internal.h>
 
 #include "audio.h"
 #include "dma.h"
@@ -485,6 +486,59 @@ PTEST(a_game_pak_interrupt_stops_the_loop_with_a_failure)
     interrupt_raise(GBA_IRQ_GAMEPAK); /* the cartridge pulled: IntrMain spins forever */
     PT_ASSERT_EQ_INT(frame_run(), FRAME_EXIT);
     PT_ASSERT_EQ_INT(frame_exit_status(), 1);
+    stop();
+}
+
+/* --- frame_run: sound --------------------------------------------------- */
+
+static struct SoundInfo engine;
+
+/* A running m4a engine, as SampleFreqSet leaves it for `samples` a frame. */
+static void install_engine(s32 samples)
+{
+    memset(&engine, 0, sizeof engine);
+    engine.ident = ID_NUMBER;
+    engine.pcmSamplesPerVBlank = samples;
+    engine.pcmDmaPeriod = (u8)(PCM_DMA_BUF_SIZE / samples);
+    engine.pcmDmaCounter = 1;
+    engine.pcmFreq = (597275 * samples + 5000) / 10000; /* src/m4a.c SampleFreqSet */
+    SOUND_INFO_PTR = &engine;
+}
+
+PTEST(each_frame_queues_one_frame_of_sound)
+{
+    PT_ASSERT(start(0, NULL, NULL));
+    install_engine(FRAME_AUDIO_SAMPLES_PER_FRAME);
+    PT_ASSERT_EQ_INT(frame_run(), FRAME_CONTINUE);
+    PT_ASSERT_EQ_INT(frame_run(), FRAME_CONTINUE);
+    PT_ASSERT(audio_total_frames() == 2u * FRAME_AUDIO_SAMPLES_PER_FRAME);
+    PT_ASSERT(!frame_sound_rate_mismatch());
+    SOUND_INFO_PTR = NULL;
+    stop();
+}
+
+PTEST(an_engine_at_another_rate_is_left_out)
+{
+    /* SOUND_MODE_FREQ_05734: 96 samples a frame. The output still plays its
+     * 224 a frame (the PSG), without the engine's samples. */
+    PT_ASSERT(start(0, NULL, NULL));
+    install_engine(96);
+    PT_ASSERT_EQ_INT(frame_run(), FRAME_CONTINUE);
+    PT_ASSERT(frame_sound_rate_mismatch());
+    PT_ASSERT_EQ_INT(frame_run(), FRAME_CONTINUE); /* reported once, still left out */
+    PT_ASSERT(audio_total_frames() == 2u * FRAME_AUDIO_SAMPLES_PER_FRAME);
+    PT_ASSERT_EQ_INT(frame_exit_status(), 0);
+    SOUND_INFO_PTR = NULL;
+    stop();
+}
+
+PTEST(no_engine_is_not_a_rate_mismatch)
+{
+    PT_ASSERT(start(0, NULL, NULL));
+    SOUND_INFO_PTR = NULL;
+    PT_ASSERT_EQ_INT(frame_run(), FRAME_CONTINUE);
+    PT_ASSERT(!frame_sound_rate_mismatch());
+    PT_ASSERT(audio_total_frames() == FRAME_AUDIO_SAMPLES_PER_FRAME);
     stop();
 }
 

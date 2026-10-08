@@ -16,8 +16,9 @@
 
 #define DC_FILTER_POLE_NUMERATOR 32604
 #define DC_FILTER_POLE_DENOMINATOR 32768
-#define LEFT 0
-#define RIGHT 1
+
+/* The output channels, indexes into struct sound_mix_state and a frame. */
+enum sound_mix_side { SOUND_MIX_LEFT = 0, SOUND_MIX_RIGHT = 1 };
 
 static int32_t fifo_scale(uint16_t soundcnt_h, uint16_t full_bit)
 {
@@ -33,7 +34,7 @@ static int16_t saturate(int32_t value)
     return (int16_t)value;
 }
 
-static int32_t remove_dc(struct sound_mix_state *state, int side, int32_t input)
+static int32_t remove_dc(struct sound_mix_state *state, enum sound_mix_side side, int32_t input)
 {
     /* 64-bit product: the output can swing to about twice the input's range. */
     int64_t decayed = (int64_t)state->previous_output[side] * DC_FILTER_POLE_NUMERATOR / DC_FILTER_POLE_DENOMINATOR;
@@ -57,19 +58,19 @@ void sound_mix(struct sound_mix_state *state, const struct sound_mix_registers *
             int32_t a = fifo_a != NULL ? fifo_a[i] * a_scale : 0;
             int32_t b = fifo_b != NULL ? fifo_b[i] * b_scale : 0;
             if (h & SOUND_MIX_SOUNDCNT_H_A_LEFT)
-                mix[LEFT] += a;
+                mix[SOUND_MIX_LEFT] += a;
             if (h & SOUND_MIX_SOUNDCNT_H_A_RIGHT)
-                mix[RIGHT] += a;
+                mix[SOUND_MIX_RIGHT] += a;
             if (h & SOUND_MIX_SOUNDCNT_H_B_LEFT)
-                mix[LEFT] += b;
+                mix[SOUND_MIX_LEFT] += b;
             if (h & SOUND_MIX_SOUNDCNT_H_B_RIGHT)
-                mix[RIGHT] += b;
+                mix[SOUND_MIX_RIGHT] += b;
             if (psg != NULL) {
-                mix[LEFT] += psg[2 * i];
-                mix[RIGHT] += psg[2 * i + 1];
+                mix[SOUND_MIX_LEFT] += psg[2 * i];
+                mix[SOUND_MIX_RIGHT] += psg[2 * i + 1];
             }
         }
-        out[2 * i] = saturate(remove_dc(state, LEFT, mix[LEFT]));
-        out[2 * i + 1] = saturate(remove_dc(state, RIGHT, mix[RIGHT]));
+        out[2 * i] = saturate(remove_dc(state, SOUND_MIX_LEFT, mix[SOUND_MIX_LEFT]));
+        out[2 * i + 1] = saturate(remove_dc(state, SOUND_MIX_RIGHT, mix[SOUND_MIX_RIGHT]));
     }
 }

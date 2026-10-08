@@ -118,8 +118,7 @@ uint32_t game_hooks_exit_code(void)
     return hooks.exit_code;
 }
 
-/* longjmp to target, from the caller's stack if entry is running on ours. */
-static void unwind_to(jmp_buf *target, int value)
+void game_hooks_unwind(jmp_buf *target, int value)
 {
     if (call.active) {
         call.unwind_target = target;
@@ -149,7 +148,7 @@ void PlatformTestRunnerExit(uint32_t exit_code)
         return;
     }
     hooks.exit_code = exit_code;
-    unwind_to(hooks.exit_target, GAME_HOOKS_JUMP_EXIT);
+    game_hooks_unwind(hooks.exit_target, GAME_HOOKS_JUMP_EXIT);
 }
 
 void PlatformJumpToAgbMainLoop(void)
@@ -160,7 +159,7 @@ void PlatformJumpToAgbMainLoop(void)
         PlatformTestRunnerExit(GAME_HOOKS_EXIT_INTERNAL_ERROR);
         return;
     }
-    unwind_to(&hooks.agb_main_loop, 1);
+    game_hooks_unwind(&hooks.agb_main_loop, 1);
 }
 
 void game_hooks_take_irq_return(void)

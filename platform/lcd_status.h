@@ -24,12 +24,15 @@
 
 #include <stdint.h>
 
-/* GBATEK "LCD Dimensions and Timings": lines 0..159 are drawn, 160..227 are
- * V-Blank, 228 lines in all. */
-#define LCD_VISIBLE_LINES 160u
-#define LCD_LINE_VBLANK_START 160u
-#define LCD_LINE_VBLANK_LAST_FLAGGED 226u
-#define LCD_LINE_COUNT 228u
+#include "gba_timing.h"
+
+/* GBATEK "LCD Dimensions and Timings" (gba_timing.h): lines 0..159 are
+ * drawn, 160..227 are V-Blank, 228 lines in all; the V-Blank flag is clear
+ * again in the last line. */
+#define LCD_VISIBLE_LINES GBA_LCD_VISIBLE_LINES
+#define LCD_LINE_VBLANK_START GBA_LCD_VISIBLE_LINES
+#define LCD_LINE_COUNT GBA_LCD_TOTAL_LINES
+#define LCD_LINE_VBLANK_LAST_FLAGGED (GBA_LCD_TOTAL_LINES - 2u)
 
 /* The line VCOUNT shows while the game runs between frames. On hardware the
  * game's logic starts when VBlankIntrWait returns, just after the V-Blank

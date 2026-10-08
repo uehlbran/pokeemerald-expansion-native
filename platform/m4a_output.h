@@ -35,7 +35,8 @@ struct m4a_output_frame {
  * fit the ring. */
 bool m4a_output_current_frame(struct m4a_output_frame *out);
 
-/* The engine's sample rate, SoundInfo.pcmFreq; 0 when there is no engine. */
+/* The engine's sample rate, SoundInfo.pcmFreq; 0 when there is no running
+ * engine (the same test as m4a_output_current_frame's). */
 uint32_t m4a_output_sample_rate(void);
 
 #endif /* M4A_OUTPUT_H */
