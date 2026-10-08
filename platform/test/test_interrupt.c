@@ -359,7 +359,8 @@ PTEST(init_clears_if_and_is_silent)
 {
     setup();
     write16(IF_ADDRESS, (uint16_t)(INTR_FLAG_VBLANK | INTR_FLAG_TIMER3));
-    struct init_call call = { .table = table, .count = TABLE_LENGTH, .status = INTERRUPT_ERR_TABLE };
+    struct init_call call = { .table = table, .count = TABLE_LENGTH,
+                              .status = INTERRUPT_ERR_TABLE };
     const struct report report = stderr_of(init_with, &call);
     PT_ASSERT_EQ_INT(call.status, INTERRUPT_OK);
     PT_ASSERT(silent(&report));

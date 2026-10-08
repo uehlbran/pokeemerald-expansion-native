@@ -93,11 +93,11 @@
  * fourteen slots, r12 = 0 to 13 * 4 at src/crt0.s:113-115. */
 #define INTERRUPT_TABLE_LENGTH 14u
 
-/* The most handlers one interrupt_dispatch() call runs. A call services
- * each pending source once, at most GBA_IRQ_COUNT, plus whatever its
- * handlers raise; expansion's handlers raise nothing. A handler that keeps
- * re-raising its own source would hang the GBA; here the call stops after
- * this many handlers with a report on stderr and leaves the rest pending.
+/* The most requests one interrupt_dispatch() call services. A call services
+ * each pending source once, at most GBA_IRQ_COUNT, plus the requests its
+ * handlers cause (a DMA they start with its IRQ bit set, say). A handler
+ * that keeps re-raising its own source would hang the GBA; here the call
+ * stops after this many with a report on stderr and leaves the rest pending.
  * Far above any legitimate call, small enough to stop a runaway at once. */
 #define INTERRUPT_DISPATCH_CAP 256u
 
