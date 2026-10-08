@@ -26,7 +26,10 @@
  *
  * Everything else is refused, including the native heap (malloc): the game
  * has no native heap, so a transfer naming one is a bug or an attack.
- * Address 0 and the first page are never allowed.
+ * Address 0 and the first page are never allowed. A range must lie inside one
+ * region, one fake-stack frame or one of the image/stack ranges; wraparound
+ * of address + length is refused by each check (gba_memmap_contains and
+ * range_holds compare length with the room left).
  */
 #define _GNU_SOURCE /* pthread_getattr_np */
 #include "transfer_bounds.h"
@@ -47,7 +50,11 @@
 #include <stdio.h>
 #include <string.h>
 
-#define TRANSFER_NULL_PAGE_SIZE ((uintptr_t)0x1000) /* never accessible, any range touching it */
+/* Policy, not hardware: no transfer may touch the first page. A native NULL
+ * (or a small offset from one) is never a GBA address, whatever the OS maps
+ * there. Linux's vm.mmap_min_addr default is 65536 so nothing is mapped there
+ * anyway; the 4 KiB page is the smallest unit all targets share. */
+#define TRANSFER_FIRST_PAGE_SIZE ((uintptr_t)0x1000)
 #define TRANSFER_ERR_STACK (-1)
 
 extern char __executable_start[], __data_start[], _end[]; /* GNU ld / glibc crt1 */
@@ -72,7 +79,7 @@ static uintptr_t address_of(const void *pointer)
     return address;
 }
 
-/* address is already known to be >= range.start */
+/* Overflow-safe: length is compared with the room left, never added to address. */
 static bool range_holds(const struct transfer_range *range, uintptr_t address, size_t length)
 {
     return address >= range->start && address < range->end && length <= range->end - address;
@@ -105,13 +112,13 @@ bool transfer_bounds_ok(uintptr_t address, size_t length, enum transfer_access a
         }
         return false;
     }
-    if (length == 0 || address < TRANSFER_NULL_PAGE_SIZE || length > UINTPTR_MAX - address) {
+    if (length == 0 || address < TRANSFER_FIRST_PAGE_SIZE) {
         return false;
     }
-    for (int r = GBA_REGION_EWRAM; r < GBA_REGION_COUNT; r++) {
-        if (gba_memmap_contains(address, length, (enum gba_region)r)) {
-            return true;
-        }
+    /* One region: a range running from one region into the next is refused
+     * even where two regions touch (mGBA debug page / palette RAM). */
+    if (gba_memmap_region_of(address, length) != GBA_REGION_NONE) {
+        return true;
     }
     if (range_holds(&state.stack, address, length) || in_fake_stack(address, length)) {
         return true;
@@ -140,7 +147,11 @@ static int record_stack(struct transfer_range *stack)
     if (destroy_error != 0) {
         fprintf(stderr, "transfer_bounds: pthread_attr_destroy failed: %s\n", strerror(destroy_error));
     }
-    if (error != 0 || destroy_error != 0 || size == 0 || size > UINTPTR_MAX - address_of(low)) {
+    if (error != 0 || destroy_error != 0) {
+        return TRANSFER_ERR_STACK;
+    }
+    if (size == 0 || size > UINTPTR_MAX - address_of(low)) {
+        fprintf(stderr, "transfer_bounds: pthread_attr_getstack returned an unusable stack\n");
         return TRANSFER_ERR_STACK;
     }
     stack->start = address_of(low);

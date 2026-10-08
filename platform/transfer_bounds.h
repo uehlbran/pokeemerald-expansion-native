@@ -21,7 +21,10 @@ bool transfer_bounds_ok(uintptr_t address, size_t length, enum transfer_access a
 
 /* Records the executable image and the main thread's stack bounds; call once
  * from the main thread before any transfer; returns 0 or a negative error
- * code and prints which lookup failed. Calling it again re-records. */
+ * code and prints which lookup failed. Calling it again re-initialises: it
+ * shuts down first, so a failed re-init leaves every query false.
+ * Threading: the state is written only here and in shutdown, on the main
+ * thread, before any query; queries only read it. */
 int transfer_bounds_init(void);
 
 /* Forgets the bounds. Safe without init and safe to call twice. */
