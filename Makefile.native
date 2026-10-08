@@ -62,11 +62,14 @@
 #
 #   gcc -E <CPPFLAGS> src.c | preproc -i -g build/assets src.c charmap.txt
 #     | sed -f platform/build_glue/c_filter.sed
-#     | gcc -c -x cpp-output <CFLAGS> -o obj -
+#     | gcc -c -x c <CFLAGS> -o obj -
 #
-# `-x cpp-output` tells gcc the input is already preprocessed, which is
-# what expansion achieves by calling cc1 directly; it keeps the gcc driver
-# (and therefore -m32/-m64 handling) without a second preprocessing pass.
+# Expansion pipes into cc1 without -fpreprocessed, so cc1 preprocesses the
+# already-preprocessed text a second time; `gcc -x c` does the same and
+# keeps the gcc driver (and so -m32/-m64). `-x cpp-output` was tried and
+# rejected: it changes which file gcc takes as the main file, and with it
+# the diagnostics (204 -Wunused-const-variable warnings expansion's build
+# does not show).
 # c_filter.sed rewrites the one ARM-assembler trick preproc puts into C
 # (the '@' that ends a COMPOUND_STRING section name, see the script).
 # Warnings: expansion's -Wall and its -W/-Wno- flags are kept, -Werror is
@@ -77,8 +80,10 @@
 # platform layer replaces them. data/*.s (through the same
 # `preproc | cpp | preproc` steps as on GBA) and the mid2agb songs (handed
 # to the assembler directly, as on GBA) are assembled by the host `as`
-# after platform/build_glue/asm_filter.py, which strips ARM '@' comments
-# and turns '.align' (ARM: power of two) into '.p2align'. `AS` below is
+# after platform/build_glue/asm_filter.py, which strips ARM '@' comments,
+# turns '.align' (ARM: power of two) into '.p2align' and '.word' (ARM: 4
+# bytes, x86: 2) into '.4byte'. The 32-bit objects come out with the same
+# section contents and relocations as the GBA build's. `AS` below is
 # that filter piped into the host assembler, so the fragments' own recipes
 # (map_data_rules.mk) work unchanged. With TEST=1 the event script macros
 # that tests use from inline assembly are prepared the same way (see
@@ -345,7 +350,7 @@ $(C_BUILDDIR)/pokemon.o: $(C_SUBDIR)/pokemon.c $(DATA_SRC_SUBDIR)/pokemon/teacha
 
 $(C_BUILDDIR)/%.o: $(C_SUBDIR)/%.c $(C_FILTER_SCRIPT)
 	@echo "$(HOST_CC) <flags> -o $@ $<"
-	@$(CPP) $(CPPFLAGS) $< | $(PREPROC) -i -g $(ASSETS_DIR_NAME) $< charmap.txt | $(C_FILTER) | $(HOST_CC) $(CFLAGS) -c -x cpp-output -o $@ -
+	@$(CPP) $(CPPFLAGS) $< | $(PREPROC) -i -g $(ASSETS_DIR_NAME) $< charmap.txt | $(C_FILTER) | $(HOST_CC) $(CFLAGS) -c -x c -o $@ -
 
 $(C_BUILDDIR)/%.d: $(C_SUBDIR)/%.c
 	$(SCANINC) -M $@ -g $(ASSETS_DIR_NAME) $(INCLUDE_SCANINC_ARGS) $<
@@ -371,7 +376,7 @@ $(TEST_OBJS): CFLAGS += -Wa,-I,$(TEST_BUILDDIR)
 
 $(TEST_BUILDDIR)/%.o: $(TEST_SUBDIR)/%.c $(C_FILTER_SCRIPT)
 	@echo "$(HOST_CC) <flags> -o $@ $<"
-	@$(CPP) $(CPPFLAGS) $< | $(PREPROC) -i -g $(ASSETS_DIR_NAME) $< charmap.txt | $(C_FILTER) | $(HOST_CC) $(CFLAGS) -c -x cpp-output -o $@ -
+	@$(CPP) $(CPPFLAGS) $< | $(PREPROC) -i -g $(ASSETS_DIR_NAME) $< charmap.txt | $(C_FILTER) | $(HOST_CC) $(CFLAGS) -c -x c -o $@ -
 
 $(TEST_BUILDDIR)/%.d: $(TEST_SUBDIR)/%.c
 	$(SCANINC) -M $@ -g $(ASSETS_DIR_NAME) $(INCLUDE_SCANINC_ARGS) $<

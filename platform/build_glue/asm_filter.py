@@ -1,20 +1,25 @@
 """Rewrite expansion's ARM GNU assembler syntax for the host (x86) assembler.
 
 Stands in for nothing on the GBA: it is build glue. Expansion's data
-(data/*.s after cpp and preproc, the mid2agb song files, sound/MPlayDef.s)
-is written for arm-none-eabi-as. Two of its conventions mean something
-different, or nothing, to the x86 GNU assembler:
+(data/*.s after cpp and preproc, the mid2agb song files, sound/MPlayDef.s,
+the event script macros the tests use) is written for arm-none-eabi-as.
+Three of its conventions mean something different to the x86 GNU
+assembler (the GNU as manual, "Machine Dependencies" and "Assembler
+Directives"):
 
   * '@' starts an end-of-line comment on ARM; on x86 it is an ordinary
     character, so a comment becomes a syntax error. '\\@' (the macro
     execution counter) is not a comment on either and is kept, as
     tools/preproc does.
-  * '.align N' aligns to 2**N bytes on ARM; on x86 it aligns to N bytes.
-    '.p2align N' means 2**N on both, so every '.align' becomes '.p2align'
-    (the GNU as manual, "Assembler Directives", .align and .p2align).
+  * '.align N' aligns to 2**N bytes on ARM and to N bytes on x86.
+    '.p2align N' means 2**N on both.
+  * '.word' emits 4 bytes on ARM and 2 bytes on x86. '.4byte' emits 4 on
+    both. The songs' GOTO and PATT targets are '.word'.
 
 Everything else the data uses ('%progbits' section types, '.type ...,
-%function', '.size', '.4byte', '.2byte') is accepted unchanged by x86 as.
+%function', '.size', '.4byte', '.2byte', '.hword') means the same to x86
+as. With these rewrites the 32-bit objects' sections are byte-identical to
+the GBA build's.
 
 Reads stdin, writes stdout. Run as 'python3 -I asm_filter.py'.
 """
@@ -22,7 +27,18 @@ Reads stdin, writes stdout. Run as 'python3 -I asm_filter.py'.
 import re
 import sys
 
-ALIGN_DIRECTIVE = re.compile(r"^(\s*(?:[A-Za-z_.$][\w.$]*:\s*)*)\.align\b")
+# ARM directive -> the x86 directive with the same meaning.
+DIRECTIVE_RENAMES = {
+    ".align": ".p2align",
+    ".word": ".4byte",
+}
+
+# A directive at the start of a statement, after any labels (which may
+# contain macro arguments and '\@', and end in ':' or '::').
+DIRECTIVE = re.compile(
+    r"^(\s*(?:[^\s:;\"']+::?\s*)*)(" +
+    "|".join(re.escape(name) for name in DIRECTIVE_RENAMES) +
+    r")\b")
 
 
 def strip_comment(line):
@@ -42,11 +58,6 @@ def strip_comment(line):
         elif char == "@" and not (index > 0 and line[index - 1] == "\\"):
             return line[:index].rstrip() + "\n"
     return line
-
-
-def rewrite_statement(statement):
-    """Rewrite one ';'-free statement: '.align' becomes '.p2align'."""
-    return ALIGN_DIRECTIVE.sub(r"\1.p2align", statement)
 
 
 def split_statements(line):
@@ -72,11 +83,18 @@ def split_statements(line):
     return parts
 
 
+def rename_directive(statement):
+    """Rename the statement's directive if ARM and x86 read it differently."""
+    return DIRECTIVE.sub(
+        lambda match: match.group(1) + DIRECTIVE_RENAMES[match.group(2)],
+        statement)
+
+
 def filter_line(line):
-    if "@" not in line and ".align" not in line:
+    if "@" not in line and not any(name in line for name in DIRECTIVE_RENAMES):
         return line
     line = strip_comment(line)
-    return ";".join(rewrite_statement(part) for part in split_statements(line))
+    return ";".join(rename_directive(part) for part in split_statements(line))
 
 
 def main():
