@@ -247,3 +247,29 @@ for the two Direct Sound FIFOs in the same int16 range; the audio mix
 must remove DC after summing, as the GBA's output capacitor did. The PSG
 is generated at the output rate with point sampling and an exact cycle
 remainder, never at m4a's 13379 Hz mixer rate, which would alias badly.
+
+## 2026-10-08: UBSan shift-base is disabled for expansion's objects only
+
+Expansion's DMA macros (`include/gba/macro.h`) and several source files
+compute `(DMA_ENABLE | ...) << 16`, which shifts a signed `int` into
+its sign bit. GNU C defines that result and expansion relies on it, but
+UndefinedBehaviorSanitizer's `shift-base` check aborts on it even with
+constant operands, so a sanitized native game would die at its first
+DMA. The sanitized build therefore compiles expansion's objects with
+`-fno-sanitize=shift-base` and keeps every other check; the platform
+layer keeps all checks, including `shift-base`. Alternatives: a guarded
+change to every site (dozens of files, pure noise), or dropping UBSan
+from the game build (loses every other check). Recorded next to the flag
+in `Makefile.native`.
+
+## 2026-10-08: DMA module state is authoritative
+
+The DMA channels act on the state recorded by `dma_set` and `dma_stop`
+(reached from expansion's macros through the guarded `DmaSetUnchecked`),
+never on direct stores to the DMA registers (m4a's `SoundInit` writes
+DMA1/2 for the sound FIFOs, which are not emulated). Refused transfers
+print the reason and are discarded by the macros rather than asserted,
+because the game never checks DMA results and an abort would kill it
+where hardware would have transferred. The 27/28-bit address masks are
+not applied because native addresses are not GBA bus addresses; the
+transfer-bounds policy replaces them.
