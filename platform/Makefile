@@ -52,8 +52,16 @@ override SANITIZERS := -fsanitize=address,undefined -fno-sanitize-recover=all -f
 # headers come from -I.
 INCLUDES := -I. -idirafter ../include
 
+# SDL2, for the modules that talk to the host (input, video, audio) and their
+# tests; harmless for the others. The i386 and amd64 dev packages share flags.
+SDL_CFLAGS := $(shell pkg-config --cflags sdl2)
+SDL_LIBS   := $(shell pkg-config --libs sdl2)
+ifeq ($(SDL_LIBS),)
+$(error pkg-config cannot find sdl2; install libsdl2-dev (and libsdl2-dev:i386 for BITS=32))
+endif
+
 CFLAGS_ALL := -m$(BITS) -std=gnu17 $(WARNINGS) $(OPTIMISATION) $(SANITIZERS) $(INCLUDES) \
-              -MMD -MP
+              $(SDL_CFLAGS) -MMD -MP
 
 # The GBA memory regions exist because the ELF loader maps them: gba_regions.ld
 # adds them as sections at their GBA addresses (see gba_memmap.c), which needs
@@ -97,7 +105,7 @@ test_inputs = $(wildcard $(1:test_%=%).c) $(call test_deps,$(1))
 define TEST_LINK_RULE
 $(foreach dep,$(call test_deps,$(1)),$(if $(wildcard $(dep)),,$(error test/$(1).c lists '$(dep)' on its deps line, but platform/$(dep) does not exist)))
 $(BUILD_DIR)/$(1): $(OBJ_DIR)/test/$(1).o $(patsubst %.c,$(OBJ_DIR)/%.o,$(call test_inputs,$(1))) $(REGIONS_LD)
-	$$(CC) $$(LDFLAGS_ALL) -o $$@ $$(filter %.o,$$^)
+	$$(CC) $$(LDFLAGS_ALL) -o $$@ $$(filter %.o,$$^) $$(SDL_LIBS)
 endef
 $(foreach name,$(TEST_NAMES),$(eval $(call TEST_LINK_RULE,$(name))))
 
