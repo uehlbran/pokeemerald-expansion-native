@@ -1,20 +1,19 @@
 # Makefile.native: the native (x86, SDL2) build of pokeemerald-expansion.
 #
-#   make -f Makefile.native -j$(nproc) objects [BITS=32|64] [TEST=0|1]
+#   make -f Makefile.native -j$(nproc) native  [BITS=32|64] [TEST=0|1] [SANITIZE=0|1]
 #                                       [O_LEVEL=2] [DINFO=1]
+#   make -f Makefile.native -j$(nproc) objects ...   # compile only
 #   make -f Makefile.native clean      # removes build/native*/ and nothing else
 #
-# Objects go to build/native<bits>/ (build/native<bits>-test/ with TEST=1),
-# mirroring the source tree.
+# Objects go to build/native<bits>/ (build/native<bits>-test/ with TEST=1,
+# and -san appended with SANITIZE=1), mirroring the source tree. `native`
+# links them with the platform layer into pokeemerald-native in that
+# directory (pokeemerald-native-test with TEST=1, the test runner build).
 #
 # Expansion's Makefile and its rule fragments are not modified; this file
 # sits beside them and reuses them. See docs/ARCHITECTURE.md ("Build") and
-# docs/RESEARCH.md ("Build system").
-#
-# Linking is not here yet: the platform layer (platform/) that provides the
-# BIOS calls, VBlankIntrWait, IntrMain and the linker-script symbols is a
-# separate milestone. platform/build_glue/LINK-NEEDS.md lists what the final
-# link needs.
+# docs/RESEARCH.md ("Build system"). What the link supplies and why:
+# platform/build_glue/LINK-NEEDS.md and the section "The link" below.
 #
 # --------------------------------------------------------------------------
 # How assets are generated
@@ -108,11 +107,23 @@ ifeq (,$(filter 32 64,$(BITS)))
   $(error BITS must be 32 or 64, not '$(BITS)')
 endif
 
+# 1 compiles expansion's objects with AddressSanitizer and
+# UndefinedBehaviorSanitizer and links the sanitized platform library; 0 (the
+# default) neither. The platform's unit tests are always sanitized
+# (platform/Makefile); this is for the game.
+SANITIZE ?= 0
+ifeq (,$(filter 0 1,$(SANITIZE)))
+  $(error SANITIZE must be 0 or 1, not '$(SANITIZE)')
+endif
+
 BUILD_DIR := build
 ifeq ($(TEST),1)
   OBJ_DIR := $(BUILD_DIR)/native$(BITS)-test
 else
   OBJ_DIR := $(BUILD_DIR)/native$(BITS)
+endif
+ifeq ($(SANITIZE),1)
+  OBJ_DIR := $(OBJ_DIR)-san
 endif
 # Shared with the GBA build: INCGFX outputs do not depend on the target.
 ASSETS_DIR_NAME := $(BUILD_DIR)/assets
@@ -168,6 +179,18 @@ CFLAGS := $(ARCH_FLAGS) -O$(O_LEVEL) -std=gnu17 -fno-pie \
 ifeq ($(DINFO),1)
   CFLAGS += -g
 endif
+# The sanitized game build. -fno-sanitize=shift-base: expansion's DMA macros
+# and several files shift a signed int into the sign bit, as in
+# (DMA_ENABLE | ...) << 16; GNU C defines that (it is two's complement), but
+# UBSan's shift-base check reports every one, so that one check is off for
+# expansion's objects only; every other check stays, and platform/ keeps all.
+# UBSan reports in expansion's code do not stop the run (no
+# -fno-sanitize-recover), so one run lists them all; AddressSanitizer stops
+# at its first report as always.
+GAME_SANITIZER_FLAGS := -fsanitize=address,undefined -fno-sanitize=shift-base -fno-omit-frame-pointer
+ifeq ($(SANITIZE),1)
+  CFLAGS += $(GAME_SANITIZER_FLAGS)
+endif
 
 # preproc's COMPOUND_STRING output relies on '@' being the ARM assembler's
 # comment character; this rewrites it for x86 (see the script's comment).
@@ -209,7 +232,7 @@ MAKEFLAGS += --no-print-directory
 .DELETE_ON_ERROR:
 
 RULES_NO_SCAN += clean generated
-.PHONY: objects $(RULES_NO_SCAN)
+.PHONY: objects native platform-lib $(RULES_NO_SCAN)
 
 .DEFAULT_GOAL := objects
 
@@ -274,6 +297,59 @@ objects: $(OBJS)
 
 clean:
 	rm -rf $(BUILD_DIR)/native*/
+
+# --------------------------------------------------------------------------
+# The link
+#
+# Every object plus the platform library (platform/: the hardware modules,
+# the BIOS, the m4a engine, main), linked as the platform's tests are:
+# non-PIE with the executable at 0x40000000, clear of the GBA regions;
+# platform/gba_regions.ld places the regions, EWRAM_INIT and EWRAM_DATA and
+# the test runner's .persistent state at their GBA addresses;
+# platform/gba_game.ld defines what expansion's linker scripts define for
+# the game (gNumMusicPlayers, gMaxLines, __rom_end, __iwram_end, the tests
+# table) and brackets the game's own variables for a soft reset.
+# gInitialMainCB2 is the first main callback, as ld_script_modern.ld and
+# ld_script_test.ld set it. SDL2 from pkg-config, libm for the platform.
+ifeq ($(TEST),1)
+  NATIVE_EXE_NAME := pokeemerald-native-test
+  INITIAL_MAIN_CB2 := CB2_TestRunner
+else
+  NATIVE_EXE_NAME := pokeemerald-native
+  INITIAL_MAIN_CB2 := CB2_InitCopyrightScreenAfterBootup
+endif
+NATIVE_EXE := $(OBJ_DIR)/$(NATIVE_EXE_NAME)
+
+# The platform library is built by platform/Makefile, sanitized or not to
+# match (NOSAN=1 puts it in its own directory).
+ifeq ($(SANITIZE),1)
+  PLATFORM_LIB := platform/build/$(BITS)/libplatform.a
+  PLATFORM_LIB_ARGS := BITS=$(BITS)
+  NATIVE_LINK_SANITIZERS := -fsanitize=address,undefined
+else
+  PLATFORM_LIB := platform/build/$(BITS)-nosan/libplatform.a
+  PLATFORM_LIB_ARGS := BITS=$(BITS) NOSAN=1
+  NATIVE_LINK_SANITIZERS :=
+endif
+
+NATIVE_LINKER_SCRIPTS := platform/gba_regions.ld platform/gba_game.ld
+NATIVE_LDFLAGS := -m$(BITS) -no-pie -Wl,-Ttext-segment=0x40000000 \
+                  $(NATIVE_LINKER_SCRIPTS:%=-Wl,-T,%) \
+                  -Wl,--defsym,gInitialMainCB2=$(INITIAL_MAIN_CB2) $(NATIVE_LINK_SANITIZERS)
+NATIVE_LDLIBS := $(shell pkg-config --libs sdl2) -lm
+
+native: $(NATIVE_EXE)
+
+# Always asks platform/Makefile, which knows the library's own prerequisites
+# and leaves it untouched when it is up to date.
+platform-lib:
+	$(MAKE) -C platform lib $(PLATFORM_LIB_ARGS)
+
+$(PLATFORM_LIB): platform-lib ;
+
+$(NATIVE_EXE): $(OBJS) $(PLATFORM_LIB) $(NATIVE_LINKER_SCRIPTS)
+	@echo "$(HOST_CC) <link> -o $@"
+	@$(HOST_CC) $(NATIVE_LDFLAGS) -o $@ $(OBJS) $(PLATFORM_LIB) $(NATIVE_LDLIBS)
 
 # --------------------------------------------------------------------------
 # Expansion's rule fragments, unchanged.

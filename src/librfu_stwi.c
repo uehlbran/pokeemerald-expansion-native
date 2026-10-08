@@ -1,5 +1,11 @@
 #include "librfu.h"
 
+#if PLATFORM_NATIVE
+// A busy delay of `cycles` CPU cycles, provided by the platform layer
+// (platform/game_hooks.h), for the timer-polling delays below.
+void PlatformWaitCycles(u32 cycles);
+#endif
+
 static void STWI_intr_timer(void);
 static u16 STWI_init(u8 request);
 static s32 STWI_start_Command(void);
@@ -66,8 +72,16 @@ void AgbRFU_SoftReset(void)
     *timerH = 0;
     *timerL = 0;
     *timerH = TIMER_ENABLE | TIMER_1024CLK;
+#if PLATFORM_NATIVE
+    // Natively the timers advance only between frames, so the timer would
+    // never pass 0x11 here: hold the line for the same 0x12 ticks of 1024
+    // cycles through the platform's delay.
+    REG_RCNT = 0x80A2;
+    PlatformWaitCycles(0x12 * 1024);
+#else
     while (*timerL <= 0x11)
         REG_RCNT = 0x80A2;
+#endif
     *timerH = 3;
     REG_RCNT = 0x80A0;
     REG_SIOCNT = SIO_INTR_ENABLE | SIO_32BIT_MODE | SIO_115200_BPS;
