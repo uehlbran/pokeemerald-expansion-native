@@ -18,6 +18,12 @@
  *    /proc/self/maps because it needs no text parsing. It must be called on
  *    the main thread: glibc then derives the bounds from the stack limit.
  *
+ *  - under AddressSanitizer, the fake stack: its use-after-return detection
+ *    moves locals to a heap-allocated "fake stack" frame, and the game copies
+ *    from local buffers, so a range inside one fake-stack frame counts as
+ *    stack. The detection stays on for the sanitized gates; this policy is
+ *    not weakened to suit it.
+ *
  * Everything else is refused, including the native heap (malloc): the game
  * has no native heap, so a transfer naming one is a bug or an attack.
  * Address 0 and the first page are never allowed.
@@ -26,6 +32,16 @@
 #include "transfer_bounds.h"
 
 #include "gba_memmap.h"
+
+#if defined(__SANITIZE_ADDRESS__)
+#include <sanitizer/asan_interface.h>
+#define TRANSFER_HAVE_ASAN 1
+#elif defined(__has_feature)
+#if __has_feature(address_sanitizer)
+#include <sanitizer/asan_interface.h>
+#define TRANSFER_HAVE_ASAN 1
+#endif
+#endif
 
 #include <pthread.h>
 #include <stdio.h>
@@ -62,6 +78,24 @@ static bool range_holds(const struct transfer_range *range, uintptr_t address, s
     return address >= range->start && address < range->end && length <= range->end - address;
 }
 
+/* True if the range lies inside one live ASan fake-stack frame. */
+static bool in_fake_stack(uintptr_t address, size_t length)
+{
+#ifdef TRANSFER_HAVE_ASAN
+    void *fake = __asan_get_current_fake_stack();
+    void *begin = NULL;
+    void *end = NULL;
+    if (fake != NULL && __asan_addr_is_in_fake_stack(fake, (void *)address, &begin, &end) != NULL) {
+        struct transfer_range frame = { address_of(begin), address_of(end) };
+        return range_holds(&frame, address, length);
+    }
+#else
+    (void)address;
+    (void)length;
+#endif
+    return false;
+}
+
 bool transfer_bounds_ok(uintptr_t address, size_t length, enum transfer_access access)
 {
     if (!state.ready) {
@@ -79,7 +113,7 @@ bool transfer_bounds_ok(uintptr_t address, size_t length, enum transfer_access a
             return true;
         }
     }
-    if (range_holds(&state.stack, address, length)) {
+    if (range_holds(&state.stack, address, length) || in_fake_stack(address, length)) {
         return true;
     }
     if (access == TRANSFER_WRITE) {

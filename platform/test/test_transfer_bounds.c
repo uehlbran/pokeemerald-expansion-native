@@ -158,10 +158,9 @@ PTEST(mutable_globals_are_readable_and_writable)
     transfer_bounds_shutdown();
 }
 
-/* no_sanitize_address: with AddressSanitizer's use-after-return (on by default
- * in GCC 13's runtime) a local lives on a heap-allocated "fake stack", not on
- * the thread stack this module bounds. This function's local must be real. */
-__attribute__((no_sanitize_address))
+/* Under ASan's use-after-return detection this local lives in the fake stack,
+ * so this proves that path; the real-stack path is the same test run with
+ * ASAN_OPTIONS=detect_stack_use_after_return=0 (see the Makefile note). */
 PTEST(stack_locals_are_readable_and_writable)
 {
     uint8_t local[BYTE_COUNT] = {0};
