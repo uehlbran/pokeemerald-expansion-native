@@ -26,6 +26,25 @@
 #include "script.h"
 #include "test/test.h"
 
+#if PLATFORM_NATIVE
+// The Thumb version in the #else branch embeds the script in the
+// instruction stream and reads pc to find it. Here the script goes to a
+// read-only data section and its address is loaded as an absolute
+// constant, which needs the non-PIE link (64-bit: below 2 GiB).
+#define OVERWORLD_SCRIPT(...) \
+    ({ \
+        const u8 *_script; \
+        asm(".pushsection .rodata.overworld_script, \"a\"\n" \
+            "1:\n" \
+            STR(__VA_ARGS__) \
+            "\n" \
+            "end\n" \
+            ".popsection\n" \
+            "mov $1b, %0\n" \
+        : "=r" (_script)); \
+        _script; \
+    })
+#else
 #define OVERWORLD_SCRIPT(...) \
     ({ \
         const u8 *_script; \
@@ -39,6 +58,7 @@
         : "=r" (_script)); \
         _script; \
     })
+#endif
 
 #define RUN_OVERWORLD_SCRIPT(...) RunScriptImmediately(OVERWORLD_SCRIPT(__VA_ARGS__))
 
@@ -55,8 +75,15 @@ asm(".set FALSE, 0\n"
     ".set SPECIAL_VARS_END, " STR(SPECIAL_VARS_END) "\n");
 
 // Make overworld script macros available.
+#if PLATFORM_NATIVE
+// The three files in the #else branch, flattened and rewritten for the
+// host assembler by Makefile.native, which puts this file on the
+// assembler's include path.
+asm(".include \"overworld_script_macros.inc\"\n");
+#else
 asm(".include \"constants/gba_constants.inc\"\n"
     ".include \"asm/macros/asm.inc\"\n"
     ".include \"asm/macros/event.inc\"\n");
+#endif
 
 #endif

@@ -142,6 +142,34 @@ timing, Game Pak DRQ), and why: `dma.h`.
 
 `test_dma_macro.c` compiles expansion's `macro.h` as the native build does
 and checks that the game's own macros reach the module.
+## The interrupt controller (`interrupt`)
+
+`interrupt.h` stands in for the CPU's IRQ line, IE, IF and IME (GBATEK "GBA
+Interrupt Control") and expansion's IRQ handler `IntrMain` (`src/crt0.s`).
+The sources are `enum gba_irq` in `gba_irq.h`, valued by their IE/IF bit.
+`interrupt_init(gIntrTable, 14)` keeps a pointer to the game's table (the game
+fills it later); `interrupt_raise()` latches a request in IF;
+`interrupt_dispatch()` runs the game's handlers synchronously, as `IntrMain`
+would, until nothing enabled is pending. The header comment of `interrupt.h`
+walks through `IntrMain` line by line.
+
+| `IntrMain` (src/crt0.s) | Here |
+|---|---|
+| sources searched VCount, Serial, Timer 3, HBlank, VBlank, Timer 0-2, DMA 0-3, Keypad (53-93); the one at position i runs `gIntrTable[i]` | same order and slots |
+| IME 0 during the VCount handler, 1 during the others (49-57) | same |
+| the bit written to IF before the handler (98); `main.c`'s handlers never write IF | same |
+| IE and IME restored after the handler, undoing its writes to them (126-127) | same |
+| Game Pak: zero byte to SOUNDCNT_X, spin forever (94-96) | same, then `interrupt_halted()` is true and nothing more runs |
+| IE narrowed to the nestable sources while a handler runs (99-108) | not done: there is no nesting; a request raised by a handler runs after it returns |
+
+IF is write-1-to-clear on the GBA but a plain store here, so the module keeps
+the requests and stores them at IF with bit 15 (`INTERRUPT_IF_MARKER`, unused
+by the hardware) set; a value at IF that differs from what it stored is a game
+write, and its 1 bits are acknowledged. The game only ever writes
+`INTR_FLAG_*` bits, so every write is seen. A raw read of IF shows bit 15; of
+several game writes between two calls into the module only the last is seen
+(the header lists the call sites). `INTERRUPT_DISPATCH_CAP` (256) stops a call
+whose handler re-raises itself forever, with a report on stderr.
 
 ## The keypad (`input`)
 
