@@ -336,10 +336,10 @@ The platform modules are tested standalone, without expansion's build,
 under ASan and UBSan. Expansion's own runner is designed around the GBA
 memory map and the mGBA debug channel and runs inside the game image, so
 it cannot test a module in isolation. We use a small header-only
-assertion framework of our own, `src/platform/test/ptest.h`: test
+assertion framework of our own, `platform/test/ptest.h`: test
 registration by a macro, assertions that print file, line, expression
 and values, a runner that returns a non-zero exit code on any failure or
-any sanitizer report, no skipped-test concept. About a hundred lines,
+any sanitizer report, no skipped-test concept. About two hundred lines,
 no dependency, no third-party license, and nothing a reader needs to
 learn. Alternatives considered: greatest.h and Unity (single-header, but
 a vendored file with its own license and more features than we need);

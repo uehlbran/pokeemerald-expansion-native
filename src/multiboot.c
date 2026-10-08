@@ -435,7 +435,7 @@ static int MultiBootHandShake(struct MultiBootParam *mp)
 #undef send_data
 #undef must_data
 }
-
+#if !PLATFORM_NATIVE
 NAKED
 static void MultiBootWaitCycles(u32 cycles)
 {
@@ -454,7 +454,7 @@ MultiBootWaitCyclesLoop:\n\
     bgt  MultiBootWaitCyclesLoop\n\
     bx   lr\n");
 }
-
+#endif
 static void MultiBootWaitSendDone(void)
 {
     int i;
@@ -469,3 +469,16 @@ static void MultiBootWaitSendDone(void)
 
     MultiBootWaitCycles(600);
 }
+
+#if PLATFORM_NATIVE
+// Native MultiBootWaitCycles. The Thumb routine above, which the GBA build
+// keeps, burns `cycles` CPU cycles, counting the wait states of the memory
+// it runs from; CPU time belongs to the platform layer. Defined at the end
+// of the file so that the GBA build's line numbers do not move.
+void PlatformWaitCycles(u32 cycles);
+
+static void MultiBootWaitCycles(u32 cycles)
+{
+    PlatformWaitCycles(cycles);
+}
+#endif

@@ -37,7 +37,7 @@ GBATEK section it follows, with links.
 Compile the platform layer with the same GNU C standard expansion's modern
 toolchain uses (gnu17, documented), with -Wall -Wextra -Wshadow
 -Wstrict-prototypes -Wconversion and warnings as errors applied to our
-files only; include expansion's headers as system headers (-isystem) so
+files only; include expansion's headers as system headers (-isystem, or -idirafter where -isystem would shadow libc headers; see DECISIONS.md) so
 their warnings are not ours to fix, and document that choice. Sanitizers:
 every unit test binary runs under AddressSanitizer and
 UndefinedBehaviorSanitizer with leak detection, unconditionally, and a
