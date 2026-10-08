@@ -127,6 +127,11 @@ $(OBJ_DIR)/%.o: %.c
 	@mkdir -p $(@D)
 	$(CC) $(CFLAGS_ALL) -c $< -o $@
 
+# inspect.c reads expansion's variables through its headers, so it is compiled
+# as the game is (Makefile.native CPPFLAGS and ARCH_FLAGS), or the structure
+# layouts could differ.
+$(OBJ_DIR)/inspect.o: CFLAGS_ALL += -DMODERN=1 -DTESTING=0 -DEMERALD -DPLATFORM_NATIVE=1 -funsigned-char
+
 # The files a test names on its "// deps:" line.
 test_deps = $(shell sed -n -E 's@^//[[:space:]]*\#?[[:space:]]*deps:@@p' test/$(1).c)
 # The module under test, if the test is named after one, plus its deps.
