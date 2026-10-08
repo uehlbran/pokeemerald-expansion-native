@@ -12,6 +12,7 @@ Run from the repository root; nothing here needs expansion's build.
 make -C platform test            # build and run every unit test, 32-bit (the default)
 make -C platform test BITS=64    # the same, 64-bit
 make -C platform lib             # build/<bits>/libplatform.a from every platform/*.c
+make -C platform lib NOSAN=1     # the same without sanitizers, build/<bits>-nosan/ (lib only)
 make -C platform clean           # remove platform/build/
 ```
 
@@ -23,10 +24,10 @@ a sanitizer report. The 32-bit build needs the i386 C library and sanitizer
 runtimes (`gcc-multilib`). The tests run on Linux only for now: the region
 layout needs GNU ld and a non-PIE ELF executable (see below).
 
-Every test binary is linked with `gba_regions.ld` and `-no-pie
--Wl,-Ttext-segment=0x40000000`, so the GBA memory regions exist in it (see
-below). A native executable that uses the platform layer must be linked the
-same way.
+Every test binary is linked with `gba_regions.ld`, `gba_game.ld` and
+`-no-pie -Wl,-Ttext-segment=0x40000000`, so the GBA memory regions exist in
+it (see below). A native executable that uses the platform layer must be
+linked the same way; `Makefile.native` does (next section).
 
 ## Adding a module and its tests
 
@@ -314,3 +315,57 @@ enforced (expansion's GBA build pads structs to 4 bytes, the native ABI does
 not). The "Vram" decompressors write 16-bit units only. The tests' expected
 values are worked by hand from GBATEK; where GBATEK leaves a behaviour open,
 `bios.h` says what was chosen.
+
+## The game (`main`, `frame`)
+
+```sh
+make -f Makefile.native -j$(nproc) native               # build/native32/pokeemerald-native
+make -f Makefile.native -j$(nproc) native TEST=1        # build/native32-test/pokeemerald-native-test
+make -f Makefile.native -j$(nproc) native SANITIZE=1    # build/native32-san/, ASan and UBSan throughout
+./build/native32/pokeemerald-native [--headless] [--silent] [--save PATH] [--rtc-offset PATH]
+        [--scale N] [--unthrottled] [--frames N] [--screenshot PATH] [--help]
+```
+
+The defaults are `pokeemerald.sav` and `pokeemerald.rtc` in the current
+directory, scale 3, paced to 59.7275 Hz, no frame limit. `--frames N` ends
+the game after N frames with status 0 (the gates use it with `--headless
+--silent --unthrottled`); `--screenshot` writes the last frame as a PPM.
+Headless, the keypad reads no keys. A save file this build cannot use
+(corrupt, or written with another struct layout) stops `main` before the
+game starts, so it is never overwritten.
+
+`main.c` starts the modules in dependency order (`module_steps`), checks
+each, and stops the ones started, in reverse, on a failure or at the end. It
+then calls expansion's `AgbMain` with two `setjmp` targets: the exit target,
+where the frame hook (a frame limit, the window closed, a failure) and
+`PlatformTestRunnerExit` unwind to, and the reset target, where `SoftReset`
+lands; after a soft reset `main` does what `src/crt0.s` does
+(`RegisterRamReset(RESET_ALL)`, then `crt0_restart`, which zeroes the
+game's variables and restores its initialised ones and the EWRAM_INIT data)
+and restarts the modules that mirror registers (interrupt, timer, dma, ppu,
+psg), but never flash, the RTC or the host side. `main` is the only place
+the process ends.
+
+`frame_run` (`frame.h`, which lists the order) is the frame: lines 0-159
+with their H-Blank DMA and interrupts, the timers, V-Blank, sound, present,
+input, the save, pacing. `lcd_status` owns `VCOUNT` and `DISPSTAT`'s status
+bits; `VCOUNT` reads 161 between frames (`docs/ARCHITECTURE.md`, "The
+frame"). `m4a_output` finds the frame of the m4a engine's PCM ring the FIFO
+DMAs would play; `sound_mix` routes the two FIFOs and the PSG as
+`SOUNDCNT_H` says, at `psg.c`'s scale, and removes the DC offset the GBA's
+output capacitor removes.
+
+## What the game links from its assembly files
+
+| File | Stands in for | Notes |
+|---|---|---|
+| `game_hooks.c` | the guarded game code's control flow: `PlatformWaitCycles`, `PlatformJumpToAgbMainLoop`, `PlatformTestRunnerExit`, `PlatformCallWithStack` | `game_hooks.h` says why each behaves as it does; the battle runner's functions run on a 1 MiB platform stack (ucontext, with AddressSanitizer fiber annotations) so their locals stay put between calls |
+| `crt0.c` | `src/crt0.s`: `IntrMain` (data: only its address is stored), `ReInitializeEWRAM`, and the soft-reset restart | the copies are taken at `crt0_init` |
+| `decompress_asm.c` | `src/decompress_asm.s`: `FastUnsafeCopy32`, `LZ77UnCompWRAMOptimized` | writes exactly the LZ77 header's size, unlike the assembly |
+| `gcn_multiboot.c` | `src/libgcnmultiboot.s` | no GameCube: the copyright screen takes its "no multiboot" path |
+| `rom_header.c` | `src/rom_header.s`, as gbafix fills it | Emerald's `BPEE`, version 0 |
+| `gba_game.ld` | what `ld_script_modern.ld` and `ld_script_test.ld` give the game | symbols, the tests table, `game_data`/`game_bss` around the game's own variables |
+
+`build_glue/LINK-NEEDS.md` maps every symbol and section the link needed to
+its provider; `build_glue/BOOT-LOG.md` records what failed on the way to
+the first boot, and the sanitizer findings in expansion's code.
