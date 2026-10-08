@@ -25,6 +25,9 @@
 #include "trainer_hill.h"
 #include "test_runner.h"
 #include "constants/rgb.h"
+#if PLATFORM_NATIVE && TESTING
+#include "platform/game_hooks.h"
+#endif
 
 static void VBlankIntr(void);
 static void HBlankIntr(void);
@@ -128,6 +131,11 @@ void AgbMain(void)
 #endif
 #endif
     gAgbMainLoop_sp = __builtin_frame_address(0);
+#if PLATFORM_NATIVE && TESTING
+    // JumpToAgbMainLoop (test/test_runner.c) restarts AgbMainLoop on this
+    // frame, from the stack pointer saved above; natively it longjmps here.
+    setjmp(*PlatformAgbMainLoopTarget());
+#endif
     AgbMainLoop();
 }
 

@@ -66,3 +66,6 @@ tools/aif2pcm/aif2pcm
 *.smolTM
 __pycache__
 .map_version
+# The native build's default real-time clock offset file (platform/main.c);
+# its default save, pokeemerald.sav, is already matched by *.sa*.
+/pokeemerald.rtc

@@ -10,8 +10,11 @@
  *    that filtering belongs to the I/O code, not to this check.
  *  - the executable image, which holds what the GBA's ROM and IWRAM held.
  *    Read: __executable_start to _end (code, read-only data, .data, .bss),
- *    GNU ld symbols. Write: __data_start (provided by glibc's crt1.o on
- *    -m32 and -m64) to _end, the writable globals; code and rodata are not.
+ *    GNU ld symbols. Write: the writable globals, from __data_start
+ *    (provided by glibc's crt1.o on -m32 and -m64) to _end, and the game's
+ *    own initialised data, which gba_game.ld places just before .data
+ *    (game_data_start, so that a soft reset can restore it); code and
+ *    rodata are not.
  *  - the main thread's stack: read and write, the whole mapping glibc
  *    reports through pthread_getattr_np (not just the current depth), for
  *    the local buffers the game copies from and into. Chosen over parsing
@@ -58,6 +61,7 @@
 #define TRANSFER_ERR_STACK (-1)
 
 extern char __executable_start[], __data_start[], _end[]; /* GNU ld / glibc crt1 */
+extern char game_data_start[], game_data_end[];             /* gba_game.ld */
 
 struct transfer_range {
     uintptr_t start;
@@ -170,7 +174,12 @@ int transfer_bounds_init(void)
     state.stack = stack;
     state.image.start = address_of(__executable_start);
     state.image.end = address_of(_end);
-    state.writable_image.start = address_of(__data_start);
+    /* game_data, when the link has one (not in the unit tests), lies just
+     * before .data; its symbols mean nothing when it is empty. */
+    uintptr_t data_start = address_of(__data_start);
+    uintptr_t game_data = address_of(game_data_start);
+    bool has_game_data = address_of(game_data_end) > game_data;
+    state.writable_image.start = has_game_data && game_data < data_start ? game_data : data_start;
     state.writable_image.end = address_of(_end);
     state.ready = true;
     return 0;

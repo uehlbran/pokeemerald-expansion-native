@@ -1,5 +1,33 @@
 # What the native link needs
 
+**Status (2026-10-08): all of it is provided.** `make -f Makefile.native
+native` links `build/native<bits>[-test][-san]/pokeemerald-native[-test]`
+(32-bit; 64-bit stops at two expansion layout assertions, see
+`BOOT-LOG.md`). Where each need below is met:
+
+| Need | Provided by |
+|---|---|
+| Link command | `Makefile.native` `native`: `-no-pie -Wl,-Ttext-segment=0x40000000 -Wl,-T,platform/gba_regions.ld -Wl,-T,platform/gba_game.ld -Wl,--defsym,gInitialMainCB2=...`, SDL2 and libm |
+| `.ewram` (EWRAM_INIT) | `gba_regions.ld` `.gba_ewram_init`, loaded at 0x02000000 ahead of `.sbss`; `platform/crt0.c` keeps its initial image for `ReInitializeEWRAM` |
+| `.iwram`, `.iwram.code`, `script_data`, compound strings, `.rodata.overworld_script` | the default script (`.iwram` goes into `gba_game.ld`'s `game_data`) |
+| `common_data` | `gba_game.ld` `game_bss`, after the game's `.bss`, not loaded, as on the GBA |
+| `.persistent` | `gba_regions.ld`, inside `.gba_iwram` at 0x3007F00 |
+| `.tests`, `__start_tests`, `__stop_tests` | `gba_game.ld` `tests`, `test_test_runner.o` first; packed (checked: 6294 entries of 20 bytes) |
+| `gInitialMainCB2` | `--defsym` in `Makefile.native` (`CB2_TestRunner` with TEST=1) |
+| `gNumMusicPlayers`, `gMaxLines` | `gba_game.ld`, absolute 4 and 0 |
+| `__iwram_end`, `__rom_end` | `gba_game.ld`: the end of the IWRAM region, and 0x08000000 (ROM size reads 0 in the debug menu) |
+| BIOS calls | `platform/bios_*.c` (`bios.h`) |
+| `IntrMain`, `ReInitializeEWRAM` | `platform/crt0.c`. Expansion 1.17.1 only stores `IntrMain`'s address (no `IntrMain_Buffer` copy); it is 0x800 bytes of data |
+| `src/m4a_1.s` symbols | `platform/m4a/` |
+| `FastUnsafeCopy32`, `LZ77UnCompWRAMOptimized` | `platform/decompress_asm.c`; `src/decompress.c` (guarded) no longer copies code, so natively only `LZ77UnCompWRAMOptimized` is referenced and `LZ77UnCompWRAMOptimized_end` is not needed |
+| `GameCubeMultiBoot_*` | `platform/gcn_multiboot.c` (no GameCube: progress stays "none") |
+| `RomHeaderGameCode`, `RomHeaderSoftwareVersion` | `platform/rom_header.c` ("BPEE", 0) |
+| `PlatformWaitCycles`, `PlatformJumpToAgbMainLoop`, `PlatformTestRunnerExit`, `PlatformCallWithStack` | `platform/game_hooks.c` |
+| `main` | `platform/main.c` |
+
+The measurements and reasoning below are from before the link existed and
+are kept as the record of why each piece is there.
+
 `make -f Makefile.native objects` compiles every object; it does not link.
 This is the list of what the final link must supply, measured on
 2026-10-08 against expansion 1.17.1 by a trial link of every 32-bit

@@ -52,24 +52,44 @@ send) are routed through guarded calls.
 
 The game runs on the main thread, unmodified: `AgbMain()` loops over
 `MainLoop()` and calls `VBlankIntrWait()` once per frame. The platform's
-`VBlankIntrWait` is the frame boundary and does, in this order:
+`VBlankIntrWait` (the `bios` module) is the frame boundary: until
+`INTR_CHECK` shows the VBlank flag the handler sets, as the BIOS waits, it
+calls the frame hook, `frame_run` (`platform/frame.h`), which does, in this
+order:
 
-1. Render lines 0 to 159 into the frame buffer. Between lines: run
-   HBLANK-timed DMA, raise HBlank, raise VCount when the line matches
-   `DISPSTAT`, dispatch.
+1. Lines 0 to 159. Each line starts (`VCOUNT` = line, the H-Blank flag in
+   `DISPSTAT` cleared, the V-Counter flag set and VCount raised when the
+   line matches `DISPSTAT`'s setting), dispatch; the PPU renders the line
+   into the frame buffer; H-Blank starts (flag set), HBLANK-timed DMA runs,
+   HBlank is raised, dispatch.
 2. Advance the four timers by one frame of cycles; raise their overflow
    interrupts; dispatch.
-3. Enter VBlank: set the flag in `DISPSTAT`, run VBLANK-timed DMA, raise
-   VBlank, dispatch (this runs expansion's `VBlankIntr`, which runs the
-   sound engine and the DMA3 queue).
-4. Mix one frame of audio and queue it.
-5. Present the frame; poll SDL events; write `REG_KEYINPUT`.
-6. Pace to the GBA frame period.
-7. Return when `INTR_CHECK` shows the VBlank flag the handler set, as
-   the BIOS does.
+3. Enter VBlank: line 160 starts (`VCOUNT` = 160, the V-Blank flag set),
+   the PPU latches its affine reference points, VBLANK-timed DMA runs,
+   VBlank is raised, dispatch (this runs expansion's `VBlankIntr`, which
+   runs the sound engine and the DMA3 queue and flushes the buffered GPU
+   registers).
+4. Line 161 starts, with its V-Counter match, dispatch.
+5. Mix one frame of audio (the m4a ring frame the FIFO DMAs play, the PSG,
+   `SOUNDCNT_H` routing, DC removal) and queue it.
+6. Present the frame; poll SDL events; write `REG_KEYINPUT`.
+7. Store the save file if the game wrote the flash chip.
+8. Pace to the GBA frame period.
+9. Count the frame; a frame limit or a quit ends the game after it (main
+   unwinds to its exit target).
 
-`REG_VCOUNT` reads 160 while the game runs, so expansion's `SetGpuReg`
-writes through, as during VBlank on hardware.
+Interrupts are raised only when their `DISPSTAT` enable is set, as the LCD
+requests them. Lines 162 to 227 are not run one by one: their HBlank
+interrupts and a VCount setting in that range never fire (expansion uses
+150, and its HBlank effects act on lines 0 to 159 only).
+
+`REG_VCOUNT` reads 161 while the game runs, between frames and from
+power-on (main sets it, and `KEYINPUT`, before every entry into `AgbMain`,
+as the BIOS leaves the cartridge started in VBlank with the buttons
+readable). Expansion's `SetGpuReg` (`src/gpu_regs.c`) writes a register
+through only when `VCOUNT` is 161 to 225, as during VBlank on hardware, and
+buffers it until the next VBlank handler otherwise; 160, the first VBlank
+line, is outside that window and would delay every write by a frame.
 
 ## Modules
 
@@ -97,15 +117,23 @@ returned to the caller (`main` decides what to do; modules never call
 | `flash` | the 1 Mbit flash chip's driver entry | GBA Cart Backup Flash ROM | yes |
 | `save_file` | the cartridge's persistence | n/a | yes |
 | `debug_channel` | mGBA's debug registers | mGBA `src/gba/io.c` | yes |
+| `lcd_status` | the LCD controller's timing registers, `VCOUNT` and `DISPSTAT` | LCD I/O Interrupts and Status | yes |
+| `m4a_output` | the sound FIFO DMAs, reading the m4a engine's PCM ring | GBA Sound Channel A and B - DMA Sound | yes |
+| `sound_mix` | the sound mixer and output capacitor | GBA Sound Control Registers | yes |
+| `frame` | a frame of hardware time, in order (above) | LCD Dimensions and Timings | yes (headless, with the real modules) |
+| `game_hooks` | the game's control-flow assembly (test runner jumps, the battle runner's stack, delay loops) | n/a (game code) | yes |
+| `crt0`, `rom_header`, `gcn_multiboot`, `decompress_asm` | the `src/*.s` the native build does not assemble | n/a (game code) | yes |
 | `main` | power-on | n/a | no |
 
-Dependencies point one way: `main` depends on everything; `ppu`, `dma`,
-`timer`, `interrupt`, `psg`, `flash` depend on `gba_memmap` for addresses
-and bounds; `bios` depends on `gba_memmap` and `interrupt`; nothing
-depends on `video`, `audio` or `main`. The modules do not include
-expansion's headers; the one exception is `gba_memmap.h`, which may
-include `gba/defines.h` and `gba/io_reg.h` as system headers to reuse
-their names and assert ours match.
+Dependencies point one way: `main` depends on everything; `frame` on the
+modules a frame drives; `ppu`, `dma`, `timer`, `interrupt`, `psg`, `flash`
+depend on `gba_memmap` for addresses and bounds; `bios` depends on
+`gba_memmap` and `interrupt`; nothing but `frame` and `main` depends on
+`video` or `audio`, and nothing on `main`. The modules do not include
+expansion's headers; the exceptions are `gba_memmap.h`, which may include
+`gba/defines.h` and `gba/io_reg.h` as system headers to reuse their names
+and assert ours match, and `m4a_output.c`, which reads the m4a engine's
+`struct SoundInfo` (`gba/m4a_internal.h`) as the DMA did.
 
 ## Conventions that the tests enforce
 
@@ -123,7 +151,9 @@ their names and assert ours match.
 ## Build
 
 `Makefile.native` builds the native executable from expansion's sources
-plus `platform/`. `platform/Makefile` builds the modules and their tests
+plus `platform/` (`make -f Makefile.native native`, with `TEST=1` for the
+test runner build and `SANITIZE=1` for the sanitized one), linked non-PIE
+at 0x40000000 with `platform/gba_regions.ld` and `platform/gba_game.ld`. `platform/Makefile` builds the modules and their tests
 standalone under AddressSanitizer and UndefinedBehaviorSanitizer with
 `-std=gnu17 -Wall -Wextra -Wshadow -Wstrict-prototypes -Wconversion
 -Werror`; expansion's headers are included with `-isystem` so their

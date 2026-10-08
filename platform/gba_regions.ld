@@ -23,16 +23,31 @@ SECTIONS
     HIDDEN(gba_regions_saved_dot = .);
 
     /* EWRAM: GBATEK "GBA Memory Map", 02000000-0203FFFF, 256 KBytes.
-     * Expansion's EWRAM_DATA is __attribute__((section(".sbss")))
-     * (include/gba/defines.h), so the game's EWRAM variables land here at the
-     * bottom of the region, as ld_script_modern.ld places them on the GBA; the
-     * rest of the 256 KiB stays free for gHeap and the game's fixed uses.
-     * MAX keeps an oversized .sbss from stopping the layout with "cannot move
-     * location counter backwards"; the ASSERT after the section then fails
-     * the link with a message that says what is wrong. */
-    .gba_ewram 0x02000000 (NOLOAD) :
+     * It starts with expansion's EWRAM_INIT variables (section .ewram,
+     * include/gba/defines.h), the only EWRAM data with initial values, as
+     * ld_script_modern.ld places them on the GBA. Their section is loaded, so
+     * the ELF loader gives them their initial values where crt0.s copied them
+     * from ROM; platform/crt0.c keeps a copy for ReInitializeEWRAM, between
+     * gba_linked_ewram_init_start and _end. Executables without such data
+     * (the unit tests) get an empty, discarded section and the symbols only.
+     * Then expansion's EWRAM_DATA, __attribute__((section(".sbss"))), not
+     * loaded: zero-filled, at the bottom of the rest of the region as on the
+     * GBA; the rest of the 256 KiB stays free for gHeap and the game's fixed
+     * uses. MAX keeps an oversized .sbss from stopping the layout with
+     * "cannot move location counter backwards"; the ASSERT after the section
+     * then fails the link with a message that says what is wrong. */
+    .gba_ewram_init 0x02000000 :
     {
         gba_linked_ewram_start = .;
+        gba_linked_ewram_init_start = .;
+        *(.ewram .ewram.*)
+        gba_linked_ewram_init_end = .;
+    }
+    /* At an explicit address: without EWRAM_INIT data the section above is
+     * discarded, and a section with no address would then follow the
+     * previous one elsewhere. The symbol keeps its value either way. */
+    .gba_ewram gba_linked_ewram_init_end (NOLOAD) :
+    {
         *(.sbss .sbss.*)
         HIDDEN(gba_ewram_data_end = .);
         . = MAX(., gba_linked_ewram_start + 0x40000);
@@ -41,13 +56,22 @@ SECTIONS
     ASSERT(gba_ewram_data_end <= gba_linked_ewram_start + 0x40000,
            "gba_regions.ld: EWRAM_DATA (.sbss) is larger than the 256 KiB of EWRAM")
 
-    /* IWRAM: GBATEK "GBA Memory Map", 03000000-03007FFF, 32 KBytes. */
+    /* IWRAM: GBATEK "GBA Memory Map", 03000000-03007FFF, 32 KBytes. The
+     * game's IWRAM variables stay in the native .bss (docs/RESEARCH.md,
+     * "Memory model"); only the test runner's state that survives a reboot,
+     * section .persistent, has a fixed address, 03007F00h, as
+     * ld_script_test.ld places it (IWRAM_PERSISTENT, 100h bytes). */
     .gba_iwram 0x03000000 (NOLOAD) :
     {
         gba_linked_iwram_start = .;
-        . += 0x8000;
+        . = gba_linked_iwram_start + 0x7F00;
+        *(.persistent)
+        HIDDEN(gba_iwram_persistent_end = .);
+        . = MAX(., gba_linked_iwram_start + 0x8000);
         gba_linked_iwram_end = .;
     }
+    ASSERT(gba_iwram_persistent_end <= gba_linked_iwram_start + 0x8000,
+           "gba_regions.ld: the test runner's .persistent state is larger than the 100h bytes at 03007F00h")
 
     /* I/O registers: GBATEK "GBA Memory Map", 04000000-040003FE, 1 KiB; one 4 KiB page. */
     .gba_io 0x04000000 (NOLOAD) :

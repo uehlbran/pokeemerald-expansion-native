@@ -74,6 +74,13 @@
 #define GBA_SRAM_BASE UINT32_C(0x0E000000)
 #define GBA_SRAM_SIZE UINT32_C(0x00020000)
 
+/* I/O registers more than one module reads, as offsets from GBA_IO_BASE.
+ * GBATEK "GBA Sound Control Registers": 4000082h SOUNDCNT_H (DMA sound
+ * control and mixing, PSG volume), 4000084h SOUNDCNT_X (master enable, bit
+ * 7; PSG channel on flags, bits 0-3). */
+#define GBA_SOUNDCNT_H_OFFSET UINT32_C(0x082)
+#define GBA_SOUNDCNT_X_OFFSET UINT32_C(0x084)
+
 /* The regions, in address order. GBA_REGION_NONE means "no single region". */
 enum gba_region {
     GBA_REGION_NONE = 0,

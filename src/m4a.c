@@ -310,12 +310,12 @@ void MPlayExtender(struct CgbChannel *cgbChans)
 
     soundInfo->ident = ident;
 }
-
+#if !PLATFORM_NATIVE // swi 0x2A has no native counterpart, and nothing calls this
 static void UNUSED MusicPlayerJumpTableCopy(void)
 {
     asm("swi 0x2A");
 }
-
+#endif
 void ClearChain(void *x)
 {
 #if __STDC_VERSION__ < 202311L
@@ -405,13 +405,13 @@ void SampleFreqSet(u32 freq)
     REG_TM0CNT_L = -(280896 / soundInfo->pcmSamplesPerVBlank);
 
     m4aSoundVSyncOn();
-
+#if !PLATFORM_NATIVE // natively the frame loop owns VCOUNT, which reads 161 while the game runs: these waits would not end
     while (*(vu8 *)REG_ADDR_VCOUNT == 159)
         ;
 
     while (*(vu8 *)REG_ADDR_VCOUNT != 159)
         ;
-
+#endif
     REG_TM0CNT_H = TIMER_ENABLE | TIMER_1CLK;
 }
 

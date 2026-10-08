@@ -1,4 +1,4 @@
-// deps: bios_arith.c bios_affine.c bios_memory.c bios_decompress.c bios_unfilter.c bios_control.c bios_sound.c bios_stream.c bios_internal.c transfer_bounds.c gba_memmap.c
+// deps: bios_arith.c bios_affine.c bios_memory.c bios_decompress.c bios_unfilter.c bios_control.c bios_sound.c bios_stream.c bios_internal.c transfer_bounds.c gba_memmap.c game_hooks.c
 /*
  * The BIOS module against expansion's view of it.
  *

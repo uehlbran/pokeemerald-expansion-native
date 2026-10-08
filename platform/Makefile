@@ -4,6 +4,8 @@
 #   make -C platform test          build and run every unit test (BITS=32)
 #   make -C platform test BITS=64  the same for a 64-bit build
 #   make -C platform lib           build build/<bits>/libplatform.a
+#   make -C platform lib NOSAN=1   the same without sanitizers, in
+#                                  build/<bits>-nosan/ (Makefile.native SANITIZE=0)
 #   make -C platform clean         remove build/
 #
 # Layout: every platform/*.c is a module and goes into libplatform.a, so a new
@@ -23,7 +25,23 @@ ifeq ($(filter $(BITS),32 64),)
 $(error BITS must be 32 or 64, not '$(BITS)')
 endif
 
+# NOSAN=1 builds libplatform.a without the sanitizers, for the native game
+# executable when Makefile.native's SANITIZE=0 (expansion's objects are then
+# not instrumented either, and an ASan runtime would have to come first in the
+# link). It applies to `lib` only: the unit tests always run sanitized
+# (docs/C-RULES.md), so NOSAN=1 with any other goal is an error. Its objects
+# live in their own directory so the two builds never mix.
+NOSAN ?= 0
+ifeq ($(NOSAN),1)
+ifneq ($(filter-out lib clean,$(or $(MAKECMDGOALS),all)),)
+$(error NOSAN=1 is for the lib goal only; the unit tests always run under the sanitizers)
+endif
+BUILD_DIR := build/$(BITS)-nosan
+else ifeq ($(NOSAN),0)
 BUILD_DIR := build/$(BITS)
+else
+$(error NOSAN must be 0 or 1, not '$(NOSAN)')
+endif
 OBJ_DIR   := $(BUILD_DIR)/obj
 
 # gnu17 is the C dialect expansion's modern toolchain compiles with
@@ -42,6 +60,9 @@ OPTIMISATION := -O1 -g
 # unconditionally (docs/C-RULES.md; "override" ignores command-line attempts
 # to change it); any report aborts the binary.
 override SANITIZERS := -fsanitize=address,undefined -fno-sanitize-recover=all -fno-omit-frame-pointer
+ifeq ($(NOSAN),1)
+override SANITIZERS :=
+endif
 
 # Expansion's headers (../include) are system headers to us, so their warnings
 # stay out of our -Werror build: we do not rewrite or re-lint expansion's code
@@ -72,9 +93,13 @@ CFLAGS_ALL := -m$(BITS) -std=gnu17 $(WARNINGS) $(OPTIMISATION) $(SANITIZERS) $(I
 # adds them as sections at their GBA addresses (see gba_memmap.c), which needs
 # a non-PIE executable whose own image starts at 0x40000000, clear of every
 # region on both bit widths (docs/research/memory-map-experiment.md).
-# Makefile.native must link the game with these same three flags.
+# Makefile.native must link the game with these same flags.
 REGIONS_LD := gba_regions.ld
-GBA_LDFLAGS := -no-pie -Wl,-Ttext-segment=0x40000000 -Wl,-T,$(REGIONS_LD)
+# gba_game.ld adds what expansion's linker scripts give the game (symbols,
+# the test table, the brackets around the game's variables); in a unit test
+# its sections are empty, but its symbols exist, as crt0.c needs.
+GAME_LD := gba_game.ld
+GBA_LDFLAGS := -no-pie -Wl,-Ttext-segment=0x40000000 -Wl,-T,$(REGIONS_LD) -Wl,-T,$(GAME_LD)
 LDFLAGS_ALL := -m$(BITS) $(SANITIZERS) $(GBA_LDFLAGS)
 
 # The sanitizer options every test runs under, set here so the environment
@@ -109,7 +134,7 @@ test_inputs = $(wildcard $(1:test_%=%).c) $(call test_deps,$(1))
 
 define TEST_LINK_RULE
 $(foreach dep,$(call test_deps,$(1)),$(if $(wildcard $(dep)),,$(error test/$(1).c lists '$(dep)' on its deps line, but platform/$(dep) does not exist)))
-$(BUILD_DIR)/$(1): $(OBJ_DIR)/test/$(1).o $(patsubst %.c,$(OBJ_DIR)/%.o,$(call test_inputs,$(1))) $(REGIONS_LD)
+$(BUILD_DIR)/$(1): $(OBJ_DIR)/test/$(1).o $(patsubst %.c,$(OBJ_DIR)/%.o,$(call test_inputs,$(1))) $(REGIONS_LD) $(GAME_LD)
 	$$(CC) $$(LDFLAGS_ALL) -o $$@ $$(filter %.o,$$^) $$(SDL_LIBS)
 endef
 $(foreach name,$(TEST_NAMES),$(eval $(call TEST_LINK_RULE,$(name))))

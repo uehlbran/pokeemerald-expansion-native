@@ -1,5 +1,11 @@
 #include "librfu.h"
 
+#if PLATFORM_NATIVE
+// A busy delay of `cycles` CPU cycles, provided by the platform layer
+// (platform/game_hooks.h), for the timer-polling delay below.
+void PlatformWaitCycles(u32 cycles);
+#endif
+
 static void Sio32IDIntr(void);
 static void Sio32IDInit(void);
 static s32 Sio32IDMain(void);
@@ -43,8 +49,15 @@ s32 AgbRFU_checkID(u8 maxTries)
         regTMCNTL[1] = 0;
         regTMCNTL[0] = 0;
         regTMCNTL[1] = TIMER_1024CLK | TIMER_ENABLE;
+#if PLATFORM_NATIVE
+        // Natively the timers advance only between frames, so the timer
+        // would never reach 32 here: skip the wait (PlatformWaitCycles
+        // returns at once; natively game logic takes no emulated time).
+        PlatformWaitCycles(32 * 1024);
+#else
         while (regTMCNTL[0] < 32)
             ;
+#endif
         regTMCNTL[1] = 0;
         regTMCNTL[0] = 0;
     }

@@ -1,20 +1,20 @@
 # Makefile.native: the native (x86, SDL2) build of pokeemerald-expansion.
 #
-#   make -f Makefile.native -j$(nproc) objects [BITS=32|64] [TEST=0|1]
+#   make -f Makefile.native -j$(nproc) native  [BITS=32|64] [TEST=0|1] [SANITIZE=0|1]
 #                                       [O_LEVEL=2] [DINFO=1]
+#   make -f Makefile.native -j$(nproc) objects ...   # compile only
 #   make -f Makefile.native clean      # removes build/native*/ and nothing else
+#                                      # (the platform library: make -C platform clean)
 #
-# Objects go to build/native<bits>/ (build/native<bits>-test/ with TEST=1),
-# mirroring the source tree.
+# Objects go to build/native<bits>/ (build/native<bits>-test/ with TEST=1,
+# and -san appended with SANITIZE=1), mirroring the source tree. `native`
+# links them with the platform layer into pokeemerald-native in that
+# directory (pokeemerald-native-test with TEST=1, the test runner build).
 #
 # Expansion's Makefile and its rule fragments are not modified; this file
 # sits beside them and reuses them. See docs/ARCHITECTURE.md ("Build") and
-# docs/RESEARCH.md ("Build system").
-#
-# Linking is not here yet: the platform layer (platform/) that provides the
-# BIOS calls, VBlankIntrWait, IntrMain and the linker-script symbols is a
-# separate milestone. platform/build_glue/LINK-NEEDS.md lists what the final
-# link needs.
+# docs/RESEARCH.md ("Build system"). What the link supplies and why:
+# platform/build_glue/LINK-NEEDS.md and the section "The link" below.
 #
 # --------------------------------------------------------------------------
 # How assets are generated
@@ -108,11 +108,23 @@ ifeq (,$(filter 32 64,$(BITS)))
   $(error BITS must be 32 or 64, not '$(BITS)')
 endif
 
+# 1 compiles expansion's objects with AddressSanitizer and
+# UndefinedBehaviorSanitizer and links the sanitized platform library; 0 (the
+# default) neither. The platform's unit tests are always sanitized
+# (platform/Makefile); this is for the game.
+SANITIZE ?= 0
+ifeq (,$(filter 0 1,$(SANITIZE)))
+  $(error SANITIZE must be 0 or 1, not '$(SANITIZE)')
+endif
+
 BUILD_DIR := build
 ifeq ($(TEST),1)
   OBJ_DIR := $(BUILD_DIR)/native$(BITS)-test
 else
   OBJ_DIR := $(BUILD_DIR)/native$(BITS)
+endif
+ifeq ($(SANITIZE),1)
+  OBJ_DIR := $(OBJ_DIR)-san
 endif
 # Shared with the GBA build: INCGFX outputs do not depend on the target.
 ASSETS_DIR_NAME := $(BUILD_DIR)/assets
@@ -168,6 +180,30 @@ CFLAGS := $(ARCH_FLAGS) -O$(O_LEVEL) -std=gnu17 -fno-pie \
 ifeq ($(DINFO),1)
   CFLAGS += -g
 endif
+# The sanitized game build. -fno-sanitize=shift-base: expansion's DMA macros
+# and several files shift a signed int into the sign bit, as in
+# (DMA_ENABLE | ...) << 16; GNU C defines that (it is two's complement), but
+# UBSan's shift-base check reports every one, so that one check is off for
+# expansion's objects only; every other check stays, and platform/ keeps all.
+# Reports in expansion's code are recoverable, so that one run can list them
+# all: UBSan prints and carries on (no -fno-sanitize-recover), and with
+# -fsanitize-recover=address AddressSanitizer does too when run with
+# ASAN_OPTIONS=halt_on_error=0 (by default it still stops at its first
+# report). The platform library always stops at the first.
+GAME_SANITIZER_FLAGS := -fsanitize=address,undefined -fno-sanitize=shift-base -fsanitize-recover=address \
+                        -fno-omit-frame-pointer
+ifeq ($(SANITIZE),1)
+  CFLAGS += $(GAME_SANITIZER_FLAGS)
+endif
+# AddressSanitizer's use-after-return detection (on by default at run time)
+# moves address-taken locals to heap frames that are poisoned when the
+# function returns. The battle test runner relies on the opposite: a test
+# function's locals stay where they are after it returns, and the runner
+# writes results into them (test/test_runner_battle.c, InvokeTestFunction;
+# platform/game_hooks.h, PlatformCallWithStack). So the test objects are
+# compiled without that detection (GCC's parameter; GCC 13 has no
+# -fsanitize-address-use-after-return); everything else keeps it.
+GAME_TEST_SANITIZER_FLAGS := --param=asan-use-after-return=0
 
 # preproc's COMPOUND_STRING output relies on '@' being the ARM assembler's
 # comment character; this rewrites it for x86 (see the script's comment).
@@ -209,7 +245,7 @@ MAKEFLAGS += --no-print-directory
 .DELETE_ON_ERROR:
 
 RULES_NO_SCAN += clean generated
-.PHONY: objects $(RULES_NO_SCAN)
+.PHONY: objects native platform-lib $(RULES_NO_SCAN)
 
 .DEFAULT_GOAL := objects
 
@@ -274,6 +310,64 @@ objects: $(OBJS)
 
 clean:
 	rm -rf $(BUILD_DIR)/native*/
+
+# --------------------------------------------------------------------------
+# The link
+#
+# Every object plus the platform library (platform/: the hardware modules,
+# the BIOS, the m4a engine, main), linked as the platform's tests are:
+# non-PIE with the executable at 0x40000000, clear of the GBA regions;
+# platform/gba_regions.ld places the regions, EWRAM_INIT and EWRAM_DATA and
+# the test runner's .persistent state at their GBA addresses;
+# platform/gba_game.ld defines what expansion's linker scripts define for
+# the game (gNumMusicPlayers, gMaxLines, __rom_end, __iwram_end, the tests
+# table) and brackets the game's own variables for a soft reset.
+# gInitialMainCB2 is the first main callback, as ld_script_modern.ld and
+# ld_script_test.ld set it; gba_game_objects_linked tells crt0 this is the
+# game, whose objects gba_game.ld must find (crt0.h). SDL2 from pkg-config,
+# libm for the platform.
+ifeq ($(TEST),1)
+  NATIVE_EXE_NAME := pokeemerald-native-test
+  INITIAL_MAIN_CB2 := CB2_TestRunner
+else
+  NATIVE_EXE_NAME := pokeemerald-native
+  INITIAL_MAIN_CB2 := CB2_InitCopyrightScreenAfterBootup
+endif
+NATIVE_EXE := $(OBJ_DIR)/$(NATIVE_EXE_NAME)
+
+# The platform library is built by platform/Makefile, sanitized or not to
+# match (NOSAN=1 puts it in its own directory). It lives under
+# platform/build/, not build/: `make -f Makefile.native clean` leaves it, and
+# `make -C platform clean` removes it (and the unit tests).
+ifeq ($(SANITIZE),1)
+  PLATFORM_LIB := platform/build/$(BITS)/libplatform.a
+  PLATFORM_LIB_ARGS := BITS=$(BITS)
+  NATIVE_LINK_SANITIZERS := -fsanitize=address,undefined
+else
+  PLATFORM_LIB := platform/build/$(BITS)-nosan/libplatform.a
+  PLATFORM_LIB_ARGS := BITS=$(BITS) NOSAN=1
+  NATIVE_LINK_SANITIZERS :=
+endif
+
+NATIVE_LINKER_SCRIPTS := platform/gba_regions.ld platform/gba_game.ld
+NATIVE_LDFLAGS := -m$(BITS) -no-pie -Wl,-Ttext-segment=0x40000000 \
+                  $(NATIVE_LINKER_SCRIPTS:%=-Wl,-T,%) \
+                  -Wl,--defsym,gInitialMainCB2=$(INITIAL_MAIN_CB2) \
+                  -Wl,--defsym,gba_game_objects_linked=1 $(NATIVE_LINK_SANITIZERS)
+NATIVE_LDLIBS := $(shell pkg-config --libs sdl2) -lm
+
+native: $(NATIVE_EXE)
+
+# Always asks platform/Makefile, which knows the library's own prerequisites
+# and leaves it untouched when it is up to date.
+platform-lib:
+	$(MAKE) -C platform lib $(PLATFORM_LIB_ARGS)
+
+$(PLATFORM_LIB): platform-lib ;
+
+$(NATIVE_EXE): $(OBJS) $(PLATFORM_LIB) $(NATIVE_LINKER_SCRIPTS)
+	@echo "$(HOST_CC) <link> -o $@"
+	@$(HOST_CC) $(NATIVE_LDFLAGS) -o $@ $(OBJS) $(PLATFORM_LIB) $(NATIVE_LDLIBS)
 
 # --------------------------------------------------------------------------
 # Expansion's rule fragments, unchanged.
@@ -377,15 +471,37 @@ ifeq ($(TEST),1)
 # macros through `.include`. Its native branch includes this one file
 # instead: the same files flattened by preproc (which also drops the '@'
 # comments) and rewritten by the asm filter, found on the test objects'
-# assembler include path.
+# assembler include path. The few macros named like x86 instructions
+# (call, nop, lock, inc) would replace those instructions in the rest of the
+# object, so overworld_macros.py purges them at the end of that file and
+# puts them in two more, which each OVERWORLD_SCRIPT block includes around
+# its script (see the script's comment).
+OVERWORLD_SCRIPT_FLAT := $(TEST_BUILDDIR)/overworld_script_flat.inc
 OVERWORLD_SCRIPT_MACROS := $(TEST_BUILDDIR)/overworld_script_macros.inc
+OVERWORLD_SCRIPT_X86_MACROS := $(TEST_BUILDDIR)/overworld_script_x86_macros.inc
+OVERWORLD_SCRIPT_X86_PURGE := $(TEST_BUILDDIR)/overworld_script_x86_purge.inc
 OVERWORLD_SCRIPT_MACRO_SRCS := constants/gba_constants.inc asm/macros/asm.inc asm/macros/event.inc
+OVERWORLD_MACROS_SCRIPT := platform/build_glue/overworld_macros.py
 
-$(OVERWORLD_SCRIPT_MACROS): $(OVERWORLD_SCRIPT_MACRO_SRCS) $(DATA_ASM_SUBDIR)/script_cmd_table.inc $(DATA_ASM_SUBDIR)/specials.inc $(ASM_FILTER_CHECKED)
+$(OVERWORLD_SCRIPT_FLAT): $(OVERWORLD_SCRIPT_MACRO_SRCS) $(DATA_ASM_SUBDIR)/script_cmd_table.inc $(DATA_ASM_SUBDIR)/specials.inc $(ASM_FILTER_CHECKED)
 	printf '.include "%s"\n' $(OVERWORLD_SCRIPT_MACRO_SRCS) | $(PREPROC) -i $(@:.inc=.s) charmap.txt | $(ASM_FILTER) > $@
 
-$(TEST_OBJS): $(OVERWORLD_SCRIPT_MACROS)
+$(OVERWORLD_SCRIPT_MACROS): $(OVERWORLD_SCRIPT_FLAT) $(OVERWORLD_MACROS_SCRIPT)
+	$(PYTHON) -I $(OVERWORLD_MACROS_SCRIPT) --self-test
+	$(PYTHON) -I $(OVERWORLD_MACROS_SCRIPT) --as "$(HOST_AS) --$(BITS)" $< $@ $(OVERWORLD_SCRIPT_X86_MACROS) $(OVERWORLD_SCRIPT_X86_PURGE)
+
+# overworld_macros.py writes all three files in one run. GNU make before 4.3
+# (which Makefile.native still supports) has no grouped targets, and an empty
+# recipe here would let a deleted file count as made; this recipe only checks
+# the file is there, and says how to get it back if it is not.
+$(OVERWORLD_SCRIPT_X86_MACROS) $(OVERWORLD_SCRIPT_X86_PURGE): $(OVERWORLD_SCRIPT_MACROS)
+	@test -f $@ || { echo "$@ is missing: delete $(OVERWORLD_SCRIPT_MACROS) and build again" >&2; exit 1; }
+
+$(TEST_OBJS): $(OVERWORLD_SCRIPT_MACROS) $(OVERWORLD_SCRIPT_X86_MACROS) $(OVERWORLD_SCRIPT_X86_PURGE)
 $(TEST_OBJS): CFLAGS += -Wa,-I,$(TEST_BUILDDIR)
+ifeq ($(SANITIZE),1)
+$(TEST_OBJS): CFLAGS += $(GAME_TEST_SANITIZER_FLAGS)
+endif
 
 $(TEST_BUILDDIR)/%.o: $(TEST_SUBDIR)/%.c $(C_FILTER_SCRIPT)
 	@echo "$(HOST_CC) <flags> -o $@ $<"

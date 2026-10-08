@@ -139,8 +139,8 @@ _Static_assert(__BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__, "psg reads register by
 #define REG_NR44 0x07Du
 #define REG_NR50 0x080u /* SOUNDCNT_L, low byte */
 #define REG_NR51 0x081u /* SOUNDCNT_L, high byte */
-#define REG_SOUNDCNT_H 0x082u
-#define REG_NR52 0x084u /* SOUNDCNT_X */
+#define REG_SOUNDCNT_H GBA_SOUNDCNT_H_OFFSET
+#define REG_NR52 GBA_SOUNDCNT_X_OFFSET /* SOUNDCNT_X */
 #define REG_WAVE_RAM 0x090u /* WAVE_RAM0_L .. WAVE_RAM3_H */
 /* GBATEK SOUNDCNT_X: the registers master disable resets, 4000060h-4000081h. */
 #define REG_PSG_FIRST REG_NR10
