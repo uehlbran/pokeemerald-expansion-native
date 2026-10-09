@@ -180,6 +180,12 @@ git diff OLD NEW -- tools/mgba-rom-test-hydra tools/patchelf tools/scaninc tools
   undefined symbol shows up at link time and belongs in that table.
 - `platform/build_glue/asm_filter.py`, `c_filter.sed`,
   `overworld_macros.py`: new assembler constructs or `preproc` output.
+  `asm_syntax.py` reads the comments, statements, labels and directives
+  the filter and the battle script checker share.
+- `platform/build_glue/elf_object.py` (reads an ELF64 object for the data
+  checks), `check_support.py` (errors, report cap, options and rule
+  matching the checkers share) and `preprocessor_conditions.py` (finds a C
+  constant's value under its `#if`s, for `Z_EFFECT_BS_LENGTH`).
 - `platform/build_glue/data_address_words.txt`: the address words of the
   assembled data, per object and label. A new table or data object fails
   the 64-bit link's relocation check (`check_relocations.py`) until it is

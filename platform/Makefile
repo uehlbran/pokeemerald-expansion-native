@@ -10,7 +10,7 @@
 #   make -C platform format-check  fail, naming the files, if any would change
 #   make -C platform lint          clang-tidy (../.clang-tidy) and cppcheck over every .c file;
 #                                  any finding fails
-#   make -C platform gate          the platform gate: format-check, lint and test for both widths, tools-test
+#   make -C platform gate          the platform gate: format-check, lint and test for both widths, tools-test, glue-test
 #   make -C platform clean         remove build/
 #
 # Layout: every platform/*.c is a module and goes into libplatform.a, so a new
@@ -272,6 +272,16 @@ tools-test:
 
 .PHONY: tools-test
 
+# The self-test of every build glue script and module (each takes --self-test);
+# Makefile.native runs the ones the 64-bit link needs, this runs them all.
+GLUE_SCRIPTS := $(sort $(wildcard build_glue/*.py))
+glue-test:
+	@set -e; for script in $(GLUE_SCRIPTS); do \
+		echo "python3 -I $$script --self-test"; python3 -I $$script --self-test; \
+	done
+
+.PHONY: glue-test
+
 # The platform gate: style, analysis, then the sanitized unit tests at both widths.
 # Not in it, because they need qemu-arm and the ARM toolchain: the records
 # against the GBA's own code, run by hand (docs/UPGRADING.md):
@@ -283,5 +293,6 @@ gate:
 	$(MAKE) test BITS=32
 	$(MAKE) test BITS=64
 	$(MAKE) tools-test
+	$(MAKE) glue-test
 
 -include $(wildcard $(OBJ_DIR)/*.d $(OBJ_DIR)/test/*.d $(OBJ_DIR)/m4a/*.d)

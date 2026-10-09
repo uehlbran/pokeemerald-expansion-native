@@ -94,6 +94,7 @@ def self_test():
     expect("rule: stem", matching_rule(rules, "m/mus_x.o", "mus_x"), 1)
     expect("rule: stem of another object", matching_rule(rules, "m/mus_x.o", "mus_y"), None)
     expect("rule: first match wins", matching_rule(rules, "a.o", "gOther"), 2)
+    expect("rule: the symbol matches but the object does not", matching_rule(rules[:1], "b.o", "gTable"), None)
     expect("rule: none", matching_rule(rules, "b.o", "Other"), None)
     for failure in failures:
         sys.stderr.write("check_support self-test: %s\n" % failure)

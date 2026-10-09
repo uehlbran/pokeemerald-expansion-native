@@ -64,6 +64,7 @@ RULES = (
     ("data/map_events.o", "*_MapEvents", "MapEvents", ONE),
 )
 COUNT_FROM_GROWTH = 10      # s64 - s32 above this: n follows from the distances alone
+SCALAR_SIZES = (1, 2, 4, 8)
 ALIGNMENT_SLACK = 3         # the 32-bit padding before a symbol is at most 3 bytes,
 POINTER_ALIGNMENT_SLACK = 7  # the 64-bit padding at most 7
 POINTER_ARRAY_COUNT = "trackCount"   # SongHeader.part has one pointer per track
@@ -80,11 +81,31 @@ LAYOUT_LINE_FORMS = "'%s NAME SIZE' or '%s STRUCT FIELD OFFSET SIZE %s'" % (LAYO
 # Inputs
 
 class Layout:
-    """One struct: its size and its members (name, offset, size, kind)."""
+    """One struct as the layout file at path describes it: its size and its
+    members (name, offset, size, kind)."""
 
-    def __init__(self, size):
-        self.size = size
+    def __init__(self, name, size, path):
+        self.name, self.size, self.path = name, size, path
         self.members = []
+
+    def alignment_of(self, size):
+        """The alignment of a member of this size: its size if that is a
+        scalar's, else 1 (a byte array or a blob of bytes)."""
+        return size if size in SCALAR_SIZES else 1
+
+    def is_padding(self, offset):
+        """True if the byte at offset lies in a gap the compiler's alignment
+        explains: before a member at its natural alignment, or at the end of
+        the struct. Any other gap is a member the probe does not print."""
+        previous_end = max([o + s for _, o, s, _ in self.members if o + s <= offset], default=0)
+        later = [(o, s) for _, o, s, _ in self.members if o > offset]
+        if later:
+            next_offset, next_size = min(later)
+            alignment = self.alignment_of(next_size)
+        else:
+            next_offset = self.size
+            alignment = max([self.alignment_of(s) for _, _, s, _ in self.members], default=1)
+        return next_offset == -(-previous_end // alignment) * alignment
 
     def member_places(self):
         """Member name -> (offset, size)."""
@@ -97,7 +118,7 @@ def parse_layouts(text, path):
     for number, line in enumerate(text.splitlines(), 1):
         fields = line.split()
         if fields[:1] == [LAYOUT_STRUCT] and len(fields) == 3 and fields[2].isdigit():
-            layouts[fields[1]] = Layout(int(fields[2]))
+            layouts[fields[1]] = Layout(fields[1], int(fields[2]), path)
         elif (fields[:1] == [LAYOUT_MEMBER] and len(fields) == 6 and fields[1] in layouts
               and fields[3].isdigit() and fields[4].isdigit() and fields[5] in KINDS):
             layouts[fields[1]].members.append((fields[2], int(fields[3]), int(fields[4]), fields[5]))
@@ -204,16 +225,21 @@ def compare_address(where, field, span64, span32):
     return []
 
 
-def padding_problem(where, side64, size64, covered):
+def padding_problem(where, side64, layout64, size64, covered):
     """The first byte of the struct's size64 bytes that no member covers and
-    is not zero or holds a relocation, or None."""
+    is not padding, or is padding that is not zero or holds a relocation, or None."""
     for offset in range(side64.base, min(side64.base + size64, len(side64.contents))):
-        if offset not in covered and (side64.contents[offset] != 0 or offset in side64.relocations):
+        if offset in covered:
+            continue
+        if not layout64.is_padding(offset - side64.base):
+            return "%s: no layout entry covers offset %d of struct %s in %s (the probe does not print a member there)" \
+                % (where, offset - side64.base, layout64.name, layout64.path)
+        if side64.contents[offset] != 0 or offset in side64.relocations:
             return "%s: padding byte %d is not zero" % (where, offset - side64.base)
     return None
 
 
-def compare_entry(where, side64, side32, layout32, layout64, layout_files):
+def compare_entry(where, side64, side32, layout32, layout64):
     """(problems, the entry's size at 64 bits) from comparing one struct at
     side64 with the same struct at side32. A trailing pointer array is as
     long as the data says."""
@@ -224,7 +250,7 @@ def compare_entry(where, side64, side32, layout32, layout64, layout_files):
     for name, offset64, member_size64, kind in layout64.members:
         if name not in places32:
             raise CheckError("%s: member %s is in the 64-bit layout but not in the 32-bit one (%s, %s)"
-                             % (where, name, *layout_files))
+                             % (where, name, layout32.path, layout64.path))
         offset32, member_size32 = places32[name]
         repeat = 1
         if kind == KIND_POINTERS:
@@ -238,7 +264,7 @@ def compare_entry(where, side64, side32, layout32, layout64, layout_files):
             field = "%s%s" % (name, "[%d]" % index if kind == KIND_POINTERS else "")
             compare = compare_value if kind == KIND_VALUE else compare_address
             problems.extend(compare(where, field, span64, span32))
-    problem = padding_problem(where, side64, size64, covered)
+    problem = padding_problem(where, side64, layout64, size64, covered)
     if problem:
         problems.append(problem)
     return problems, size64
@@ -265,7 +291,7 @@ class ObjectPair:
 
     def compare(self, where, at64, at32, layout32, layout64):
         side64, side32 = self.sides(*at64, *at32)
-        return compare_entry(where, side64, side32, layout32, layout64, (self.layouts32.path, self.layouts64.path))
+        return compare_entry(where, side64, side32, layout32, layout64)
 
 
 def check_array(pair, where, at64, at32, ranges, layouts):
@@ -360,6 +386,9 @@ member ToneData wav 4 4 pointer
 member ToneData attack 8 1 value
 struct SongHeader 12
 member SongHeader trackCount 0 1 value
+member SongHeader blockCount 1 1 value
+member SongHeader priority 2 1 value
+member SongHeader reverb 3 1 value
 member SongHeader tone 4 4 pointer
 member SongHeader part 8 4 pointers
 """
@@ -370,6 +399,9 @@ member ToneData wav 8 8 pointer
 member ToneData attack 16 1 value
 struct SongHeader 24
 member SongHeader trackCount 0 1 value
+member SongHeader blockCount 1 1 value
+member SongHeader priority 2 1 value
+member SongHeader reverb 3 1 value
 member SongHeader tone 8 8 pointer
 member SongHeader part 16 8 pointers
 """
@@ -478,6 +510,12 @@ def self_test():
             problems = self_test_run(directory, sources, layout_texts)
         if not problems_match(["CheckError: "], problems) or wanted not in problems[0]:
             failures.append("%s\n  expected a CheckError with %r\n  got      %r" % (name, wanted, problems))
+    probe_without_tone = SELF_TEST_LAYOUT64.replace("member SongHeader tone 8 8 pointer\n", "")
+    with tempfile.TemporaryDirectory() as directory:
+        problems = self_test_run(directory, sources, (None, probe_without_tone))
+    wanted = ["mus_a: no layout entry covers offset 4 of struct SongHeader in layout64.txt"]
+    if not problems_match(wanted, problems):
+        failures.append("a member the probe does not print\n  expected %r\n  got      %r" % (wanted, problems))
     failures.extend(self_test_layout_files())
     for failure in failures:
         sys.stderr.write("check_data_layout self-test: %s\n" % failure)
