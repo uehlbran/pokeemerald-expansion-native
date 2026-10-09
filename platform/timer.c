@@ -52,8 +52,7 @@ static void (*raise_irq)(enum gba_irq);
 
 static volatile uint16_t *timer_register(unsigned index, uint32_t offset)
 {
-    return (volatile uint16_t *)(uintptr_t)(GBA_IO_BASE + TIMER_REGISTERS_OFFSET
-                                            + index * TIMER_REGISTER_STRIDE + offset);
+    return gba_io_u16(TIMER_REGISTERS_OFFSET + index * TIMER_REGISTER_STRIDE + offset);
 }
 
 static volatile uint16_t *cnt_l(unsigned index)

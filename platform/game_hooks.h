@@ -38,6 +38,9 @@
  * setjmp's first return is 0). */
 #define GAME_HOOKS_JUMP_EXIT 1
 
+/* The value game_hooks longjmps to the AgbMainLoop target with (non-zero). */
+#define GAME_HOOKS_JUMP_AGB_MAIN_LOOP 1
+
 /* The exit code main returns when a hook cannot do what the game asked
  * (sysexits.h EX_SOFTWARE, "internal software error"). */
 #define GAME_HOOKS_EXIT_INTERNAL_ERROR 70u

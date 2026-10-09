@@ -1,0 +1,62 @@
+/*
+ * options.h: the command line of the native executable.
+ *
+ * Not hardware: the host-side choices made when the process starts (window
+ * or none, save and clock file paths, replay script, frame limit). main.c
+ * parses them once, before any module starts, and hands the result to each
+ * module's start step. The option list is options_print_usage's text, and
+ * docs/BUILDING.md and tests/smoke/README.md use the same names.
+ */
+#ifndef PLATFORM_OPTIONS_H
+#define PLATFORM_OPTIONS_H
+
+#include <stdbool.h>
+#include <stdint.h>
+#include <stdio.h>
+
+#include "video.h"
+
+/* What an option takes when the command line does not give it. */
+#define OPTIONS_DEFAULT_SAVE_PATH "pokeemerald.sav"
+#define OPTIONS_DEFAULT_RTC_OFFSET_PATH "pokeemerald.rtc"
+#define OPTIONS_DEFAULT_SCALE VIDEO_DEFAULT_SCALE
+#define OPTIONS_DEFAULT_FRAME_LIMIT 0u /* none */
+#define OPTIONS_DEFAULT_OUT_DIR "."
+
+struct options {
+    bool headless;
+    bool silent;
+    bool unthrottled;
+    bool help;
+    bool test_runner;
+    const char *persistent_state; /* the hex the crash reboot passes, or NULL */
+    int argc;                     /* main's, for the crash reboot */
+    char **argv;
+    int scale;
+    uint32_t frame_limit;
+    const char *save_path;        /* NULL in test-runner mode: nothing is written to disk */
+    const char *rtc_offset_path;  /* NULL in test-runner mode */
+    const char *screenshot_path;
+    const char *replay_path;  /* NULL: play normally */
+    const char *out_dir;
+    uint32_t resume_after_line; /* --resume-at, set by a restart */
+    bool rtc_fixed;
+    int64_t rtc_fixed_epoch;
+};
+
+enum options_error {
+    OPTIONS_OK = 0,
+    OPTIONS_ERR_USAGE = -1 /* an unknown option, a bad or missing value, or a bad combination */
+};
+
+/* Parses argv[1..argc-1] into *out, starting from the defaults. The strings
+ * in *out point into argv. Returns OPTIONS_OK, or OPTIONS_ERR_USAGE after
+ * printing what is wrong and the usage text to stderr; *out is then
+ * unspecified. A persistent state without --test-runner is an error, and
+ * --test-runner clears the save and clock paths. */
+int options_parse(int argc, char **argv, struct options *out);
+
+/* The usage text, to `out`. */
+void options_print_usage(FILE *out);
+
+#endif /* PLATFORM_OPTIONS_H */

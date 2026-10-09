@@ -60,12 +60,12 @@ static struct {
 } frame;
 
 static uint16_t pixels[VIDEO_PIXEL_COUNT];
-static int16_t psg_samples[FRAME_AUDIO_SAMPLES_PER_FRAME * 2];
-static int16_t mixed_samples[FRAME_AUDIO_SAMPLES_PER_FRAME * 2];
+static int16_t psg_samples[FRAME_AUDIO_SAMPLES_PER_FRAME * FRAME_AUDIO_CHANNELS];
+static int16_t mixed_samples[FRAME_AUDIO_SAMPLES_PER_FRAME * FRAME_AUDIO_CHANNELS];
 
 static uint16_t io_read(uint32_t offset)
 {
-    return *(const volatile uint16_t *)(uintptr_t)(GBA_IO_BASE + offset);
+    return *gba_io_u16(offset);
 }
 
 int frame_init(const struct frame_config *config)

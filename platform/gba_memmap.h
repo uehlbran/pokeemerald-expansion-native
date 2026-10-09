@@ -133,4 +133,24 @@ enum gba_region gba_memmap_region_of(uintptr_t address, size_t length);
 /* Base, size and name of region; NULL for GBA_REGION_NONE or an unknown region. */
 const struct gba_region_info *gba_memmap_info(enum gba_region region);
 
+/* The I/O register of the given width at `offset` from GBA_IO_BASE (GBATEK
+ * "GBA I/O Map"), as a pointer into the mapped page. The integer-to-pointer
+ * conversion is the identity because the page is mapped at its GBA address
+ * (above); flagged for the 64-bit milestone with that identity. The caller
+ * passes an offset of a register that lies inside GBA_IO_SIZE. */
+static inline volatile uint8_t *gba_io_u8(uint32_t offset)
+{
+    return (volatile uint8_t *)(uintptr_t)(GBA_IO_BASE + offset);
+}
+
+static inline volatile uint16_t *gba_io_u16(uint32_t offset)
+{
+    return (volatile uint16_t *)(uintptr_t)(GBA_IO_BASE + offset);
+}
+
+static inline volatile uint32_t *gba_io_u32(uint32_t offset)
+{
+    return (volatile uint32_t *)(uintptr_t)(GBA_IO_BASE + offset);
+}
+
 #endif /* GBA_MEMMAP_H */

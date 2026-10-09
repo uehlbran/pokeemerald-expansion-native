@@ -91,6 +91,7 @@ size_t crt0_game_bss_size(void)
 
 int crt0_init(void)
 {
+    crt0_shutdown(); /* a second init, or a failed one, never leaves an older copy in use */
     if ((uintptr_t)gba_game_objects_linked != 0 && span(game_bss_start, game_bss_objects_end) == 0) {
         fprintf(stderr, "crt0: no .bss from the game's objects in game_bss: gba_game.ld's object-path patterns "
                 "do not match Makefile.native's object directories, so a soft reset would leave the game's "
@@ -104,7 +105,6 @@ int crt0_init(void)
                 ewram_size, CRT0_EWRAM_INIT_MAX_SIZE);
         return CRT0_ERR_EWRAM_INIT_SIZE;
     }
-    crt0_shutdown();
     if (data_size > 0) {
         copies.game_data = malloc(data_size);
         if (copies.game_data == NULL) {
