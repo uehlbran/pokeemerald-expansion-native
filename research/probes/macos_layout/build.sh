@@ -3,7 +3,10 @@
 # with clang and ld64 as a fixed-address x86_64 image with the GBA regions as
 # segments, and runs it 100 times; also the MAP_FIXED probe. Every command is echoed
 # with a "+" prefix; everything is also written to out/report.txt.
-#   On macos-15-intel the layout probe is expected to link and run.
+#   On macos-15-intel the layout probe is expected to link and run. Four link
+#   attempts: as it was (layout_plain), -no_fixup_chains, an old deployment target and
+#   -ld_classic; ld ignores -image_base with chained fixups, so the header address
+#   in each run's output says which one worked.
 #   On macos-latest (arm64) it is expected to be refused or to fail to run; this
 #   records what happens, then tries the x86_64 build under Rosetta 2.
 set -u
@@ -17,7 +20,7 @@ PAGEZERO_SIZE=0x1000
 CFLAGS="-std=c11 -O1 -Wall -Wextra -Wshadow -Wconversion -Wstrict-prototypes -Werror"
 HOST_ARCH=$(uname -m)
 
-# Region segments at their GBA addresses; GBATEK "GBA Memory Map", regions.s.
+# Region segments at their GBA addresses; GBATEK "GBA Memory Map", regions.S.
 SEGADDRS=(
     -Wl,-segaddr,__GBAEWRAM,0x02000000
     -Wl,-segaddr,__GBAIWRAM,0x03000000
@@ -44,14 +47,25 @@ if [ "$HOST_ARCH" = arm64 ]; then
     echo "Rosetta present: exit status $?"
 fi
 
-# link NAME ARCH EXTRA...: the layout probe for ARCH; prints LINKED or LINK FAILED.
+# link_layout NAME ARCH MINFLAG LINKFLAGS...: the layout probe for ARCH. MINFLAG is a
+# deployment-target flag for the compiler and the linker, or "" for none.
 link_layout() {
-    local name=$1 arch=$2; shift 2
-    run clang -arch "$arch" $CFLAGS -c probe.c -o "out/$name.probe.o" || return 1
-    run clang -arch "$arch" -c regions.s -o "out/$name.regions.o" || return 1
-    run clang -arch "$arch" "out/$name.probe.o" "out/$name.regions.o" -o "out/$name" \
+    local name=$1 arch=$2 minflag=$3; shift 3
+    local min=()
+    [ -n "$minflag" ] && min=("$minflag")
+    run clang -arch "$arch" ${min[@]+"${min[@]}"} $CFLAGS -c probe.c -o "out/$name.probe.o" || return 1
+    run clang -arch "$arch" ${min[@]+"${min[@]}"} -c regions.S -o "out/$name.regions.o" || return 1
+    run clang -arch "$arch" ${min[@]+"${min[@]}"} "out/$name.probe.o" "out/$name.regions.o" -o "out/$name" \
         -Wl,-no_pie -Wl,-pagezero_size,$PAGEZERO_SIZE -Wl,-image_base,$IMAGE_BASE \
-        "${SEGADDRS[@]}" "$@"
+        "${SEGADDRS[@]}" "$@" || return 1
+    # Chained fixups make ld ignore -image_base (run 37922990222, probe_macos.log:253).
+    if otool -l "out/$name" | grep -q LC_DYLD_CHAINED_FIXUPS; then
+        echo "LC_DYLD_CHAINED_FIXUPS: present in $name"
+    else
+        echo "LC_DYLD_CHAINED_FIXUPS: absent in $name"
+    fi
+    echo "+ otool -l out/$name (build version, dyld info, __TEXT)"
+    otool -l "out/$name" | grep -E "LC_BUILD_VERSION|minos|LC_DYLD|segname __TEXT" -A1
 }
 
 # count_runs NAME PREFIX...: run PREFIX out/NAME 100 times, count exits with status 0.
@@ -75,20 +89,22 @@ count_runs() {
 }
 
 echo "== layout probe, $HOST_ARCH, -no_pie -pagezero_size $PAGEZERO_SIZE -image_base $IMAGE_BASE + segments"
-if link_layout layout_native "$HOST_ARCH"; then
-    echo "LINKED layout_native"
-    run otool -l out/layout_native
-    count_runs layout_native
-else
-    echo "LINK FAILED layout_native with the default linker; trying -ld_classic"
-    if link_layout layout_native_classic "$HOST_ARCH" -Wl,-ld_classic; then
-        echo "LINKED layout_native_classic (-ld_classic)"
-        run otool -l out/layout_native_classic
-        count_runs layout_native_classic
+# x86_64 macOS accepts a 10.13 target; arm64 starts at 11.0.
+if [ "$HOST_ARCH" = arm64 ]; then OLD_MIN=-mmacosx-version-min=11.0; else OLD_MIN=-mmacosx-version-min=10.13; fi
+try_layout() { # NAME MINFLAG LINKFLAGS...
+    local name=$1
+    echo "---- attempt $name"
+    if link_layout "$name" "$HOST_ARCH" "${@:2}"; then
+        echo "LINKED $name"
+        count_runs "$name"
     else
-        echo "LINK FAILED layout_native_classic"
+        echo "LINK FAILED $name"
     fi
-fi
+}
+try_layout layout_plain ""
+try_layout layout_nofixup "" -Wl,-no_fixup_chains
+try_layout layout_minos "$OLD_MIN"
+try_layout layout_classic "" -Wl,-ld_classic
 
 echo "== MAP_FIXED probe at 0x02000000 and 0x04000000, default page zero and a 4 KiB one"
 run clang -arch "$HOST_ARCH" $CFLAGS -c mapfixed.c -o out/mapfixed.o
@@ -102,7 +118,7 @@ fi
 
 if [ "$HOST_ARCH" = arm64 ]; then
     echo "== the same layout probe built for x86_64 and run under Rosetta 2"
-    if link_layout layout_rosetta x86_64; then
+    if link_layout layout_rosetta x86_64 "" -Wl,-no_fixup_chains; then
         echo "LINKED layout_rosetta"
         count_runs layout_rosetta arch -x86_64
     else
