@@ -11,6 +11,9 @@
 #
 #   pointer   C reads these words as 8-byte pointers at 64 bits (struct or
 #             array members): each must be 8 bytes and 8-byte aligned.
+#   table     a pointer array and nothing else: as "pointer", and its words
+#             fill it up to the next symbol, so bytecode that follows it
+#             without a label of its own cannot be widened with it.
 #   packed    8-byte pointers in a packed struct (ObjectEventTemplate is
 #             packed, aligned(4)); any alignment.
 #   operands  battle script bytecode: src/battle_script_commands.c reads
@@ -33,6 +36,12 @@
 # the assembled data"), which first counted the battle scripts as 4-byte
 # bytecode. An upstream table or object that is not here fails the 64-bit
 # build until it is classified.
+#
+# Counts at expansion 1.17.1 (data/*.o and the 530 songs; TEST=0 and 1
+# alike): 61,154 address words, 19,208 of them 8 bytes and 41,946 4 bytes
+# (41,522 bytecode and the 424 key-split words). The inventory's 17,033
+# and 44,121 became 17,034 and 44,120 when gScriptCmdTableEnd's word was
+# widened, then 19,208 and 41,946 with the battle scripts' 2,174 operands.
 
 # mapjson output: map layouts, headers, groups and connections
 data/maps.o                             *                               pointer
@@ -53,20 +62,20 @@ sound/songs/midi/*.o                    {stem}                          pointer
 sound/songs/midi/*.o                    *                               bytecode
 
 # hand-written tables of C pointers in the script objects
-data/event_scripts.o                    gScriptCmdTable                 pointer
-data/event_scripts.o                    gScriptCmdTableEnd              pointer
-data/event_scripts.o                    gSpecialVars                    pointer
-data/event_scripts.o                    gSpecials                       pointer
-data/event_scripts.o                    gStdScripts                     pointer
+data/event_scripts.o                    gScriptCmdTable                 table
+data/event_scripts.o                    gScriptCmdTableEnd              table
+data/event_scripts.o                    gSpecialVars                    table
+data/event_scripts.o                    gSpecials                       table
+data/event_scripts.o                    gStdScripts                     table
 data/event_scripts.o                    *                               bytecode
-data/battle_scripts_2.o                 gBattlescriptsForUsingItem      pointer
-data/battle_scripts_2.o                 gBattlescriptsForSafariActions  pointer
+data/battle_scripts_2.o                 gBattlescriptsForUsingItem      table
+data/battle_scripts_2.o                 gBattlescriptsForSafariActions  table
 data/battle_scripts_2.o                 *                               operands
-data/contest_ai_scripts.o               gContestAI_ScriptsTable         pointer
+data/contest_ai_scripts.o               gContestAI_ScriptsTable         table
 data/contest_ai_scripts.o               *                               bytecode
-data/field_effect_scripts.o             gFieldEffectScriptPointers      pointer
+data/field_effect_scripts.o             gFieldEffectScriptPointers      table
 data/field_effect_scripts.o             *                               bytecode
-data/mystery_event_script_cmd_table.o   gMysteryEventScriptCmdTable     pointer
+data/mystery_event_script_cmd_table.o   gMysteryEventScriptCmdTable     table
 
 # battle scripts (CMD_ARGS operands)
 data/battle_scripts_1.o                 *                               operands

@@ -257,6 +257,14 @@ endif
 ifeq (,$(filter 4 8,$(DATA_POINTER_SIZE)))
   $(error DATA_POINTER_SIZE must be 4 or 8, not '$(DATA_POINTER_SIZE)')
 endif
+# Nothing records the pointer size in the objects, so 4-byte data must never
+# land where the 64-bit build keeps its own (the relocation check's reference
+# directory is the only place, see DATA_POINTER4_DIR).
+ifeq ($(BITS)/$(DATA_POINTER_SIZE),64/4)
+  ifeq (,$(filter %/pointer4,$(OBJ_DIR)))
+    $(error DATA_POINTER_SIZE=4 at BITS=64 builds only the relocation check's reference objects (OBJ_DIR .../pointer4), not $(OBJ_DIR))
+  endif
+endif
 # Which of the filter's 8-byte rules apply (asm_filter.py, --input): the
 # songs and the map data say so where their recipes are.
 ASM_FILTER_INPUT := data
@@ -702,7 +710,25 @@ DATA_ADDRESS_WORDS := platform/build_glue/data_address_words.txt
 DATA_POINTER4_DIR := $(OBJ_DIR)/pointer4
 CHECKED_DATA_OBJS := $(patsubst $(OBJ_DIR)/%,%,$(DATA_ASM_OBJS) $(MID_OBJS))
 
-$(OBJ_DIR)/data_relocations.checked: $(DATA_ASM_OBJS) $(MID_OBJS) $(CHECK_RELOCATIONS_SCRIPT) $(DATA_ADDRESS_WORDS)
+# Then it compares the bytes of the structs the data holds (struct ToneData,
+# Song, MusicPlayer, SongHeader, the map structs) with the same reference,
+# against their C layout at both widths, which data_layout_probe.c prints
+# compiled with the game's flags (check_data_layout.py).
+CHECK_DATA_LAYOUT_SCRIPT := platform/build_glue/check_data_layout.py
+DATA_LAYOUT_PROBE := platform/build_glue/data_layout_probe.c
+DATA_LAYOUTS := $(OBJ_DIR)/data_layout32.txt $(OBJ_DIR)/data_layout64.txt
+
+$(OBJ_DIR)/data_layout%.txt: $(DATA_LAYOUT_PROBE)
+	@mkdir -p $(@D)
+	$(HOST_CC) -m$* $(GAME_CHAR_FLAGS) $(CPPFLAGS) -MMD -MP -MT $@ -MF $(@:.txt=.d) -o $(@:.txt=.probe) $<
+	$(@:.txt=.probe) > $@
+
+ifneq ($(NODEP),1)
+-include $(DATA_LAYOUTS:.txt=.d)
+endif
+
+$(OBJ_DIR)/data_relocations.checked: $(DATA_ASM_OBJS) $(MID_OBJS) $(CHECK_RELOCATIONS_SCRIPT) $(DATA_ADDRESS_WORDS) \
+                                     $(CHECK_DATA_LAYOUT_SCRIPT) $(DATA_LAYOUTS)
 	@echo "$(MAKE) -f Makefile.native BITS=$(BITS) TEST=$(TEST) DATA_POINTER_SIZE=4 OBJ_DIR=$(DATA_POINTER4_DIR) <data objects>"
 	@+$(MAKE) -f Makefile.native BITS=$(BITS) TEST=$(TEST) DATA_POINTER_SIZE=4 OBJ_DIR=$(DATA_POINTER4_DIR) \
 	    $(addprefix $(DATA_POINTER4_DIR)/,$(CHECKED_DATA_OBJS))
@@ -710,6 +736,9 @@ $(OBJ_DIR)/data_relocations.checked: $(DATA_ASM_OBJS) $(MID_OBJS) $(CHECK_RELOCA
 	@echo "$(PYTHON) -I $(CHECK_RELOCATIONS_SCRIPT) --list $(DATA_ADDRESS_WORDS) --objdir $(OBJ_DIR) --reference $(DATA_POINTER4_DIR) <data objects>"
 	@$(PYTHON) -I $(CHECK_RELOCATIONS_SCRIPT) --list $(DATA_ADDRESS_WORDS) --objdir $(OBJ_DIR) \
 	    --reference $(DATA_POINTER4_DIR) $(CHECKED_DATA_OBJS)
+	$(PYTHON) -I $(CHECK_DATA_LAYOUT_SCRIPT) --self-test
+	$(PYTHON) -I $(CHECK_DATA_LAYOUT_SCRIPT) --layout32 $(OBJ_DIR)/data_layout32.txt --layout64 $(OBJ_DIR)/data_layout64.txt \
+	    --objdir $(OBJ_DIR) --reference $(DATA_POINTER4_DIR)
 	@touch $@
 
 # The battle script macros must write each command's operands as

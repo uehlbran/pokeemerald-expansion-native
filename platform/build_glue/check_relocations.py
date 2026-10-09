@@ -22,6 +22,10 @@ and the list classifies that symbol. The check fails unless:
   * a "pointer" symbol holds only R_X86_64_64, each at an 8-byte aligned
     offset in a section aligned to 8 (gcc copies such structs with aligned
     SSE moves, and UBSan checks the alignment of every load);
+  * a "table" symbol is a "pointer" symbol that is an array of pointers and
+    nothing else: its words fill it up to the next symbol (or the end of
+    its section), so a table of bytecode that follows it without a label
+    of its own cannot be widened with it unnoticed;
   * a "packed" symbol holds only R_X86_64_64 (struct ObjectEventTemplate is
     packed, aligned(4): its script pointer may sit at offset 4 mod 8);
   * an "operands" symbol (battle script bytecode, which
@@ -60,7 +64,7 @@ TONE_DATA_SIZE = 24            # sizeof(struct ToneData) at 64 bits
 TONE_WAV_OFFSET = 8            # offsetof(struct ToneData, wav)
 TONE_KEY_SPLIT_OFFSET = 16     # offsetof(struct ToneData, attack)
 
-CLASSES = ("pointer", "packed", "operands", "tone", "bytecode", "label")
+CLASSES = ("pointer", "table", "packed", "operands", "tone", "bytecode", "label")
 MAX_REPORTS = 20
 READELF_BATCH = 64
 
@@ -73,12 +77,13 @@ class ObjectFile:
 
     def __init__(self):
         self.alignments = {}   # section name -> sh_addralign
+        self.sizes = {}        # section name -> sh_size
         self.symbols = []      # Symbol, in symbol-table order, defined in a section
         self.relocations = []  # Relocation
 
 
 SECTION_LINE = re.compile(
-    r"^\s*\[\s*(\d+)\]\s+(\S+)\s+\S+\s+[0-9a-f]+\s+[0-9a-f]+\s+[0-9a-f]+\s+[0-9a-f]+"
+    r"^\s*\[\s*(\d+)\]\s+(\S+)\s+\S+\s+[0-9a-f]+\s+[0-9a-f]+\s+([0-9a-f]+)\s+[0-9a-f]+"
     r"\s+[A-Za-z]*\s*\d+\s+\d+\s+(\d+)\s*$")
 SYMBOL_LINE = re.compile(
     r"^\s*\d+:\s+([0-9a-f]+)\s+\S+\s+(\w+)\s+\w+\s+\w+\s+(\w+)\s+(\S+)\s*$")
@@ -114,7 +119,8 @@ def parse_readelf(text, first_name):
         match = SECTION_LINE.match(line)
         if match:
             section_names[match.group(1)] = match.group(2)
-            current.alignments[match.group(2)] = int(match.group(3))
+            current.sizes[match.group(2)] = int(match.group(3), 16)
+            current.alignments[match.group(2)] = int(match.group(4))
             continue
         match = RELOCATION_SECTION.match(line)
         if match:
@@ -212,7 +218,7 @@ def placement_problem(obj, relocation, owner, kind):
         return None if relocation.type == ADDRESS_4 else "a bytecode address word must stay 4 bytes"
     if kind in ("packed", "operands"):
         return None if relocation.type == ADDRESS_8 else "a pointer must be 8 bytes"
-    if kind == "pointer":
+    if kind in ("pointer", "table"):
         if relocation.type != ADDRESS_8:
             return "a pointer must be 8 bytes"
         return None if aligned else "a pointer must be 8-byte aligned"
@@ -250,7 +256,27 @@ def check_object(rules, name, obj, reference, used):
         if counts[symbol] != expected[symbol]:
             problems.append("%s: %s holds %d address words, %d with 4-byte pointers"
                             % (name, symbol, counts[symbol], expected[symbol]))
+    for symbol, extent in table_extents(rules, name, obj):
+        if counts[symbol.name] * POINTER_SIZE != extent:
+            problems.append("%s: table %s holds %d pointers (%d bytes) but %d bytes lie before the next symbol"
+                            % (name, symbol.name, counts[symbol.name], counts[symbol.name] * POINTER_SIZE, extent))
     return problems
+
+
+def table_extents(rules, name, obj):
+    """(Symbol, bytes from it to the next symbol or its section's end) for
+    each "table" symbol."""
+    starts = collections.defaultdict(set)
+    for symbol in obj.symbols:
+        if classify(rules, name, symbol.name, set()) != "label":
+            starts[symbol.section].add(symbol.value)
+    result = []
+    for symbol in obj.symbols:
+        if classify(rules, name, symbol.name, set()) == "table":
+            later = [value for value in starts[symbol.section] if value > symbol.value]
+            end = min(later) if later else obj.sizes.get(symbol.section, symbol.value)
+            result.append((symbol, end - symbol.value))
+    return result
 
 
 def check(rules, objects, references):
@@ -313,9 +339,10 @@ Symbol table '.symtab' contains 2 entries:
 """
 
 
-def make_object(alignments, symbols, relocations):
+def make_object(alignments, symbols, relocations, sizes=None):
     obj = ObjectFile()
     obj.alignments = dict(alignments)
+    obj.sizes = dict(sizes or {})
     obj.symbols = [Symbol(*symbol) for symbol in symbols]
     obj.relocations = [Relocation(*relocation) for relocation in relocations]
     return obj
@@ -384,6 +411,20 @@ def self_test_cases():
          {"midi/mus_a.o": make_object({".rodata": 4}, [("mus_a_1", ".rodata", 0), ("mus_a", ".rodata", 12)],
                                       [(".rodata", 4, ADDRESS_4), (".rodata", 16, ADDRESS_4)])},
          []),
+        ("table fills its extent", [("t.o", "gTable", "table", 1), ("t.o", "*", "bytecode", 2)],
+         {"t.o": make_object({"script_data": 8}, [("gTable", "script_data", 0), ("Script", "script_data", 16)],
+                             [("script_data", 0, ADDRESS_8), ("script_data", 8, ADDRESS_8),
+                              ("script_data", 17, ADDRESS_4)], {"script_data": 24})},
+         {"t.o": make_object({"script_data": 4}, [("gTable", "script_data", 0), ("Script", "script_data", 8)],
+                             [("script_data", 0, ADDRESS_4), ("script_data", 4, ADDRESS_4),
+                              ("script_data", 9, ADDRESS_4)], {"script_data": 16})},
+         []),
+        ("table followed by unlabelled words", [("t.o", "gTable", "table", 1)],
+         {"t.o": make_object({"script_data": 8}, [("gTable", "script_data", 0)],
+                             [("script_data", 0, ADDRESS_8), ("script_data", 8, ADDRESS_8)], {"script_data": 24})},
+         {"t.o": make_object({"script_data": 4}, [("gTable", "script_data", 0)],
+                             [("script_data", 0, ADDRESS_4), ("script_data", 4, ADDRESS_4)], {"script_data": 16})},
+         ["table gTable holds 2 pointers (16 bytes) but 24 bytes lie before the next symbol"]),
         ("battle script operands at any alignment", [("b.o", "*", "operands", 1)],
          {"b.o": make_object({"script_data": 1}, [("BattleScript_A", "script_data", 0)],
                              [("script_data", 1, ADDRESS_8), ("script_data", 10, ADDRESS_8)])},
@@ -413,7 +454,8 @@ def self_test():
                   [Symbol("gTable", ".rodata", 0), Symbol("Script_Start", "script_data", 0)],
                   [Relocation(".rodata", 0, ADDRESS_8), Relocation(".rodata", 8, ADDRESS_8),
                    Relocation(".rodata", 16, "R_X86_64_16"), Relocation("script_data", 3, ADDRESS_4)])
-    if a is None or b is None or (a.alignments, a.symbols, a.relocations) != expected_a:
+    if a is None or b is None or (a.alignments, a.symbols, a.relocations) != expected_a \
+            or a.sizes != {".rodata": 0x30, ".rela.rodata": 0x48, "script_data": 0x10}:
         failures += 1
         sys.stderr.write("check_relocations self-test: parse_readelf: got %r\n"
                          % ({k: (v.alignments, v.symbols, v.relocations) for k, v in parsed.items()},))
