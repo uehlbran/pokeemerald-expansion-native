@@ -140,7 +140,7 @@ static u16 program_flash_byte(u16 sectorNum, u32 offset, u8 data)
 {
     if (!is_sector(sectorNum))
         return FLASH_STATUS_BAD_SECTOR;
-    if (!is_range_in_sector(offset, 1))
+    if (offset >= FLASH_SECTOR_SIZE)
         return FLASH_STATUS_BAD_ARGUMENT;
     uint8_t *const byte = sector_bytes(sectorNum) + offset;
     if ((data & ~*byte) != 0) /* a 1 where the chip holds a 0 */
@@ -153,6 +153,7 @@ static u16 program_flash_byte(u16 sectorNum, u32 offset, u8 data)
 /* src is non-const only because the table's type says so. A src inside the
  * chip is rejected rather than copied with memmove: the sector is erased
  * before the copy, so such a source would be destroyed first either way. */
+// cppcheck-suppress constParameterCallback ; the table's type (flash_internal.h) fixes a non-const src
 static u16 program_flash_sector(u16 sectorNum, u8 *src)
 {
     if (!is_sector(sectorNum))
@@ -234,6 +235,7 @@ void ReadFlash(u16 sectorNum, u32 offset, u8 *dest, u32 size)
 
 /* src is non-const only to match the declaration agb_flash.c's
  * ProgramFlashSectorAndVerify sees. */
+// cppcheck-suppress constParameterPointer ; must match expansion's declaration, which has a non-const src
 u32 VerifyFlashSector(u16 sectorNum, u8 *src)
 {
     if (!is_sector(sectorNum))

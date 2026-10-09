@@ -218,6 +218,12 @@ static void check_rejected_header_field(size_t offset, uint32_t value)
 
 PTEST(version_2_is_rejected) { check_rejected_header_field(VERSION_OFFSET, 2); }
 PTEST(version_0_is_rejected) { check_rejected_header_field(VERSION_OFFSET, 0); }
+PTEST(version_257_is_rejected) { check_rejected_header_field(VERSION_OFFSET, 257); } /* low byte is 1 */
+PTEST(a_big_endian_version_field_is_rejected)
+{
+    check_rejected_header_field(VERSION_OFFSET, 0x01000000u); /* version 1 with the bytes reversed */
+}
+PTEST(the_largest_future_version_is_rejected) { check_rejected_header_field(VERSION_OFFSET, UINT32_MAX); }
 PTEST(a_wrong_image_size_field_is_rejected)
 {
     check_rejected_header_field(IMAGE_SIZE_OFFSET, HALF_CHIP_BYTES);
@@ -263,6 +269,19 @@ PTEST(a_headered_file_one_byte_too_long_is_rejected)
     file_bytes[FILE_BYTES] = 0x00;
     check_rejected_file(FILE_BYTES + 1);
 }
+
+/* Right length for a headered file, but the magic is wrong in its first,
+ * middle or last byte: it has no header, and is not a bare image's size. */
+static void check_rejected_magic_byte(size_t index)
+{
+    fill_pattern(expected_image, CHIP_BYTES, 0x2C);
+    build_file(native_pointer_bits(), SAVE_FILE_LAYOUT_ID);
+    file_bytes[index] ^= 0x20; /* 'P' -> 'p', and so on */
+    check_rejected_file(FILE_BYTES);
+}
+PTEST(a_wrong_first_magic_byte_is_rejected) { check_rejected_magic_byte(0); }
+PTEST(a_wrong_middle_magic_byte_is_rejected) { check_rejected_magic_byte(3); }
+PTEST(a_wrong_last_magic_byte_is_rejected) { check_rejected_magic_byte(MAGIC_BYTES - 1); }
 
 /* A bare image of exactly the chip's size that happens to start with the
  * magic is a headered file of the wrong size, not a legacy file. */
@@ -387,6 +406,32 @@ PTEST(a_directory_at_the_save_path_is_rejected)
     PT_ASSERT_EQ_INT(load, SAVE_FILE_CORRUPT);
     PT_ASSERT(erased);
     PT_ASSERT(directory_removed);
+    PT_ASSERT(removed);
+}
+
+/* A file the process may not read: fopen fails with something other than
+ * ENOENT, which is corrupt (reported), not a new game. Root can read it, so
+ * the expectation follows access(). */
+PTEST(a_file_that_cannot_be_opened_is_rejected_not_treated_as_new)
+{
+    struct scratch scratch;
+    if (!scratch_create(&scratch))
+        PT_FAIL("cannot create a scratch directory");
+    fill_pattern(expected_image, CHIP_BYTES, 0x2D);
+    const bool written = write_file(scratch.path, expected_image, CHIP_BYTES);
+    const bool locked = chmod(scratch.path, 0) == 0;
+    const bool readable = access(scratch.path, R_OK) == 0;
+    set_image(0x08);
+    const int init = save_file_init(scratch.path);
+    const int load = save_file_load();
+    const bool erased = image_is_erased();
+    save_file_shutdown();
+    const bool removed = scratch_remove(&scratch);
+    PT_ASSERT(written);
+    PT_ASSERT(locked);
+    PT_ASSERT_EQ_INT(init, SAVE_FILE_OK);
+    PT_ASSERT_EQ_INT(load, readable ? SAVE_FILE_LEGACY : SAVE_FILE_CORRUPT);
+    PT_ASSERT(readable || erased);
     PT_ASSERT(removed);
 }
 

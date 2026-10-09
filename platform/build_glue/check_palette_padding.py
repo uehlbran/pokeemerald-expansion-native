@@ -14,14 +14,20 @@ multiple of 32 bytes):
   * and every listed file must exist, be short, and be used that way.
 
 Exit 0 and no output when consistent; otherwise one line per problem with the file and the
-symbol, exit 1. Usage: check_palette_padding.py [--root DIR] [--self-test]
+symbol, exit 1. Usage: check_palette_padding.py [--root DIR] | --self-test
 """
 import os
 import re
 import struct
 import sys
+import tempfile
 
-BANK = 32
+BANK = 32                  # bytes: 16 colours, LoadSpritePalette's unit
+GBA_BYTES_PER_COLOUR = 2   # BGR555
+PNG_BYTES_PER_COLOUR = 3   # RGB in a PLTE chunk
+PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
+PNG_CHUNK_HEADER = 8       # 4-byte length and 4-byte type
+PNG_CHUNK_CRC = 4
 SOURCE_DIRS = ("src", "include", "test")
 LIST_NAME = "unpadded_palettes.txt"
 
@@ -29,24 +35,35 @@ INCGFX = re.compile(r'INCGFX(?:_[A-Z0-9]+)?\s*\(\s*"([^"]+\.(?:pal|png))"\s*,\s*
 DECL = re.compile(r'(\w+)\s*(\[[^\]]*\])+\s*=\s*$')
 
 
+class PaletteError(Exception):
+    """A palette source file gbagfx would reject; the build must say which."""
+
+
 def palette_bytes(root, path):
-    """Size of the .gbapal gbagfx makes from `path` (a JASC .pal or an indexed .png), or None."""
+    """Size of the .gbapal gbagfx makes from `path` (a JASC .pal or an indexed .png), or None
+    if the file does not exist (it may be generated later). A file that exists but is not
+    a palette raises PaletteError."""
     full = os.path.join(root, path)
     if not os.path.exists(full):
         return None
     if path.endswith(".pal"):
         with open(full, "r", errors="replace") as handle:
             lines = handle.read().split("\n")
-        return int(lines[2].strip()) * 2
+        try:
+            return int(lines[2].strip()) * GBA_BYTES_PER_COLOUR  # JASC-PAL, 0100, then the colour count
+        except (IndexError, ValueError):
+            raise PaletteError("%s: not a JASC palette (line 3 should be the colour count)" % path)
     with open(full, "rb") as handle:
         data = handle.read()
-    position = 8
-    while position + 8 <= len(data):
-        length, kind = struct.unpack(">I4s", data[position:position + 8])
+    if data[:len(PNG_SIGNATURE)] != PNG_SIGNATURE:
+        raise PaletteError("%s: not a PNG file" % path)
+    position = len(PNG_SIGNATURE)
+    while position + PNG_CHUNK_HEADER <= len(data):
+        length, kind = struct.unpack(">I4s", data[position:position + PNG_CHUNK_HEADER])
         if kind == b"PLTE":
-            return length // 3 * 2
-        position += 12 + length
-    return None
+            return length // PNG_BYTES_PER_COLOUR * GBA_BYTES_PER_COLOUR
+        position += PNG_CHUNK_HEADER + PNG_CHUNK_CRC + length
+    raise PaletteError("%s: PNG has no PLTE chunk (not an indexed image)" % path)
 
 
 def read_list(root):
@@ -140,6 +157,12 @@ def check(root):
     return problems
 
 
+def expect(condition, message):
+    """A self-test check that still runs under python -O."""
+    if not condition:
+        raise AssertionError(message)
+
+
 def self_test():
     cases = [
         ("static const u16 sPal[] = INCGFX_U16(\"a.pal\", \".gbapal\");", "sPal", False),
@@ -149,27 +172,59 @@ def self_test():
     ]
     for line, symbol, explicit in cases:
         match = INCGFX.search(line)
-        assert match, line
+        expect(match, line)
         before = line[:match.start()].rstrip()
         declaration = DECL.search(before)
-        assert (declaration.group(1) if declaration else None) == symbol, line
-    assert sized_use(None, False, set()) is not None
-    assert sized_use("x", True, set()) is not None
-    assert sized_use("x", False, sized_symbols("ARRAY_COUNT(x)")) is not None
-    assert sized_use("x", False, sized_symbols("sizeof(x)")) is not None
-    assert sized_use("x", False, sized_symbols("sizeof x")) is not None
-    assert sized_use("x", False, sized_symbols("sizeof(xy)")) is None
-    assert sized_use("x", False, set()) is None
+        expect((declaration.group(1) if declaration else None) == symbol, line)
+    expect(sized_use(None, False, set()) is not None, "an initializer without a declaration is a sized use")
+    expect(sized_use("x", True, set()) is not None, "an explicit array size is a sized use")
+    expect(sized_use("x", False, sized_symbols("ARRAY_COUNT(x)")) is not None, "ARRAY_COUNT(x) is a sized use")
+    expect(sized_use("x", False, sized_symbols("sizeof(x)")) is not None, "sizeof(x) is a sized use")
+    expect(sized_use("x", False, sized_symbols("sizeof x")) is not None, "sizeof x is a sized use")
+    expect(sized_use("x", False, sized_symbols("sizeof(xy)")) is None, "sizeof(xy) is not a use of x")
+    expect(sized_use("x", False, set()) is None, "a symbol nothing sizes is not a sized use")
+    self_test_palette_files()
+
+
+def self_test_palette_files():
+    """palette_bytes on a good JASC file, and loud failures on malformed ones."""
+    with tempfile.TemporaryDirectory() as root:
+        def write(name, content):
+            with open(os.path.join(root, name), "wb") as handle:
+                handle.write(content)
+        write("good.pal", b"JASC-PAL\r\n0100\r\n12\r\n0 0 0\r\n")
+        write("short.pal", b"JASC-PAL\r\n")
+        write("text.pal", b"JASC-PAL\r\n0100\r\nmany\r\n")
+        write("fake.png", b"not a png at all")
+        write("nopalette.png", PNG_SIGNATURE + struct.pack(">I4s", 0, b"IEND") + bytes(PNG_CHUNK_CRC))
+        write("indexed.png", PNG_SIGNATURE + struct.pack(">I4s", 6, b"PLTE") + bytes(6 + PNG_CHUNK_CRC))
+        expect(palette_bytes(root, "good.pal") == 24, "a 12-colour JASC palette is 24 bytes")
+        expect(palette_bytes(root, "indexed.png") == 4, "a 2-colour PLTE is 4 bytes")
+        expect(palette_bytes(root, "absent.pal") is None, "a missing file has no size")
+        for name in ("short.pal", "text.pal", "fake.png", "nopalette.png"):
+            try:
+                palette_bytes(root, name)
+            except PaletteError:
+                continue
+            raise AssertionError("%s was accepted as a palette" % name)
 
 
 def main(argv):
-    if "--self-test" in argv:
+    usage = "usage: check_palette_padding.py [--root DIR] | --self-test"
+    if argv == ["--self-test"]:
         self_test()
         return 0
     root = "."
-    if "--root" in argv:
-        root = argv[argv.index("--root") + 1]
-    problems = check(root)
+    if len(argv) == 2 and argv[0] == "--root":
+        root = argv[1]
+    elif argv:
+        print(usage, file=sys.stderr)
+        return 2
+    try:
+        problems = check(root)
+    except (OSError, PaletteError) as error:
+        print("check_palette_padding: " + str(error), file=sys.stderr)
+        return 1
     for problem in problems:
         print("check_palette_padding: " + problem, file=sys.stderr)
     return 1 if problems else 0

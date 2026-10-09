@@ -10,6 +10,9 @@
 # in the tree shared with the GBA build (and with it the ROM) is not touched.
 # check_palette_padding.py guards the list and the sized uses.
 here="$(dirname "$0")"
+list="$here/unpadded_palettes.txt"
+: "${PAD_UNDER:?gbagfx_pad.sh: PAD_UNDER (the native assets directory) is not set}"
+[ -r "$list" ] || { echo "gbagfx_pad.sh: cannot read $list" >&2; exit 1; }
 "$here/../../tools/gbagfx/gbagfx" "$@" || exit $?
 case "$2" in
 *.gbapal)
@@ -18,7 +21,7 @@ case "$2" in
     *) exit 0 ;;
     esac
     # a line is "path # reason"; match the source path exactly
-    if sed -e 's/[[:space:]]*#.*//' -e '/^$/d' "$here/unpadded_palettes.txt" | grep -qxF -- "$1"; then
+    if sed -e 's/[[:space:]]*#.*//' -e '/^$/d' "$list" | grep -qxF -- "$1"; then
         exit 0
     fi
     size=$(stat -c %s "$2") || exit 1

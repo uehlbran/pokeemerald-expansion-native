@@ -31,6 +31,8 @@ MACRO_START = re.compile(r"^\s*\.macro\s+([A-Za-z_.$][A-Za-z0-9_.$]*)")
 MACRO_END = re.compile(r"^\s*\.endm\b")
 ASSEMBLER_LINE = re.compile(r"^\{standard input\}:(\d+): (Error|Warning): (.*)$")
 NOT_AN_INSTRUCTION = "no such instruction"
+PROBE_NAME = "overworld_macros_probe_not_an_instruction"
+PROBE_LINE = 1  # the probe is the first line of what the assembler reads
 
 
 def macro_names(lines):
@@ -73,8 +75,13 @@ def macro_definitions(lines, wanted):
 
 
 def instruction_names(names, assembler):
-    """The names the host assembler accepts as an instruction or a prefix."""
-    source = "".join(name + "\n" for name in names)
+    """The names the host assembler accepts as an instruction or a prefix.
+
+    The first line of the input is a name that cannot be an instruction. If the
+    assembler's reply does not flag it, its output is not what this parses
+    (another assembler, another locale), and every name would look like an
+    instruction: that is an error, not a result."""
+    source = "".join(name + "\n" for name in [PROBE_NAME] + names)
     result = subprocess.run(
         shlex.split(assembler) + ["-o", "/dev/null", "-"],
         input=source, capture_output=True, text=True, check=False)
@@ -83,7 +90,11 @@ def instruction_names(names, assembler):
         match = ASSEMBLER_LINE.match(line)
         if match and NOT_AN_INSTRUCTION in match.group(3):
             not_instructions.add(int(match.group(1)))
-    return [name for number, name in enumerate(names, 1) if number not in not_instructions]
+    if PROBE_LINE not in not_instructions:
+        raise RuntimeError("%r did not report %r as %r; its output was:\n%s"
+                           % (assembler, PROBE_NAME, NOT_AN_INSTRUCTION, result.stderr))
+    return [name for number, name in enumerate(names, PROBE_LINE + 1)
+            if number not in not_instructions]
 
 
 def split(lines, conflicts):
@@ -119,6 +130,12 @@ def self_test():
         except ValueError:
             continue
         raise AssertionError("unbalanced macros accepted: %r" % broken)
+    try:
+        instruction_names(["call"], "true")  # an "assembler" that says nothing
+    except RuntimeError:
+        pass
+    else:
+        raise AssertionError("an assembler that does not flag the probe was accepted")
     print("overworld_macros.py: self-test passed")
 
 

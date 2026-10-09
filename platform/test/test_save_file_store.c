@@ -47,6 +47,69 @@ PTEST(a_legacy_file_is_upgraded_by_the_next_store)
     PT_ASSERT(removed);
 }
 
+/* The format is the same bytes at either pointer width: the header of an
+ * erased chip is pinned here as literal bytes (the CRC is zlib's crc32 of
+ * 131072 bytes of 0xFF), so a 32-bit build's file and a 64-bit build's
+ * differ only in the pointer-width word, and each can read the other's. */
+PTEST(the_header_of_an_erased_chip_is_pinned_byte_for_byte)
+{
+    static const uint8_t expected_header[HEADER_BYTES] = {
+        'P', 'E', 'N', 'S', 'A', 'V', 'E', 0,
+        1, 0, 0, 0,       /* version 1 */
+        0, 0, 0, 0,       /* pointer width, filled in below */
+        1, 0, 0, 0,       /* layout id 1 */
+        0x00, 0x00, 0x02, 0x00, /* image size 131072 */
+        0xCC, 0x03, 0x48, 0x15, /* CRC-32 0x154803CC */
+    };
+    uint8_t want[HEADER_BYTES];
+    memcpy(want, expected_header, sizeof want);
+    put_u32le(want + POINTER_BITS_OFFSET, native_pointer_bits());
+
+    struct scratch scratch;
+    if (!scratch_create(&scratch))
+        PT_FAIL("cannot create a scratch directory");
+    flash_init();
+    const int init = save_file_init(scratch.path);
+    const int store = save_file_store();
+    const bool read = read_file(scratch.path, FILE_BYTES);
+    const bool header_matches = memcmp(file_bytes, want, HEADER_BYTES) == 0;
+    save_file_shutdown();
+    const bool removed = scratch_remove(&scratch);
+    PT_ASSERT_EQ_INT(init, SAVE_FILE_OK);
+    PT_ASSERT_EQ_INT(store, SAVE_FILE_OK);
+    PT_ASSERT(read);
+    PT_ASSERT(header_matches);
+    PT_ASSERT(removed);
+}
+
+/* A store always writes this build's tag (save_file.h): a foreign image that
+ * main chose to keep is relabelled native, image bytes unchanged. */
+PTEST(storing_a_foreign_image_relabels_it_as_native)
+{
+    struct scratch scratch;
+    if (!scratch_create(&scratch))
+        PT_FAIL("cannot create a scratch directory");
+    fill_pattern(expected_image, CHIP_BYTES, 0x2E);
+    build_file(other_pointer_bits(), SAVE_FILE_LAYOUT_ID);
+    const bool written = write_file(scratch.path, file_bytes, FILE_BYTES);
+    flash_init();
+    const int init = save_file_init(scratch.path);
+    const int first_load = save_file_load();
+    const int store = save_file_store();
+    memset(flash_image(), 0x00, CHIP_BYTES);
+    const int second_load = save_file_load();
+    const bool loaded = image_is_expected();
+    save_file_shutdown();
+    const bool removed = scratch_remove(&scratch);
+    PT_ASSERT(written);
+    PT_ASSERT_EQ_INT(init, SAVE_FILE_OK);
+    PT_ASSERT_EQ_INT(first_load, SAVE_FILE_FOREIGN_LAYOUT);
+    PT_ASSERT_EQ_INT(store, SAVE_FILE_OK);
+    PT_ASSERT_EQ_INT(second_load, SAVE_FILE_OK);
+    PT_ASSERT(loaded);
+    PT_ASSERT(removed);
+}
+
 /* ---- store ---- */
 
 PTEST(store_then_load_round_trips_byte_exactly)
