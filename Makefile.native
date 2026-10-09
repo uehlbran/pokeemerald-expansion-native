@@ -542,12 +542,17 @@ $(C_BUILDDIR)/pokemon.o: $(C_SUBDIR)/pokemon.c $(DATA_SRC_SUBDIR)/pokemon/teacha
 # --------------------------------------------------------------------------
 # C
 
+# The recipes for src/ and test/ are the same; recursive variables, so that
+# $< and $@ are those of the rule that uses them.
+COMPILE_C = $(CPP) $(CPPFLAGS) $< | $(PREPROC) -i -g $(ASSETS_DIR_NAME) $< charmap.txt | $(C_FILTER) | $(HOST_CC) $(CFLAGS) -c -x c -o $@ -
+SCAN_C = $(SCANINC) -M $@ -g $(ASSETS_DIR_NAME) $(INCLUDE_SCANINC_ARGS) $<
+
 $(C_BUILDDIR)/%.o: $(C_SUBDIR)/%.c $(C_FILTER_SCRIPT)
 	@echo "$(HOST_CC) <flags> -o $@ $<"
-	@$(CPP) $(CPPFLAGS) $< | $(PREPROC) -i -g $(ASSETS_DIR_NAME) $< charmap.txt | $(C_FILTER) | $(HOST_CC) $(CFLAGS) -c -x c -o $@ -
+	@$(COMPILE_C)
 
 $(C_BUILDDIR)/%.d: $(C_SUBDIR)/%.c
-	$(SCANINC) -M $@ -g $(ASSETS_DIR_NAME) $(INCLUDE_SCANINC_ARGS) $<
+	$(SCAN_C)
 
 ifneq ($(NODEP),1)
 -include $(addprefix $(OBJ_DIR)/,$(C_SRCS:.c=.d))
@@ -592,10 +597,10 @@ endif
 
 $(TEST_BUILDDIR)/%.o: $(TEST_SUBDIR)/%.c $(C_FILTER_SCRIPT)
 	@echo "$(HOST_CC) <flags> -o $@ $<"
-	@$(CPP) $(CPPFLAGS) $< | $(PREPROC) -i -g $(ASSETS_DIR_NAME) $< charmap.txt | $(C_FILTER) | $(HOST_CC) $(CFLAGS) -c -x c -o $@ -
+	@$(COMPILE_C)
 
 $(TEST_BUILDDIR)/%.d: $(TEST_SUBDIR)/%.c
-	$(SCANINC) -M $@ -g $(ASSETS_DIR_NAME) $(INCLUDE_SCANINC_ARGS) $<
+	$(SCAN_C)
 
 ifneq ($(NODEP),1)
 -include $(addprefix $(OBJ_DIR)/,$(TEST_SRCS:.c=.d))
