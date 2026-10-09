@@ -11,8 +11,9 @@
 # Layout: every platform/*.c is a module and goes into libplatform.a, so a new
 # module needs no edit here. The m4a engine (platform/m4a/m4a_*.c, the C
 # translation of src/m4a_1.s) goes into libplatform.a too; it calls into
-# expansion's src/m4a.c and src/m4a_tables.c, which the game link provides. Every platform/test/test_<name>.c is a test
-# binary, build/<bits>/test_<name>, linked with:
+# expansion's src/m4a.c and src/m4a_tables.c, which the game link provides.
+# Every platform/test/test_<name>.c is a test binary, build/<bits>/test_<name>,
+# linked with:
 #   - platform/<name>.c, if it exists (the module under test);
 #   - the files named on a "// deps:" line near the top of the test, paths
 #     relative to platform/, for example
