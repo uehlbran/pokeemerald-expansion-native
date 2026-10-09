@@ -1042,6 +1042,7 @@ static void SmolDecompressData(const struct SmolHeader *header, const u32 *data,
 
     sBitIndex = 0;
 #if PLATFORM_NATIVE
+    // Where the look-ahead fetches in LOOP_BITADVANCE and DecodeLOtANS stop reading (see there).
     sDataEnd = sDataPtr + header->bitstreamSize;
 #endif
 #line 995

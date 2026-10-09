@@ -17,6 +17,7 @@
 #define DEPRECATED(msg) __attribute__((deprecated(msg)))
 
 #if PLATFORM_NATIVE
+// The GBA build compiles these functions as ARM; x86 gcc rejects the target attribute.
 #define ARM_FUNC
 #else
 #define ARM_FUNC __attribute__((target("arm")))

@@ -2072,8 +2072,8 @@ static void CB2_NamingScreen(void)
 {
     RunTasks();
 #if PLATFORM_NATIVE
-    // MainState_Exit frees sNamingScreen inside RunTasks; the sprite callbacks run next
-    // read it (the GBA read ROM through the NULL, natively that is a crash).
+    // MainState_Exit frees sNamingScreen inside RunTasks, and the sprite callbacks that run next
+    // read it. The GBA reads its BIOS at the NULL address; natively NULL is unmapped.
     if (sNamingScreen == NULL)
         return;
 #endif
@@ -2100,7 +2100,8 @@ static void VBlankCB_NamingScreen(void)
     ProcessSpriteCopyRequests();
     TransferPlttBuffer();
 #if PLATFORM_NATIVE
-    // The VBlank after MainState_Exit freed sNamingScreen, before the return callback replaces this one.
+    // The V-Blank after MainState_Exit freed sNamingScreen, before the return callback replaces this one:
+    // the GBA reads its BIOS at the NULL address, natively NULL is unmapped.
     if (sNamingScreen == NULL)
         return;
 #endif

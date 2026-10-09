@@ -17,6 +17,7 @@ _Static_assert(RTC_STATUS_INTAE == SIIRTCINFO_INTAE, "RTC_STATUS_INTAE != SIIRTC
 _Static_assert(RTC_STATUS_24HOUR == SIIRTCINFO_24HOUR, "RTC_STATUS_24HOUR != SIIRTCINFO_24HOUR");
 _Static_assert(RTC_STATUS_POWER == SIIRTCINFO_POWER, "RTC_STATUS_POWER != SIIRTCINFO_POWER");
 #endif
+#line 8
 
 #define STATUS_INTFE  0x02 // frequency interrupt enable
 #define STATUS_INTME  0x08 // per-minute interrupt enable
@@ -79,6 +80,7 @@ _Static_assert(RTC_STATUS_POWER == SIIRTCINFO_POWER, "RTC_STATUS_POWER != SIIRTC
 
 extern vu16 GPIOPortDirection;
 #endif
+#line 68
 
 static bool8 sLocked;
 
@@ -90,6 +92,7 @@ static u8 ReadData();
 static void EnableGpioPortRead();
 static void DisableGpioPortRead();
 #endif
+#line 77
 
 KEEP_SECTION USED static const char AgbLibRtcVersion[] = "SIIRTC_V001";
 
@@ -98,6 +101,7 @@ void SiiRtcUnprotect(void)
 #if !PLATFORM_NATIVE
     EnableGpioPortRead();
 #endif
+#line 83
     sLocked = FALSE;
 }
 
@@ -106,6 +110,7 @@ void SiiRtcProtect(void)
 #if !PLATFORM_NATIVE
     DisableGpioPortRead();
 #endif
+#line 89
     sLocked = TRUE;
 }
 
@@ -195,6 +200,7 @@ bool8 SiiRtcReset(void)
 
     return result;
 #endif
+#line 164
 }
 
 bool8 SiiRtcGetStatus(struct SiiRtcInfo *rtc)
@@ -239,6 +245,7 @@ bool8 SiiRtcGetStatus(struct SiiRtcInfo *rtc)
 
     return TRUE;
 #endif
+#line 197
 }
 
 bool8 SiiRtcSetStatus(struct SiiRtcInfo *rtc)
@@ -278,6 +285,7 @@ bool8 SiiRtcSetStatus(struct SiiRtcInfo *rtc)
 
     return TRUE;
 #endif
+#line 228
 }
 
 bool8 SiiRtcGetDateTime(struct SiiRtcInfo *rtc)
@@ -326,6 +334,7 @@ bool8 SiiRtcGetDateTime(struct SiiRtcInfo *rtc)
 
     return TRUE;
 #endif
+#line 259
 }
 
 bool8 SiiRtcGetTime(struct SiiRtcInfo *rtc)
@@ -375,6 +384,7 @@ bool8 SiiRtcGetTime(struct SiiRtcInfo *rtc)
 
     return TRUE;
 #endif
+#line 290
 }
 
 static bool8 UNUSED SiiRtcSetAlarm(struct SiiRtcInfo *rtc)
@@ -427,6 +437,7 @@ static bool8 UNUSED SiiRtcSetAlarm(struct SiiRtcInfo *rtc)
 
     return TRUE;
 #endif
+#line 330
 }
 
 #if !PLATFORM_NATIVE
@@ -508,3 +519,4 @@ static void DisableGpioPortRead()
     GPIO_PORT_READ_ENABLE = FALSE;
 }
 #endif // !PLATFORM_NATIVE
+#line 409

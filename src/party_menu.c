@@ -623,8 +623,8 @@ static void CB2_InitPartyMenu(void)
         // IsDma3ManagerBusyWithBgCopy; natively a frame passes only in VBlankIntrWait.
         VBlankIntrWait();
 #endif
+#line 621
     }
-#line 622
 }
 
 static void CB2_ReloadPartyMenu(void)
@@ -638,8 +638,8 @@ static void CB2_ReloadPartyMenu(void)
         // IsDma3ManagerBusyWithBgCopy; natively a frame passes only in VBlankIntrWait.
         VBlankIntrWait();
 #endif
+#line 630
     }
-#line 631
 }
 
 static bool8 ShowPartyMenu(void)

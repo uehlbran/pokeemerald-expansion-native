@@ -5,6 +5,7 @@
 // (platform/game_hooks.h), for the timer-polling delays below.
 void PlatformWaitCycles(u32 cycles);
 #endif
+#line 2
 
 static void STWI_intr_timer(void);
 static u16 STWI_init(u8 request);
@@ -82,6 +83,7 @@ void AgbRFU_SoftReset(void)
     while (*timerL <= 0x11)
         REG_RCNT = 0x80A2;
 #endif
+#line 71
     *timerH = 3;
     REG_RCNT = 0x80A0;
     REG_SIOCNT = SIO_INTR_ENABLE | SIO_32BIT_MODE | SIO_115200_BPS;
