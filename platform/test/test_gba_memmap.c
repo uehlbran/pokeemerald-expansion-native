@@ -515,7 +515,7 @@ static uint32_t ewram_data_probe __attribute__((section(".sbss")));
 
 PTEST(ewram_data_lands_in_ewram)
 {
-    /* Pointer to integer, flagged: needed to ask which region holds the object. */
+    /* Pointer to integer: needed to ask which region holds the object. */
     const uintptr_t address = (uintptr_t)&ewram_data_probe;
     PT_ASSERT_EQ_INT(gba_memmap_region_of(address, sizeof ewram_data_probe), GBA_REGION_EWRAM);
     PT_ASSERT_EQ_U32(ewram_data_probe, 0);

@@ -108,8 +108,8 @@ static void report_write(const struct report *report)
     }
 }
 
-/* The interrupted program counter. Flagged for 64-bit: a pointer-sized
- * integer, as the kernel stores it. */
+/* The interrupted program counter: a pointer-sized integer, as the kernel
+ * stores it at both widths. */
 static uintptr_t interrupted_pc(const void *context)
 {
     const ucontext_t *interrupted = context;

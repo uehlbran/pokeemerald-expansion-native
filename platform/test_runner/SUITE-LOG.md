@@ -144,7 +144,9 @@ follow the host ABI"), which does not round every struct to 4 bytes as
 (3884), SaveBlock3 1 (4); PokemonStorage is 34144 on both. The test's own
 comment says to update the values for a hack's layout; guarded, the native
 build checks its own 32-bit sizes, so the test guards the native save
-layout. Flagged for 64-bit.
+layout. At 64 bits SaveBlock1 is 15768 and the guarded test holds that size
+(`docs/UPSTREAM_MODIFICATIONS.md`, `test/save.c`); the 32-bit layout of a save
+is read by `save_convert`.
 
 ### 10. Speed: the PPU in a headless run
 

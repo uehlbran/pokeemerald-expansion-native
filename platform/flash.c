@@ -88,9 +88,8 @@ static uint32_t dirty_sectors;
 /* Programs and erases the game has done since power-on (flash_write_count). */
 static uint32_t write_count;
 
-/* The chip: the mapped region at its GBA address. Integer to pointer,
- * flagged for the 64-bit milestone: GBA addresses are native addresses
- * (gba_memmap.h). */
+/* The chip: the mapped region at its GBA address. Integer to pointer: GBA
+ * addresses are native addresses at both widths (gba_memmap.h). */
 static uint8_t *chip(void)
 {
     return (uint8_t *)(uintptr_t)GBA_SRAM_BASE;
@@ -107,8 +106,9 @@ static bool is_range_in_sector(uint32_t offset, uint32_t length)
     return length != 0 && offset < FLASH_SECTOR_SIZE && length <= FLASH_SECTOR_SIZE - offset;
 }
 
-/* [bytes, bytes + length) shares a byte with the chip. Pointer to integer,
- * flagged: native addresses are compared with the region's GBA addresses. */
+/* [bytes, bytes + length) shares a byte with the chip. Pointer to integer
+ * (uintptr_t at both widths): native addresses are compared with the region's
+ * GBA addresses. */
 static bool overlaps_chip(const void *bytes, size_t length)
 {
     const uintptr_t start = (uintptr_t)bytes;
@@ -184,7 +184,7 @@ static u16 erase_flash_sector(u16 sectorNum)
  * addr either holds lastData now or never will. */
 static u16 wait_for_flash_write(u8 phase, u8 *addr, u8 lastData)
 {
-    /* Pointer to integer, flagged: the bounds check compares GBA addresses. */
+    /* Pointer to integer: the bounds check compares GBA addresses. */
     if (addr == NULL || !gba_memmap_contains((uintptr_t)addr, 1, GBA_REGION_SRAM))
         return FLASH_STATUS_BAD_ARGUMENT;
     return *addr == lastData ? FLASH_STATUS_OK : (u16)(FLASH_STATUS_TIMEOUT | phase);

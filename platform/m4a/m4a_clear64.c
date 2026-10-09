@@ -4,8 +4,8 @@
  * It clears 64 bytes (four stm of four zero words). src/m4a.c reaches it
  * as Clear64byte, through gMPlayJumpTable[35], to clear a MusicPlayerInfo
  * (MPlayOpen) or the first 64 bytes of a starting MusicPlayerTrack
- * (MPlayMain), which stop short of its cmdPtr; m4a_engine.h asserts both
- * sizes as M4A_CLEAR_SIZE (flagged 64-bit).
+ * (MPlayMain), which stop short of its cmdPtr; m4a_layout.h asserts that as
+ * M4A_CLEAR_SIZE.
  *
  * This file stands alone because include/gba/m4a_internal.h declares
  * "void SoundMainBTM(void)" while every caller passes the address to

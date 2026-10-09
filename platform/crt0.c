@@ -11,9 +11,9 @@
  * data whose address is taken. It is CRT0_INTR_MAIN_SIZE bytes, the size of
  * the IntrMain_Buffer pokeemerald copied it into, so a version of expansion
  * that copies it again reads defined bytes. Expansion 1.17.1 only takes the
- * address. 64-bit: INTR_VECTOR is a void * at 3007FFCh, so storing the
- * address writes 8 bytes, past the end of IWRAM (flagged in
- * platform/build_glue/LINK-NEEDS.md).
+ * address. At 64 bits INTR_VECTOR (3007FFCh) is a 32-bit store
+ * under the guard (include/gba/defines.h, src/main.c), so it stays inside
+ * IWRAM; nothing reads the vector natively.
  *
  * ReInitializeEWRAM. crt0.s copies the .ewram data (EWRAM_INIT) from its
  * load address in ROM back into EWRAM. Natively that data's only initial

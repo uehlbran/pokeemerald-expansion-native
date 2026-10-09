@@ -44,7 +44,7 @@ struct NoteVoice {
  * The assembly compares track pointers as unsigned addresses to break
  * priority ties, so the tie-break follows the order in which the linker
  * placed the track arrays (sound/music_player_table.inc and src/m4a.c's
- * gPokemonCryTracks). Flagged 64-bit: a pointer converted to an integer.
+ * gPokemonCryTracks). The comparison is of uintptr_t at both widths.
  */
 static uintptr_t TrackAddress(const struct MusicPlayerTrack *track)
 {
@@ -54,8 +54,9 @@ static uintptr_t TrackAddress(const struct MusicPlayerTrack *track)
 /*
  * voice_keysplit (asm/macros/music_voice.inc) stores the key-split table's
  * address as .4byte in attack..release, little-endian; the assembly loads
- * it as one word. Flagged 64-bit: a 4-byte address, which on a 64-bit host
- * holds only for data linked below 4 GiB, as the native build links it
+ * it as one word. The word stays 4 bytes at 64 bits (the data
+ * macro keeps it and the relocation check allows a 4-byte address only
+ * there); it holds because the native build links the data below 4 GiB
  * (non-PIE, image at 0x40000000).
  */
 static const u8 *KeySplitTable(const struct ToneData *tone)

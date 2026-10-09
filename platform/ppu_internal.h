@@ -17,7 +17,7 @@
  * (gba_memmap.h) and read with memcpy, in the host's byte order, which is how
  * the game's own stores put the values there. A GBA address is also the
  * native address of the same byte (gba_memmap.h); the integer-to-pointer
- * conversion relies on that and is flagged for the 64-bit milestone there.
+ * conversion relies on that, at both widths.
  */
 #ifndef PPU_INTERNAL_H
 #define PPU_INTERNAL_H
@@ -146,8 +146,8 @@ struct ppu_regs {
 
 /* The native object at a GBA address: the regions are mapped at their GBA
  * addresses (gba_memmap.h), so the conversion is the identity. The only
- * integer-to-pointer conversion in the module; flagged for the 64-bit
- * milestone with gba_memmap.h's (GBA addresses fit in 32 bits). Callers
+ * integer-to-pointer conversion in the module; it is gba_memmap.h's identity
+ * (GBA addresses fit in 32 bits and are mapped there at both widths). Callers
  * bound the address to a region first. */
 static inline const void *ppu_gba_pointer(uint32_t address)
 {
