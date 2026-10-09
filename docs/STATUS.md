@@ -50,17 +50,17 @@ is what the sanitized 64-bit replays need; in its review-fix round) and
 m7-save (Opus; the save converter and gate h). Then: the sanitized gates
 at 64, the suite at 64 recorded, the refactoring pass again, 64-bit done.
 
-**Broke and fixed.** The debug-menu gate's two battle screenshots flipped
-between male and female for the opponent's Poochyena whenever the binary
-was relinked (three refactoring branches hit it). Root cause: expansion
-seeds a trainer's party with a CRC over the whole trainer struct, pointer
-to the party table included; on the GBA that is a fixed ROM address,
-natively it moves with every build. Fixed under a guard (the CRC skips
-the pointer; DECISIONS.md "The trainer party seed does not hash the
-party table's address"), and the gate's expectations updated once. The
-same investigation removed the save file's nine uninitialised bytes
-(CreateBoxMon's species-name buffer, now padded): two runs give
-byte-identical saves. Earlier breakages are in the milestone logs.
+**Broke and fixed.** Milestone 7: the 64-bit plain debug-menu replay
+failed on main right after the alignment merge while the sanitized one
+passed. Cause: the platform's inspect objects (the replay facts, which read
+the game's structs) were compiled before task.h changed and their
+dependency files, written with -MMD, listed no game header, so they kept
+the old struct Task layout; the alignment branch had switched them to -MD,
+which only takes effect once the objects are rebuilt. Fixed by removing
+the stale objects and making those objects depend on the Makefile and the
+game flags (3249f05722). Milestone 6's screenshot flake (the trainer party
+seed hashing a pointer) is recorded in the milestone 6 section and in
+DECISIONS.md. Earlier breakages are in the milestone logs.
 
 **Needs the owner.** rh-hideout's maintainer replied to all seven upstream
 issues citing their LLM policy and said they will close them (details and a
@@ -176,6 +176,8 @@ game_hooks_unwind being noreturn, which it is declared to be.
 | 64-bit, gate (d): the opening replay on the 64-bit build, every dump and screenshot equal to the 32-bit expectations, the save round trip | `tests/smoke/run.sh build/native64/pokeemerald-native out/` | green 2026-10-09 (27 dumps, 26 screenshots) |
 | 64-bit, gate (e): the debug-menu replay on the 64-bit build | `tests/smoke/run_debug_menu.sh build/native64/pokeemerald-native out/` | green 2026-10-09 (20 dumps, 32 screenshots) |
 | 64-bit, gate (b): expansion's suite against the 64-bit build: 5866 tests, 5408 passed, 1 failed, 18 known failing, 9 expected failing, 421 to-do, 9 assumption failures; per test equal to the 32-bit run except `SaveBlock1 is backwards compatible` (sizeof 15768 vs 15496: the layout difference gate h converts; the test is expansion's sizeof comparison and stays red at 64 by design unless the owner wants it guarded) | `make -f Makefile.native -j32 check BITS=64` | 2026-10-09, 125 s: red by that one test, which is the expected 64-bit layout |
+| 64-bit, gates (d) and (e) sanitized: both replays on the 64-bit sanitized build, identical dumps and screenshots, no sanitizer report | `tests/smoke/run.sh` and `run_debug_menu.sh` with `build/native64-san/pokeemerald-native`, `ASAN_OPTIONS=halt_on_error=0` | green 2026-10-09 on main at 7280370c21 (69 s, 55 s) |
+| 64-bit, gate (b) sanitized: the suite on the 64-bit sanitized build gives the same per-test results as the plain 64-bit run (red by the save-layout test only); the UndefinedBehaviorSanitizer report set is identical to the 32-bit run's (42 sites); the AddressSanitizer reports differ at several sites (recorded-battle controllers, SetBoxMonData, animation tasks), under investigation by m7-san | `make -f Makefile.native -j32 check BITS=64 SANITIZE=1` | 2026-10-09: per-test results as plain; the report comparison is in flight |
 | Every platform module is merged: `gba_memmap` (region layout via linker script), `ptest.h` self-test, `timer`, `transfer_bounds`, `input`, `rtc`, `video`, `audio`, `frame_pacer`, `interrupt`, `psg`, `ppu`, `dma`, `flash`, `save_file`, `bios`, `lcd_status`, `m4a_output`, `sound_mix`, `replay`, `inspect`, `restart`, `symbols`, `debug_channel`, `crash_reboot`, `arm_division`, and the `m4a` engine translation (also proven by a differential test against the ARM original under qemu-arm, run by hand) | `make -C platform test BITS=32` and `BITS=64`, every test under ASan+UBSan with leak detection, after a Sonnet first-pass review and orchestrator merge | green on both widths at merge time |
 
 ## Not verified
