@@ -25,6 +25,8 @@
 #define MODRM_REG_IDIV 7u
 
 /* ModRM and SIB fields (Intel SDM vol. 2, 2.1.5). */
+#define MODRM_FIELD_MASK 7u
+#define MODRM_MOD_NO_DISP 0u
 #define MODRM_MOD_REGISTER 3u
 #define MODRM_RM_SIB 4u
 #define MODRM_RM_DISP32 5u     /* with mod 0 */
@@ -59,11 +61,11 @@ static bool is_flat_segment_prefix(uint8_t byte)
 
 /* ModRM register numbers to the saved registers (Intel SDM vol. 2,
  * table 2-2: EAX, ECX, EDX, EBX, ESP, EBP, ESI, EDI). */
-static const int register_slots[8] = { REG_EAX, REG_ECX, REG_EDX, REG_EBX, REG_ESP, REG_EBP, REG_ESI, REG_EDI };
+static const int register_slots[MODRM_FIELD_MASK + 1u] = { REG_EAX, REG_ECX, REG_EDX, REG_EBX, REG_ESP, REG_EBP, REG_ESI, REG_EDI };
 
 static uint32_t register_value(const greg_t *gregs, unsigned number)
 {
-    return (uint32_t)gregs[register_slots[number & 7u]];
+    return (uint32_t)gregs[register_slots[number & MODRM_FIELD_MASK]];
 }
 
 static uint32_t read_u32(uintptr_t address)
@@ -85,8 +87,6 @@ struct division_instruction {
 #define MODRM_MOD_DISP32 2u
 #define MODRM_FIELD_SHIFT 3u
 #define MODRM_MOD_SHIFT 6u
-#define MODRM_FIELD_MASK 7u
-#define SIB_SCALE_SHIFT 6u
 #define DISP32_SIZE 4u
 
 /* The fields of a ModRM byte, or of the SIB byte that has the same layout
@@ -113,13 +113,13 @@ static uint32_t operand_address(const uint8_t *code, const greg_t *gregs, struct
         struct modrm_fields sib = split_modrm(code[i++]); /* scale, index, base */
         if (sib.middle != SIB_INDEX_NONE)
             address += register_value(gregs, sib.middle) << sib.high;
-        if (sib.low == SIB_BASE_DISP32 && modrm.high == 0) {
+        if (sib.low == SIB_BASE_DISP32 && modrm.high == MODRM_MOD_NO_DISP) {
             address += read_u32((uintptr_t)&code[i]);
             i += DISP32_SIZE;
         } else {
             address += register_value(gregs, sib.low);
         }
-    } else if (modrm.low == MODRM_RM_DISP32 && modrm.high == 0) {
+    } else if (modrm.low == MODRM_RM_DISP32 && modrm.high == MODRM_MOD_NO_DISP) {
         address = read_u32((uintptr_t)&code[i]);
         i += DISP32_SIZE;
     } else {
@@ -213,6 +213,10 @@ static bool complete(ucontext_t *context)
     return true;
 }
 
+#define HEX_DIGIT_BITS 4u
+#define HEX_DIGIT_MASK 0xFu
+#define HEX_DIGITS_PER_U32 8u
+
 /* "arm_division: undecodable divide error at pc 0x12345678, passed on\n",
  * formatted without stdio (signal-safety(7): write is async-signal-safe). */
 static void report_passed_on(const void *context)
@@ -220,12 +224,14 @@ static void report_passed_on(const void *context)
     static const char head[] = "arm_division: undecodable divide error at pc 0x";
     static const char tail[] = ", passed on (not a 32-bit DIV or IDIV by zero, nor INT32_MIN / -1)\n";
     static const char hex[] = "0123456789abcdef";
-    char line[sizeof head - 1 + 8 + sizeof tail - 1];
+    char line[sizeof head - 1 + HEX_DIGITS_PER_U32 + sizeof tail - 1];
     uint32_t pc = (uint32_t)((const ucontext_t *)context)->uc_mcontext.gregs[REG_EIP];
     memcpy(line, head, sizeof head - 1);
-    for (size_t i = 0; i < 8; i++)
-        line[sizeof head - 1 + i] = hex[(pc >> (28u - 4u * (unsigned)i)) & 0xFu];
-    memcpy(line + sizeof head - 1 + 8, tail, sizeof tail - 1);
+    for (unsigned i = 0; i < HEX_DIGITS_PER_U32; i++) {
+        unsigned shift = (HEX_DIGITS_PER_U32 - 1u - i) * HEX_DIGIT_BITS; /* most significant digit first */
+        line[sizeof head - 1 + i] = hex[(pc >> shift) & HEX_DIGIT_MASK];
+    }
+    memcpy(line + sizeof head - 1 + HEX_DIGITS_PER_U32, tail, sizeof tail - 1);
     (void)!write(STDERR_FILENO, line, sizeof line); /* nothing to do if stderr is gone */
 }
 

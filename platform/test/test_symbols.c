@@ -93,6 +93,8 @@ static bool damaged_copy(char *path, size_t path_size, size_t keep, void (*patch
     bool ok = fd >= 0 && write(fd, bytes, keep) == (ssize_t)keep;
     if (fd >= 0)
         close(fd);
+    if (!ok && fd >= 0)
+        unlink(path); /* a failed write leaves no file behind */
     free(bytes);
     return ok;
 }
@@ -144,9 +146,10 @@ PTEST(rejects_a_truncated_file_and_an_empty_one)
 enum lie {
     LIE_SH_SIZE,         /* the symbol table is longer than the file */
     LIE_SH_OFFSET,       /* the symbol table starts past the end of the file */
-    LIE_SH_RANGE_WRAPS,  /* offset + size wraps around 2^64 (or 2^32) back into the file */
+    LIE_SH_RANGE_WRAPS,  /* a valid offset and a size that makes offset + size wrap around to a small number */
     LIE_SH_LINK,         /* its string table is a section that does not exist */
-    LIE_SH_LINK_WRONG,   /* its string table is a section that is not one */
+    LIE_SH_LINK_WRONG,   /* its string table is a non-empty section that is not one (itself) */
+    LIE_SH_LINK_PAST_COUNT, /* its string table is past the section count, though inside the file */
     LIE_SH_ENTSIZE,      /* its entries are not symbols */
     LIE_SH_SIZE_ODD,     /* its size is not a whole number of entries */
     LIE_SH_SIZE_ZERO,    /* it has no entries */
@@ -157,20 +160,19 @@ enum lie {
     LIE_STRTAB_SIZE,     /* the string table is longer than the file */
     LIE_STRTAB_OFFSET,   /* the string table starts past the end of the file */
     LIE_STRTAB_EMPTY,    /* the string table has no bytes */
+    LIE_NAME_AT_END,     /* every function's name offset is one past the string table's terminating NUL */
     LIE_E_TYPE           /* a shared object, as a PIE is */
 };
 
 static enum lie current_lie;
 
-/* The largest value an ElfW(Off) or ElfW(Xword) holds. */
-#define ELF_FIELD_MAX ((ElfW(Off))-1)
-
 /* Applies current_lie to the bytes of the executable. */
 static void tell(unsigned char *bytes, size_t size)
 {
-    (void)size;
     ElfW(Ehdr) eh;
     memcpy(&eh, bytes, sizeof eh);
+    if (eh.e_shoff > size || (size_t)eh.e_shnum * sizeof(ElfW(Shdr)) > size - eh.e_shoff)
+        return; /* not an executable this test can edit; the load then succeeds and the test fails */
     ElfW(Shdr) *sections = (ElfW(Shdr) *)(void *)(bytes + eh.e_shoff);
     ElfW(Shdr) *symtab = NULL;
     for (size_t i = 0; i < eh.e_shnum; i++) {
@@ -188,14 +190,18 @@ static void tell(unsigned char *bytes, size_t size)
         symtab->sh_offset = (ElfW(Off))0x7FFFFFF0u;
         break;
     case LIE_SH_RANGE_WRAPS:
-        symtab->sh_offset = ELF_FIELD_MAX - 0x0Fu; /* + any size over 16 wraps to a small number */
-        symtab->sh_size = 0x100u;
+        symtab->sh_size = (ElfW(Xword))(0u - symtab->sh_offset + 0x10u); /* offset + size is 16 modulo 2^N */
         break;
     case LIE_SH_LINK:
         symtab->sh_link = eh.e_shnum + 5u;
         break;
     case LIE_SH_LINK_WRONG:
-        symtab->sh_link = 0; /* the null section, not a string table */
+        symtab->sh_link = (ElfW(Word))(symtab - sections); /* itself: not empty, not a string table */
+        break;
+    case LIE_SH_LINK_PAST_COUNT:
+        eh.e_shnum = (ElfW(Half))(symtab - sections + 1); /* the symbol table is the last section it admits to */
+        symtab->sh_link = eh.e_shnum;                      /* its successor, which is in the file */
+        memcpy(bytes, &eh, sizeof eh);
         break;
     case LIE_SH_ENTSIZE:
         symtab->sh_entsize = 3;
@@ -230,6 +236,14 @@ static void tell(unsigned char *bytes, size_t size)
     case LIE_STRTAB_EMPTY:
         strtab->sh_size = 0;
         break;
+    case LIE_NAME_AT_END: {
+        ElfW(Sym) *symbols = (ElfW(Sym) *)(void *)(bytes + symtab->sh_offset);
+        for (size_t i = 0; i < symtab->sh_size / sizeof *symbols; i++) {
+            if (ELF32_ST_TYPE(symbols[i].st_info) == STT_FUNC && symbols[i].st_size != 0)
+                symbols[i].st_name = (ElfW(Word))(strtab->sh_size + 1u);
+        }
+        break;
+    }
     case LIE_E_TYPE:
         eh.e_type = ET_DYN;
         memcpy(bytes, &eh, sizeof eh);
@@ -261,6 +275,7 @@ PTEST(a_symbol_table_past_the_end_of_the_file_is_refused)
 
 PTEST(a_symbol_table_whose_offset_plus_size_wraps_around_is_refused)
 {
+    /* the offset is inside the file; only the sum, computed naively, would be */
     PT_ASSERT_EQ_INT(load_lying(LIE_SH_RANGE_WRAPS), -1);
 }
 
@@ -268,6 +283,18 @@ PTEST(a_string_table_link_that_does_not_exist_or_is_not_a_string_table_is_refuse
 {
     PT_ASSERT_EQ_INT(load_lying(LIE_SH_LINK), -1);
     PT_ASSERT_EQ_INT(load_lying(LIE_SH_LINK_WRONG), -1);
+}
+
+PTEST(a_string_table_link_past_the_section_count_is_refused)
+{
+    PT_ASSERT_EQ_INT(load_lying(LIE_SH_LINK_PAST_COUNT), -1);
+}
+
+PTEST(a_name_offset_one_past_the_string_table_end_is_skipped_not_read)
+{
+    PT_ASSERT_EQ_INT(load_lying(LIE_NAME_AT_END), 0);
+    PT_ASSERT_EQ_U32(symbols_count(), 0);
+    symbols_unload();
 }
 
 PTEST(entries_that_are_not_symbols_are_refused)
