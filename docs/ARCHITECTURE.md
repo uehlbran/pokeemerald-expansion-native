@@ -231,6 +231,77 @@ written. The field table is in `platform/README.md`, "The flash chip and the
 save file"; the decisions are "Native structs follow the host ABI" and "The
 native save file is versioned" in `DECISIONS.md`.
 
+## The 64-bit build
+
+`make -f Makefile.native native BITS=64` builds the same game with 8-byte
+pointers (`docs/BUILDING.md`). What differs from 32 bits, and where it lives:
+
+- **The memory model is the same.** The regions sit at their GBA addresses
+  below 4 GiB, the executable is linked at 0x40000000 and script pointers carry
+  the tag bit (`script_tag.h`), so a GBA address is still the native address of
+  the same byte and every `uintptr_t` conversion in `platform/` holds at both
+  widths. Only 4-byte values that name addresses (bytecode, below) rely on the
+  data being below 4 GiB.
+- **Assembled data is emitted in the x86-64 layout.** C reads maps, events,
+  voices, songs, cries and the script and special tables through structs whose
+  pointers are 8 bytes, so the macros that emit those words write `.8byte` and
+  the structs' padding under `.ifdef NATIVE_POINTER_SIZE_8` (`asm/macros/m4a.inc`,
+  `music_voice.inc`, `map.inc`, `data/specials.inc`, `data/script_cmd_table.inc`,
+  `sound/*.inc`), with upstream's text in the `.else`. `Makefile.native` defines
+  the symbol with `--defsym` for `BITS=64` only. Words no macro emits (mapjson's
+  output, mid2agb's song headers, seven hand-written tables) are widened by
+  `platform/build_glue/asm_filter.py`'s `--pointer-size 8` rules, which only the
+  64-bit recipes pass. Address words inside bytecode (event scripts, song tracks, animation
+  scripts) stay 4 bytes: they are read byte by byte, and every target is below
+  4 GiB.
+- **Three checks run before the 64-bit link** (`Makefile.native`, the targets
+  `data_relocations.checked` and `battle_script_operands.checked`), each with a
+  `--self-test` that kills its mutations:
+  `check_relocations.py` classifies each symbol that holds an address word
+  with `data_address_words.txt` (pointer, table, packed, operands, tone,
+  bytecode) and fails on an unlisted symbol, a word of the wrong width or
+  alignment, or a count that differs from a reference assembled with 4-byte
+  pointers (`build/native64/pointer4`), so a data table upstream adds cannot be
+  left at 4 bytes unnoticed; `check_data_layout.py` compares every byte
+  and padding byte of the structs the data holds with that reference and with
+  the layout of the C struct at each width, which `data_layout_probe.c` prints
+  compiled with the game's flags; `check_battle_script_operands.py` compares
+  each battle script macro's operand widths with the `CMD_ARGS` struct that
+  `src/battle_script_commands.c` reads them through, at both pointer sizes,
+  and the `setzeffect` length of `src/battle_z_move.c`.
+- **Battle scripts' pointer operands** (jump targets, data pointers, a
+  `callnative`'s function) are read through packed structs laid over the
+  bytecode, so they are 8 bytes at 64 bits: `asm/macros/battle_script.inc`.
+- **Expansion is guarded for width in a few places** (the rows marked 64-bit
+  in `UPSTREAM_MODIFICATIONS.md`): `INTR_VECTOR` as a 32-bit store, alignment
+  of the heap, the save blocks, task data and the RFU buffers to 8 bytes, the
+  structs that grow (`ListMenu` in a task's data, `RecordedBattleSave`), the
+  Union Room task data, `test/save.c`'s size. The convention: the width test
+  is `#if __SIZEOF_POINTER__ == 8` nested inside `#if PLATFORM_NATIVE` (in
+  assembly, `.ifdef NATIVE_POINTER_SIZE_8`); the 32-bit text keeps its lines
+  (it comes first, with its `#line`) and the 64-bit text follows in the `#else`,
+  so the 32-bit executables do not change.
+- **SIGFPE.** `arm_division` decodes the faulting division at both widths (i386
+  and x86-64, REX.W included) and gives a division by zero the result the GBA's
+  libgcc gives. `platform/arm_division_libgcc/` is the record of those results,
+  rebuilt under qemu-arm and compared by hand.
+- **The test table.** At 64 bits GCC would space the `.tests` entries 64 bytes
+  apart; the test objects are built with `-malign-data=abi` so they are 40 bytes,
+  and `crt0_init` refuses a table that is not a whole number of
+  `gPlatformTestEntrySize` entries (`test/test_runner.c` defines the size; the
+  start-up line says how many tests of what size). `tools/patchelf` and the
+  hydra read ELF64.
+- **Saves.** Only `SaveBlock1`'s layout differs between widths (its object event
+  templates and Enigma Berry record hold pointers). `save_convert` reads the
+  other width's save when it loads, through the layout tables
+  `save_layout32.h` and `save_layout64.h`, each pinned by static assertions in
+  its own build. Gate (h), `tests/smoke/run_cross_width.sh`, plays a save from
+  one width to the other and back (`tests/smoke/README.md`).
+- **Sanitizers.** The suite under AddressSanitizer and UndefinedBehaviorSanitizer
+  reports the same accesses test by test at both widths (compare with
+  `ASAN_OPTIONS=suppress_equal_pcs=0`); no report is new at 64 bits.
+  `platform/test_runner/SUITE-LOG.md`, "The sanitized run at 64 bits".
+
 ## Known divergences from the GBA
 
 Each is a decision in `DECISIONS.md`; none changes the GBA build.
@@ -270,7 +341,7 @@ Each is a decision in `DECISIONS.md`; none changes the GBA build.
   or save format, with the endianness and alignment assumptions written
   next to them.
 - No pointer stored in an integer; `uintptr_t` where unavoidable, with a
-  comment flagging it for the 64-bit milestone.
+  comment saying why (GBA addresses are native addresses).
 - Every SDL and C library return value checked; failure messages name
   the module and the call.
 
