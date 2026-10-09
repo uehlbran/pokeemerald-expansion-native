@@ -510,3 +510,44 @@ Argument facts (`party_extras:N`, `bag_item_count:ID`, `flag:ID`,
 constants in `platform/inspect_args.c` and are not dumped. Not covered:
 the debug menu's other paths (warps, encounters, sound, cheats, eggs,
 decorations) and movement inside the summary screen.
+
+## 2026-10-09: The trainer party seed does not hash the party table's address
+
+`GeneratePartySeed` and `MakePartnerGenerator` (src/trainer_util.c) seed
+a trainer's party with a CRC over the whole `struct Trainer`, whose
+`party` field is a pointer. On the GBA that pointer is a ROM address
+fixed by the ROM's link map, so the seed, and with it every trainer
+Pokémon's personality and gender, is stable for a given ROM. Natively
+the pointer is an address in the executable and moves with any relink;
+three refactoring branches that changed nothing in the game flipped the
+debug-menu gate's opponent between male and female, and a 32-byte shift
+of the table was enough. Chosen: under the guard the CRC runs over a
+copy with `party` cleared, so the seed depends on the trainer's data and
+the player's ID only and is the same in every build of a width (the two
+widths hash their own ABI's struct bytes and differ from each other,
+which no gate compares). A deliberate divergence from the GBA, whose
+seed is a property of its link map and cannot be reproduced. Rejected:
+pinning the executable's layout (every change to the build would have to
+preserve the table's address) and accepting layout-dependent gate
+expectations (the gate would fail on every relink). `trainer_pools.c`'s
+`GetPoolSeed` has the same pattern behind a disabled config and empty
+data and is left alone. The glyph was first suspected to be an
+uninitialised read; the proof that it was not (a Python reimplementation
+of CRC32 and SFC32 predicting all six observed outcomes from the party
+address alone) is in the worker's report, summarised in the row.
+
+## 2026-10-09: The refactoring pass is seven reviewed module groups
+
+The owner's standing instruction (PLAN.md) asked for a dedicated
+refactoring pass over everything this project wrote before 32-bit is
+declared done, as module-sized worker tasks reviewed as usual. Chosen:
+seven groups on disjoint files (core, video, audio, bios and debug,
+replay and inspection, storage and build glue, and an audit of the
+modifications to expansion's files), each with the C-RULES checklist, a
+cppcheck baseline, its own worktree and a mutation-testing review before
+merge; behaviour is frozen by the existing tests, the replays and the
+suite, which every branch runs before and the orchestrator runs again at
+merge. Formatting (clang-format) and clang-tidy come after the pass, so
+that the one-time reformat does not conflict with seven branches and the
+refactors stay readable in the history. Follow-ups the reviews found
+outside their groups are collected in STATUS.md for the end-to-end read.

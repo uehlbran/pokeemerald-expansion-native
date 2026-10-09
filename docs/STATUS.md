@@ -95,9 +95,9 @@ drivers), and 64-bit, which does not link yet (two expansion layout
 asserts; milestone 7). Interchange with GBA `.sav` files is not supported
 (host struct ABI; DECISIONS.md). The m4a engine is proven against the
 ARM original by a differential test run by hand, not by the standard
-gate. Known: save-file bytes differ between runs by nine uninitialised
-bytes in the first party Pokémon (expansion's creation code reads
-uninitialised stack; dumps are unaffected). Known cosmetic: a crashing
+gate. The save-file nondeterminism (nine uninitialised bytes in the first
+party Pokémon) is fixed in milestone 6: two runs give byte-identical
+files. Known cosmetic: a crashing
 runner's `crash_reboot` line on stderr can interleave with the hydra's
 stdout line for another runner.
 
@@ -166,6 +166,8 @@ Nothing yet; nothing exists to be broken.
 | replay (milestone 3: replay, inspect, restart, smoke test) | Sonnet | Sonnet (two passes) |
 | testrunner (milestone 4: debug channel, crash reboot, arm_division, hydra launcher, the suite's fixes) | Opus | Sonnet |
 | debugmenu (milestone 5: debug-menu gate, replay include and facts, palette padding) | Sonnet | Sonnet |
+| refactor-audio, refactor-video, refactor-store, refactor-bios, refactor-core, refactor-tools (milestone 6 refactoring pass) | Sonnet | Sonnet (mutation testing), orchestrator merge gate |
+| battle-glyph (milestone 6: the trainer party seed and the nickname padding, root cause of the screenshot flake) | Opus | orchestrator |
 | upstream-report (seven issues drafted, triaged against upstream) | Sonnet | Fable (orchestrator) |
 | Research, synthesis, decisions, merges | Fable (orchestrator) | |
 

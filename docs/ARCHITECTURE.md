@@ -115,7 +115,8 @@ returned to the caller (`main` decides what to do; modules never call
 | `gba_memmap` | the address decoder | GBA Memory Map | yes (region bounds, containment, mapping) |
 | `interrupt` | `IntrMain` and the IE/IF/IME logic | GBA Interrupt Control | yes |
 | `timer` | Timers 0 to 3 | GBA Timers | yes |
-| `rtc` | the S-3511A clock chip | GBA Cart Real-Time Clock | yes |
+| `rtc` | the S-3511A clock chip's registers and offset | GBA Cart Real-Time Clock | yes |
+| `rtc_calendar` | the chip's calendar arithmetic (BCD, leap years, the 2000 to 2099 cycle) | GBA Cart Real-Time Clock | yes |
 | `dma` | DMA channels 0 to 3 | GBA DMA Transfers | yes |
 | `bios` | the BIOS SWI functions | BIOS Functions | yes |
 | `input` | the keypad | GBA Keypad Input | yes (mapping, replay source) |
@@ -135,6 +136,7 @@ returned to the caller (`main` decides what to do; modules never call
 | `frame` | a frame of hardware time, in order (above) | LCD Dimensions and Timings | yes (headless, with the real modules) |
 | `game_hooks` | the game's control-flow assembly (test runner jumps, the battle runner's stack, delay loops) | n/a (game code) | yes |
 | `crt0`, `rom_header`, `gcn_multiboot`, `decompress_asm` | the `src/*.s` the native build does not assemble | n/a (game code) | yes |
+| `options` | the command line | n/a | yes |
 | `main` | power-on | n/a | no |
 
 Dependencies point one way: `main` depends on everything; `frame` on the
