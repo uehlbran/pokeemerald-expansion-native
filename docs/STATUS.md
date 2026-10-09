@@ -265,10 +265,14 @@ everything past Birch's lab in play, every menu neither replay opens
 trainer battles; not the debug menu's warps, encounters, sound, cheats,
 eggs or decorations), the windowed
 path (a real SDL window and audio device ran only with SDL's dummy
-drivers), and 64-bit, which does not link yet (two expansion layout
-asserts; milestone 7; the inventory worker's experiment links once they are
-disabled, which says nothing about running). Interchange with GBA `.sav` files is not supported
-(host struct ABI; DECISIONS.md). The m4a engine is proven against the
+drivers). At 64 bits the same gates cover the same ground as at 32
+(the "Milestone 7" section); what no gate covers there either: the
+debug menu's other screens and play past Birch's lab, and a save that
+has been played far (the cross-width gate converts the opening's save,
+whose object event templates and Enigma Berry record are mostly empty;
+the converter's unit tests cover filled ones). Interchange with GBA
+`.sav` files is not supported (host struct ABI; DECISIONS.md; an
+emulator's save is in neither native layout). The m4a engine is proven against the
 ARM original by a differential test run by hand, not by the standard
 gate. The save-file nondeterminism (nine uninitialised bytes in the first
 party Pokémon) is fixed in milestone 6: two runs give byte-identical
