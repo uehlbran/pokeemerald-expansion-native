@@ -25,9 +25,8 @@ runtimes (`gcc-multilib`). The tests run on Linux only for now: the region
 layout needs GNU ld and a non-PIE ELF executable (see below).
 
 Every test binary is linked with `gba_regions.ld`, `gba_game.ld` and
-`-no-pie -Wl,-Ttext-segment=0x08000000` and compiled `-fno-pie`, so the GBA
-memory regions exist in it and its image sits where the GBA has its
-cartridge ROM (see below). A native executable that uses the platform layer must be
+`-no-pie -Wl,-Ttext-segment=0x40000000`, so the GBA memory regions exist in
+it (see below). A native executable that uses the platform layer must be
 linked the same way; `Makefile.native` does (next section).
 
 ## Adding a module and its tests
@@ -123,13 +122,10 @@ than `mmap` at run time: the header comment of `gba_memmap.c` and
 
 Sizes are what the hardware decodes, and are what `contains()` checks
 against; the 4 KiB pages are only the native mapping granularity. The
-executable itself starts at 0x08000000, the Game Pak ROM's address: its code
-and read-only data are the ROM, and `rom_mirror` maps them again at
-0x0A000000, the ROM's first mirror, which expansion's script engine calls
-through (`rom_mirror.h`). Below the ROM, at 0x01800000 (GBATEK's unused
-area), `gba_regions.ld` also places the 1 MiB stack `game_hooks` runs the
-battle test runner's functions on, low enough for the runner's 27-bit
-address fields.
+executable itself starts at 0x40000000, above every region. At 0x01800000
+(GBATEK's unused area), `gba_regions.ld` also places the 1 MiB stack
+`game_hooks` runs the battle test runner's functions on, low enough for the
+runner's 27-bit address fields.
 
 ## The flash chip (`flash`) and the save file (`save_file`)
 

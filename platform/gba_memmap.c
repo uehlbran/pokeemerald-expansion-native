@@ -15,8 +15,8 @@
  * Those are SHT_NOBITS sections, so ld emits a file-less PT_LOAD segment for
  * each, and the kernel maps them zero-filled and read-write while loading the
  * executable, before any code runs. The executable is linked non-PIE at
- * 0x08000000 (-Wl,-Ttext-segment), where the GBA has its cartridge ROM, clear
- * of every region on both bit widths (rom_mirror.h says why there). So init has nothing to map: it checks that the linker put each
+ * 0x40000000 (-Wl,-Ttext-segment) to stay clear of every region on both bit
+ * widths. So init has nothing to map: it checks that the linker put each
  * section where this module's table says, at the region's base and exactly
  * the region's size in whole 4 KiB pages long (the script cannot include
  * this module's header, so the numbers exist twice), and fails loudly if

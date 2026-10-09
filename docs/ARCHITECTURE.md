@@ -40,23 +40,18 @@ The platform maps the GBA regions at their GBA addresses
 | Palette | 0x05000000 | 1 KiB | mapped |
 | VRAM | 0x06000000 | 96 KiB | mapped |
 | OAM | 0x07000000 | 1 KiB | mapped |
-| Game Pak ROM | 0x08000000 | up to 32 MiB | the executable itself: linked here (`-Ttext-segment=0x08000000`), its code and read-only data are the cartridge |
-| ROM mirror (wait state 1) | 0x0A000000 | as the ROM | `rom_mirror` maps the executable's read-only segments again; expansion's script engine calls "requests effects" functions here (`function + ROM_SIZE`) |
 | Flash | 0x0E000000 | 128 KiB | mapped; the save container persists it |
 
-Not GBA memory, placed below 0x08000000 so its addresses fit the battle
-test runner's 27-bit fields: the stack `PlatformCallWithStack` runs the
-battle tests' functions on, 1 MiB at 0x01800000 (`gba_regions.ld`).
+Not GBA memory, placed below 2^27 so its addresses fit the battle test
+runner's 27-bit fields: the stack `PlatformCallWithStack` runs the battle
+tests' functions on, 1 MiB at 0x01800000 (`gba_regions.ld`).
 
-The executable is the cartridge ROM: linked at 0x08000000, clear of every
-region, with code, read-only data and the game's variables all below
-0x0A000000 in the plain 32-bit build. That keeps expansion's GBA-address
-assumptions true: ROM-range checks (`ROM_START`/`ROM_END`), the heap's
-allocation-site encoding (`MemBlockLocation`), the hydra's 7-digit `%p`
-symbolisation, and the ROM mirror. Code runs from the mirror because
-32-bit x86 position-dependent code addresses data absolutely; 64-bit
-(RIP-relative data) cannot, and the sanitized build's code is larger than
-the 32 MiB window (flagged in `rom_mirror.h`).
+The executable is linked at 0x40000000 so it never overlaps a region. The
+two places where expansion takes a pointer to be in the cartridge ROM are
+guarded: the heap's allocation-site encoding (`src/malloc.c`, an offset
+from the start of the executable) and `SetSpeaker`'s ROM range check
+(`src/field_name_box.c`, `PlatformIsRomPointer`: the executable's
+read-only segments).
 Register writes are plain stores: the layer polls register state at
 scanline and frame boundaries and the few writes that must act at once
 (DMA enable, the sound engine's `swi 0x2A`, the test runner's debug
@@ -133,7 +128,6 @@ returned to the caller (`main` decides what to do; modules never call
 | `save_file` | the cartridge's persistence | n/a | yes |
 | `debug_channel` | mGBA's debug registers | mGBA `src/gba/io.c` | yes |
 | `crash_reboot` | the reboot after a crash, keeping IWRAM's last 0x200 bytes (test runner mode) | BIOS Reset Functions | yes (real crashes and re-execs) |
-| `rom_mirror` | the Game Pak ROM's wait-state-1 mirror at 0x0A000000 | GBA Memory Map | yes |
 | `arm_division` | the GBA's software division (libgcc), which returns instead of trapping on a zero divisor | (libgcc, the Intel SDM for decoding) | yes |
 | `lcd_status` | the LCD controller's timing registers, `VCOUNT` and `DISPSTAT` | LCD I/O Interrupts and Status | yes |
 | `m4a_output` | the sound FIFO DMAs, reading the m4a engine's PCM ring | GBA Sound Channel A and B - DMA Sound | yes |
@@ -171,7 +165,7 @@ and assert ours match, and `m4a_output.c`, which reads the m4a engine's
 `Makefile.native` builds the native executable from expansion's sources
 plus `platform/` (`make -f Makefile.native native`, with `TEST=1` for the
 test runner build and `SANITIZE=1` for the sanitized one), linked non-PIE
-at 0x08000000 with `platform/gba_regions.ld` and `platform/gba_game.ld`. `platform/Makefile` builds the modules and their tests
+at 0x40000000 with `platform/gba_regions.ld` and `platform/gba_game.ld`. `platform/Makefile` builds the modules and their tests
 standalone under AddressSanitizer and UndefinedBehaviorSanitizer with
 `-std=gnu17 -Wall -Wextra -Wshadow -Wstrict-prototypes -Wconversion
 -Werror`; expansion's headers are included with `-isystem` so their

@@ -9,7 +9,8 @@
  * into its exit status), the two accesses to mGBA's debug registers that
  * have side effects (the handshake and the send, test/test_runner.c; the
  * registers are debug_channel's), and the battle test runner's stack switch
- * (five Thumb routines, test/test_runner_battle.c). Each guarded call site
+ * (five Thumb routines, test/test_runner_battle.c), and one ROM address
+ * range check (src/field_name_box.c). Each guarded call site
  * is a row of docs/UPSTREAM_MODIFICATIONS.md. Design: docs/RESEARCH.md, "The
  * test runner on the native build".
  *
@@ -112,6 +113,17 @@ bool PlatformDebugOpen(void);
 /* test/test_runner.c MgbaPutchar_ and MgbaVPrintf_: the store to mGBA's
  * FLAGS register that sends the message in STRING (debug_channel_send). */
 void PlatformDebugSend(uint16_t flags);
+
+/* src/field_name_box.c SetSpeaker: whether a script's word is the address
+ * of data in the cartridge ROM, which the GBA tests as ROM_START <= address
+ * < ROM_END (08000000h-09FFFFFFh, include/gba/defines.h); SetSpeaker uses
+ * it as the speaker's name if so. Natively the ROM's contents are the
+ * executable's read-only data, linked at 0x40000000: true when address is
+ * inside one of the executable's read-only loadable segments (code,
+ * read-only data, string literals), as its program headers give them;
+ * false for its writable data, the GBA regions, the stacks and the heap.
+ * Linux (getauxval). */
+bool PlatformIsRomPointer(uintptr_t address);
 
 /* test/test_runner_battle.c: calls entry(context) on a separate stack and
  * returns when it returns. On the GBA the stack is the 1 KiB DATA.stack whose

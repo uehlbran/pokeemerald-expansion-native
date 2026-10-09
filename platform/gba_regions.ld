@@ -6,7 +6,7 @@
  * docs/research/test-runner-protocol.md. Why this and not runtime mmap:
  * platform/gba_memmap.c.
  *
- * Link with: -no-pie -Wl,-Ttext-segment=0x08000000 -Wl,-T,gba_regions.ld
+ * Link with: -no-pie -Wl,-Ttext-segment=0x40000000 -Wl,-T,gba_regions.ld
  * INSERT AFTER .bss makes this augment the default linker script rather than
  * replace it. platform/Makefile links every test this way; Makefile.native
  * must link the game the same way.
@@ -126,7 +126,7 @@ SECTIONS
      * addresses of those functions' locals in 27-bit fields
      * (include/test/battle.h, QueuedSubHitEvent.address), which on the GBA
      * hold EWRAM addresses, where its DATA.stack is; the executable's own
-     * .bss is above 08000000h and would not fit, so the stack sits in
+     * .bss is above 40000000h and would not fit, so the stack sits in
      * GBATEK's unused 00004000-01FFFFFF, clear of the page the m4a tests map
      * at 01000000h (platform/m4a/test_m4a_support.h). 1 MiB (game_hooks.h). */
     .platform_call_stack 0x01800000 (NOLOAD) :

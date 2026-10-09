@@ -7,7 +7,7 @@ native` links `build/native<bits>[-test][-san]/pokeemerald-native[-test]`
 
 | Need | Provided by |
 |---|---|
-| Link command | `Makefile.native` `native`: `-no-pie -Wl,-Ttext-segment=0x08000000 -Wl,-T,platform/gba_regions.ld -Wl,-T,platform/gba_game.ld -Wl,--defsym,gInitialMainCB2=...`, SDL2 and libm (0x40000000 until the test runner work moved the image to the ROM's address, `platform/rom_mirror.h`) |
+| Link command | `Makefile.native` `native`: `-no-pie -Wl,-Ttext-segment=0x40000000 -Wl,-T,platform/gba_regions.ld -Wl,-T,platform/gba_game.ld -Wl,--defsym,gInitialMainCB2=...`, SDL2 and libm |
 | `.ewram` (EWRAM_INIT) | `gba_regions.ld` `.gba_ewram_init`, loaded at 0x02000000 ahead of `.sbss`; `platform/crt0.c` keeps its initial image for `ReInitializeEWRAM` |
 | `.iwram`, `.iwram.code`, `script_data`, compound strings, `.rodata.overworld_script` | the default script (`.iwram` goes into `gba_game.ld`'s `game_data`) |
 | `common_data` | `gba_game.ld` `game_bss`, after the game's `.bss`, not loaded, as on the GBA |
@@ -22,7 +22,8 @@ native` links `build/native<bits>[-test][-san]/pokeemerald-native[-test]`
 | `FastUnsafeCopy32`, `LZ77UnCompWRAMOptimized` | `platform/decompress_asm.c`; `src/decompress.c` (guarded) no longer copies code, so natively only `LZ77UnCompWRAMOptimized` is referenced and `LZ77UnCompWRAMOptimized_end` is not needed |
 | `GameCubeMultiBoot_*` | `platform/gcn_multiboot.c` (no GameCube: progress stays "none") |
 | `RomHeaderGameCode`, `RomHeaderSoftwareVersion` | `platform/rom_header.c` ("BPEE", 0) |
-| `PlatformWaitCycles`, `PlatformJumpToAgbMainLoop`, `PlatformTestRunnerExit`, `PlatformCallWithStack`, `PlatformDebugOpen`, `PlatformDebugSend` | `platform/game_hooks.c` (the last two reach `platform/debug_channel.c`) |
+| `PlatformWaitCycles`, `PlatformJumpToAgbMainLoop`, `PlatformTestRunnerExit`, `PlatformCallWithStack`, `PlatformDebugOpen`, `PlatformDebugSend`, `PlatformIsRomPointer` | `platform/game_hooks.c` (`PlatformDebugOpen` and `PlatformDebugSend` reach `platform/debug_channel.c`) |
+| `__executable_start` (`src/malloc.c`'s allocation-site offsets) | GNU ld's default script |
 | `platform_call_stack_start`/`_end` (the battle runner's stack, below 2^27) | `gba_regions.ld` `.platform_call_stack` at 0x01800000 |
 | `main` | `platform/main.c` |
 

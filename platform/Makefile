@@ -86,26 +86,20 @@ ifeq ($(SDL_LIBS),)
 $(error pkg-config cannot find sdl2; install libsdl2-dev (and libsdl2-dev:i386 for BITS=32))
 endif
 
-# -fno-pie: position-dependent code, as the non-PIE link wants and as
-# Makefile.native compiles the game. It also lets code run from the ROM
-# mirror (rom_mirror.h): 32-bit PIC code finds its data relative to itself,
-# so from the mirror it would miss it.
-CFLAGS_ALL := -m$(BITS) -std=gnu17 -fno-pie $(WARNINGS) $(OPTIMISATION) $(SANITIZERS) $(INCLUDES) \
+CFLAGS_ALL := -m$(BITS) -std=gnu17 $(WARNINGS) $(OPTIMISATION) $(SANITIZERS) $(INCLUDES) \
               $(SDL_CFLAGS) -MMD -MP
 
 # The GBA memory regions exist because the ELF loader maps them: gba_regions.ld
 # adds them as sections at their GBA addresses (see gba_memmap.c), which needs
-# a non-PIE executable (docs/research/memory-map-experiment.md). Its own image
-# starts at 0x08000000, where the GBA has the cartridge ROM, clear of every
-# region on both bit widths: the executable's code and read-only data are the
-# ROM, which rom_mirror maps again at 0x0A000000 as the GBA mirrors it.
+# a non-PIE executable whose own image starts at 0x40000000, clear of every
+# region on both bit widths (docs/research/memory-map-experiment.md).
 # Makefile.native must link the game with these same flags.
 REGIONS_LD := gba_regions.ld
 # gba_game.ld adds what expansion's linker scripts give the game (symbols,
 # the test table, the brackets around the game's variables); in a unit test
 # its sections are empty, but its symbols exist, as crt0.c needs.
 GAME_LD := gba_game.ld
-GBA_LDFLAGS := -no-pie -Wl,-Ttext-segment=0x08000000 -Wl,-T,$(REGIONS_LD) -Wl,-T,$(GAME_LD)
+GBA_LDFLAGS := -no-pie -Wl,-Ttext-segment=0x40000000 -Wl,-T,$(REGIONS_LD) -Wl,-T,$(GAME_LD)
 LDFLAGS_ALL := -m$(BITS) $(SANITIZERS) $(GBA_LDFLAGS)
 
 # The sanitizer options every test runs under, set here so the environment
@@ -132,6 +126,12 @@ $(LIB): $(MODULE_OBJS)
 $(OBJ_DIR)/%.o: %.c
 	@mkdir -p $(@D)
 	$(CC) $(CFLAGS_ALL) -c $< -o $@
+
+# test_arm_division divides by a global through an absolute address with an
+# index and no base register (divl sym(,%ebx,4)), an operand form the game's
+# -fno-pie code (Makefile.native) uses for its tables and that the SIGFPE
+# decoder must handle; position-independent code cannot encode it.
+$(OBJ_DIR)/test/test_arm_division.o: CFLAGS_ALL += -fno-pie
 
 # The files a test names on its "// deps:" line.
 test_deps = $(shell sed -n -E 's@^//[[:space:]]*\#?[[:space:]]*deps:@@p' test/$(1).c)

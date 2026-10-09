@@ -57,7 +57,6 @@
 #include "interrupt.h"
 #include "ppu.h"
 #include "psg.h"
-#include "rom_mirror.h"
 #include "rtc.h"
 #include "save_file.h"
 #include "timer.h"
@@ -205,7 +204,6 @@ static int parse_options(int argc, char **argv, struct options *out)
 /* --- The modules, in dependency order ------------------------------------ */
 
 static int start_gba_memmap(const struct options *o) { (void)o; return gba_memmap_init(); }
-static int start_rom_mirror(const struct options *o) { (void)o; return rom_mirror_init(); }
 static int start_transfer_bounds(const struct options *o) { (void)o; return transfer_bounds_init(); }
 static int start_interrupt(const struct options *o) { (void)o; return interrupt_init(gIntrTable, INTERRUPT_TABLE_LENGTH); }
 static int start_timer(const struct options *o) { (void)o; return timer_init(interrupt_raise); }
@@ -324,7 +322,6 @@ struct module_step {
  * subsystems) and ends SDL after all three are shut down. */
 static const struct module_step module_steps[] = {
     { "gba_memmap", start_gba_memmap, gba_memmap_shutdown },
-    { "rom_mirror", start_rom_mirror, rom_mirror_shutdown },
     { "debug_channel", start_debug_channel, debug_channel_shutdown },
     { "crash_reboot", start_crash_reboot, crash_reboot_shutdown },
     { "arm_division", start_arm_division, arm_division_shutdown },

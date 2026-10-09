@@ -14,6 +14,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "crt0.h"
@@ -606,6 +607,42 @@ PTEST(lz77_type_bits_are_not_checked)
     memset(out, COPY_GUARD, sizeof out);
     LZ77UnCompWRAMOptimized(stream, out);
     PT_ASSERT_EQ_INT(out[0], 'k');
+}
+
+/* --- PlatformIsRomPointer (src/field_name_box.c SetSpeaker) ------------- */
+
+static const uint32_t rom_table[4] = { 1, 2, 3, 4 };
+static uint32_t writable_word = 5;
+
+static uintptr_t address_of_code(void (*function)(void))
+{
+    uintptr_t address = 0;
+    memcpy(&address, &function, sizeof address);
+    return address;
+}
+
+PTEST(rom_pointers_are_the_executables_code_and_read_only_data)
+{
+    PT_ASSERT(PlatformIsRomPointer(address_of(rom_table)));
+    PT_ASSERT(PlatformIsRomPointer(address_of(&rom_table[3])));
+    PT_ASSERT(PlatformIsRomPointer(address_of("BRENDAN")));
+    PT_ASSERT(PlatformIsRomPointer(address_of_code(GameCubeMultiBoot_Quit)));
+}
+
+PTEST(rom_pointers_exclude_writable_data_stacks_heap_regions_and_indexes)
+{
+    uint32_t local = writable_word;
+    void *heap = malloc(16);
+    PT_ASSERT(heap != NULL);
+    PT_ASSERT(!PlatformIsRomPointer(address_of(&writable_word)));
+    PT_ASSERT(!PlatformIsRomPointer(address_of(&local)));
+    PT_ASSERT(!PlatformIsRomPointer(address_of(heap)));
+    free(heap);
+    PT_ASSERT(!PlatformIsRomPointer(0));
+    PT_ASSERT(!PlatformIsRomPointer(16)); /* a speaker index (SP_NAME_COUNT) */
+    PT_ASSERT(!PlatformIsRomPointer(GBA_EWRAM_BASE));
+    PT_ASSERT(!PlatformIsRomPointer(UINT32_C(0x08000000))); /* the GBA's ROM: nothing natively */
+    PT_ASSERT(!PlatformIsRomPointer(UINTPTR_MAX));
 }
 
 /* --- GameCube multiboot and the ROM header ------------------------------- */

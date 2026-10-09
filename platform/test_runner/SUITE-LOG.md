@@ -68,18 +68,32 @@ Expansion marks script commands, specials and callnatives that "request
 effects" by storing `function + ROM_SIZE` (0x2000000): on the GBA that is
 the same code in the ROM's first mirror (0x0A000000), and
 `(pointer & 0xE000000) == 0xA000000` recognises it. Natively those
-addresses were unmapped (crash in `RunScriptCommand`; every
-`RUN_OVERWORLD_SCRIPT` and every overworld script). Fixed in the platform:
-the executable is now linked at 0x08000000, the ROM's address
-(Makefile.native and platform/Makefile, `-Ttext-segment`), and
-`platform/rom_mirror` maps its read-only segments again 0x2000000 higher.
-32-bit x86 non-PIC code runs unchanged from the copy (it addresses data
-absolutely); the platform library is now compiled `-fno-pie` too. Side
-effects of the move: `MemBlockLocation`'s `ROM_START |` encoding,
-`SetSpeaker`'s ROM range check and the hydra's 7-digit `%p` symbolisation
-all work as on the GBA. Limits: 64-bit (RIP-relative data access) cannot run
-code from a mirror (`ROM_MIRROR_ERR_64_BIT`); the sanitized build's code
-(about 40 MB) does not fit the 32 MB window (see the sanitizer run below).
+addresses are unmapped: a crash in `RunScriptCommand` for every
+`RUN_OVERWORLD_SCRIPT` test and every overworld script, and
+`Script_HasNoEffect` (test/script.c) does not see the tag.
+
+For a while this branch linked the executable at 0x08000000 and mapped its
+read-only segments again 0x2000000 higher (a ROM mirror). That was
+withdrawn (coordinator's decision, 2026-10-08): it capped the native image
+at 32 MiB (the plain build already used 28 MiB of it, TEST=1 26 MiB, and the
+sanitized build only fit with outline AddressSanitizer checks and its
+read-only data moved out of the window), and a 64-bit build cannot run code
+from a mirror. The executable is linked at 0x40000000 again. The fix is
+work/replay's untagging (src/script.c, src/scrcmd.c, include/script.h,
+platform/script_tag.h), which works on both widths; until main has it,
+this class stays open here (run 10: 95 tests, all `RUN_OVERWORLD_SCRIPT`
+and script tests).
+
+The two other places that take a pointer to be in the cartridge ROM are
+guarded on this branch: `src/malloc.c` stores a heap block's allocation
+site as an offset from `__executable_start` (29 bits, using the header's
+4 unused bits, so under 512 MiB) instead of the address without
+`ROM_START`, so the runner's leak report (`test/test_runner.c`) does not
+read address 0x08xxxxxx; `src/field_name_box.c` `SetSpeaker` asks
+`PlatformIsRomPointer` (the executable's read-only segments) instead of
+testing `ROM_START..ROM_END`. Left as is: the hydra symbolises `%p` output
+only for 7-digit addresses (`<0x\d{7}>`, GBA addresses), so a native
+failure message that prints a pointer shows the raw 8-digit address.
 
 ### 5. The battle runner's 27-bit address fields
 
@@ -155,3 +169,5 @@ run compared with it test by test.
 | 6 | 5862 | 5392 | 18 | 9 | 421 | 22 | 1 | |
 | 7 | 5862 | 5405 | 18 | 9 | 421 | 0 | 0 | 9 assumption failures (class 8); one garbled test name (class 7) |
 | 8 | 5862 | 5405 | 18 | 9 | 421 | 0 | 0 | 9 assumption failures; per test equal to the GBA baseline but for those 9 |
+| 9 | 5862 | 5405 | 18 | 9 | 421 | 0 | 0 | as run 8, after the GLYPH_COPY and mega-indicator palette fixes |
+| 10 | 5862 | 5310 | 18 | 9 | 421 | 95 | 1 | linked at 0x40000000 again, without the ROM mirror: class 4 reopened until work/replay's untagging is merged |

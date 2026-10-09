@@ -18,10 +18,12 @@
 
 #include "debug_channel.h"
 
+#include <link.h> /* ElfW */
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdio.h>
 #include <string.h>
+#include <sys/auxv.h>
 #include <ucontext.h>
 
 #ifdef __SANITIZE_ADDRESS__
@@ -244,4 +246,29 @@ void PlatformCallWithStack(void (*entry)(void *context), void *context, void *st
         call.unwind_target = NULL;
         longjmp(*target, call.unwind_value);
     }
+}
+
+/* --- PlatformIsRomPointer -------------------------------------------------- */
+
+bool PlatformIsRomPointer(uintptr_t address)
+{
+    const ElfW(Phdr) *headers = (const ElfW(Phdr) *)(uintptr_t)getauxval(AT_PHDR);
+    size_t count = (size_t)getauxval(AT_PHNUM);
+    if (headers == NULL)
+        return false;
+    /* The executable is non-PIE (load bias 0); PT_PHDR gives the bias anyway. */
+    uintptr_t bias = 0;
+    for (size_t i = 0; i < count; i++) {
+        if (headers[i].p_type == PT_PHDR)
+            bias = (uintptr_t)headers - (uintptr_t)headers[i].p_vaddr;
+    }
+    for (size_t i = 0; i < count; i++) {
+        const ElfW(Phdr) *header = &headers[i];
+        if (header->p_type != PT_LOAD || (header->p_flags & PF_W) != 0)
+            continue;
+        uintptr_t start = bias + (uintptr_t)header->p_vaddr;
+        if (address >= start && address - start < (uintptr_t)header->p_memsz)
+            return true;
+    }
+    return false;
 }
