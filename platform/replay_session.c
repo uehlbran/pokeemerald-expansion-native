@@ -20,6 +20,8 @@
 _Static_assert(REPLAY_FACT_BUFFER_SIZE >= INSPECT_VALUE_SIZE, "a fact must fit the replay's buffer");
 
 /* Where the expansion of a script with `include` lines is written, in the output directory. */
+/* Permissions of the output directory: everything, which the umask narrows (mkdir(2)). */
+#define OUT_DIR_MODE 0777
 #define EXPANDED_SCRIPT_NAME "expanded.replay"
 
 /* The screen at the moment a command failed, in the output directory. */
@@ -62,7 +64,7 @@ static void write_failure_screenshot(void)
     char path[REPLAY_PATH_SIZE];
     int written = snprintf(path, sizeof path, "%s/%s", session_out_dir, FAILURE_SCREENSHOT_NAME);
     if (written > 0 && (size_t)written < sizeof path && video_write_frame_ppm(frame_pixels(), path) == 0)
-        fprintf(stderr, "replay: the screen at the failure is in %s\n", path);
+        (void)fprintf(stderr, "replay: the screen at the failure is in %s\n", path);
 }
 
 /* The driver's "line N: what" with N, a line of the expansion, as the file and line it came from;
@@ -75,7 +77,7 @@ static void make_failure_text(void)
     if (reason == NULL)
         return;
     replay_source_map_describe(&source_map, replay_failed_line(&driver), where, sizeof where);
-    snprintf(failure_text, sizeof failure_text, "%s%s", where, reason);
+    (void)snprintf(failure_text, sizeof failure_text, "%s%s", where, reason);
 }
 
 /* The frame loop's hook: one driver step per frame. */
@@ -98,8 +100,8 @@ static enum frame_step_result step(void *context)
 
 static bool make_out_dir(const char *out_dir)
 {
-    if (mkdir(out_dir, 0777) != 0 && errno != EEXIST) {
-        fprintf(stderr, "replay: cannot create the output directory %s: %s\n", out_dir, strerror(errno));
+    if (mkdir(out_dir, OUT_DIR_MODE) != 0 && errno != EEXIST) {
+        (void)fprintf(stderr, "replay: cannot create the output directory %s: %s\n", out_dir, strerror(errno));
         return false;
     }
     return true;
@@ -115,7 +117,7 @@ static char *read_text(const char *path, const char *out_dir, size_t *length_out
     bool expanded;
     char message[REPLAY_INCLUDE_MESSAGE_SIZE];
     if (replay_include_expand(path, &text, length_out, &expanded, &source_map, message, sizeof message) != 0) {
-        fprintf(stderr, "replay: %s\n", message);
+        (void)fprintf(stderr, "replay: %s\n", message);
         return NULL;
     }
     if (expanded && make_out_dir(out_dir)) {
@@ -127,9 +129,9 @@ static char *read_text(const char *path, const char *out_dir, size_t *length_out
         if (copy != NULL) {
             bool written_all = fwrite(text, 1, *length_out, copy) == *length_out;
             if (fclose(copy) != 0 || !written_all)
-                fprintf(stderr, "replay: could not write %s\n", copy_path);
+                (void)fprintf(stderr, "replay: could not write %s\n", copy_path);
         } else {
-            fprintf(stderr, "replay: could not write the expanded script to %s\n", out_dir);
+            (void)fprintf(stderr, "replay: could not write the expanded script to %s\n", out_dir);
         }
     }
     return text;
@@ -147,13 +149,13 @@ int replay_session_start(const char *script_path, const char *out_dir, uint32_t 
     if (parsed != 0) {
         char where[REPLAY_PATH_SIZE + 16u];
         replay_source_map_describe(&source_map, error.line, where, sizeof where);
-        fprintf(stderr, "replay: %s: %s\n", where, error.message);
+        (void)fprintf(stderr, "replay: %s: %s\n", where, error.message);
         return -1; /* replay_session_stop releases the map */
     }
     if (!make_out_dir(out_dir))
         return -1;
     if (snprintf(session_out_dir, sizeof session_out_dir, "%s", out_dir) >= (int)sizeof session_out_dir) {
-        fprintf(stderr, "replay: the output directory path is too long\n");
+        (void)fprintf(stderr, "replay: the output directory path is too long\n");
         return -1;
     }
     (void)inspect_init(); /* reported; callbacks outside the known table then read "unknown:0x..." */
@@ -164,7 +166,7 @@ int replay_session_start(const char *script_path, const char *out_dir, uint32_t 
         .set_keys = host_set_keys,
     };
     if (replay_start(&driver, &script, &host, out_dir, resume_after_line) != 0) {
-        fprintf(stderr, "replay: %s\n", replay_message(&driver));
+        (void)fprintf(stderr, "replay: %s\n", replay_message(&driver));
         return -1;
     }
     frame_set_step_hook(step, NULL);

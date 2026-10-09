@@ -28,7 +28,7 @@ PTEST(native_layout_is_this_builds_pointer_width_and_layout_id)
 PTEST(no_layout_is_reported_before_a_load)
 {
     save_file_shutdown();
-    struct save_file_layout layout = { 7, 7 };
+    struct save_file_layout layout = {7, 7};
     PT_ASSERT(!save_file_loaded_layout(&layout));
     PT_ASSERT_EQ_U32(layout.pointer_bits, 7); /* untouched */
 }
@@ -135,8 +135,7 @@ PTEST(an_emulator_save_loads_as_legacy_byte_for_byte)
     const bool has_layout = save_file_loaded_layout(&layout);
     uint8_t sector_17[SECTOR_BYTES];
     ReadFlash(17, 0, sector_17, SECTOR_BYTES);
-    const bool sector_17_matches =
-        memcmp(sector_17, expected_image + 17 * SECTOR_BYTES, SECTOR_BYTES) == 0;
+    const bool sector_17_matches = memcmp(sector_17, expected_image + 17 * SECTOR_BYTES, SECTOR_BYTES) == 0;
     save_file_shutdown();
     const bool removed = scratch_remove(&scratch);
     PT_ASSERT(written);
@@ -185,10 +184,22 @@ static void check_rejected_size(size_t size)
     check_rejected_file(size);
 }
 
-PTEST(a_512_kbit_save_is_rejected) { check_rejected_size(HALF_CHIP_BYTES); }
-PTEST(a_file_one_byte_too_long_is_rejected) { check_rejected_size(CHIP_BYTES + 1); }
-PTEST(a_file_one_byte_too_short_is_rejected) { check_rejected_size(CHIP_BYTES - 1); }
-PTEST(an_empty_file_is_rejected) { check_rejected_size(0); }
+PTEST(a_512_kbit_save_is_rejected)
+{
+    check_rejected_size(HALF_CHIP_BYTES);
+}
+PTEST(a_file_one_byte_too_long_is_rejected)
+{
+    check_rejected_size(CHIP_BYTES + 1);
+}
+PTEST(a_file_one_byte_too_short_is_rejected)
+{
+    check_rejected_size(CHIP_BYTES - 1);
+}
+PTEST(an_empty_file_is_rejected)
+{
+    check_rejected_size(0);
+}
 
 /* ---- the header ---- */
 
@@ -216,14 +227,26 @@ static void check_rejected_header_field(size_t offset, uint32_t value)
     check_rejected_file(FILE_BYTES);
 }
 
-PTEST(version_2_is_rejected) { check_rejected_header_field(VERSION_OFFSET, 2); }
-PTEST(version_0_is_rejected) { check_rejected_header_field(VERSION_OFFSET, 0); }
-PTEST(version_257_is_rejected) { check_rejected_header_field(VERSION_OFFSET, 257); } /* low byte is 1 */
+PTEST(version_2_is_rejected)
+{
+    check_rejected_header_field(VERSION_OFFSET, 2);
+}
+PTEST(version_0_is_rejected)
+{
+    check_rejected_header_field(VERSION_OFFSET, 0);
+}
+PTEST(version_257_is_rejected)
+{
+    check_rejected_header_field(VERSION_OFFSET, 257);
+} /* low byte is 1 */
 PTEST(a_big_endian_version_field_is_rejected)
 {
     check_rejected_header_field(VERSION_OFFSET, 0x01000000u); /* version 1 with the bytes reversed */
 }
-PTEST(the_largest_future_version_is_rejected) { check_rejected_header_field(VERSION_OFFSET, UINT32_MAX); }
+PTEST(the_largest_future_version_is_rejected)
+{
+    check_rejected_header_field(VERSION_OFFSET, UINT32_MAX);
+}
 PTEST(a_wrong_image_size_field_is_rejected)
 {
     check_rejected_header_field(IMAGE_SIZE_OFFSET, HALF_CHIP_BYTES);
@@ -279,9 +302,18 @@ static void check_rejected_magic_byte(size_t index)
     file_bytes[index] ^= 0x20; /* 'P' -> 'p', and so on */
     check_rejected_file(FILE_BYTES);
 }
-PTEST(a_wrong_first_magic_byte_is_rejected) { check_rejected_magic_byte(0); }
-PTEST(a_wrong_middle_magic_byte_is_rejected) { check_rejected_magic_byte(3); }
-PTEST(a_wrong_last_magic_byte_is_rejected) { check_rejected_magic_byte(MAGIC_BYTES - 1); }
+PTEST(a_wrong_first_magic_byte_is_rejected)
+{
+    check_rejected_magic_byte(0);
+}
+PTEST(a_wrong_middle_magic_byte_is_rejected)
+{
+    check_rejected_magic_byte(3);
+}
+PTEST(a_wrong_last_magic_byte_is_rejected)
+{
+    check_rejected_magic_byte(MAGIC_BYTES - 1);
+}
 
 /* A bare image of exactly the chip's size that happens to start with the
  * magic is a headered file of the wrong size, not a legacy file. */
@@ -300,8 +332,7 @@ struct layout_outcome {
 
 /* Writes the version-1 file of a fresh image with this layout tag and loads
  * it. */
-static bool load_tagged_file(uint32_t pointer_bits, uint32_t layout_id,
-                             struct layout_outcome *outcome)
+static bool load_tagged_file(uint32_t pointer_bits, uint32_t layout_id, struct layout_outcome *outcome)
 {
     struct scratch scratch;
     if (!scratch_create(&scratch))
@@ -321,7 +352,7 @@ static bool load_tagged_file(uint32_t pointer_bits, uint32_t layout_id,
 
 PTEST(a_file_with_the_native_tag_loads_ok_and_reports_its_layout)
 {
-    struct layout_outcome outcome = { 0 };
+    struct layout_outcome outcome = {0};
     PT_ASSERT(load_tagged_file(native_pointer_bits(), SAVE_FILE_LAYOUT_ID, &outcome));
     PT_ASSERT_EQ_INT(outcome.load, SAVE_FILE_OK);
     PT_ASSERT(outcome.loaded);
@@ -335,7 +366,7 @@ PTEST(a_file_with_the_native_tag_loads_ok_and_reports_its_layout)
  * foreign with its tag, never as SAVE_FILE_OK. */
 PTEST(a_file_from_the_other_pointer_width_loads_as_foreign)
 {
-    struct layout_outcome outcome = { 0 };
+    struct layout_outcome outcome = {0};
     PT_ASSERT(load_tagged_file(other_pointer_bits(), SAVE_FILE_LAYOUT_ID, &outcome));
     PT_ASSERT_EQ_INT(outcome.load, SAVE_FILE_FOREIGN_LAYOUT);
     PT_ASSERT(outcome.loaded);
@@ -347,7 +378,7 @@ PTEST(a_file_from_the_other_pointer_width_loads_as_foreign)
 
 PTEST(a_file_with_another_layout_id_loads_as_foreign)
 {
-    struct layout_outcome outcome = { 0 };
+    struct layout_outcome outcome = {0};
     PT_ASSERT(load_tagged_file(native_pointer_bits(), SAVE_FILE_LAYOUT_ID + 1, &outcome));
     PT_ASSERT_EQ_INT(outcome.load, SAVE_FILE_FOREIGN_LAYOUT);
     PT_ASSERT(outcome.loaded);

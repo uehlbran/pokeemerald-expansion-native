@@ -19,11 +19,11 @@
 /* Status register bits as expansion's struct SiiRtcInfo.status carries them
  * (include/constants/siirtc.h SIIRTCINFO_*), which is not the chip's own bit
  * order (src/siirtc.c converts between the two on the GPIO path). */
-#define RTC_STATUS_INTFE  0x01u /* frequency interrupt enable, read/write */
-#define RTC_STATUS_INTME  0x02u /* per-minute interrupt enable, read/write */
-#define RTC_STATUS_INTAE  0x04u /* alarm interrupt enable, read/write */
+#define RTC_STATUS_INTFE 0x01u  /* frequency interrupt enable, read/write */
+#define RTC_STATUS_INTME 0x02u  /* per-minute interrupt enable, read/write */
+#define RTC_STATUS_INTAE 0x04u  /* alarm interrupt enable, read/write */
 #define RTC_STATUS_24HOUR 0x40u /* 0: 12-hour mode, 1: 24-hour mode, read/write */
-#define RTC_STATUS_POWER  0x80u /* power-off flag, read only, cleared by a read */
+#define RTC_STATUS_POWER 0x80u  /* power-off flag, read only, cleared by a read */
 
 /* Hour register, GBA cartridge layout (GBATEK: the GBA moved the AM/PM flag
  * from the NDS's bit 6 to bit 7). Bits 0-5 hold the hour in BCD (bits 4-5
@@ -31,7 +31,7 @@
  * the PM flag. In 24-hour mode the flag is read only and set for 12h..23h
  * (src/siirtc.c masks it off, & 0x7F, after a read); in 12-hour mode it is
  * read/write. Bit 6 is always zero. */
-#define RTC_HOUR_PM   0x80u
+#define RTC_HOUR_PM 0x80u
 #define RTC_HOUR_MASK 0x3Fu
 
 /* One field per register of the datetime command, in the order the chip

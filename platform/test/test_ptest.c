@@ -9,6 +9,8 @@
  */
 #include "ptest.h"
 
+#include <time.h>
+
 /* What a probed function did: whether it ran past its assertion, and where the assertion is. */
 struct probe {
     bool reached_end;
@@ -29,12 +31,10 @@ static size_t count_text(const char *haystack, const char *needle)
 }
 
 /* "file:line: test: " as ptest_fail_at writes it, for a probe in the named test. */
-static bool has_location(const struct ptest_outcome *outcome, const struct probe *probe,
-                         const char *test_name)
+static bool has_location(const struct ptest_outcome *outcome, const struct probe *probe, const char *test_name)
 {
     char expected[PTEST_MESSAGE_SIZE];
-    const int length = snprintf(expected, sizeof expected, "%s:%d: %s: ", __FILE__,
-                                probe->assertion_line, test_name);
+    const int length = snprintf(expected, sizeof expected, "%s:%d: %s: ", __FILE__, probe->assertion_line, test_name);
     return length > 0 && strncmp(outcome->message, expected, (size_t)length) == 0;
 }
 
@@ -57,7 +57,7 @@ static void assert_false(void *context)
 
 PTEST(assert_passes_and_continues)
 {
-    struct probe probe = { false, 0 };
+    struct probe probe = {false, 0};
     const struct ptest_outcome outcome = ptest_capture(assert_true, &probe);
     PT_ASSERT(!outcome.failed);
     PT_ASSERT(probe.reached_end);
@@ -65,7 +65,7 @@ PTEST(assert_passes_and_continues)
 
 PTEST(assert_failure_records_location_and_returns)
 {
-    struct probe probe = { false, 0 };
+    struct probe probe = {false, 0};
     const struct ptest_outcome outcome = ptest_capture(assert_false, &probe);
     PT_ASSERT(outcome.failed);
     PT_ASSERT(!probe.reached_end);
@@ -84,7 +84,7 @@ static void fail_twice_through_helpers(void *context)
 
 PTEST(first_failure_is_kept)
 {
-    struct probe probe = { false, 0 };
+    struct probe probe = {false, 0};
     const struct ptest_outcome outcome = ptest_capture(fail_twice_through_helpers, &probe);
     PT_ASSERT(outcome.failed);
     PT_ASSERT(has_text(outcome.message, "PT_ASSERT(2 + 2 == 5)"));
@@ -111,7 +111,7 @@ static void eq_u32_different(void *context)
 
 PTEST(eq_u32_passes_on_equal)
 {
-    struct probe probe = { false, 0 };
+    struct probe probe = {false, 0};
     const struct ptest_outcome outcome = ptest_capture(eq_u32_equal, &probe);
     PT_ASSERT(!outcome.failed);
     PT_ASSERT(probe.reached_end);
@@ -119,7 +119,7 @@ PTEST(eq_u32_passes_on_equal)
 
 PTEST(eq_u32_failure_prints_both_values_in_hex)
 {
-    struct probe probe = { false, 0 };
+    struct probe probe = {false, 0};
     const struct ptest_outcome outcome = ptest_capture(eq_u32_different, &probe);
     PT_ASSERT(outcome.failed);
     PT_ASSERT(!probe.reached_end);
@@ -148,7 +148,7 @@ static void eq_int_different(void *context)
 
 PTEST(eq_int_passes_on_equal)
 {
-    struct probe probe = { false, 0 };
+    struct probe probe = {false, 0};
     const struct ptest_outcome outcome = ptest_capture(eq_int_equal, &probe);
     PT_ASSERT(!outcome.failed);
     PT_ASSERT(probe.reached_end);
@@ -156,7 +156,7 @@ PTEST(eq_int_passes_on_equal)
 
 PTEST(eq_int_failure_prints_both_values_signed)
 {
-    struct probe probe = { false, 0 };
+    struct probe probe = {false, 0};
     const struct ptest_outcome outcome = ptest_capture(eq_int_different, &probe);
     PT_ASSERT(outcome.failed);
     PT_ASSERT(!probe.reached_end);
@@ -166,7 +166,7 @@ PTEST(eq_int_failure_prints_both_values_signed)
 
 /* ---- PT_ASSERT_EQ_PTR ---- */
 
-static const int ptr_targets[2] = { 1, 2 };
+static const int ptr_targets[2] = {1, 2};
 
 static void eq_ptr_equal(void *context)
 {
@@ -185,7 +185,7 @@ static void eq_ptr_different(void *context)
 
 PTEST(eq_ptr_passes_on_equal)
 {
-    struct probe probe = { false, 0 };
+    struct probe probe = {false, 0};
     const struct ptest_outcome outcome = ptest_capture(eq_ptr_equal, &probe);
     PT_ASSERT(!outcome.failed);
     PT_ASSERT(probe.reached_end);
@@ -193,11 +193,11 @@ PTEST(eq_ptr_passes_on_equal)
 
 PTEST(eq_ptr_failure_prints_both_addresses)
 {
-    struct probe probe = { false, 0 };
+    struct probe probe = {false, 0};
     const struct ptest_outcome outcome = ptest_capture(eq_ptr_different, &probe);
     char expected[128];
-    const int length = snprintf(expected, sizeof expected, "actual %p, expected %p",
-                                (const void *)&ptr_targets[0], (const void *)&ptr_targets[1]);
+    const int length = snprintf(expected, sizeof expected, "actual %p, expected %p", (const void *)&ptr_targets[0],
+                                (const void *)&ptr_targets[1]);
     PT_ASSERT(length > 0 && (size_t)length < sizeof expected);
     PT_ASSERT(outcome.failed);
     PT_ASSERT(!probe.reached_end);
@@ -210,7 +210,7 @@ PTEST(eq_ptr_failure_prints_both_addresses)
 static void eq_str_equal(void *context)
 {
     struct probe *probe = context;
-    const char built[] = { 'p', 'o', 'k', 'e', '\0' };
+    const char built[] = {'p', 'o', 'k', 'e', '\0'};
     PT_ASSERT_EQ_STR(built, "poke");
     PT_ASSERT_EQ_STR(NULL, NULL);
     probe->reached_end = true;
@@ -235,7 +235,7 @@ static void eq_str_null_actual(void *context)
 
 PTEST(eq_str_passes_on_equal_contents_and_on_two_nulls)
 {
-    struct probe probe = { false, 0 };
+    struct probe probe = {false, 0};
     const struct ptest_outcome outcome = ptest_capture(eq_str_equal, &probe);
     PT_ASSERT(!outcome.failed);
     PT_ASSERT(probe.reached_end);
@@ -243,7 +243,7 @@ PTEST(eq_str_passes_on_equal_contents_and_on_two_nulls)
 
 PTEST(eq_str_failure_prints_both_strings)
 {
-    struct probe probe = { false, 0 };
+    struct probe probe = {false, 0};
     const struct ptest_outcome outcome = ptest_capture(eq_str_different, &probe);
     PT_ASSERT(outcome.failed);
     PT_ASSERT(!probe.reached_end);
@@ -253,7 +253,7 @@ PTEST(eq_str_failure_prints_both_strings)
 
 PTEST(eq_str_fails_when_one_side_is_null)
 {
-    struct probe probe = { false, 0 };
+    struct probe probe = {false, 0};
     const struct ptest_outcome outcome = ptest_capture(eq_str_null_actual, &probe);
     PT_ASSERT(outcome.failed);
     PT_ASSERT(!probe.reached_end);
@@ -265,8 +265,8 @@ PTEST(eq_str_fails_when_one_side_is_null)
 static void mem_eq_equal(void *context)
 {
     struct probe *probe = context;
-    const uint8_t a[4] = { 1, 2, 3, 4 };
-    const uint8_t b[4] = { 1, 2, 3, 4 };
+    const uint8_t a[4] = {1, 2, 3, 4};
+    const uint8_t b[4] = {1, 2, 3, 4};
     PT_ASSERT_MEM_EQ(a, b, sizeof a);
     PT_ASSERT_MEM_EQ(NULL, NULL, 0);
     probe->reached_end = true;
@@ -275,8 +275,8 @@ static void mem_eq_equal(void *context)
 static void mem_eq_different(void *context)
 {
     struct probe *probe = context;
-    const uint8_t a[6] = { 1, 2, 3, 0x04, 5, 6 };
-    const uint8_t b[6] = { 1, 2, 3, 0xA9, 5, 0 };
+    const uint8_t a[6] = {1, 2, 3, 0x04, 5, 6};
+    const uint8_t b[6] = {1, 2, 3, 0xA9, 5, 0};
     probe->assertion_line = __LINE__ + 1;
     PT_ASSERT_MEM_EQ(a, b, sizeof a);
     probe->reached_end = true;
@@ -285,14 +285,14 @@ static void mem_eq_different(void *context)
 static void mem_eq_null_with_length(void *context)
 {
     struct probe *probe = context;
-    const uint8_t b[1] = { 0 };
+    const uint8_t b[1] = {0};
     PT_ASSERT_MEM_EQ(NULL, b, sizeof b);
     probe->reached_end = true;
 }
 
 PTEST(mem_eq_passes_on_equal_bytes_and_zero_length)
 {
-    struct probe probe = { false, 0 };
+    struct probe probe = {false, 0};
     const struct ptest_outcome outcome = ptest_capture(mem_eq_equal, &probe);
     PT_ASSERT(!outcome.failed);
     PT_ASSERT(probe.reached_end);
@@ -300,18 +300,17 @@ PTEST(mem_eq_passes_on_equal_bytes_and_zero_length)
 
 PTEST(mem_eq_failure_prints_first_difference)
 {
-    struct probe probe = { false, 0 };
+    struct probe probe = {false, 0};
     const struct ptest_outcome outcome = ptest_capture(mem_eq_different, &probe);
     PT_ASSERT(outcome.failed);
     PT_ASSERT(!probe.reached_end);
     PT_ASSERT(has_location(&outcome, &probe, "mem_eq_failure_prints_first_difference"));
-    PT_ASSERT(has_text(outcome.message,
-                       "over 6 bytes: first difference at offset 3: actual 0x04, expected 0xA9"));
+    PT_ASSERT(has_text(outcome.message, "over 6 bytes: first difference at offset 3: actual 0x04, expected 0xA9"));
 }
 
 PTEST(mem_eq_fails_on_null_with_nonzero_length)
 {
-    struct probe probe = { false, 0 };
+    struct probe probe = {false, 0};
     const struct ptest_outcome outcome = ptest_capture(mem_eq_null_with_length, &probe);
     PT_ASSERT(outcome.failed);
     PT_ASSERT(!probe.reached_end);
@@ -330,7 +329,7 @@ static void fail_always(void *context)
 
 PTEST(fail_records_message_and_returns)
 {
-    struct probe probe = { false, 0 };
+    struct probe probe = {false, 0};
     const struct ptest_outcome outcome = ptest_capture(fail_always, &probe);
     PT_ASSERT(outcome.failed);
     PT_ASSERT(!probe.reached_end);
@@ -361,21 +360,19 @@ struct evaluations {
     uint32_t actual, expected, nbytes;
 };
 
-static const uint8_t evaluated_bytes[2] = { 7, 7 };
+static const uint8_t evaluated_bytes[2] = {7, 7};
 
 static void count_pointer_evaluations(void *context)
 {
     struct evaluations *const count = context;
-    PT_ASSERT_EQ_PTR((count->actual++, &evaluated_bytes[0]),
-                     (count->expected++, &evaluated_bytes[0]));
-    PT_ASSERT_MEM_EQ((count->actual++, &evaluated_bytes[0]),
-                     (count->expected++, &evaluated_bytes[1]),
+    PT_ASSERT_EQ_PTR((count->actual++, &evaluated_bytes[0]), (count->expected++, &evaluated_bytes[0]));
+    PT_ASSERT_MEM_EQ((count->actual++, &evaluated_bytes[0]), (count->expected++, &evaluated_bytes[1]),
                      (count->nbytes++, sizeof evaluated_bytes[0]));
 }
 
 PTEST(pointer_and_memory_arguments_are_evaluated_once)
 {
-    struct evaluations count = { 0, 0, 0 };
+    struct evaluations count = {0, 0, 0};
     const struct ptest_outcome outcome = ptest_capture(count_pointer_evaluations, &count);
     PT_ASSERT(!outcome.failed);
     PT_ASSERT_EQ_U32(count.actual, 2);
@@ -426,7 +423,7 @@ struct run {
 
 static struct run run_registry(const struct ptest_registry *registry)
 {
-    struct run run = { .status = -1, .text_complete = false, .text = "" };
+    struct run run = {.status = -1, .text_complete = false, .text = ""};
     FILE *const out = tmpfile();
     if (out == NULL)
         return run;
@@ -443,7 +440,7 @@ static struct run run_registry(const struct ptest_registry *registry)
 
 PTEST(runner_reports_failures_and_returns_nonzero)
 {
-    struct ptest_registry registry = { .count = 0 };
+    struct ptest_registry registry = {.count = 0};
     ptest_register_in(&registry, "runner_passing_case", runner_passing_case);
     ptest_register_in(&registry, "runner_failing_case", runner_failing_case);
     const struct run run = run_registry(&registry);
@@ -459,7 +456,7 @@ PTEST(runner_reports_failures_and_returns_nonzero)
 
 PTEST(runner_returns_zero_when_all_pass)
 {
-    struct ptest_registry registry = { .count = 0 };
+    struct ptest_registry registry = {.count = 0};
     ptest_register_in(&registry, "first", runner_passing_case);
     ptest_register_in(&registry, "second", runner_passing_case);
     const struct run run = run_registry(&registry);
@@ -470,7 +467,7 @@ PTEST(runner_returns_zero_when_all_pass)
 
 PTEST(runner_fails_when_no_tests_are_registered)
 {
-    const struct ptest_registry registry = { .count = 0 };
+    const struct ptest_registry registry = {.count = 0};
     const struct run run = run_registry(&registry);
     PT_ASSERT(run.text_complete);
     PT_ASSERT_EQ_INT(run.status, 1);
@@ -479,7 +476,7 @@ PTEST(runner_fails_when_no_tests_are_registered)
 
 PTEST(registry_holds_exactly_max_tests)
 {
-    struct ptest_registry registry = { .count = 0 };
+    struct ptest_registry registry = {.count = 0};
     for (int i = 0; i < PTEST_MAX_TESTS; i++)
         ptest_register_in(&registry, "passing", runner_passing_case);
     char expected[64];
@@ -494,7 +491,7 @@ PTEST(registry_holds_exactly_max_tests)
 
 PTEST(registration_past_max_tests_fails_the_run_naming_the_limit)
 {
-    struct ptest_registry registry = { .count = 0 };
+    struct ptest_registry registry = {.count = 0};
     for (int i = 0; i <= PTEST_MAX_TESTS; i++)
         ptest_register_in(&registry, "passing", runner_passing_case);
     PT_ASSERT(registry.overflowed);
@@ -512,7 +509,7 @@ PTEST(runner_cuts_a_failure_line_whose_prefix_overflows)
     char long_name[PTEST_MESSAGE_SIZE + 100];
     memset(long_name, 'n', sizeof long_name - 1);
     long_name[sizeof long_name - 1] = '\0';
-    struct ptest_registry registry = { .count = 0 };
+    struct ptest_registry registry = {.count = 0};
     ptest_register_in(&registry, long_name, runner_failing_case);
     const struct run run = run_registry(&registry);
     const char *const line = strstr(run.text, "FAIL ");
@@ -528,10 +525,79 @@ PTEST(registry_contains_this_test)
 {
     bool found = false;
     for (size_t i = 0; i < ptest_tests.count; i++)
-        found = found || (ptest_tests.cases[i].run == ptest_body_registry_contains_this_test &&
-                          strcmp(ptest_tests.cases[i].name, "registry_contains_this_test") == 0);
+        found = found
+                || (ptest_tests.cases[i].run == ptest_body_registry_contains_this_test
+                    && strcmp(ptest_tests.cases[i].name, "registry_contains_this_test") == 0);
     PT_ASSERT(found);
     PT_ASSERT(!ptest_tests.overflowed);
+}
+
+/* ---- timeout ---- */
+
+#define HANG_ELAPSED_LIMIT_SECONDS 10
+
+static void runner_hanging_case(void)
+{
+    ptest_set_timeout(1); /* a short limit for this test only */
+    sleep(PTEST_DEFAULT_TIMEOUT_SECONDS);
+}
+
+PTEST(runner_fails_a_hanging_test_and_runs_the_next)
+{
+    struct ptest_registry registry = {.count = 0};
+    ptest_register_in(&registry, "runner_hanging_case", runner_hanging_case);
+    ptest_register_in(&registry, "runner_passing_case", runner_passing_case);
+    const time_t started = time(NULL);
+    const struct run run = run_registry(&registry);
+    const time_t elapsed = time(NULL) - started;
+    PT_ASSERT(run.text_complete);
+    PT_ASSERT(elapsed < HANG_ELAPSED_LIMIT_SECONDS); /* the 1 s limit fired, not the 60 s default */
+    PT_ASSERT_EQ_INT(run.status, 1);
+    PT_ASSERT(has_text(run.text, ": runner_hanging_case: timed out after 1 seconds\n"));
+    PT_ASSERT(count_text(run.text, "FAIL ") == 1);
+    PT_ASSERT(has_text(run.text, "1 passed, 1 failed\n"));
+    PT_ASSERT_EQ_STR(ptest_current.name, "runner_fails_a_hanging_test_and_runs_the_next");
+    PT_ASSERT(!ptest_current.outcome.failed);
+}
+
+#define OUTER_ALARM_SECONDS 50u
+
+PTEST(a_nested_run_restores_the_outer_alarm_target_and_limit)
+{
+    struct ptest_registry registry = {.count = 0};
+    ptest_register_in(&registry, "runner_passing_case", runner_passing_case);
+    const sigjmp_buf *const target_before = ptest_timeout_target;
+    const unsigned limit_before = ptest_timeout_seconds;
+    (void)alarm(OUTER_ALARM_SECONDS);
+    const struct run run = run_registry(&registry);
+    const unsigned remaining = alarm(0);
+    PT_ASSERT(run.text_complete);
+    PT_ASSERT_EQ_INT(run.status, 0);
+    PT_ASSERT(remaining > 0 && remaining <= OUTER_ALARM_SECONDS); /* re-armed with what was left */
+    PT_ASSERT(ptest_timeout_target == target_before);
+    PT_ASSERT_EQ_INT(ptest_timeout_seconds, limit_before);
+}
+
+PTEST(timeout_comes_from_the_environment_when_it_is_a_positive_number)
+{
+    const char *const saved = getenv(PTEST_TIMEOUT_ENV);
+    char previous[32] = "";
+    if (saved != NULL)
+        (void)snprintf(previous, sizeof previous, "%s", saved);
+    unsigned seen[5];
+    const char *const values[5] = {"7", "0", "abc", "5x", ""};
+    for (size_t i = 0; i < 5; i++) {
+        setenv(PTEST_TIMEOUT_ENV, values[i], 1);
+        seen[i] = ptest_default_timeout();
+    }
+    unsetenv(PTEST_TIMEOUT_ENV);
+    const unsigned unset = ptest_default_timeout();
+    if (saved != NULL)
+        setenv(PTEST_TIMEOUT_ENV, previous, 1);
+    PT_ASSERT_EQ_INT(seen[0], 7);
+    for (size_t i = 1; i < 5; i++)
+        PT_ASSERT_EQ_INT(seen[i], PTEST_DEFAULT_TIMEOUT_SECONDS);
+    PT_ASSERT_EQ_INT(unset, PTEST_DEFAULT_TIMEOUT_SECONDS);
 }
 
 PTEST_MAIN()

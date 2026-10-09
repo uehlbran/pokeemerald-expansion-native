@@ -8,19 +8,19 @@
 #include "ptest.h"
 #include "rtc_calendar.h"
 
-#define EPOCH_2000_01_01        946684800LL /* Saturday */
+#define EPOCH_2000_01_01 946684800LL        /* Saturday */
 #define EPOCH_1999_12_31_235959 946684799LL /* Friday */
 #define EPOCH_2024_02_29_235959 1709251199LL
 #define EPOCH_2099_12_31_235959 4102444799LL /* Thursday */
-#define EPOCH_2100_01_01        4102444800LL /* the chip wraps to 2000-01-01 */
+#define EPOCH_2100_01_01 4102444800LL        /* the chip wraps to 2000-01-01 */
 #define SATURDAY 6
-#define FRIDAY   5
+#define FRIDAY 5
 #define THURSDAY 4
 
 static struct rtc_calendar_time make(int year, int month, int day, int hour, int minute, int second)
 {
-    return (struct rtc_calendar_time){ .year = year, .month = month, .day = day,
-                                       .hour = hour, .minute = minute, .second = second };
+    return (struct rtc_calendar_time){
+        .year = year, .month = month, .day = day, .hour = hour, .minute = minute, .second = second};
 }
 
 PTEST(bcd_round_trips_every_value_from_0_to_99)
@@ -50,14 +50,14 @@ PTEST(bcd_rejects_a_nibble_above_9_and_anything_past_a_byte)
 
 PTEST(months_have_their_usual_lengths_in_a_common_year)
 {
-    static const int expected[RTC_MONTHS_PER_YEAR] = { 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31 };
+    static const int expected[RTC_MONTHS_PER_YEAR] = {31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
     for (int month = 1; month <= RTC_MONTHS_PER_YEAR; month++)
         PT_ASSERT_EQ_INT(rtc_calendar_days_in_month(23, month), expected[month - 1]);
 }
 
 PTEST(february_has_29_days_in_every_fourth_year_including_year_00)
 {
-    PT_ASSERT_EQ_INT(rtc_calendar_days_in_month(0, 2), 29);  /* 2000 */
+    PT_ASSERT_EQ_INT(rtc_calendar_days_in_month(0, 2), 29); /* 2000 */
     PT_ASSERT_EQ_INT(rtc_calendar_days_in_month(24, 2), 29);
     PT_ASSERT_EQ_INT(rtc_calendar_days_in_month(96, 2), 29);
     PT_ASSERT_EQ_INT(rtc_calendar_days_in_month(1, 2), 28);
@@ -130,7 +130,8 @@ PTEST(seconds_of_day_and_midnight_split_a_time_of_day)
     PT_ASSERT_EQ_INT(rtc_calendar_seconds_of_day(0, 0, 0), 0);
     PT_ASSERT_EQ_INT(rtc_calendar_seconds_of_day(23, 59, 59), RTC_SECONDS_PER_DAY - 1);
     PT_ASSERT_EQ_INT(rtc_calendar_seconds_of_day(1, 2, 3), 3723);
-    PT_ASSERT_EQ_INT(rtc_calendar_midnight_before(EPOCH_2024_02_29_235959), EPOCH_2024_02_29_235959 - (RTC_SECONDS_PER_DAY - 1));
+    PT_ASSERT_EQ_INT(rtc_calendar_midnight_before(EPOCH_2024_02_29_235959),
+                     EPOCH_2024_02_29_235959 - (RTC_SECONDS_PER_DAY - 1));
     PT_ASSERT_EQ_INT(rtc_calendar_midnight_before(EPOCH_2000_01_01), EPOCH_2000_01_01);
 }
 
@@ -146,12 +147,12 @@ PTEST(civil_days_count_from_1970_01_01_in_the_gregorian_calendar)
     PT_ASSERT_EQ_INT(rtc_calendar_unix_days_from_civil(1970, 1, 1), 0);
     PT_ASSERT_EQ_INT(rtc_calendar_unix_days_from_civil(1969, 12, 31), -1);
     PT_ASSERT_EQ_INT(rtc_calendar_unix_days_from_civil(2000, 1, 1), 10957);
-    PT_ASSERT_EQ_INT(rtc_calendar_unix_days_from_civil(2000, 3, 1)
-                     - rtc_calendar_unix_days_from_civil(2000, 2, 28), 2);   /* 2000 is leap */
-    PT_ASSERT_EQ_INT(rtc_calendar_unix_days_from_civil(2100, 3, 1)
-                     - rtc_calendar_unix_days_from_civil(2100, 2, 28), 1);   /* Gregorian 2100 is not */
-    PT_ASSERT_EQ_INT(rtc_calendar_unix_days_from_civil(1900, 3, 1)
-                     - rtc_calendar_unix_days_from_civil(1900, 2, 28), 1);   /* neither is 1900 */
+    PT_ASSERT_EQ_INT(rtc_calendar_unix_days_from_civil(2000, 3, 1) - rtc_calendar_unix_days_from_civil(2000, 2, 28),
+                     2); /* 2000 is leap */
+    PT_ASSERT_EQ_INT(rtc_calendar_unix_days_from_civil(2100, 3, 1) - rtc_calendar_unix_days_from_civil(2100, 2, 28),
+                     1); /* Gregorian 2100 is not */
+    PT_ASSERT_EQ_INT(rtc_calendar_unix_days_from_civil(1900, 3, 1) - rtc_calendar_unix_days_from_civil(1900, 2, 28),
+                     1); /* neither is 1900 */
 }
 
 PTEST_MAIN()

@@ -61,20 +61,20 @@
 
 _Static_assert(sizeof(time_t) >= 8, "rtc.c needs a 64-bit time_t (_TIME_BITS=64)");
 
-#define TM_YEAR_BASE       1900
+#define TM_YEAR_BASE 1900
 
 /* Status bits the game may write: everything but the read-only power flag. */
 #define STATUS_WRITABLE (RTC_STATUS_INTFE | RTC_STATUS_INTME | RTC_STATUS_INTAE | RTC_STATUS_24HOUR)
-#define STATUS_DEFAULT  RTC_STATUS_24HOUR
+#define STATUS_DEFAULT RTC_STATUS_24HOUR
 #define STATUS_AFTER_RESET 0u
 
 struct rtc_state {
     bool initialised;
     rtc_time_source source;
-    int64_t offset;                  /* seconds added to the time source's UTC */
-    char offset_path[PATH_MAX];      /* empty: no persistence */
-    uint8_t status;                  /* RTC_STATUS_* */
-    uint8_t alarm_hour_bcd;          /* with the PM flag */
+    int64_t offset;             /* seconds added to the time source's UTC */
+    char offset_path[PATH_MAX]; /* empty: no persistence */
+    uint8_t status;             /* RTC_STATUS_* */
+    uint8_t alarm_hour_bcd;     /* with the PM flag */
     uint8_t alarm_minute_bcd;
 };
 
@@ -98,7 +98,7 @@ static int host_utc_seconds(int64_t *out)
     int64_t utc = chip.source();
 
     if (utc < -RTC_OFFSET_LIMIT || utc > RTC_OFFSET_LIMIT) {
-        fprintf(stderr, "rtc: time source returned %lld, out of range\n", (long long)utc);
+        (void)fprintf(stderr, "rtc: time source returned %lld, out of range\n", (long long)utc);
         return -1;
     }
     *out = utc;
@@ -118,7 +118,7 @@ static int local_minus_utc(int64_t utc, int64_t *out)
     }
     *out = rtc_calendar_unix_days_from_civil((int64_t)local.tm_year + TM_YEAR_BASE, local.tm_mon + 1, local.tm_mday)
                * RTC_SECONDS_PER_DAY
-         + rtc_calendar_seconds_of_day(local.tm_hour, local.tm_min, local.tm_sec) - utc;
+           + rtc_calendar_seconds_of_day(local.tm_hour, local.tm_min, local.tm_sec) - utc;
     return 0;
 }
 
@@ -138,7 +138,7 @@ static int set_chip_seconds_at(int64_t chip_seconds, int64_t utc)
 
     new_offset = chip_seconds - utc;
     if (new_offset < -RTC_OFFSET_LIMIT || new_offset > RTC_OFFSET_LIMIT) {
-        fprintf(stderr, "rtc: offset %lld out of range\n", (long long)new_offset);
+        (void)fprintf(stderr, "rtc: offset %lld out of range\n", (long long)new_offset);
         return -1;
     }
     if (chip.offset_path[0] != '\0' && rtc_offset_store_save(chip.offset_path, new_offset) != 0)
@@ -177,7 +177,7 @@ static int decode_hour(uint8_t hour_bcd)
         return -1;
     hour = rtc_calendar_from_bcd(hour_bcd & RTC_HOUR_MASK);
     if (is_24_hour_mode())
-        return hour < RTC_HOURS_PER_DAY ? hour : -1;  /* the PM flag is read only here */
+        return hour < RTC_HOURS_PER_DAY ? hour : -1; /* the PM flag is read only here */
     if (hour < 0 || hour >= RTC_NOON_HOUR)
         return -1;
     return hour + ((hour_bcd & RTC_HOUR_PM) ? RTC_NOON_HOUR : 0);
@@ -196,7 +196,8 @@ static int decode_time_fields(const struct rtc_datetime *in, int *hour24, int *m
     *hour24 = decode_hour(in->hour_bcd);
     *minute = rtc_calendar_from_bcd(in->minute_bcd);
     *second = rtc_calendar_from_bcd(in->second_bcd);
-    if (*hour24 < 0 || !in_range(*minute, 0, RTC_MINUTES_PER_HOUR - 1) || !in_range(*second, 0, RTC_SECONDS_PER_MINUTE - 1))
+    if (*hour24 < 0 || !in_range(*minute, 0, RTC_MINUTES_PER_HOUR - 1)
+        || !in_range(*second, 0, RTC_SECONDS_PER_MINUTE - 1))
         return -1;
     return 0;
 }
@@ -229,12 +230,12 @@ static int init_with_seed(rtc_time_source source, const char *offset_file_path, 
     rtc_shutdown();
     if (offset_file_path != NULL) {
         if (strlen(offset_file_path) >= sizeof chip.offset_path) {
-            fprintf(stderr, "rtc: offset file path is longer than %zu bytes\n", sizeof chip.offset_path - 1);
+            (void)fprintf(stderr, "rtc: offset file path is longer than %zu bytes\n", sizeof chip.offset_path - 1);
             return -1;
         }
         if (rtc_offset_store_load(offset_file_path, &offset, &found) != 0)
             return -1;
-        strcpy(chip.offset_path, offset_file_path);
+        (void)snprintf(chip.offset_path, sizeof chip.offset_path, "%s", offset_file_path); /* fits: checked above */
     }
     chip.source = source != NULL ? source : system_clock;
     if (!found) {
@@ -304,7 +305,7 @@ int rtc_set_datetime(const struct rtc_datetime *in)
         || decode_time_fields(in, &hour, &minute, &second) != 0)
         return -1;
     return set_chip_seconds(rtc_calendar_seconds_from(&(struct rtc_calendar_time){
-        .year = year, .month = month, .day = day, .hour = hour, .minute = minute, .second = second }));
+        .year = year, .month = month, .day = day, .hour = hour, .minute = minute, .second = second}));
 }
 
 int rtc_get_time(struct rtc_datetime *out)
@@ -328,15 +329,15 @@ int rtc_set_time(const struct rtc_datetime *in)
         || host_utc_seconds(&utc) != 0)
         return -1;
     /* One time-source sample for both the current date and the new offset. */
-    return set_chip_seconds_at(rtc_calendar_midnight_before(utc + chip.offset)
-                               + rtc_calendar_seconds_of_day(hour, minute, second), utc);
+    return set_chip_seconds_at(
+        rtc_calendar_midnight_before(utc + chip.offset) + rtc_calendar_seconds_of_day(hour, minute, second), utc);
 }
 
 int rtc_reset(void)
 {
     if (!chip.initialised)
         return -1;
-    if (set_chip_seconds(rtc_calendar_seconds_from(&(struct rtc_calendar_time){ .year = 0, .month = 1, .day = 1 })) != 0)
+    if (set_chip_seconds(rtc_calendar_seconds_from(&(struct rtc_calendar_time){.year = 0, .month = 1, .day = 1})) != 0)
         return -1;
     chip.status = STATUS_AFTER_RESET;
     chip.alarm_hour_bcd = 0;

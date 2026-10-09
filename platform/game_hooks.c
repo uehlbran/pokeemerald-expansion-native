@@ -78,6 +78,7 @@ static void fiber_start_switch(void **fake_stack_save, const void *bottom, size_
 #endif
 }
 
+// NOLINTNEXTLINE(readability-non-const-parameter): old_size is the ASan call's out-parameter
 static void fiber_finish_switch(void *fake_stack_save, const void **old_bottom, size_t *old_size)
 {
 #ifdef __SANITIZE_ADDRESS__
@@ -92,7 +93,7 @@ static void fiber_finish_switch(void *fake_stack_save, const void **old_bottom, 
 int game_hooks_init(jmp_buf *exit_target)
 {
     if (exit_target == NULL) {
-        fprintf(stderr, "game_hooks: game_hooks_init: no exit target\n");
+        (void)fprintf(stderr, "game_hooks: game_hooks_init: no exit target\n");
         return -1;
     }
     hooks.exit_target = exit_target;
@@ -124,7 +125,7 @@ void game_hooks_unwind(jmp_buf *target, int value)
         call.unwind_value = value;
         fiber_start_switch(NULL, call.caller_stack_bottom, call.caller_stack_size);
         setcontext(&call.caller); /* returns only on failure */
-        fprintf(stderr, "game_hooks: setcontext back to the caller's stack failed\n");
+        (void)fprintf(stderr, "game_hooks: setcontext back to the caller's stack failed\n");
     }
     longjmp(*target, value);
 }
@@ -143,7 +144,7 @@ void PlatformWaitCycles(uint32_t cycles)
 void PlatformTestRunnerExit(uint32_t exit_code)
 {
     if (hooks.exit_target == NULL) {
-        fprintf(stderr, "game_hooks: PlatformTestRunnerExit(%u) before game_hooks_init\n", exit_code);
+        (void)fprintf(stderr, "game_hooks: PlatformTestRunnerExit(%u) before game_hooks_init\n", exit_code);
         return;
     }
     hooks.exit_code = exit_code;
@@ -153,8 +154,8 @@ void PlatformTestRunnerExit(uint32_t exit_code)
 void PlatformJumpToAgbMainLoop(void)
 {
     if (!hooks.agb_main_loop_captured) {
-        fprintf(stderr, "game_hooks: JumpToAgbMainLoop with no AgbMainLoop target "
-                "(src/main.c captures it only when TESTING)\n");
+        (void)fprintf(stderr, "game_hooks: JumpToAgbMainLoop with no AgbMainLoop target "
+                              "(src/main.c captures it only when TESTING)\n");
         PlatformTestRunnerExit(GAME_HOOKS_EXIT_INTERNAL_ERROR);
         return;
     }
@@ -207,17 +208,17 @@ void PlatformCallWithStack(void (*entry)(void *context), void *context, void *st
 {
     (void)stackTop; /* why: game_hooks.h */
     if (entry == NULL) {
-        fprintf(stderr, "game_hooks: PlatformCallWithStack with no function\n");
+        (void)fprintf(stderr, "game_hooks: PlatformCallWithStack with no function\n");
         return;
     }
     if (call.active) {
-        fprintf(stderr, "game_hooks: nested PlatformCallWithStack; running it on the current stack\n");
+        (void)fprintf(stderr, "game_hooks: nested PlatformCallWithStack; running it on the current stack\n");
         entry(context);
         return;
     }
     if (!call_stack_is_linked()) {
-        fprintf(stderr, "game_hooks: the call stack is not linked at %#x with %u bytes (gba_regions.ld)\n",
-                GAME_HOOKS_CALL_STACK_ADDRESS, GAME_HOOKS_CALL_STACK_SIZE);
+        (void)fprintf(stderr, "game_hooks: the call stack is not linked at %#x with %zu bytes (gba_regions.ld)\n",
+                      GAME_HOOKS_CALL_STACK_ADDRESS, GAME_HOOKS_CALL_STACK_SIZE);
         return;
     }
     if (getcontext(&call.callee) != 0) {

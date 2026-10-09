@@ -88,13 +88,41 @@ static jmp_buf reset_target;
 
 /* --- The modules, in dependency order ------------------------------------ */
 
-static int start_gba_memmap(const struct options *o) { (void)o; return gba_memmap_init(); }
-static int start_transfer_bounds(const struct options *o) { (void)o; return transfer_bounds_init(); }
-static int start_interrupt(const struct options *o) { (void)o; return interrupt_init(gIntrTable, INTERRUPT_TABLE_LENGTH); }
-static int start_timer(const struct options *o) { (void)o; return timer_init(interrupt_raise); }
-static int start_dma(const struct options *o) { (void)o; return dma_init(interrupt_raise); }
-static int start_crt0(const struct options *o) { (void)o; return crt0_init(); }
-static int start_game_hooks(const struct options *o) { (void)o; return game_hooks_init(&exit_target); }
+static int start_gba_memmap(const struct options *o)
+{
+    (void)o;
+    return gba_memmap_init();
+}
+static int start_transfer_bounds(const struct options *o)
+{
+    (void)o;
+    return transfer_bounds_init();
+}
+static int start_interrupt(const struct options *o)
+{
+    (void)o;
+    return interrupt_init(gIntrTable, INTERRUPT_TABLE_LENGTH);
+}
+static int start_timer(const struct options *o)
+{
+    (void)o;
+    return timer_init(interrupt_raise);
+}
+static int start_dma(const struct options *o)
+{
+    (void)o;
+    return dma_init(interrupt_raise);
+}
+static int start_crt0(const struct options *o)
+{
+    (void)o;
+    return crt0_init();
+}
+static int start_game_hooks(const struct options *o)
+{
+    (void)o;
+    return game_hooks_init(&exit_target);
+}
 
 /* Test-runner mode only: stdout is the hydra's, one line at a time. */
 static int start_debug_channel(const struct options *o)
@@ -102,7 +130,7 @@ static int start_debug_channel(const struct options *o)
     if (!o->test_runner)
         return 0;
     if (setvbuf(stdout, NULL, _IOLBF, 0) != 0) {
-        fprintf(stderr, "main: setvbuf(stdout, line-buffered) failed\n");
+        (void)fprintf(stderr, "main: setvbuf(stdout, line-buffered) failed\n");
         return -1;
     }
     return debug_channel_init(stdout);
@@ -121,11 +149,30 @@ static int start_crash_reboot(const struct options *o)
 
 /* After crash_reboot, so that a SIGFPE it cannot complete goes to the
  * crash reboot in test-runner mode. */
-static int start_arm_division(const struct options *o) { (void)o; return arm_division_init(); }
-static int start_ppu(const struct options *o) { (void)o; return ppu_init(); }
-static int start_psg(const struct options *o) { (void)o; return psg_init(FRAME_AUDIO_SAMPLE_RATE_HZ); }
-static int start_sdl(const struct options *o) { (void)o; return 0; }
-static int start_audio(const struct options *o) { return audio_init(FRAME_AUDIO_SAMPLE_RATE_HZ, o->silent); }
+static int start_arm_division(const struct options *o)
+{
+    (void)o;
+    return arm_division_init();
+}
+static int start_ppu(const struct options *o)
+{
+    (void)o;
+    return ppu_init();
+}
+static int start_psg(const struct options *o)
+{
+    (void)o;
+    return psg_init(FRAME_AUDIO_SAMPLE_RATE_HZ);
+}
+static int start_sdl(const struct options *o)
+{
+    (void)o;
+    return 0;
+}
+static int start_audio(const struct options *o)
+{
+    return audio_init(FRAME_AUDIO_SAMPLE_RATE_HZ, o->silent);
+}
 
 /* --rtc-fixed: the clock's base time (fixed_clock.h); the source reads the
  * frame count, so it is the same on every run of the same script. */
@@ -143,7 +190,10 @@ static int start_rtc(const struct options *o)
         return rtc_init_utc(read_fixed_clock, o->rtc_offset_path);
     return rtc_init(NULL, o->rtc_offset_path);
 }
-static int start_frame_pacer(const struct options *o) { return frame_pacer_init(o->unthrottled); }
+static int start_frame_pacer(const struct options *o)
+{
+    return frame_pacer_init(frame_pacer_mode_for(o->unthrottled));
+}
 
 static void run_frame(void);
 
@@ -158,7 +208,7 @@ static int start_bios(const struct options *o)
 
 static int start_video(const struct options *o)
 {
-    struct video_config config = { .headless = o->headless, .scale = o->scale, .title = MAIN_WINDOW_TITLE };
+    struct video_config config = {.headless = o->headless, .scale = o->scale, .title = MAIN_WINDOW_TITLE};
     return video_init(&config);
 }
 
@@ -188,16 +238,20 @@ static int start_save_file(const struct options *o)
     case SAVE_FILE_NEW:
         return 0;
     case SAVE_FILE_LEGACY:
-        fprintf(stderr, "main: %s has no header (an emulator's .sav or an older build's); loading it\n",
-                o->save_path);
+        (void)fprintf(stderr, "main: %s has no header (an emulator's .sav or an older build's); loading it\n",
+                      o->save_path);
         return 0;
     case SAVE_FILE_FOREIGN_LAYOUT:
-        fprintf(stderr, "main: %s was written by a build with another save layout, which this build cannot "
-                "read yet; not starting, so it is not overwritten\n", o->save_path);
+        (void)fprintf(stderr,
+                      "main: %s was written by a build with another save layout, which this build cannot "
+                      "read yet; not starting, so it is not overwritten\n",
+                      o->save_path);
         return -1;
     default:
-        fprintf(stderr, "main: %s cannot be used (above); not starting, so it is not overwritten. Move it "
-                "away to start without a save\n", o->save_path);
+        (void)fprintf(stderr,
+                      "main: %s cannot be used (above); not starting, so it is not overwritten. Move it "
+                      "away to start without a save\n",
+                      o->save_path);
         return -1;
     }
 }
@@ -232,29 +286,29 @@ struct module_step {
  * "sdl" starts nothing (video, audio and input start their own SDL
  * subsystems) and ends SDL after all three are shut down. */
 static const struct module_step module_steps[] = {
-    { "gba_memmap", start_gba_memmap, gba_memmap_shutdown },
-    { "debug_channel", start_debug_channel, debug_channel_shutdown },
-    { "crash_reboot", start_crash_reboot, crash_reboot_shutdown },
-    { "arm_division", start_arm_division, arm_division_shutdown },
-    { "transfer_bounds", start_transfer_bounds, transfer_bounds_shutdown },
-    { "interrupt", start_interrupt, interrupt_shutdown },
-    { "timer", start_timer, timer_shutdown },
-    { "dma", start_dma, dma_shutdown },
-    { "crt0", start_crt0, crt0_shutdown },
-    { "game_hooks", start_game_hooks, game_hooks_shutdown },
-    { "bios", start_bios, bios_shutdown },
-    { "ppu", start_ppu, ppu_shutdown },
-    { "psg", start_psg, psg_shutdown },
-    { "sdl", start_sdl, SDL_Quit },
-    { "audio", start_audio, audio_shutdown },
-    { "video", start_video, video_shutdown },
-    { "input", start_input, input_shutdown },
-    { "rtc", start_rtc, rtc_shutdown },
-    { "flash", start_flash, flash_shutdown },
-    { "save_file", start_save_file, save_file_shutdown },
-    { "frame", start_frame, frame_shutdown },
-    { "frame_pacer", start_frame_pacer, frame_pacer_shutdown },
-    { "replay", start_replay, replay_session_stop },
+    {"gba_memmap", start_gba_memmap, gba_memmap_shutdown},
+    {"debug_channel", start_debug_channel, debug_channel_shutdown},
+    {"crash_reboot", start_crash_reboot, crash_reboot_shutdown},
+    {"arm_division", start_arm_division, arm_division_shutdown},
+    {"transfer_bounds", start_transfer_bounds, transfer_bounds_shutdown},
+    {"interrupt", start_interrupt, interrupt_shutdown},
+    {"timer", start_timer, timer_shutdown},
+    {"dma", start_dma, dma_shutdown},
+    {"crt0", start_crt0, crt0_shutdown},
+    {"game_hooks", start_game_hooks, game_hooks_shutdown},
+    {"bios", start_bios, bios_shutdown},
+    {"ppu", start_ppu, ppu_shutdown},
+    {"psg", start_psg, psg_shutdown},
+    {"sdl", start_sdl, SDL_Quit},
+    {"audio", start_audio, audio_shutdown},
+    {"video", start_video, video_shutdown},
+    {"input", start_input, input_shutdown},
+    {"rtc", start_rtc, rtc_shutdown},
+    {"flash", start_flash, flash_shutdown},
+    {"save_file", start_save_file, save_file_shutdown},
+    {"frame", start_frame, frame_shutdown},
+    {"frame_pacer", start_frame_pacer, frame_pacer_shutdown},
+    {"replay", start_replay, replay_session_stop},
 };
 #define MODULE_STEP_COUNT (sizeof module_steps / sizeof module_steps[0])
 
@@ -272,7 +326,7 @@ static bool start_modules(const struct options *options)
 {
     for (size_t i = 0; i < MODULE_STEP_COUNT; i++) {
         if (module_steps[i].start(options) != 0) {
-            fprintf(stderr, "main: starting %s failed\n", module_steps[i].name);
+            (void)fprintf(stderr, "main: starting %s failed\n", module_steps[i].name);
             stop_modules(i + 1);
             return false;
         }
@@ -314,8 +368,9 @@ static int restart_after_soft_reset(void)
     ppu_shutdown();
     psg_shutdown();
     if (interrupt_init(gIntrTable, INTERRUPT_TABLE_LENGTH) != INTERRUPT_OK || timer_init(interrupt_raise) != TIMER_OK
-        || dma_init(interrupt_raise) != DMA_OK || ppu_init() != PPU_OK || psg_init(FRAME_AUDIO_SAMPLE_RATE_HZ) != PSG_OK) {
-        fprintf(stderr, "main: restarting the hardware modules after SoftReset failed\n");
+        || dma_init(interrupt_raise) != DMA_OK || ppu_init() != PPU_OK
+        || psg_init(FRAME_AUDIO_SAMPLE_RATE_HZ) != PSG_OK) {
+        (void)fprintf(stderr, "main: restarting the hardware modules after SoftReset failed\n");
         return -1;
     }
     return 0;
@@ -333,7 +388,7 @@ static int run_game(void)
     case MAIN_JUMP_FRAME_EXIT:
         return frame_exit_status();
     default:
-        fprintf(stderr, "main: unknown jump to the exit target\n");
+        (void)fprintf(stderr, "main: unknown jump to the exit target\n");
         return MAIN_EXIT_FAILURE;
     }
 
@@ -344,7 +399,7 @@ static int run_game(void)
     frame_power_on();
     game_hooks_forget_agb_main_loop();
     AgbMain();
-    fprintf(stderr, "main: AgbMain returned, which it never does on the GBA\n");
+    (void)fprintf(stderr, "main: AgbMain returned, which it never does on the GBA\n");
     return MAIN_EXIT_FAILURE;
 }
 
@@ -359,12 +414,12 @@ static int settle_replay(int status, bool *restart)
         *restart = true;
         return status;
     case REPLAY_FAILED:
-        fprintf(stderr, "replay: FAILED: %s\n", replay_session_message());
+        (void)fprintf(stderr, "replay: FAILED: %s\n", replay_session_message());
         return MAIN_EXIT_FAILURE;
     case REPLAY_RUNNING:
     default:
         if (status == MAIN_EXIT_OK)
-            fprintf(stderr, "replay: FAILED: the game ended before the script did\n");
+            (void)fprintf(stderr, "replay: FAILED: the game ended before the script did\n");
         return MAIN_EXIT_FAILURE;
     }
 }

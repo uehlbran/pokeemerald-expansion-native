@@ -194,11 +194,10 @@ struct expected_binding {
 PTEST(keyboard_table_is_the_documented_default)
 {
     static const struct expected_binding expected[] = {
-        { SDL_SCANCODE_Z, 0x0001 },         { SDL_SCANCODE_X, 0x0002 },
-        { SDL_SCANCODE_BACKSPACE, 0x0004 }, { SDL_SCANCODE_RETURN, 0x0008 },
-        { SDL_SCANCODE_RIGHT, 0x0010 },     { SDL_SCANCODE_LEFT, 0x0020 },
-        { SDL_SCANCODE_UP, 0x0040 },        { SDL_SCANCODE_DOWN, 0x0080 },
-        { SDL_SCANCODE_S, 0x0100 },         { SDL_SCANCODE_A, 0x0200 },
+        {SDL_SCANCODE_Z, 0x0001},      {SDL_SCANCODE_X, 0x0002},     {SDL_SCANCODE_BACKSPACE, 0x0004},
+        {SDL_SCANCODE_RETURN, 0x0008}, {SDL_SCANCODE_RIGHT, 0x0010}, {SDL_SCANCODE_LEFT, 0x0020},
+        {SDL_SCANCODE_UP, 0x0040},     {SDL_SCANCODE_DOWN, 0x0080},  {SDL_SCANCODE_S, 0x0100},
+        {SDL_SCANCODE_A, 0x0200},
     };
     size_t count = 0;
     const struct input_key_binding *table = input_keyboard_bindings(&count);
@@ -225,7 +224,7 @@ PTEST(keyboard_table_binds_each_gba_key_once)
 
 PTEST(keyboard_state_with_nothing_down_is_no_keys)
 {
-    const uint8_t state[SDL_NUM_SCANCODES] = { 0 };
+    const uint8_t state[SDL_NUM_SCANCODES] = {0};
     PT_ASSERT_EQ_U32(input_keyboard_to_keys(state, SDL_NUM_SCANCODES), 0u);
 }
 
@@ -234,7 +233,7 @@ PTEST(each_mapped_scancode_gives_its_key)
     size_t count = 0;
     const struct input_key_binding *table = input_keyboard_bindings(&count);
     for (size_t i = 0; i < count; i++) {
-        uint8_t state[SDL_NUM_SCANCODES] = { 0 };
+        uint8_t state[SDL_NUM_SCANCODES] = {0};
         state[table[i].scancode] = 1;
         PT_ASSERT_EQ_U32(input_keyboard_to_keys(state, SDL_NUM_SCANCODES), table[i].key);
     }
@@ -242,7 +241,7 @@ PTEST(each_mapped_scancode_gives_its_key)
 
 PTEST(unmapped_scancodes_are_ignored)
 {
-    uint8_t state[SDL_NUM_SCANCODES] = { 0 };
+    uint8_t state[SDL_NUM_SCANCODES] = {0};
     state[SDL_SCANCODE_Q] = 1;
     state[SDL_SCANCODE_SPACE] = 1;
     PT_ASSERT_EQ_U32(input_keyboard_to_keys(state, SDL_NUM_SCANCODES), 0u);
@@ -250,7 +249,7 @@ PTEST(unmapped_scancodes_are_ignored)
 
 PTEST(all_mapped_keys_down_gives_all_ten)
 {
-    uint8_t state[SDL_NUM_SCANCODES] = { 0 };
+    uint8_t state[SDL_NUM_SCANCODES] = {0};
     size_t count = 0;
     const struct input_key_binding *table = input_keyboard_bindings(&count);
     for (size_t i = 0; i < count; i++) {
@@ -267,25 +266,23 @@ PTEST(a_state_ending_exactly_at_a_bound_scancode_is_not_read_at_that_scancode)
     const struct input_key_binding *table = input_keyboard_bindings(&count);
     for (size_t i = 0; i < count; i++) {
         const int numkeys = table[i].scancode;
-        uint8_t *state = malloc((size_t)numkeys);
+        uint8_t *state = calloc((size_t)numkeys, 1);
         PT_ASSERT(state != NULL);
-        for (int k = 0; k < numkeys; k++)
-            state[k] = 0;
-        PT_ASSERT_EQ_U32(input_keyboard_to_keys(state, numkeys), 0u);
+        const uint16_t before = input_keyboard_to_keys(state, numkeys);
         free(state);
-        state = malloc((size_t)numkeys + 1u);
+        state = calloc((size_t)numkeys + 1u, 1);
         PT_ASSERT(state != NULL);
-        for (int k = 0; k <= numkeys; k++)
-            state[k] = 0;
         state[numkeys] = 1;
-        PT_ASSERT_EQ_U32(input_keyboard_to_keys(state, numkeys + 1), table[i].key);
+        const uint16_t at_bound = input_keyboard_to_keys(state, numkeys + 1);
         free(state);
+        PT_ASSERT_EQ_U32(before, 0u);
+        PT_ASSERT_EQ_U32(at_bound, table[i].key);
     }
 }
 
 PTEST(keyboard_state_shorter_than_a_scancode_is_not_read_past)
 {
-    const uint8_t state[2] = { 1, 1 };
+    const uint8_t state[2] = {1, 1};
     PT_ASSERT_EQ_U32(input_keyboard_to_keys(state, 2), 0u);
     PT_ASSERT_EQ_U32(input_keyboard_to_keys(state, 0), 0u);
     PT_ASSERT_EQ_U32(input_keyboard_to_keys(state, -1), 0u);
@@ -296,17 +293,16 @@ PTEST(keyboard_state_shorter_than_a_scancode_is_not_read_past)
 
 PTEST(idle_pad_is_no_keys)
 {
-    struct input_pad_state pad = { 0 };
+    struct input_pad_state pad = {0};
     PT_ASSERT_EQ_U32(input_pad_to_keys(&pad), 0u);
     PT_ASSERT_EQ_U32(input_pad_to_keys(NULL), 0u);
 }
 
 PTEST(each_pad_button_gives_its_key)
 {
-    struct input_pad_state a = { .a = 1 }, b = { .b = 1 }, start = { .start = 1 },
-        back = { .back = 1 }, l = { .left_shoulder = 1 }, r = { .right_shoulder = 1 },
-        up = { .dpad_up = 1 }, down = { .dpad_down = 1 }, left = { .dpad_left = 1 },
-        right = { .dpad_right = 1 };
+    struct input_pad_state a = {.a = 1}, b = {.b = 1}, start = {.start = 1}, back = {.back = 1},
+                           l = {.left_shoulder = 1}, r = {.right_shoulder = 1}, up = {.dpad_up = 1},
+                           down = {.dpad_down = 1}, left = {.dpad_left = 1}, right = {.dpad_right = 1};
     PT_ASSERT_EQ_U32(input_pad_to_keys(&a), INPUT_KEY_A);
     PT_ASSERT_EQ_U32(input_pad_to_keys(&b), INPUT_KEY_B);
     PT_ASSERT_EQ_U32(input_pad_to_keys(&start), INPUT_KEY_START);
@@ -321,30 +317,30 @@ PTEST(each_pad_button_gives_its_key)
 
 PTEST(stick_inside_the_deadzone_is_ignored)
 {
-    struct input_pad_state pad = { .left_x = INPUT_STICK_DEADZONE, .left_y = -INPUT_STICK_DEADZONE };
+    struct input_pad_state pad = {.left_x = INPUT_STICK_DEADZONE, .left_y = -INPUT_STICK_DEADZONE};
     PT_ASSERT_EQ_U32(input_pad_to_keys(&pad), 0u);
 }
 
 PTEST(stick_exactly_on_the_deadzone_edge_is_ignored_on_every_side)
 {
-    struct input_pad_state xneg = { .left_x = -INPUT_STICK_DEADZONE };
-    struct input_pad_state ypos = { .left_y = INPUT_STICK_DEADZONE };
+    struct input_pad_state xneg = {.left_x = -INPUT_STICK_DEADZONE};
+    struct input_pad_state ypos = {.left_y = INPUT_STICK_DEADZONE};
     PT_ASSERT_EQ_U32(input_pad_to_keys(&xneg), 0u);
     PT_ASSERT_EQ_U32(input_pad_to_keys(&ypos), 0u);
 }
 
 PTEST(stick_int16_min_on_y_is_up)
 {
-    struct input_pad_state pad = { .left_y = INT16_MIN };
+    struct input_pad_state pad = {.left_y = INT16_MIN};
     PT_ASSERT_EQ_U32(input_pad_to_keys(&pad), INPUT_KEY_UP);
 }
 
 PTEST(stick_past_the_deadzone_gives_a_direction)
 {
-    struct input_pad_state r = { .left_x = INPUT_STICK_DEADZONE + 1 };
-    struct input_pad_state l = { .left_x = -INPUT_STICK_DEADZONE - 1 };
-    struct input_pad_state d = { .left_y = INPUT_STICK_DEADZONE + 1 };  /* SDL: +y is down */
-    struct input_pad_state u = { .left_y = -INPUT_STICK_DEADZONE - 1 };
+    struct input_pad_state r = {.left_x = INPUT_STICK_DEADZONE + 1};
+    struct input_pad_state l = {.left_x = -INPUT_STICK_DEADZONE - 1};
+    struct input_pad_state d = {.left_y = INPUT_STICK_DEADZONE + 1}; /* SDL: +y is down */
+    struct input_pad_state u = {.left_y = -INPUT_STICK_DEADZONE - 1};
     PT_ASSERT_EQ_U32(input_pad_to_keys(&r), INPUT_KEY_RIGHT);
     PT_ASSERT_EQ_U32(input_pad_to_keys(&l), INPUT_KEY_LEFT);
     PT_ASSERT_EQ_U32(input_pad_to_keys(&d), INPUT_KEY_DOWN);
@@ -353,13 +349,13 @@ PTEST(stick_past_the_deadzone_gives_a_direction)
 
 PTEST(stick_extremes_do_not_overflow)
 {
-    struct input_pad_state pad = { .left_x = INT16_MIN, .left_y = INT16_MAX };
+    struct input_pad_state pad = {.left_x = INT16_MIN, .left_y = INT16_MAX};
     PT_ASSERT_EQ_U32(input_pad_to_keys(&pad), INPUT_KEY_LEFT | INPUT_KEY_DOWN);
 }
 
 PTEST(stick_and_dpad_combine)
 {
-    struct input_pad_state pad = { .left_x = INT16_MAX, .dpad_left = 1 };
+    struct input_pad_state pad = {.left_x = INT16_MAX, .dpad_left = 1};
     PT_ASSERT_EQ_U32(input_pad_to_keys(&pad), INPUT_KEY_LEFT | INPUT_KEY_RIGHT);
 }
 
@@ -447,8 +443,8 @@ PTEST(host_event_handler_ignores_unrelated_and_bogus_controller_events)
     input_shutdown();
     SDL_Quit();
     PT_ASSERT_EQ_INT(status, 0);
-    PT_ASSERT_EQ_INT(removed, 0);   /* removing something not open is not an error */
-    PT_ASSERT(added != 0);          /* an index SDL cannot open is reported */
+    PT_ASSERT_EQ_INT(removed, 0); /* removing something not open is not an error */
+    PT_ASSERT(added != 0);        /* an index SDL cannot open is reported */
     PT_ASSERT_EQ_INT(other, 0);
 }
 
@@ -565,7 +561,7 @@ static int vpad_sdl_init(void)
 
 PTEST(added_event_opens_a_pad_and_a_duplicate_does_not_open_it_twice)
 {
-    struct vpad pad = { 0 };
+    struct vpad pad = {0};
     PT_ASSERT_EQ_INT(vpad_sdl_init(), 0);
     int status = input_init(INPUT_SOURCE_HOST);
     int attached = vpad_attach(&pad);
@@ -590,7 +586,7 @@ PTEST(added_event_opens_a_pad_and_a_duplicate_does_not_open_it_twice)
 
 PTEST(a_pad_present_before_init_is_opened_by_init)
 {
-    struct vpad pad = { 0 };
+    struct vpad pad = {0};
     PT_ASSERT_EQ_INT(vpad_sdl_init(), 0);
     int attached = vpad_attach(&pad);
     int status = input_init(INPUT_SOURCE_HOST);
@@ -609,7 +605,7 @@ PTEST(a_pad_present_before_init_is_opened_by_init)
 
 PTEST(removed_event_closes_the_pad_and_frees_its_slot)
 {
-    struct vpad pads[MAX_VPADS] = { { 0 } };
+    struct vpad pads[MAX_VPADS] = {{0}};
     int attached = 0, status;
     PT_ASSERT_EQ_INT(vpad_sdl_init(), 0);
     for (size_t i = 0; i < INPUT_MAX_CONTROLLERS; i++) {
@@ -644,7 +640,7 @@ PTEST(removed_event_closes_the_pad_and_frees_its_slot)
 
 PTEST(a_fifth_pad_at_init_is_reported_and_skipped_without_failing_init)
 {
-    struct vpad pads[MAX_VPADS] = { { 0 } };
+    struct vpad pads[MAX_VPADS] = {{0}};
     int attached = 0;
     PT_ASSERT_EQ_INT(vpad_sdl_init(), 0);
     for (size_t i = 0; i < MAX_VPADS; i++) {
@@ -681,7 +677,7 @@ static uint16_t keyinput_after_update(void)
 
 PTEST(pad_buttons_and_stick_reach_keyinput)
 {
-    struct vpad pad = { 0 };
+    struct vpad pad = {0};
     PT_ASSERT_EQ_INT(vpad_sdl_init(), 0);
     int attached = vpad_attach(&pad);
     int status = input_init(INPUT_SOURCE_HOST);
@@ -724,7 +720,7 @@ PTEST(pad_buttons_and_stick_reach_keyinput)
 
 PTEST(shutdown_with_pads_still_open_releases_them)
 {
-    struct vpad pads[2] = { { 0 } };
+    struct vpad pads[2] = {{0}};
     PT_ASSERT_EQ_INT(vpad_sdl_init(), 0);
     int attached = vpad_attach(&pads[0]) | vpad_attach(&pads[1]);
     int status = input_init(INPUT_SOURCE_HOST);

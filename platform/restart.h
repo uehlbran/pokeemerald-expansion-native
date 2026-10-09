@@ -40,8 +40,7 @@ struct restart_args {
  * `--rtc-fixed E`, that E replaced by new_epoch. The original strings are
  * not copied: argv must outlive `out`. Returns 0, or -1 (reported) if there
  * are too many arguments or a value is missing. */
-int restart_build_args(int argc, char *const *argv, uint32_t resume_line, int64_t new_epoch,
-                       struct restart_args *out);
+int restart_build_args(int argc, char *const *argv, uint32_t resume_line, int64_t new_epoch, struct restart_args *out);
 
 /* Replaces this process with the executable (/proc/self/exe) and `args`.
  * Returns only on failure: -1, reported. Call it after every module is shut

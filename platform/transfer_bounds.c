@@ -64,8 +64,8 @@
 #define TRANSFER_FIRST_PAGE_SIZE ((uintptr_t)0x1000)
 #define TRANSFER_ERR_STACK (-1)
 
-extern char __executable_start[], __data_start[], _end[]; /* GNU ld / glibc crt1 */
-extern char game_data_start[], game_data_end[];             /* gba_game.ld */
+extern char __executable_start[], __data_start[], _end[];           /* GNU ld / glibc crt1 */
+extern char game_data_start[], game_data_end[];                     /* gba_game.ld */
 extern char platform_call_stack_start[], platform_call_stack_end[]; /* gba_regions.ld */
 
 struct transfer_range {
@@ -103,7 +103,7 @@ static bool in_fake_stack(uintptr_t address, size_t length)
     void *begin = NULL;
     void *end = NULL;
     if (fake != NULL && __asan_addr_is_in_fake_stack(fake, (void *)address, &begin, &end) != NULL) {
-        struct transfer_range frame = { address_of(begin), address_of(end) };
+        struct transfer_range frame = {address_of(begin), address_of(end)};
         return range_holds(&frame, address, length);
     }
 #else
@@ -117,7 +117,7 @@ bool transfer_bounds_ok(uintptr_t address, size_t length, enum transfer_access a
 {
     if (!state.ready) {
         if (!state.warned) {
-            fprintf(stderr, "transfer_bounds: not initialised, refusing every transfer\n");
+            (void)fprintf(stderr, "transfer_bounds: not initialised, refusing every transfer\n");
             state.warned = true;
         }
         return false;
@@ -147,22 +147,22 @@ static int record_stack(struct transfer_range *stack)
     size_t size = 0;
     int error = pthread_getattr_np(pthread_self(), &attributes);
     if (error != 0) {
-        fprintf(stderr, "transfer_bounds: pthread_getattr_np failed: %s\n", strerror(error));
+        (void)fprintf(stderr, "transfer_bounds: pthread_getattr_np failed: %s\n", strerror(error));
         return TRANSFER_ERR_STACK;
     }
     error = pthread_attr_getstack(&attributes, &low, &size);
     if (error != 0) {
-        fprintf(stderr, "transfer_bounds: pthread_attr_getstack failed: %s\n", strerror(error));
+        (void)fprintf(stderr, "transfer_bounds: pthread_attr_getstack failed: %s\n", strerror(error));
     }
     int destroy_error = pthread_attr_destroy(&attributes);
     if (destroy_error != 0) {
-        fprintf(stderr, "transfer_bounds: pthread_attr_destroy failed: %s\n", strerror(destroy_error));
+        (void)fprintf(stderr, "transfer_bounds: pthread_attr_destroy failed: %s\n", strerror(destroy_error));
     }
     if (error != 0 || destroy_error != 0) {
         return TRANSFER_ERR_STACK;
     }
     if (size == 0 || size > UINTPTR_MAX - address_of(low)) {
-        fprintf(stderr, "transfer_bounds: pthread_attr_getstack returned an unusable stack\n");
+        (void)fprintf(stderr, "transfer_bounds: pthread_attr_getstack returned an unusable stack\n");
         return TRANSFER_ERR_STACK;
     }
     stack->start = address_of(low);

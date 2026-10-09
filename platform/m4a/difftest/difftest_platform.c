@@ -13,8 +13,8 @@
 /* GBATEK "GBA Memory Map": the IWRAM page with SOUND_INFO_PTR (0x03007FF0)
  * and the I/O registers at REG_BASE. */
 #define GBA_IWRAM_PAGE 0x03007000u
-#define GBA_IO_PAGE    0x04000000u
-#define GBA_PAGE_SIZE  0x1000u
+#define GBA_IO_PAGE 0x04000000u
+#define GBA_PAGE_SIZE 0x1000u
 
 #if defined(__arm__)
 
@@ -23,8 +23,7 @@ __attribute__((section(".gba_io"), used)) static volatile uint8_t sIoPage[GBA_PA
 
 int DifftestMapGbaPages(void)
 {
-    if ((uintptr_t)sIwramPage != GBA_IWRAM_PAGE || (uintptr_t)sIoPage != GBA_IO_PAGE)
-    {
+    if ((uintptr_t)sIwramPage != GBA_IWRAM_PAGE || (uintptr_t)sIoPage != GBA_IO_PAGE) {
         fprintf(stderr, "difftest: GBA pages linked at %p and %p\n", (void *)sIwramPage, (void *)sIoPage);
         return -1;
     }
@@ -43,12 +42,11 @@ void DifftestUnmapGbaPages(void)
 static int MapPage(uint32_t address)
 {
     void *wanted = (void *)(uintptr_t)address;
-    void *got = mmap(wanted, GBA_PAGE_SIZE, PROT_READ | PROT_WRITE,
-                     MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED_NOREPLACE, -1, 0);
+    const void *got = mmap(wanted, GBA_PAGE_SIZE, PROT_READ | PROT_WRITE,
+                           MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED_NOREPLACE, -1, 0);
 
-    if (got == MAP_FAILED || got != wanted)
-    {
-        fprintf(stderr, "difftest: mmap at 0x%08x failed: %s\n", (unsigned)address, strerror(errno));
+    if (got == MAP_FAILED || got != wanted) {
+        (void)fprintf(stderr, "difftest: mmap at 0x%08x failed: %s\n", (unsigned)address, strerror(errno));
         return -1;
     }
     return 0;
@@ -57,15 +55,14 @@ static int MapPage(uint32_t address)
 static void UnmapPage(uint32_t address)
 {
     if (munmap((void *)(uintptr_t)address, GBA_PAGE_SIZE) != 0)
-        fprintf(stderr, "difftest: munmap at 0x%08x failed: %s\n", (unsigned)address, strerror(errno));
+        (void)fprintf(stderr, "difftest: munmap at 0x%08x failed: %s\n", (unsigned)address, strerror(errno));
 }
 
 int DifftestMapGbaPages(void)
 {
     if (MapPage(GBA_IWRAM_PAGE) != 0)
         return -1;
-    if (MapPage(GBA_IO_PAGE) != 0)
-    {
+    if (MapPage(GBA_IO_PAGE) != 0) {
         UnmapPage(GBA_IWRAM_PAGE);
         return -1;
     }

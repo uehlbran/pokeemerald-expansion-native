@@ -1,0 +1,68 @@
+# clang-tidy for the platform layer (platform/, run by `make -C platform lint`).
+# Expansion's code is not linted (docs/C-RULES.md): HeaderFilterRegex keeps
+# findings to our files, and the build includes expansion's headers with
+# -idirafter, as system headers.
+#
+# Checks: the families the owner named, minus the ones that fight this
+# project's style or its design. Each exclusion and why:
+#   readability-braces-around-statements   the existing style writes one-statement ifs, loops
+#                                          and early returns without braces
+#   readability-uppercase-literal-suffix   the code writes 1u and 0x10u, not 1U
+#   readability-identifier-length          i, x, y, hw register and loop names are the domain
+#   readability-isolate-declaration        "int32_t tx, ty;" for a pair of coordinates is fine
+#   bugprone-easily-swappable-parameters   hardware calls take (dest, src, size) and (x, y)
+#                                          like the spec and the BIOS do
+#   misc-include-cleaner                   wants every symbol's defining header, not the umbrella
+#                                          headers and macros expansion's code relies on
+#   performance-no-int-to-ptr              the design: the GBA address space is mapped at its
+#                                          GBA addresses and addressed by integer (gba_memmap.h)
+#   clang-analyzer-security.insecureAPI.DeprecatedOrUnsafeBufferHandling
+#                                          wants C11 Annex K (memcpy_s, fprintf_s), which glibc
+#                                          does not provide
+#   bugprone-reserved-identifier, cert-dcl37-c, cert-dcl51-cpp
+#                                          the feature-test macros (_GNU_SOURCE,
+#                                          _FILE_OFFSET_BITS, _TIME_BITS) and the linker's
+#                                          symbols (__executable_start, __data_start, _end)
+#                                          are reserved names by definition
+#   bugprone-multi-level-implicit-pointer-conversion
+#                                          memcpy of a pointer object (&pointer, a table of
+#                                          function pointers) is the type pun docs/C-RULES.md
+#                                          prescribes instead of a cast
+#   bugprone-signed-char-misuse, cert-str34-c
+#                                          s8 is the GBA's signed 8-bit sample and pan; the
+#                                          sign extension is the point
+#   clang-diagnostic-deprecated-non-prototype
+#                                          expansion's MPlayFunc is "void (*)()" and is
+#                                          called with arguments as the original is
+Checks: >
+  bugprone-*,
+  clang-analyzer-*,
+  cert-*,
+  performance-*,
+  portability-*,
+  readability-*,
+  misc-*,
+  -readability-braces-around-statements,
+  -readability-uppercase-literal-suffix,
+  -readability-identifier-length,
+  -readability-isolate-declaration,
+  -bugprone-easily-swappable-parameters,
+  -misc-include-cleaner,
+  -performance-no-int-to-ptr,
+  -clang-analyzer-security.insecureAPI.DeprecatedOrUnsafeBufferHandling,
+  -bugprone-reserved-identifier,
+  -cert-dcl37-c,
+  -cert-dcl51-cpp,
+  -bugprone-multi-level-implicit-pointer-conversion,
+  -bugprone-signed-char-misuse,
+  -cert-str34-c,
+  -clang-diagnostic-deprecated-non-prototype
+WarningsAsErrors: '*'
+HeaderFilterRegex: '/platform/'
+CheckOptions:
+  # Plain widths and counts are not magic; everything else in module code is a
+  # named constant with a comment citing the GBATEK section (docs/C-RULES.md).
+  - key: readability-magic-numbers.IgnorePowersOf2IntegerValues
+    value: true
+  - key: readability-magic-numbers.IgnoredIntegerValues
+    value: '0;1;2;3;4;8;16;32;64'

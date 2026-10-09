@@ -54,15 +54,13 @@ PTEST(umul3232H32_hand_values)
 PTEST(umul3232H32_matches_64_bit_multiplication_at_boundaries)
 {
     static const uint32_t kValues[] = {
-        0, 1, 2, 3, 0xFF, 0x100, 0xFFFF, 0x10000, 0x7FFFFFFF, 0x80000000u,
-        0x80000001u, 0xFFFFFFFEu, 0xFFFFFFFFu, 0x12345678u, 0x9ABCDEF0u, 0x400000u,
+        0,          1,           2,           3,           0xFF,        0x100,       0xFFFF,      0x10000,
+        0x7FFFFFFF, 0x80000000u, 0x80000001u, 0xFFFFFFFEu, 0xFFFFFFFFu, 0x12345678u, 0x9ABCDEF0u, 0x400000u,
     };
     const size_t n = sizeof(kValues) / sizeof(kValues[0]);
 
-    for (size_t i = 0; i < n; i++)
-    {
-        for (size_t j = 0; j < n; j++)
-        {
+    for (size_t i = 0; i < n; i++) {
+        for (size_t j = 0; j < n; j++) {
             uint32_t expected = (uint32_t)(((uint64_t)kValues[i] * kValues[j]) >> 32);
 
             PT_ASSERT_EQ_U32(umul3232H32(kValues[i], kValues[j]), expected);
@@ -489,7 +487,7 @@ PTEST(MPlayMain_counts_gate_times_down_and_releases_at_zero)
     sChanA.statusFlags = SF_PLAYING;
     sChanA.gateTime = 2;
     sChanB.statusFlags = SF_PLAYING;
-    sChanB.gateTime = 0; /* a tie: never released by the gate */
+    sChanB.gateTime = 0;    /* a tie: never released by the gate */
     sChanC.statusFlags = 0; /* finished: unlinked */
 
     MPlayMain(&sPlayer);
@@ -705,8 +703,7 @@ PTEST(MPlayMain_pitch_below_key_0_is_clamped_to_key_0)
 
     MPlayMain(&sPlayer);
 
-    for (uint32_t i = 0; i < M4aTestCallCount(); i++)
-    {
+    for (uint32_t i = 0; i < M4aTestCallCount(); i++) {
         if (M4aTestCall(i)->kind == CALL_MIDI_KEY_TO_FREQ)
             PT_ASSERT_EQ_U32(M4aTestCall(i)->arg0, 0);
         if (M4aTestCall(i)->kind == CALL_MIDI_KEY_TO_CGB_FREQ)

@@ -69,8 +69,10 @@ void LZ77UnCompWRAMOptimized(const uint32_t *src, void *dest)
                               + LZ77_MIN_DISTANCE;
             in += LZ77_BLOCK_SIZE;
             if (distance > written) {
-                fprintf(stderr, "decompress_asm: LZ77UnCompWRAMOptimized: a back-reference %zu bytes back "
-                        "at output byte %zu reaches before the output; stopping\n", distance, written);
+                (void)fprintf(stderr,
+                              "decompress_asm: LZ77UnCompWRAMOptimized: a back-reference %zu bytes back "
+                              "at output byte %zu reaches before the output; stopping\n",
+                              distance, written);
                 return;
             }
             if (count > size - written)

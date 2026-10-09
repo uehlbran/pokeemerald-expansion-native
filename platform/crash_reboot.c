@@ -25,10 +25,8 @@ _Static_assert(CRASH_REBOOT_PERSISTENT_ADDRESS >= GBA_IWRAM_BASE
                    && CRASH_REBOOT_PERSISTENT_ADDRESS + CRASH_REBOOT_PERSISTENT_SIZE <= GBA_IWRAM_BASE + GBA_IWRAM_SIZE,
                "the persistent state lies in IWRAM");
 
-extern char **environ;
-
 /* The signals that mean the game crashed (crash_reboot.h). */
-static const int crash_signals[] = { SIGSEGV, SIGBUS, SIGILL, SIGFPE, SIGABRT };
+static const int crash_signals[] = {SIGSEGV, SIGBUS, SIGILL, SIGFPE, SIGABRT};
 #define CRASH_SIGNAL_COUNT (sizeof crash_signals / sizeof crash_signals[0])
 
 static const char hex_digits[] = "0123456789abcdef";
@@ -55,6 +53,7 @@ static const volatile uint8_t *persistent_bytes(void)
  * write(2) so that the lines of processes sharing stderr do not interleave
  * (the hydra runs up to 32). Async-signal-safe: no allocation, no stdio. */
 #define REPORT_SIZE 256u
+#define DECIMAL_BASE 10u /* numbers are written and read in decimal */
 
 struct report {
     char text[REPORT_SIZE];
@@ -89,8 +88,8 @@ static void report_add_unsigned(struct report *report, unsigned value)
     size_t length = sizeof text - 1;
     text[length] = '\0';
     do {
-        text[--length] = (char)('0' + value % 10u);
-        value /= 10u;
+        text[--length] = (char)('0' + value % DECIMAL_BASE);
+        value /= DECIMAL_BASE;
     } while (value > 0 && length > 0);
     report_add(report, &text[length]);
 }
@@ -174,11 +173,11 @@ static void die_of(int signal_number)
 // cppcheck-suppress constParameterCallback
 static void on_crash(int signal_number, siginfo_t *info, void *context)
 {
-    struct report report = { .length = 0 };
+    struct report report = {.length = 0};
     report_where(&report, signal_number, info, context);
     if (!state_changed_since_start()) {
         report_add(&report, "the test runner's persistent state is as the process started with; a reboot "
-                   "would crash again, so the process ends here\n");
+                            "would crash again, so the process ends here\n");
         report_write(&report);
         die_of(signal_number);
         return;
@@ -214,7 +213,7 @@ static bool build_args(int argc, char *const argv[])
 
 static bool install_handlers(void)
 {
-    stack_t stack = { .ss_sp = signal_stack, .ss_size = sizeof signal_stack, .ss_flags = 0 };
+    stack_t stack = {.ss_sp = signal_stack, .ss_size = sizeof signal_stack, .ss_flags = 0};
     if (sigaltstack(&stack, NULL) != 0) {
         perror("crash_reboot: sigaltstack");
         return false;
@@ -245,8 +244,8 @@ int crash_reboot_init(int argc, char *const argv[])
 {
     crash_reboot_shutdown();
     if (argc < 1 || argv == NULL || !build_args(argc, argv)) {
-        fprintf(stderr, "crash_reboot: crash_reboot_init: need 1 to %u arguments, with the reboot's two\n",
-                CRASH_REBOOT_MAX_ARGS);
+        (void)fprintf(stderr, "crash_reboot: crash_reboot_init: need 1 to %u arguments, with the reboot's two\n",
+                      CRASH_REBOOT_MAX_ARGS);
         return CRASH_REBOOT_ERR_ARGS;
     }
     const volatile uint8_t *bytes = persistent_bytes();
@@ -270,16 +269,16 @@ int crash_reboot_restore(const char *state_hex)
 {
     uint8_t bytes[CRASH_REBOOT_PERSISTENT_SIZE];
     if (state_hex == NULL || strlen(state_hex) != CRASH_REBOOT_STATE_HEX_LENGTH) {
-        fprintf(stderr, "crash_reboot: %s needs %u hex digits\n", CRASH_REBOOT_OPTION,
-                CRASH_REBOOT_STATE_HEX_LENGTH);
+        (void)fprintf(stderr, "crash_reboot: %s needs %zu hex digits\n", CRASH_REBOOT_OPTION,
+                      CRASH_REBOOT_STATE_HEX_LENGTH);
         return CRASH_REBOOT_ERR_STATE;
     }
     for (size_t i = 0; i < CRASH_REBOOT_PERSISTENT_SIZE; i++) {
         int high = hex_value(state_hex[2 * i]);
         int low = hex_value(state_hex[2 * i + 1]);
         if (high < 0 || low < 0) {
-            fprintf(stderr, "crash_reboot: %s: '%.2s' at %zu is not a lower-case hex byte\n", CRASH_REBOOT_OPTION,
-                    &state_hex[2 * i], 2 * i);
+            (void)fprintf(stderr, "crash_reboot: %s: '%.2s' at %zu is not a lower-case hex byte\n", CRASH_REBOOT_OPTION,
+                          &state_hex[2 * i], 2 * i);
             return CRASH_REBOOT_ERR_STATE;
         }
         bytes[i] = (uint8_t)(high << 4 | low);
@@ -301,7 +300,7 @@ void crash_reboot_shutdown(void)
     (void)sigemptyset(&action.sa_mask);
     for (size_t i = 0; i < CRASH_SIGNAL_COUNT; i++)
         (void)sigaction(crash_signals[i], &action, NULL); /* restoring a default cannot fail for these */
-    stack_t no_stack = { .ss_sp = NULL, .ss_size = 0, .ss_flags = SS_DISABLE };
+    stack_t no_stack = {.ss_sp = NULL, .ss_size = 0, .ss_flags = SS_DISABLE};
     (void)sigaltstack(&no_stack, NULL); /* fails only while running on it, which shutdown never does */
     reboot.installed = false;
 }

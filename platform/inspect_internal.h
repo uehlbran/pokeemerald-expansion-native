@@ -19,7 +19,8 @@ extern const char inspect_none_text[];
 struct inspect_fact {
     const char *name;
     void (*read)(char *out, size_t size);
-    const char *value_without_save_blocks; /* what it reads before the game's boot has set up the save blocks; NULL if it does not read them */
+    const char *
+        value_without_save_blocks; /* what it reads before the game's boot has set up the save blocks; NULL if it does not read them */
 };
 
 /* The reader of an argument fact; the arguments are already checked against their ranges. */

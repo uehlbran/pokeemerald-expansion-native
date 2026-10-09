@@ -24,8 +24,7 @@ static void solid_text_bg(unsigned bg, unsigned priority, unsigned tile, uint8_t
     for (unsigned row = 0; row < 32; row++)
         for (unsigned col = 0; col < 32; col++)
             put_map_entry(block * SCREEN_BLOCK_BYTES, col, row, map_entry(tile, bank, 0));
-    io_write16(IO_BG0CNT + 2u * bg,
-               (uint16_t)(bgcnt_priority(priority) | bgcnt_screen_block(block)));
+    io_write16(IO_BG0CNT + 2u * bg, (uint16_t)(bgcnt_priority(priority) | bgcnt_screen_block(block)));
 }
 
 /* ---- init, shutdown, arguments ---- */

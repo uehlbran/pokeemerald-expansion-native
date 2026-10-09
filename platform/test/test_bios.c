@@ -25,25 +25,23 @@
 
 /* src/assertf.c declares BitUnPack and its argument struct itself; this is
  * its declaration, verbatim, so the compiler checks bios.h's against it. */
-struct BitUnPackArgs
-{
+struct BitUnPackArgs {
     u16 compressedSize;
     u8 compressedBits;
     u8 decompressedBits;
-    u32 dataOffset:31;
-    u32 offsetZeros:1;
+    u32 dataOffset : 31;
+    u32 offsetZeros : 1;
 };
-extern void BitUnPack(const void *src, void *dest, const struct BitUnPackArgs *);
 
 /* syscall.h's RESET_* and CPU_SET_* are the BIOS's bits. */
-_Static_assert(RESET_EWRAM == BIOS_RESET_EWRAM && RESET_IWRAM == BIOS_RESET_IWRAM
-                   && RESET_PALETTE == BIOS_RESET_PALETTE && RESET_VRAM == BIOS_RESET_VRAM
-                   && RESET_OAM == BIOS_RESET_OAM && RESET_SIO_REGS == BIOS_RESET_SIO_REGS
-                   && RESET_SOUND_REGS == BIOS_RESET_SOUND_REGS && RESET_REGS == BIOS_RESET_REGS,
+_Static_assert(RESET_EWRAM == BIOS_RESET_EWRAM && RESET_IWRAM == BIOS_RESET_IWRAM && RESET_PALETTE == BIOS_RESET_PALETTE
+                   && RESET_VRAM == BIOS_RESET_VRAM && RESET_OAM == BIOS_RESET_OAM
+                   && RESET_SIO_REGS == BIOS_RESET_SIO_REGS && RESET_SOUND_REGS == BIOS_RESET_SOUND_REGS
+                   && RESET_REGS == BIOS_RESET_REGS,
                "RESET_* flags");
-_Static_assert(CPU_SET_SRC_FIXED == BIOS_CPU_SET_SRC_FIXED && CPU_SET_32BIT == BIOS_CPU_SET_32BIT
-                   && CPU_FAST_SET_SRC_FIXED == BIOS_CPU_SET_SRC_FIXED,
+_Static_assert(CPU_SET_SRC_FIXED == BIOS_CPU_SET_SRC_FIXED && CPU_SET_32BIT == BIOS_CPU_SET_32BIT,
                "CpuSet control bits");
+_Static_assert(CPU_FAST_SET_SRC_FIXED == BIOS_CPU_SET_SRC_FIXED, "CpuFastSet control bit");
 
 /* GBATEK BgAffineSet source: s32, s32, s16 x5 (u16 last), 20 bytes each
  * (word-aligned entries). */
@@ -94,7 +92,7 @@ static void teardown(void)
 /* The bits of BitUnPackArgs' bitfield word, as the BIOS reads them. */
 PTEST(bit_unpack_args_bitfield_is_gbatek_word)
 {
-    struct BitUnPackArgs args = { .dataOffset = 0x12345, .offsetZeros = 1 };
+    struct BitUnPackArgs args = {.dataOffset = 0x12345, .offsetZeros = 1};
     uint32_t word = 0;
     memcpy(&word, (const unsigned char *)&args + 4, sizeof word);
     PT_ASSERT_EQ_U32(word, UINT32_C(0x80012345));
@@ -108,44 +106,44 @@ PTEST(syscall_h_names_link_to_the_platform)
     PT_ASSERT_EQ_U32(Sqrt(144), 12);
     PT_ASSERT_EQ_U32(ArcTan2(0, 0x100), 0x4000);
 
-    const u16 source[4] = { 1, 2, 3, 4 };
-    u16 copy[4] = { 0 };
+    const u16 source[4] = {1, 2, 3, 4};
+    u16 copy[4] = {0};
     CpuSet(source, copy, CPU_SET_16BIT | 4);
     PT_ASSERT_MEM_EQ(copy, source, sizeof copy);
 
-    const u32 words[8] = { 1, 2, 3, 4, 5, 6, 7, 8 };
-    u32 fast[8] = { 0 };
+    const u32 words[8] = {1, 2, 3, 4, 5, 6, 7, 8};
+    u32 fast[8] = {0};
     CpuFastSet(words, fast, 8);
     PT_ASSERT_MEM_EQ(fast, words, sizeof fast);
 
-    struct BgAffineSrcData bg_src = { .texX = 0x8000, .texY = 0x8000, .scrX = 120, .scrY = 80,
-                                      .sx = 0x100, .sy = 0x100, .alpha = 0 };
-    struct BgAffineDstData bg_dst = { 0 };
+    struct BgAffineSrcData bg_src = {
+        .texX = 0x8000, .texY = 0x8000, .scrX = 120, .scrY = 80, .sx = 0x100, .sy = 0x100, .alpha = 0};
+    struct BgAffineDstData bg_dst = {0};
     BgAffineSet(&bg_src, &bg_dst, 1);
     PT_ASSERT_EQ_INT(bg_dst.pa, 0x100);
     PT_ASSERT_EQ_INT(bg_dst.dx, 0x8000 - 0x100 * 120);
 
-    struct ObjAffineSrcData obj_src = { .xScale = 0x100, .yScale = 0x200, .rotation = 0 };
-    s16 matrix[4] = { 0 };
+    struct ObjAffineSrcData obj_src = {.xScale = 0x100, .yScale = 0x200, .rotation = 0};
+    s16 matrix[4] = {0};
     ObjAffineSet(&obj_src, matrix, 1, 2);
     PT_ASSERT_EQ_INT(matrix[0], 0x100);
     PT_ASSERT_EQ_INT(matrix[3], 0x200);
 
     /* LZ77: header type 1, size 2; flag 00h, then the literals "ab". */
-    static const u32 lz77[] = { 0x00000210, 0x00626100 };
-    u8 lz_out[2] = { 0 };
+    static const u32 lz77[] = {0x00000210, 0x00626100};
+    u8 lz_out[2] = {0};
     LZ77UnCompWram(lz77, lz_out);
     PT_ASSERT_MEM_EQ(lz_out, "ab", 2);
-    u16 lz_vram[1] = { 0 };
+    u16 lz_vram[1] = {0};
     LZ77UnCompVram(lz77, lz_vram);
     PT_ASSERT_MEM_EQ(lz_vram, "ab", 2);
 
     /* Run-length: 3 x 'z'; header type 3, size 3; flag 80h = run of 0+3. */
-    static const u32 rl[] = { 0x00000330, 0x00007A80 };
-    u8 rl_out[3] = { 0 };
+    static const u32 rl[] = {0x00000330, 0x00007A80};
+    u8 rl_out[3] = {0};
     RLUnCompWram(rl, rl_out);
     PT_ASSERT_MEM_EQ(rl_out, "zzz", 3);
-    u16 rl_vram[2] = { 0 };
+    u16 rl_vram[2] = {0};
     RLUnCompVram(rl, rl_vram);
     PT_ASSERT_MEM_EQ(rl_vram, "zz", 2); /* the odd last byte is held, not written */
 
@@ -153,7 +151,7 @@ PTEST(syscall_h_names_link_to_the_platform)
 
     RegisterRamReset(0);
     PT_ASSERT_EQ_U32(REG_DISPCNT, 0x0080); /* forced blank, whatever the flags */
-    VBlankIntrWait();                       /* no hook: returns at once */
+    VBlankIntrWait();                      /* no hook: returns at once */
     teardown();
 }
 
@@ -161,11 +159,10 @@ PTEST(bit_unpack_as_assertf_calls_it)
 {
     setup();
     /* assertf.c unpacks its 1bpp font to 4bpp: 1 bit to 4, offset 0. */
-    static const u8 glyph[2] = { 0x81, 0x0F };
-    static const struct BitUnPackArgs args = { .compressedSize = 2, .compressedBits = 1,
-                                               .decompressedBits = 4, .dataOffset = 0,
-                                               .offsetZeros = 0 };
-    u32 tiles[2] = { 0xFFFFFFFF, 0xFFFFFFFF };
+    static const u8 glyph[2] = {0x81, 0x0F};
+    static const struct BitUnPackArgs args = {
+        .compressedSize = 2, .compressedBits = 1, .decompressedBits = 4, .dataOffset = 0, .offsetZeros = 0};
+    u32 tiles[2] = {0xFFFFFFFF, 0xFFFFFFFF};
     BitUnPack(glyph, tiles, &args);
     PT_ASSERT_EQ_U32(tiles[0], UINT32_C(0x10000001));
     PT_ASSERT_EQ_U32(tiles[1], UINT32_C(0x00001111));

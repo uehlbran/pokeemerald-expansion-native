@@ -38,6 +38,7 @@
 #ifndef CRASH_REBOOT_H
 #define CRASH_REBOOT_H
 
+#include <stddef.h>
 #include <stdint.h>
 
 /* ld_script_test.ld: IWRAM_PERSISTENT, ORIGIN 0x3007F00, LENGTH 0x100. */
@@ -47,7 +48,7 @@
 /* The option the reboot adds, and the length of its value: two hex digits
  * per persistent byte. */
 #define CRASH_REBOOT_OPTION "--persistent-state"
-#define CRASH_REBOOT_STATE_HEX_LENGTH (CRASH_REBOOT_PERSISTENT_SIZE * 2u)
+#define CRASH_REBOOT_STATE_HEX_LENGTH ((size_t)CRASH_REBOOT_PERSISTENT_SIZE * 2u)
 
 /* The most arguments the command line may have, the reboot's two included. */
 #define CRASH_REBOOT_MAX_ARGS 64u

@@ -42,8 +42,7 @@ _Static_assert(FLASH_CHIP_SIZE == CHIP_BYTES, "chip size");
 _Static_assert(FLASH_ERASED_BYTE == ERASED, "erased value");
 _Static_assert(FLASH_STATUS_BAD_SECTOR == BAD_SECTOR, "bad sector code");
 _Static_assert(FLASH_STATUS_BAD_ARGUMENT == BAD_OFFSET, "bad offset code");
-_Static_assert((FLASH_STATUS_TIME_LIMIT | FLASH_PHASE_PROGRAM_BYTE) == TIME_LIMIT_PROGRAM_BYTE,
-               "time limit code");
+_Static_assert((FLASH_STATUS_TIME_LIMIT | FLASH_PHASE_PROGRAM_BYTE) == TIME_LIMIT_PROGRAM_BYTE, "time limit code");
 /* Agreement with expansion and with the memory map. */
 _Static_assert(FLASH_CHIP_SIZE == FLASH_ROM_SIZE_1M, "not expansion's 1 Mbit size");
 _Static_assert(FLASH_SECTOR_COUNT == 2 * SECTORS_PER_BANK, "not two banks of expansion's size");
@@ -139,7 +138,7 @@ PTEST(native_id_is_no_real_chip)
 {
     /* GBATEK "GBA Cart Backup Flash ROM", Device Types; the last two are the
      * 1 Mbit chips expansion's MX29L010 and LE26FV10N1TS entries match. */
-    static const uint16_t real_chips[] = { 0xD4BF, 0x1CC2, 0x1B32, 0x3D1F, 0x1362, 0x09C2 };
+    static const uint16_t real_chips[] = {0xD4BF, 0x1CC2, 0x1B32, 0x3D1F, 0x1362, 0x09C2};
     for (size_t i = 0; i < sizeof real_chips / sizeof real_chips[0]; i++)
         PT_ASSERT(ReadFlashId() != real_chips[i]);
     PT_ASSERT(ReadFlashId() != 0); /* DefaultFlash's ID */
@@ -194,11 +193,26 @@ static void check_erase_sector_touches_only_it(uint16_t sector)
     PT_ASSERT(outside_is(sector * SECTOR_BYTES, SECTOR_BYTES, 0x00));
 }
 
-PTEST(erase_sector_fills_exactly_its_4096_bytes) { check_erase_sector_touches_only_it(5); }
-PTEST(erase_first_sector_fills_exactly_its_bytes) { check_erase_sector_touches_only_it(0); }
-PTEST(erase_sector_15_ends_at_the_bank_boundary) { check_erase_sector_touches_only_it(15); }
-PTEST(erase_sector_16_starts_bank_1) { check_erase_sector_touches_only_it(16); }
-PTEST(erase_last_sector_fills_exactly_its_bytes) { check_erase_sector_touches_only_it(LAST_SECTOR); }
+PTEST(erase_sector_fills_exactly_its_4096_bytes)
+{
+    check_erase_sector_touches_only_it(5);
+}
+PTEST(erase_first_sector_fills_exactly_its_bytes)
+{
+    check_erase_sector_touches_only_it(0);
+}
+PTEST(erase_sector_15_ends_at_the_bank_boundary)
+{
+    check_erase_sector_touches_only_it(15);
+}
+PTEST(erase_sector_16_starts_bank_1)
+{
+    check_erase_sector_touches_only_it(16);
+}
+PTEST(erase_last_sector_fills_exactly_its_bytes)
+{
+    check_erase_sector_touches_only_it(LAST_SECTOR);
+}
 
 PTEST(erase_chip_fills_every_byte)
 {
@@ -250,7 +264,7 @@ PTEST(write_count_counts_accepted_programs_and_erases_only)
     flash_init();
     PT_ASSERT_EQ_U32(flash_write_count(), 0);
     PT_ASSERT_EQ_U32(NativeFlash.programFlashByte(2, 100, 0x0F), FLASH_STATUS_OK);
-    PT_ASSERT_EQ_U32(NativeFlash.programFlashByte(2, 100, 0xF0), TIME_LIMIT_PROGRAM_BYTE); /* refused */
+    PT_ASSERT_EQ_U32(NativeFlash.programFlashByte(2, 100, 0xF0), TIME_LIMIT_PROGRAM_BYTE);             /* refused */
     PT_ASSERT_EQ_U32(NativeFlash.programFlashByte(FLASH_SECTOR_COUNT, 0, 0), FLASH_STATUS_BAD_SECTOR); /* refused */
     PT_ASSERT_EQ_U32(NativeFlash.eraseFlashSector(3), FLASH_STATUS_OK);
     PT_ASSERT_EQ_U32(flash_write_count(), 2);
@@ -310,8 +324,7 @@ PTEST(program_sector_rejects_a_source_inside_the_chip)
     PT_ASSERT_EQ_U32(NativeFlash.programFlashSector(4, sector_at(4)), BAD_OFFSET);
     PT_ASSERT_EQ_U32(NativeFlash.programFlashSector(4, sector_at(3)), BAD_OFFSET);
     PT_ASSERT_EQ_U32(NativeFlash.programFlashSector(4, sector_at(3) + 1), BAD_OFFSET);
-    PT_ASSERT_EQ_U32(NativeFlash.programFlashSector(
-                         4, (uint8_t *)(uintptr_t)(CHIP_ADDRESS - SECTOR_BYTES + 1)),
+    PT_ASSERT_EQ_U32(NativeFlash.programFlashSector(4, (uint8_t *)(uintptr_t)(CHIP_ADDRESS - SECTOR_BYTES + 1)),
                      BAD_OFFSET); /* its last byte is the chip's first */
     PT_ASSERT(first_byte_not(chip(), CHIP_BYTES, 0x00) == CHIP_BYTES);
     PT_ASSERT(!flash_take_dirty());
@@ -332,8 +345,7 @@ PTEST(sector_31_is_the_last_valid_sector)
     ReadFlash(LAST_SECTOR, 0, read_back, SECTOR_BYTES);
     PT_ASSERT_MEM_EQ(read_back, source, SECTOR_BYTES);
     PT_ASSERT_MEM_EQ(chip() + CHIP_BYTES - SECTOR_BYTES, source, SECTOR_BYTES);
-    PT_ASSERT_EQ_U32(NativeFlash.programFlashByte(LAST_SECTOR, SECTOR_BYTES - 1, 0x00),
-                     FLASH_STATUS_OK);
+    PT_ASSERT_EQ_U32(NativeFlash.programFlashByte(LAST_SECTOR, SECTOR_BYTES - 1, 0x00), FLASH_STATUS_OK);
     PT_ASSERT_EQ_U32(chip()[CHIP_BYTES - 1], 0x00);
 }
 
@@ -354,8 +366,14 @@ static void check_sector_rejected(uint16_t sector)
     PT_ASSERT(!flash_take_dirty());
 }
 
-PTEST(sector_32_is_rejected) { check_sector_rejected(SECTORS); }
-PTEST(sector_0xFFFF_is_rejected) { check_sector_rejected(UINT16_MAX); }
+PTEST(sector_32_is_rejected)
+{
+    check_sector_rejected(SECTORS);
+}
+PTEST(sector_0xFFFF_is_rejected)
+{
+    check_sector_rejected(UINT16_MAX);
+}
 
 /* ---- read ---- */
 
@@ -401,9 +419,9 @@ PTEST(read_rejects_a_destination_inside_the_chip)
     fill_pattern(source, sizeof source, 0x51);
     PT_ASSERT_EQ_U32(NativeFlash.programFlashSector(1, source), FLASH_STATUS_OK);
     PT_ASSERT(flash_take_dirty());
-    ReadFlash(1, 0, sector_at(5), 16);                          /* another sector */
-    ReadFlash(1, 0, sector_at(1) + 8, 16);                      /* overlapping its source */
-    ReadFlash(1, 0, chip() + CHIP_BYTES - 8, 16);               /* across the chip's end */
+    ReadFlash(1, 0, sector_at(5), 16);                             /* another sector */
+    ReadFlash(1, 0, sector_at(1) + 8, 16);                         /* overlapping its source */
+    ReadFlash(1, 0, chip() + CHIP_BYTES - 8, 16);                  /* across the chip's end */
     ReadFlash(1, 0, (uint8_t *)(uintptr_t)(CHIP_ADDRESS - 8), 16); /* across its start */
     PT_ASSERT(first_byte_not(sector_at(5), SECTOR_BYTES, ERASED) == SECTOR_BYTES);
     PT_ASSERT_MEM_EQ(sector_at(1), source, SECTOR_BYTES);
@@ -424,7 +442,7 @@ struct report {
  * what was written to it (the pattern of test_interrupt.c). */
 static struct report stderr_of(void (*action)(void *), void *context)
 {
-    struct report report = { .captured = false, .text = "" };
+    struct report report = {.captured = false, .text = ""};
     FILE *const file = tmpfile();
     if (file == NULL)
         return report;
@@ -475,15 +493,15 @@ PTEST(rejected_reads_are_reported_on_stderr)
 {
     flash_init();
     uint8_t dest[SECTOR_BYTES];
-    check_read_report((struct read_call){ 1, 0, dest, 0 },
+    check_read_report((struct read_call){1, 0, dest, 0},
                       "flash: ReadFlash(sector 1, offset 0, dest, size 0): rejected");
-    check_read_report((struct read_call){ 1, 1, dest, SECTOR_BYTES },
+    check_read_report((struct read_call){1, 1, dest, SECTOR_BYTES},
                       "flash: ReadFlash(sector 1, offset 1, dest, size 4096): rejected");
-    check_read_report((struct read_call){ SECTORS, 0, dest, 1 },
+    check_read_report((struct read_call){SECTORS, 0, dest, 1},
                       "flash: ReadFlash(sector 32, offset 0, dest, size 1): rejected");
-    check_read_report((struct read_call){ 1, 0, NULL, 1 },
+    check_read_report((struct read_call){1, 0, NULL, 1},
                       "flash: ReadFlash(sector 1, offset 0, NULL, size 1): rejected");
-    check_read_report((struct read_call){ 1, 0, sector_at(2), 1 },
+    check_read_report((struct read_call){1, 0, sector_at(2), 1},
                       "flash: ReadFlash(sector 1, offset 0, dest, size 1): rejected");
 }
 
@@ -491,7 +509,7 @@ PTEST(a_valid_read_reports_nothing)
 {
     flash_init();
     uint8_t dest[SECTOR_BYTES];
-    struct read_call call = { LAST_SECTOR, 0, dest, SECTOR_BYTES };
+    struct read_call call = {LAST_SECTOR, 0, dest, SECTOR_BYTES};
     const struct report report = stderr_of(read_with, &call);
     PT_ASSERT(report.captured);
     PT_ASSERT_EQ_STR(report.text, "");
@@ -524,8 +542,7 @@ PTEST(wait_for_write_reports_whether_the_byte_holds_the_value)
     PT_ASSERT_EQ_U32(NativeFlash.WaitForFlashWrite(1, programmed, 0x3C), FLASH_STATUS_OK);
     PT_ASSERT_EQ_U32(NativeFlash.WaitForFlashWrite(1, programmed, 0x3D), TIMEOUT_PROGRAM_BYTE);
     PT_ASSERT_EQ_U32(NativeFlash.WaitForFlashWrite(2, sector_at(6), ERASED), FLASH_STATUS_OK);
-    PT_ASSERT_EQ_U32(NativeFlash.WaitForFlashWrite(3, chip() + CHIP_BYTES - 1, ERASED),
-                     FLASH_STATUS_OK);
+    PT_ASSERT_EQ_U32(NativeFlash.WaitForFlashWrite(3, chip() + CHIP_BYTES - 1, ERASED), FLASH_STATUS_OK);
 }
 
 PTEST(wait_for_write_rejects_addresses_outside_the_chip)

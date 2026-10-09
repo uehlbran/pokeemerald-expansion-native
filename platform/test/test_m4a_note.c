@@ -31,8 +31,7 @@ static struct SoundInfo *SetUpNote(const uint8_t *args)
         return NULL;
     M4aTestMakeWave(&sNoteWave, 0, 0, NOTE_WAVE_FREQ, 0, 4);
     sPlayer.priority = 10;
-    for (size_t i = 0; i < 4; i++)
-    {
+    for (size_t i = 0; i < 4; i++) {
         sTracks[i].flags = MPT_FLG_EXIST;
         sTracks[i].priority = 5;
         sTracks[i].volMR = 64;
@@ -204,8 +203,7 @@ PTEST(ply_note_plays_nothing_when_every_channel_outranks_it)
 
     ply_note(24, &sPlayer, &sTracks[0]);
 
-    for (size_t k = 0; k < 4; k++)
-    {
+    for (size_t k = 0; k < 4; k++) {
         PT_ASSERT_EQ_U32(si->chans[k].priority, 20);
         PT_ASSERT_EQ_PTR(si->chans[k].track, &sTracks[k]);
     }
@@ -305,8 +303,7 @@ PTEST(ply_note_scans_at_most_the_12_channels_SoundInfo_holds)
     si->maxChans = 15;
     sPlayer.priority = 0;
     sTracks[0].priority = 0;
-    for (size_t k = 0; k < MAX_DIRECTSOUND_CHANNELS; k++)
-    {
+    for (size_t k = 0; k < MAX_DIRECTSOUND_CHANNELS; k++) {
         si->chans[k].statusFlags = SF_PLAYING;
         si->chans[k].priority = 50;
     }
@@ -334,7 +331,7 @@ PTEST(ply_note_beyond_the_clock_table_plays_nothing)
     PT_ASSERT_EQ_U32(M4aTestCallCount(), 0);
 
     ply_note(CLOCK_TABLE_SIZE - 1, &sPlayer, &sTracks[0]); /* the last valid one */
-    PT_ASSERT_EQ_U32(sTracks[0].gateTime, 96); /* gClockTable[48] */
+    PT_ASSERT_EQ_U32(sTracks[0].gateTime, 96);             /* gClockTable[48] */
 }
 
 PTEST(ply_note_starts_a_psg_channel)
@@ -377,8 +374,7 @@ PTEST(ply_note_psg_sweep_defaults_to_8)
     static const uint8_t kPanSweep[] = {0x80, 0xB5, 0x05, 0x00};
     static const uint8_t kSweep[] = {8, 8, 8, 8};
 
-    for (size_t i = 0; i < sizeof(kPanSweep); i++)
-    {
+    for (size_t i = 0; i < sizeof(kPanSweep); i++) {
         const struct SoundInfo *si = SetUpNote(args);
 
         PT_ASSERT(si != NULL);

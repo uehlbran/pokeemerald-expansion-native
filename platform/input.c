@@ -23,16 +23,16 @@
 #define KEYINPUT_OFFSET UINT32_C(0x130)
 
 static const struct input_key_binding keyboard_bindings[] = {
-    { SDL_SCANCODE_Z,         INPUT_KEY_A,      "A" },
-    { SDL_SCANCODE_X,         INPUT_KEY_B,      "B" },
-    { SDL_SCANCODE_BACKSPACE, INPUT_KEY_SELECT, "Select" },
-    { SDL_SCANCODE_RETURN,    INPUT_KEY_START,  "Start" },
-    { SDL_SCANCODE_RIGHT,     INPUT_KEY_RIGHT,  "Right" },
-    { SDL_SCANCODE_LEFT,      INPUT_KEY_LEFT,   "Left" },
-    { SDL_SCANCODE_UP,        INPUT_KEY_UP,     "Up" },
-    { SDL_SCANCODE_DOWN,      INPUT_KEY_DOWN,   "Down" },
-    { SDL_SCANCODE_S,         INPUT_KEY_R,      "R" },
-    { SDL_SCANCODE_A,         INPUT_KEY_L,      "L" },
+    {SDL_SCANCODE_Z, INPUT_KEY_A, "A"},
+    {SDL_SCANCODE_X, INPUT_KEY_B, "B"},
+    {SDL_SCANCODE_BACKSPACE, INPUT_KEY_SELECT, "Select"},
+    {SDL_SCANCODE_RETURN, INPUT_KEY_START, "Start"},
+    {SDL_SCANCODE_RIGHT, INPUT_KEY_RIGHT, "Right"},
+    {SDL_SCANCODE_LEFT, INPUT_KEY_LEFT, "Left"},
+    {SDL_SCANCODE_UP, INPUT_KEY_UP, "Up"},
+    {SDL_SCANCODE_DOWN, INPUT_KEY_DOWN, "Down"},
+    {SDL_SCANCODE_S, INPUT_KEY_R, "R"},
+    {SDL_SCANCODE_A, INPUT_KEY_L, "L"},
 };
 
 static struct {
@@ -77,28 +77,38 @@ uint16_t input_pad_to_keys(const struct input_pad_state *pad)
     if (pad == NULL) {
         return 0;
     }
-    if (pad->a != 0) keys |= INPUT_KEY_A;
-    if (pad->b != 0) keys |= INPUT_KEY_B;
-    if (pad->back != 0) keys |= INPUT_KEY_SELECT;
-    if (pad->start != 0) keys |= INPUT_KEY_START;
-    if (pad->left_shoulder != 0) keys |= INPUT_KEY_L;
-    if (pad->right_shoulder != 0) keys |= INPUT_KEY_R;
-    if (pad->dpad_up != 0 || pad->left_y < -INPUT_STICK_DEADZONE) keys |= INPUT_KEY_UP;
-    if (pad->dpad_down != 0 || pad->left_y > INPUT_STICK_DEADZONE) keys |= INPUT_KEY_DOWN;
-    if (pad->dpad_left != 0 || pad->left_x < -INPUT_STICK_DEADZONE) keys |= INPUT_KEY_LEFT;
-    if (pad->dpad_right != 0 || pad->left_x > INPUT_STICK_DEADZONE) keys |= INPUT_KEY_RIGHT;
+    if (pad->a != 0)
+        keys |= INPUT_KEY_A;
+    if (pad->b != 0)
+        keys |= INPUT_KEY_B;
+    if (pad->back != 0)
+        keys |= INPUT_KEY_SELECT;
+    if (pad->start != 0)
+        keys |= INPUT_KEY_START;
+    if (pad->left_shoulder != 0)
+        keys |= INPUT_KEY_L;
+    if (pad->right_shoulder != 0)
+        keys |= INPUT_KEY_R;
+    if (pad->dpad_up != 0 || pad->left_y < -INPUT_STICK_DEADZONE)
+        keys |= INPUT_KEY_UP;
+    if (pad->dpad_down != 0 || pad->left_y > INPUT_STICK_DEADZONE)
+        keys |= INPUT_KEY_DOWN;
+    if (pad->dpad_left != 0 || pad->left_x < -INPUT_STICK_DEADZONE)
+        keys |= INPUT_KEY_LEFT;
+    if (pad->dpad_right != 0 || pad->left_x > INPUT_STICK_DEADZONE)
+        keys |= INPUT_KEY_RIGHT;
     return keys;
 }
 
 static void write_keyinput(uint16_t keys_active_high)
 {
-    volatile uint16_t *reg = (volatile uint16_t *)(uintptr_t)(GBA_IO_BASE + KEYINPUT_OFFSET);
+    volatile uint16_t *reg = gba_io_u16(KEYINPUT_OFFSET);
     *reg = input_keys_to_keyinput(keys_active_high);
 }
 
 static struct input_pad_state read_pad(SDL_GameController *controller)
 {
-    struct input_pad_state pad = { 0 };
+    struct input_pad_state pad = {0};
     pad.a = SDL_GameControllerGetButton(controller, SDL_CONTROLLER_BUTTON_A);
     pad.b = SDL_GameControllerGetButton(controller, SDL_CONTROLLER_BUTTON_B);
     pad.start = SDL_GameControllerGetButton(controller, SDL_CONTROLLER_BUTTON_START);
@@ -120,7 +130,7 @@ static uint16_t read_host_keys(void)
     const uint8_t *keyboard = SDL_GetKeyboardState(&numkeys);
     static bool reported_no_keyboard_state;
     if (keyboard == NULL && !reported_no_keyboard_state) {
-        fprintf(stderr, "input: SDL_GetKeyboardState returned NULL; keyboard reads as no keys\n");
+        (void)fprintf(stderr, "input: SDL_GetKeyboardState returned NULL; keyboard reads as no keys\n");
         reported_no_keyboard_state = true;
     }
     uint16_t keys = input_keyboard_to_keys(keyboard, numkeys);
@@ -147,7 +157,7 @@ static int open_controller(int device_index)
 {
     SDL_GameController *controller = SDL_GameControllerOpen(device_index);
     if (controller == NULL) {
-        fprintf(stderr, "input: SDL_GameControllerOpen(%d) failed: %s\n", device_index, SDL_GetError());
+        (void)fprintf(stderr, "input: SDL_GameControllerOpen(%d) failed: %s\n", device_index, SDL_GetError());
         return -1;
     }
     if (controller_is_open(controller)) {
@@ -162,8 +172,7 @@ static int open_controller(int device_index)
             return 0;
         }
     }
-    fprintf(stderr, "input: more than %d controllers; ignoring device %d\n", INPUT_MAX_CONTROLLERS,
-        device_index);
+    (void)fprintf(stderr, "input: more than %d controllers; ignoring device %d\n", INPUT_MAX_CONTROLLERS, device_index);
     SDL_GameControllerClose(controller);
     return -1;
 }
@@ -186,7 +195,7 @@ static int open_present_controllers(void)
 {
     int count = SDL_NumJoysticks();
     if (count < 0) {
-        fprintf(stderr, "input: SDL_NumJoysticks failed: %s\n", SDL_GetError());
+        (void)fprintf(stderr, "input: SDL_NumJoysticks failed: %s\n", SDL_GetError());
         return -1;
     }
     for (int i = 0; i < count; i++) {
@@ -202,12 +211,11 @@ static int open_present_controllers(void)
 static int init_host(void)
 {
     if (SDL_WasInit(SDL_INIT_EVENTS) == 0) {
-        fprintf(stderr, "input: SDL's events subsystem is not initialised; main must SDL_Init first\n");
+        (void)fprintf(stderr, "input: SDL's events subsystem is not initialised; main must SDL_Init first\n");
         return -1;
     }
     if (SDL_InitSubSystem(SDL_INIT_GAMECONTROLLER) != 0) {
-        fprintf(stderr, "input: SDL_InitSubSystem(GAMECONTROLLER) failed, keyboard only: %s\n",
-            SDL_GetError());
+        (void)fprintf(stderr, "input: SDL_InitSubSystem(GAMECONTROLLER) failed, keyboard only: %s\n", SDL_GetError());
         return 0;
     }
     state.controller_subsystem = true;
@@ -218,7 +226,7 @@ int input_init(enum input_source source)
 {
     int status;
     if (state.initialised) {
-        fprintf(stderr, "input: input_init called twice without input_shutdown\n");
+        (void)fprintf(stderr, "input: input_init called twice without input_shutdown\n");
         return -1;
     }
     if (source == INPUT_SOURCE_HOST) {
@@ -226,7 +234,7 @@ int input_init(enum input_source source)
     } else if (source == INPUT_SOURCE_SCRIPT) {
         status = 0;
     } else {
-        fprintf(stderr, "input: unknown input source %d\n", (int)source);
+        (void)fprintf(stderr, "input: unknown input source %d\n", (int)source);
         status = -1;
     }
     if (status != 0) {
@@ -271,7 +279,7 @@ void input_update_keyinput(void)
 int input_handle_event(const union SDL_Event *event)
 {
     if (event == NULL) {
-        fprintf(stderr, "input: input_handle_event given a NULL event\n");
+        (void)fprintf(stderr, "input: input_handle_event given a NULL event\n");
         return -1;
     }
     if (!state.initialised || state.source != INPUT_SOURCE_HOST) {

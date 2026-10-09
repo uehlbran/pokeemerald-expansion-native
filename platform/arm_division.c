@@ -29,9 +29,9 @@
 #define MODRM_MOD_NO_DISP 0u
 #define MODRM_MOD_REGISTER 3u
 #define MODRM_RM_SIB 4u
-#define MODRM_RM_DISP32 5u     /* with mod 0 */
+#define MODRM_RM_DISP32 5u /* with mod 0 */
 #define SIB_INDEX_NONE 4u
-#define SIB_BASE_DISP32 5u     /* with mod 0 */
+#define SIB_BASE_DISP32 5u /* with mod 0 */
 
 /* The prefixes an instruction may carry: at most one per group. */
 #define MAX_PREFIXES 4u
@@ -61,7 +61,8 @@ static bool is_flat_segment_prefix(uint8_t byte)
 
 /* ModRM register numbers to the saved registers (Intel SDM vol. 2,
  * table 2-2: EAX, ECX, EDX, EBX, ESP, EBP, ESI, EDI). */
-static const int register_slots[MODRM_FIELD_MASK + 1u] = { REG_EAX, REG_ECX, REG_EDX, REG_EBX, REG_ESP, REG_EBP, REG_ESI, REG_EDI };
+static const int register_slots[MODRM_FIELD_MASK + 1u] = {REG_EAX, REG_ECX, REG_EDX, REG_EBX,
+                                                          REG_ESP, REG_EBP, REG_ESI, REG_EDI};
 
 static uint32_t register_value(const greg_t *gregs, unsigned number)
 {
@@ -97,9 +98,9 @@ struct modrm_fields {
 
 static struct modrm_fields split_modrm(uint8_t byte)
 {
-    return (struct modrm_fields){ .high = byte >> MODRM_MOD_SHIFT,
-                                  .middle = (byte >> MODRM_FIELD_SHIFT) & MODRM_FIELD_MASK,
-                                  .low = byte & MODRM_FIELD_MASK };
+    return (struct modrm_fields){.high = byte >> MODRM_MOD_SHIFT,
+                                 .middle = (byte >> MODRM_FIELD_SHIFT) & MODRM_FIELD_MASK,
+                                 .low = byte & MODRM_FIELD_MASK};
 }
 
 /* The memory operand's address, from the bytes after the ModRM byte (code
@@ -185,7 +186,11 @@ static bool libgcc_result(const struct division_instruction *instruction, uint32
     if (edx != (dividend < 0 ? UINT32_MAX : 0)) /* not a sign-extended 32-bit dividend */
         return false;
     if (instruction->divisor == 0) {
-        int32_t result = dividend > 0 ? INT32_MAX : dividend < 0 ? INT32_MIN : 0;
+        int32_t result = 0;
+        if (dividend > 0)
+            result = INT32_MAX;
+        else if (dividend < 0)
+            result = INT32_MIN;
         *quotient = *remainder = (uint32_t)result;
         return true;
     }
@@ -287,8 +292,8 @@ int arm_division_init(void)
 int arm_division_init(void)
 {
     arm_division_shutdown();
-    fprintf(stderr, "arm_division: only the 32-bit build decodes x86 division; the 64-bit build stops here until "
-            "the decoder is redone for x86-64 (arm_division.h)\n");
+    (void)fprintf(stderr, "arm_division: only the 32-bit build decodes x86 division; the 64-bit build stops here until "
+                          "the decoder is redone for x86-64 (arm_division.h)\n");
     return ARM_DIVISION_ERR_64_BIT;
 }
 

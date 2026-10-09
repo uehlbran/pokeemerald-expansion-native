@@ -25,7 +25,7 @@
 #include "m4a_render.h"
 
 /* GBATEK "LCD I/O Interrupts and Status": VCOUNT reads 160..227 during VBlank. */
-#define VCOUNT_VBLANK   160u
+#define VCOUNT_VBLANK 160u
 /* GBATEK "LCD Dimensions and Timings": 228 lines per frame. */
 #define TOTAL_SCANLINES 228u
 
@@ -34,21 +34,21 @@
 /* SoundMainRAM_NoReverb: a word per half if bit 2 of the sample count is
  * set, two if bit 3 is, then a loop of four words per half that runs at
  * least once. */
-#define CLEAR_ONE_WORD_BIT  4u
+#define CLEAR_ONE_WORD_BIT 4u
 #define CLEAR_TWO_WORDS_BIT 8u
-#define CLEAR_PASS_BYTES    16u
-#define CLEAR_PASS_SHIFT    4u
+#define CLEAR_PASS_BYTES 16u
+#define CLEAR_PASS_SHIFT 4u
 
 /* Reverb: four samples summed, times SoundInfo.reverb, shifted right by 9. */
-#define REVERB_SHIFT      9u
+#define REVERB_SHIFT 9u
 /* Bit 7 of the reverb result; when set (a negative result) one is added. */
-#define REVERB_ROUND_BIT  0x80u
+#define REVERB_ROUND_BIT 0x80u
 
 /* Envelope volumes run 0..255; decay and release multiply by value / 256. */
-#define ENVELOPE_MAX         0xFFu
+#define ENVELOPE_MAX 0xFFu
 #define ENVELOPE_SCALE_SHIFT 8u
 /* The envelope is scaled by (masterVolume + 1) / 16 ... */
-#define MASTER_VOLUME_SHIFT  4u
+#define MASTER_VOLUME_SHIFT 4u
 /* ... and by rightVolume / 256 and leftVolume / 256. */
 #define CHANNEL_VOLUME_SHIFT 8u
 
@@ -63,8 +63,7 @@
 #define DMA_CNT_H_FIFO (DMA_ENABLE | DMA_START_SPECIAL | DMA_32BIT | DMA_REPEAT)
 
 /* Where this frame is mixed: offsets into each half of the ring. */
-struct MixFrame
-{
+struct MixFrame {
     u32 offset;
     u32 nextOffset; // the frame reverb reads ahead
     u32 samples;
@@ -119,21 +118,17 @@ static bool SelectFrame(const struct SoundInfo *soundInfo, struct MixFrame *fram
 
     if (samples == 0 || samples % SAMPLES_PER_WORD != 0 || samples > PCM_DMA_BUF_SIZE)
         return false;
-    if (counter > 1)
-    {
+    if (counter > 1) {
         if (counter - 1 > period)
             return false;
         index = period - (counter - 1);
     }
     offset = index * samples;
     nextOffset = counter == 2 ? 0 : offset + samples;
-    if (soundInfo->reverb == 0)
-    {
+    if (soundInfo->reverb == 0) {
         if (ClearLength(samples) > extent)
             extent = ClearLength(samples);
-    }
-    else if (nextOffset + samples > PCM_DMA_BUF_SIZE)
-    {
+    } else if (nextOffset + samples > PCM_DMA_BUF_SIZE) {
         return false;
     }
     if (offset + extent > PCM_DMA_BUF_SIZE)
@@ -163,10 +158,8 @@ static void ApplyReverb(struct SoundInfo *soundInfo, const struct MixFrame *fram
     const u8 *nextLeft = PcmLeft(soundInfo, frame->nextOffset);
     u32 reverb = soundInfo->reverb;
 
-    for (u32 i = 0; i < frame->samples; i++)
-    {
-        u32 sum = SignExtend8(left[i]) + SignExtend8(right[i])
-                + SignExtend8(nextLeft[i]) + SignExtend8(nextRight[i]);
+    for (u32 i = 0; i < frame->samples; i++) {
+        u32 sum = SignExtend8(left[i]) + SignExtend8(right[i]) + SignExtend8(nextLeft[i]) + SignExtend8(nextRight[i]);
         u32 value = AsrU32(sum * reverb, REVERB_SHIFT);
 
         if (value & REVERB_ROUND_BIT)
@@ -194,8 +187,7 @@ static bool TurnOff(struct SoundChannel *chan)
 static u32 Attack(struct SoundChannel *chan, u8 *status, u32 volume)
 {
     volume += chan->attack;
-    if (volume >= ENVELOPE_MAX)
-    {
+    if (volume >= ENVELOPE_MAX) {
         volume = ENVELOPE_MAX;
         SetStatus(chan, status, (u8)(*status - 1));
     }
@@ -236,33 +228,25 @@ static bool StepEnvelope(struct SoundChannel *chan, u8 *status, u32 *envelope)
 {
     u32 volume = chan->envelopeVolume;
 
-    if (*status & SOUND_CHANNEL_SF_IEC)
-    {
+    if (*status & SOUND_CHANNEL_SF_IEC) {
         u8 length = chan->pseudoEchoLength;
 
         chan->pseudoEchoLength = (u8)(length - 1);
         if (length < 2)
             return TurnOff(chan);
-    }
-    else if (*status & SOUND_CHANNEL_SF_STOP)
-    {
+    } else if (*status & SOUND_CHANNEL_SF_STOP) {
         volume = volume * chan->release >> ENVELOPE_SCALE_SHIFT;
         if (volume <= chan->pseudoEchoVolume)
             return EnterPseudoEcho(chan, status, envelope);
-    }
-    else if ((*status & SOUND_CHANNEL_SF_ENV) == SOUND_CHANNEL_SF_ENV_DECAY)
-    {
+    } else if ((*status & SOUND_CHANNEL_SF_ENV) == SOUND_CHANNEL_SF_ENV_DECAY) {
         volume = volume * chan->decay >> ENVELOPE_SCALE_SHIFT;
-        if (volume <= chan->sustain)
-        {
+        if (volume <= chan->sustain) {
             volume = chan->sustain;
             if (volume == 0)
                 return EnterPseudoEcho(chan, status, envelope);
             SetStatus(chan, status, (u8)(*status - 1));
         }
-    }
-    else if ((*status & SOUND_CHANNEL_SF_ENV) == SOUND_CHANNEL_SF_ENV_ATTACK)
-    {
+    } else if ((*status & SOUND_CHANNEL_SF_ENV) == SOUND_CHANNEL_SF_ENV_ATTACK) {
         volume = Attack(chan, status, volume);
     }
     *envelope = volume;
@@ -289,24 +273,19 @@ static void MixChannel(struct SoundInfo *soundInfo, struct SoundChannel *chan, c
 
     if (!(status & SOUND_CHANNEL_SF_ON))
         return;
-    if (status & SOUND_CHANNEL_SF_START)
-    {
-        if (status & SOUND_CHANNEL_SF_STOP)
-        {
+    if (status & SOUND_CHANNEL_SF_START) {
+        if (status & SOUND_CHANNEL_SF_STOP) {
             chan->statusFlags = 0;
             return;
         }
         status = StartChannel(chan);
         envelope = Attack(chan, &status, 0);
-    }
-    else if (!StepEnvelope(chan, &status, &envelope))
-    {
+    } else if (!StepEnvelope(chan, &status, &envelope)) {
         return;
     }
     SetEnvelopeVolumes(soundInfo, chan, envelope);
 
-    if (status & SOUND_CHANNEL_SF_LOOP)
-    {
+    if (status & SOUND_CHANNEL_SF_LOOP) {
         loop.start = chan->wav->loopStart;
         loop.length = chan->wav->size - chan->wav->loopStart;
     }
@@ -333,8 +312,7 @@ static void SoundMainRAM_Mix(struct SoundInfo *soundInfo, const struct MixFrame 
     else
         ClearFrame(soundInfo, frame);
 
-    for (u32 i = 0; i < channels; i++)
-    {
+    for (u32 i = 0; i < channels; i++) {
         if (deadline != 0 && CurrentLine() >= deadline)
             return;
         MixChannel(soundInfo, &soundInfo->chans[i], frame);

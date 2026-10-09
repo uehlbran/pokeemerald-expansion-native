@@ -25,17 +25,16 @@
 /* ToneData.pan_sweep of a rhythm voice: bit 7 marks a pan, and
  * (pan_sweep - TONEDATA_P_S_PAN) * 2 is the channel's rhythmPan. */
 #define TONEDATA_PAN_FLAG 0x80u
-#define RHYTHM_PAN_SHIFT  1u
+#define RHYTHM_PAN_SHIFT 1u
 
 /* ToneData.pan_sweep of a PSG voice is NR10 (GBATEK "Sound Channel 1 -
  * Tone & Sweep"): bits 4-6 the sweep time. Without a sweep time (or with a
  * pan instead) the channel gets 0x08: time 0, no sweep. */
 #define PSG_SWEEP_TIME_MASK 0x70u
-#define PSG_SWEEP_OFF       0x08u
+#define PSG_SWEEP_OFF 0x08u
 
 /* The voice a note plays and the key and pan it plays it with. */
-struct NoteVoice
-{
+struct NoteVoice {
     const struct ToneData *tone;
     u8 key;
     u8 rhythmPan;
@@ -75,8 +74,7 @@ static void ReadNoteArguments(struct MusicPlayerTrack *track)
     if (*cmd >= MPLAY_CMD_FIRST)
         return;
     track->key = *cmd++;
-    if (*cmd < MPLAY_CMD_FIRST)
-    {
+    if (*cmd < MPLAY_CMD_FIRST) {
         track->velocity = *cmd++;
         if (*cmd < MPLAY_CMD_FIRST)
             track->gateTime = (u8)(track->gateTime + *cmd++);
@@ -101,12 +99,11 @@ static bool SelectVoice(const struct MusicPlayerTrack *track, struct NoteVoice *
     if (tone->type & TONEDATA_TYPE_SPL)
         index = KeySplitTable(tone)[track->key];
     /* a rhythm or key-split voice's wav points to its voicegroup */
-    group = (const struct ToneData *)(const void *)tone->wav;
+    group = (const struct ToneData *)tone->wav;
     voice->tone = &group[index];
     if (voice->tone->type & (TONEDATA_TYPE_SPL | TONEDATA_TYPE_RHY))
         return false;
-    if (tone->type & TONEDATA_TYPE_RHY)
-    {
+    if (tone->type & TONEDATA_TYPE_RHY) {
         if (voice->tone->pan_sweep & TONEDATA_PAN_FLAG)
             voice->rhythmPan = (u8)(((u32)voice->tone->pan_sweep - TONEDATA_P_S_PAN) << RHYTHM_PAN_SHIFT);
         voice->key = voice->tone->key;
@@ -124,8 +121,7 @@ static struct CgbChannel *FindCgbChannel(struct SoundInfo *soundInfo, u8 cgbChan
     if (soundInfo->cgbChans == NULL || cgbChannel > NUM_CGB_CHANNELS)
         return NULL;
     chan = &soundInfo->cgbChans[cgbChannel - 1];
-    if ((chan->statusFlags & SOUND_CHANNEL_SF_ON) && !(chan->statusFlags & SOUND_CHANNEL_SF_STOP))
-    {
+    if ((chan->statusFlags & SOUND_CHANNEL_SF_ON) && !(chan->statusFlags & SOUND_CHANNEL_SF_STOP)) {
         if (chan->priority > priority)
             return NULL;
         if (chan->priority == priority && TrackAddress(chan->track) < TrackAddress(track))
@@ -144,17 +140,14 @@ static struct SoundChannel *FindDirectChannel(struct SoundInfo *soundInfo, u32 p
     bool releasedFound = false;
     u32 channels = DirectChannelsToScan(soundInfo);
 
-    for (u32 i = 0; i < channels; i++)
-    {
+    for (u32 i = 0; i < channels; i++) {
         struct SoundChannel *chan = &soundInfo->chans[i];
         u8 status = chan->statusFlags;
 
         if (!(status & SOUND_CHANNEL_SF_ON))
             return chan;
-        if (status & SOUND_CHANNEL_SF_STOP)
-        {
-            if (!releasedFound)
-            {
+        if (status & SOUND_CHANNEL_SF_STOP) {
+            if (!releasedFound) {
                 /* the first released channel is taken whatever its priority */
                 releasedFound = true;
                 bestPriority = chan->priority;
@@ -162,20 +155,15 @@ static struct SoundChannel *FindDirectChannel(struct SoundInfo *soundInfo, u32 p
                 chosen = chan;
                 continue;
             }
-        }
-        else if (releasedFound)
-        {
+        } else if (releasedFound) {
             continue;
         }
 
-        if (chan->priority < bestPriority)
-        {
+        if (chan->priority < bestPriority) {
             bestPriority = chan->priority;
             bestTrack = TrackAddress(chan->track);
             chosen = chan;
-        }
-        else if (chan->priority == bestPriority && TrackAddress(chan->track) >= bestTrack)
-        {
+        } else if (chan->priority == bestPriority && TrackAddress(chan->track) >= bestTrack) {
             bestTrack = TrackAddress(chan->track);
             chosen = chan;
         }
@@ -199,8 +187,7 @@ static void LinkChannel(void *chan, struct MusicPlayerTrack *track)
 }
 
 /* _081DDC66: the fields both kinds of channel take from the note. */
-static void SetNoteFields(void *chan, const struct MusicPlayerTrack *track, const struct NoteVoice *voice,
-                          u32 priority)
+static void SetNoteFields(void *chan, const struct MusicPlayerTrack *track, const struct NoteVoice *voice, u32 priority)
 {
     const struct ToneData *tone = voice->tone;
 
@@ -215,6 +202,7 @@ static void SetNoteFields(void *chan, const struct MusicPlayerTrack *track, cons
     ChanSetByte(chan, CHAN_RHYTHM_PAN, voice->rhythmPan);
     ChanSetByte(chan, CHAN_TYPE, tone->type);
     /* SoundChannel.wav or CgbChannel.wavePointer: the voice's word as it is */
+    // NOLINTNEXTLINE(bugprone-sizeof-expression): the pointer word is what is copied
     memcpy((u8 *)chan + offsetof(struct SoundChannel, wav), &tone->wav, sizeof(tone->wav));
     ChanSetByte(chan, CHAN_ATTACK, tone->attack);
     ChanSetByte(chan, CHAN_DECAY, tone->decay);
@@ -231,7 +219,7 @@ static u8 PsgSweep(u8 panSweep)
     return panSweep;
 }
 
-void ply_note(u32 noteCmd, struct MusicPlayerInfo *mplayInfo, struct MusicPlayerTrack *track)
+void ply_note(u32 note_cmd, struct MusicPlayerInfo *mplayInfo, struct MusicPlayerTrack *track)
 {
     struct SoundInfo *soundInfo = SOUND_INFO_PTR;
     struct NoteVoice voice;
@@ -241,9 +229,9 @@ void ply_note(u32 noteCmd, struct MusicPlayerInfo *mplayInfo, struct MusicPlayer
     u8 key;
 
     /* MPlayMain passes 0..48; gClockTable has a length for each */
-    if (noteCmd >= MPLAY_CLOCK_TABLE_SIZE)
+    if (note_cmd >= MPLAY_CLOCK_TABLE_SIZE)
         return;
-    track->gateTime = gClockTable[noteCmd];
+    track->gateTime = gClockTable[note_cmd];
     ReadNoteArguments(track);
     if (!SelectVoice(track, &voice))
         return;
@@ -268,16 +256,13 @@ void ply_note(u32 noteCmd, struct MusicPlayerInfo *mplayInfo, struct MusicPlayer
     ChnVolSetAsm(chan, track);
 
     key = SoundingKey(ChanByte(chan, CHAN_KEY), track->keyM);
-    if (cgbChannel != 0)
-    {
+    if (cgbChannel != 0) {
         struct CgbChannel *cgb = chan;
 
         cgb->length = voice.tone->length;
         cgb->sweep = PsgSweep(voice.tone->pan_sweep);
         cgb->frequency = soundInfo->MidiKeyToCgbFreq(cgbChannel, key, track->pitM);
-    }
-    else
-    {
+    } else {
         struct SoundChannel *direct = chan;
 
         direct->count = track->unk_3C;

@@ -16,15 +16,17 @@
 #include "input.h"
 #include "replay.h"
 
+#define DECIMAL_BASE 10 /* numbers are written and read in decimal */
+
 struct key_name {
     const char *name;
     uint16_t key;
 };
 
 static const struct key_name key_names[] = {
-    { "A", INPUT_KEY_A },       { "B", INPUT_KEY_B },       { "START", INPUT_KEY_START }, { "SELECT", INPUT_KEY_SELECT },
-    { "UP", INPUT_KEY_UP },     { "DOWN", INPUT_KEY_DOWN }, { "LEFT", INPUT_KEY_LEFT },   { "RIGHT", INPUT_KEY_RIGHT },
-    { "L", INPUT_KEY_L },       { "R", INPUT_KEY_R },
+    {"A", INPUT_KEY_A},   {"B", INPUT_KEY_B},       {"START", INPUT_KEY_START}, {"SELECT", INPUT_KEY_SELECT},
+    {"UP", INPUT_KEY_UP}, {"DOWN", INPUT_KEY_DOWN}, {"LEFT", INPUT_KEY_LEFT},   {"RIGHT", INPUT_KEY_RIGHT},
+    {"L", INPUT_KEY_L},   {"R", INPUT_KEY_R},
 };
 
 static void set_error(struct replay_parse_error *error, uint32_t line, const char *format, ...)
@@ -35,7 +37,7 @@ static void set_error(struct replay_parse_error *error, uint32_t line, const cha
     va_list arguments;
     error->line = line;
     va_start(arguments, format);
-    vsnprintf(error->message, sizeof error->message, format, arguments);
+    (void)vsnprintf(error->message, sizeof error->message, format, arguments);
     va_end(arguments);
 }
 
@@ -77,7 +79,7 @@ static bool parse_number(const char *text, uint32_t minimum, uint32_t *out)
         return false;
     char *end;
     errno = 0;
-    unsigned long value = strtoul(text, &end, 10);
+    unsigned long value = strtoul(text, &end, DECIMAL_BASE);
     if (errno != 0 || *end != '\0' || value < minimum || value > REPLAY_MAX_FRAMES)
         return false;
     *out = (uint32_t)value;
@@ -130,7 +132,8 @@ static bool valid_fact_name(const char *text)
     if (length == 0 || length > REPLAY_MAX_FACT_LENGTH)
         return false;
     for (size_t i = 0; i < length; i++) {
-        if (!((text[i] >= 'a' && text[i] <= 'z') || (text[i] >= '0' && text[i] <= '9') || text[i] == '_' || text[i] == ':'))
+        if (!((text[i] >= 'a' && text[i] <= 'z') || (text[i] >= '0' && text[i] <= '9') || text[i] == '_'
+              || text[i] == ':'))
             return false;
     }
     return true;
@@ -167,8 +170,9 @@ static bool parse_condition(char *text, struct replay_command *command, struct r
         set_error(error, command->line, "the value of '%s' is empty or too long", fact);
         return false;
     }
-    strcpy(command->fact, fact);
-    strcpy(command->value, value);
+    /* both fit: valid_fact_name and the length check above */
+    (void)snprintf(command->fact, sizeof command->fact, "%s", fact);
+    (void)snprintf(command->value, sizeof command->value, "%s", value);
     return true;
 }
 
@@ -215,7 +219,8 @@ static bool parse_press(struct replay_command *command, char *rest, struct repla
         *times_at = '\0';
         if (!parse_number(trim(times_at + strlen(" times ")), 1u, &command->number)
             || command->number > REPLAY_MAX_PRESS_TIMES) {
-            set_error(error, command->line, "'press ... times' needs a whole number of presses, at least 1 and at most %u",
+            set_error(error, command->line,
+                      "'press ... times' needs a whole number of presses, at least 1 and at most %u",
                       REPLAY_MAX_PRESS_TIMES);
             return false;
         }
@@ -234,7 +239,8 @@ static bool parse_condition_and_max(struct replay_command *command, char *rest, 
     for (char *at = strstr(rest, " max "); at != NULL; at = strstr(at + 1, " max "))
         max_at = at;
     if (max_at == NULL) {
-        set_error(error, command->line, "%s needs 'max N' after the condition", command->kind == REPLAY_CMD_MASH ? "mash" : "wait-until");
+        set_error(error, command->line, "%s needs 'max N' after the condition",
+                  command->kind == REPLAY_CMD_MASH ? "mash" : "wait-until");
         return false;
     }
     *max_at = '\0';
@@ -268,7 +274,7 @@ static bool parse_name_command(struct replay_command *command, char *rest, struc
         set_error(error, command->line, "bad name '%s' (letters, digits, '_', '-')", rest);
         return false;
     }
-    strcpy(command->name, rest);
+    (void)snprintf(command->name, sizeof command->name, "%s", rest); /* fits: valid_file_name */
     return true;
 }
 
@@ -339,8 +345,10 @@ int replay_parse(const char *text, struct replay_script *script, struct replay_p
         line[length] = '\0';
         text += length + (text[length] == '\n' ? 1u : 0u);
 
-        for (char *c = line; *c != '\0'; c++)
-            *c = *c == '\t' ? ' ' : *c; /* a tab is a blank everywhere, including inside " max " and " for " */
+        for (char *c = line; *c != '\0'; c++) {
+            if (*c == '\t') /* a tab is a blank everywhere, including inside " max " and " for " */
+                *c = ' ';
+        }
         char *hash = strchr(line, '#');
         if (hash != NULL)
             *hash = '\0';
@@ -352,11 +360,12 @@ int replay_parse(const char *text, struct replay_script *script, struct replay_p
             return -1;
         }
         struct replay_command *command = &script->commands[script->count];
-        *command = (struct replay_command){ .line = line_number };
+        *command = (struct replay_command){.line = line_number};
         if (!parse_command(body, command, error))
             return -1;
         if (command->kind == REPLAY_CMD_FRAME && restarted) {
-            set_error(error, line_number, "'frame' after 'restart': the frame count starts again in the new process; use wait");
+            set_error(error, line_number,
+                      "'frame' after 'restart': the frame count starts again in the new process; use wait");
             return -1;
         }
         restarted = restarted || command->kind == REPLAY_CMD_RESTART;

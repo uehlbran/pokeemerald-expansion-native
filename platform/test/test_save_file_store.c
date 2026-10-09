@@ -24,12 +24,11 @@ PTEST(a_legacy_file_is_upgraded_by_the_next_store)
     const int store = save_file_store();
     const bool read = read_file(scratch.path, FILE_BYTES);
     const bool has_magic = memcmp(file_bytes, MAGIC, MAGIC_BYTES) == 0;
-    const bool image_after_header =
-        memcmp(file_bytes + HEADER_BYTES, expected_image, CHIP_BYTES) == 0;
+    const bool image_after_header = memcmp(file_bytes + HEADER_BYTES, expected_image, CHIP_BYTES) == 0;
     memset(flash_image(), 0x00, CHIP_BYTES);
     const int second_load = save_file_load();
     const bool loaded = image_is_expected();
-    struct save_file_layout layout = { 0 };
+    struct save_file_layout layout = {0};
     const bool has_layout = save_file_loaded_layout(&layout);
     save_file_shutdown();
     const bool removed = scratch_remove(&scratch);
@@ -54,12 +53,11 @@ PTEST(a_legacy_file_is_upgraded_by_the_next_store)
 PTEST(the_header_of_an_erased_chip_is_pinned_byte_for_byte)
 {
     static const uint8_t expected_header[HEADER_BYTES] = {
-        'P', 'E', 'N', 'S', 'A', 'V', 'E', 0,
-        1, 0, 0, 0,       /* version 1 */
-        0, 0, 0, 0,       /* pointer width, filled in below */
-        1, 0, 0, 0,       /* layout id 1 */
-        0x00, 0x00, 0x02, 0x00, /* image size 131072 */
-        0xCC, 0x03, 0x48, 0x15, /* CRC-32 0x154803CC */
+        'P',  'E',  'N',  'S',  'A', 'V', 'E', 0, 1, 0, 0, 0, /* version 1 */
+        0,    0,    0,    0,                                  /* pointer width, filled in below */
+        1,    0,    0,    0,                                  /* layout id 1 */
+        0x00, 0x00, 0x02, 0x00,                               /* image size 131072 */
+        0xCC, 0x03, 0x48, 0x15,                               /* CRC-32 0x154803CC */
     };
     uint8_t want[HEADER_BYTES];
     memcpy(want, expected_header, sizeof want);
@@ -125,7 +123,7 @@ PTEST(store_then_load_round_trips_byte_exactly)
     memset(flash_image(), 0x00, CHIP_BYTES);
     const int load = save_file_load();
     const bool round_trip = image_is_expected();
-    struct save_file_layout layout = { 0 };
+    struct save_file_layout layout = {0};
     const bool has_layout = save_file_loaded_layout(&layout);
     save_file_shutdown();
     const bool removed = scratch_remove(&scratch);
@@ -169,8 +167,7 @@ PTEST(stored_file_is_the_header_then_the_chip_byte_for_byte)
     PT_ASSERT_EQ_U32(get_u32le(file_bytes + POINTER_BITS_OFFSET), native_pointer_bits());
     PT_ASSERT_EQ_U32(get_u32le(file_bytes + LAYOUT_ID_OFFSET), SAVE_FILE_LAYOUT_ID);
     PT_ASSERT_EQ_U32(get_u32le(file_bytes + IMAGE_SIZE_OFFSET), CHIP_BYTES);
-    PT_ASSERT_EQ_U32(get_u32le(file_bytes + CRC_OFFSET),
-                     save_file_crc32(expected_image, CHIP_BYTES));
+    PT_ASSERT_EQ_U32(get_u32le(file_bytes + CRC_OFFSET), save_file_crc32(expected_image, CHIP_BYTES));
     PT_ASSERT(same);
     PT_ASSERT(removed);
 }
@@ -213,15 +210,14 @@ PTEST(a_write_that_fails_part_way_leaves_the_old_file)
     const int first = save_file_store();
     set_image(0x0D);
 
-    struct rlimit old_limit = { 0 };
+    struct rlimit old_limit = {0};
     const bool got_limit = getrlimit(RLIMIT_FSIZE, &old_limit) == 0;
-    const struct rlimit low_limit = { HALF_CHIP_BYTES, old_limit.rlim_max };
+    const struct rlimit low_limit = {HALF_CHIP_BYTES, old_limit.rlim_max};
     void (*const old_handler)(int) = signal(SIGXFSZ, SIG_IGN);
-    const bool limited = got_limit && old_handler != SIG_ERR
-                         && setrlimit(RLIMIT_FSIZE, &low_limit) == 0;
+    const bool limited = got_limit && old_handler != SIG_ERR && setrlimit(RLIMIT_FSIZE, &low_limit) == 0;
     const int second = limited ? save_file_store() : SAVE_FILE_OK;
-    const bool restored = got_limit && setrlimit(RLIMIT_FSIZE, &old_limit) == 0
-                          && old_handler != SIG_ERR && signal(SIGXFSZ, old_handler) != SIG_ERR;
+    const bool restored = got_limit && setrlimit(RLIMIT_FSIZE, &old_limit) == 0 && old_handler != SIG_ERR
+                          && signal(SIGXFSZ, old_handler) != SIG_ERR;
 
     fill_pattern(expected_image, CHIP_BYTES, 0x0C); /* the old save */
     const bool read = read_file(scratch.path, FILE_BYTES);
@@ -328,7 +324,7 @@ PTEST(null_path_stores_nothing_and_loads_new)
     struct scratch scratch;
     if (!scratch_create(&scratch))
         PT_FAIL("cannot create a scratch directory");
-    struct null_path_outcome outcome = { 0 };
+    struct null_path_outcome outcome = {0};
     const bool ran = in_directory(scratch.dir, use_null_path, &outcome);
     const bool removed = scratch_remove(&scratch);
     PT_ASSERT(ran);
@@ -364,7 +360,7 @@ PTEST(a_bare_file_name_is_stored_in_the_working_directory)
     struct scratch scratch;
     if (!scratch_create(&scratch))
         PT_FAIL("cannot create a scratch directory");
-    struct bare_name_outcome outcome = { 0 };
+    struct bare_name_outcome outcome = {0};
     const bool ran = in_directory(scratch.dir, use_bare_name, &outcome);
     const intmax_t size = file_size(scratch.path); /* <dir>/emerald.sav */
     const bool removed = scratch_remove(&scratch);

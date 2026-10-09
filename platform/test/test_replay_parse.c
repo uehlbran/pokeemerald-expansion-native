@@ -20,7 +20,7 @@ static int parse(const char *text, struct replay_parse_error *error)
 
 static void assert_parse_error(const char *text, uint32_t line, const char *needle)
 {
-    struct replay_parse_error error = { 0 };
+    struct replay_parse_error error = {0};
     int result = parse(text, &error);
     PT_ASSERT(result == -1);
     PT_ASSERT_EQ_INT(error.line, line);
@@ -280,14 +280,14 @@ PTEST(rejects_over_long_things)
     memset(value, 'v', sizeof value);
     value[REPLAY_MAX_VALUE_LENGTH + 1] = '\0';
     char line[sizeof value + 16];
-    snprintf(line, sizeof line, "expect a=%s", value);
+    (void)snprintf(line, sizeof line, "expect a=%s", value);
     PT_ASSERT_EQ_INT(parse(line, &error), -1);
     PT_ASSERT(strstr(error.message, "empty or too long") != NULL);
 
     char name[REPLAY_MAX_NAME_LENGTH + 8];
     memset(name, 'n', sizeof name);
     name[REPLAY_MAX_NAME_LENGTH + 1] = '\0';
-    snprintf(line, sizeof line, "dump %s", name);
+    (void)snprintf(line, sizeof line, "dump %s", name);
     PT_ASSERT_EQ_INT(parse(line, &error), -1);
     PT_ASSERT(strstr(error.message, "bad name") != NULL);
 }
@@ -299,7 +299,7 @@ PTEST(accepts_the_longest_value_and_name)
     struct replay_parse_error error;
     memset(value, 'v', sizeof value);
     value[REPLAY_MAX_VALUE_LENGTH] = '\0';
-    snprintf(line, sizeof line, "expect a=%s", value);
+    (void)snprintf(line, sizeof line, "expect a=%s", value);
     PT_ASSERT_EQ_INT(parse(line, &error), 0);
     PT_ASSERT_EQ_STR(script.commands[0].value, value);
 }
@@ -311,7 +311,7 @@ PTEST(rejects_more_commands_than_the_limit)
     PT_ASSERT(text != NULL);
     text[0] = '\0';
     for (size_t i = 0; i <= REPLAY_MAX_COMMANDS; i++)
-        strcat(text, "wait 1\n");
+        memcpy(text + i * 7, "wait 1\n", 8); /* with its terminator, overwritten by the next */
     struct replay_parse_error error;
     int result = parse(text, &error);
     free(text);

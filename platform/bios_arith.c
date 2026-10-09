@@ -72,10 +72,10 @@ static uint32_t magnitude(int32_t value)
 
 struct bios_div_result bios_div(int32_t number, int32_t denom)
 {
-    struct bios_div_result result = { 0, 0, 0 };
+    struct bios_div_result result = {0, 0, 0};
     if (denom == 0) {
         if (!warned_div_by_zero) {
-            fprintf(stderr, "bios: Div: division by zero (the BIOS would hang); returning 0\n");
+            (void)fprintf(stderr, "bios: Div: division by zero (the BIOS would hang); returning 0\n");
             warned_div_by_zero = true;
         }
         return result;

@@ -82,38 +82,35 @@ struct io_range {
  * read-only bits; POSTFLG/HALTCNT (300h) are left alone, as a write to
  * HALTCNT halts the CPU. */
 static const struct io_range other_registers[] = {
-    { 0x000, 0x004 }, /* DISPCNT, green swap */
-    { 0x008, 0x060 }, /* BG0CNT-BLDY and the unused 056h-05Fh */
-    { 0x0B0, 0x0E0 }, /* DMA0-DMA3 */
-    { 0x100, 0x110 }, /* TM0CNT-TM3CNT */
-    { 0x132, 0x134 }, /* KEYCNT */
-    { 0x200, 0x20C }, /* IE, IF, WAITCNT, IME (IF: see RegisterRamReset) */
+    {0x000, 0x004}, /* DISPCNT, green swap */
+    {0x008, 0x060}, /* BG0CNT-BLDY and the unused 056h-05Fh */
+    {0x0B0, 0x0E0}, /* DMA0-DMA3 */
+    {0x100, 0x110}, /* TM0CNT-TM3CNT */
+    {0x132, 0x134}, /* KEYCNT */
+    {0x200, 0x20C}, /* IE, IF, WAITCNT, IME (IF: see RegisterRamReset) */
 };
 
 /* RegisterRamReset bit 6: GBATEK "Sound Registers", 060h-0A7h, except
  * SOUNDBIAS (088h), which GBATEK marks as BIOS-owned and gives no reset
  * value for (SoundBias sets it). */
 static const struct io_range sound_registers[] = {
-    { 0x060, 0x088 }, /* SOUND1CNT_L-SOUNDCNT_X */
-    { 0x08A, 0x0A8 }, /* WAVE_RAM, FIFO_A, FIFO_B */
+    {0x060, 0x088}, /* SOUND1CNT_L-SOUNDCNT_X */
+    {0x08A, 0x0A8}, /* WAVE_RAM, FIFO_A, FIFO_B */
 };
 
 /* RegisterRamReset bit 5: GBATEK "Serial Communication (1)" and "(2)". */
 static const struct io_range sio_registers[] = {
-    { 0x120, 0x12C }, /* SIODATA32/SIOMULTI0-3, SIOCNT, SIOMLT_SEND/SIODATA8 */
-    { 0x134, 0x136 }, /* RCNT */
-    { 0x140, 0x142 }, /* JOYCNT */
-    { 0x150, 0x15A }, /* JOY_RECV, JOY_TRANS, JOYSTAT */
+    {0x120, 0x12C}, /* SIODATA32/SIOMULTI0-3, SIOCNT, SIOMLT_SEND/SIODATA8 */
+    {0x134, 0x136}, /* RCNT */
+    {0x140, 0x142}, /* JOYCNT */
+    {0x150, 0x15A}, /* JOY_RECV, JOY_TRANS, JOYSTAT */
 };
 
 static void (*frame_hook)(void);
 static jmp_buf *reset_target;
 
-static volatile uint16_t *io_register(uint32_t offset)
-{
-    return (volatile uint16_t *)(uintptr_t)(GBA_IO_BASE + offset);
-}
-
+/* The BIOS interrupt-check flag (GBATEK "BIOS RAM Usage", 3007FF8h in IWRAM): not an I/O register, so
+ * not gba_io_u16. Games clear its bits to wait for an interrupt (IntrWait). */
 static volatile uint16_t *intr_check(void)
 {
     return (volatile uint16_t *)(uintptr_t)BIOS_INTR_CHECK_ADDRESS;
@@ -128,7 +125,7 @@ static void clear_registers(const struct io_range *ranges, size_t count)
 {
     for (size_t i = 0; i < count; i++) {
         for (uint32_t offset = ranges[i].start; offset < ranges[i].end; offset += REGISTER_SIZE) {
-            *io_register(offset) = 0;
+            *gba_io_u16(offset) = 0;
         }
     }
 }
@@ -170,7 +167,7 @@ void RegisterRamReset(uint32_t resetFlags)
     }
     if (resetFlags & BIOS_RESET_SIO_REGS) {
         clear_registers(sio_registers, sizeof sio_registers / sizeof sio_registers[0]);
-        *io_register(IO_RCNT) = RCNT_GENERAL_PURPOSE;
+        *gba_io_u16(IO_RCNT) = RCNT_GENERAL_PURPOSE;
     }
     if (resetFlags & BIOS_RESET_SOUND_REGS) {
         clear_registers(sound_registers, sizeof sound_registers / sizeof sound_registers[0]);
@@ -184,18 +181,20 @@ void RegisterRamReset(uint32_t resetFlags)
          * interrupt module after a reset; the BIOS does not call it (it
          * would make bios depend on the interrupt module's internals). */
         clear_registers(other_registers, sizeof other_registers / sizeof other_registers[0]);
-        *io_register(IO_DISPSTAT) = (uint16_t)(*io_register(IO_DISPSTAT) & DISPSTAT_READ_ONLY);
+        *gba_io_u16(IO_DISPSTAT) = (uint16_t)(*gba_io_u16(IO_DISPSTAT) & DISPSTAT_READ_ONLY);
     }
-    *io_register(IO_DISPCNT) = DISPCNT_FORCED_BLANK;
+    *gba_io_u16(IO_DISPCNT) = DISPCNT_FORCED_BLANK;
 }
 
 int bios_soft_reset(uint32_t resetFlags)
 {
     if (reset_target == NULL) {
-        fprintf(stderr, "bios: SoftReset: no reset target (bios_set_reset_target); nothing reset, returning to the caller\n");
+        (void)fprintf(
+            stderr,
+            "bios: SoftReset: no reset target (bios_set_reset_target); nothing reset, returning to the caller\n");
         return BIOS_ERR_NO_RESET_TARGET;
     }
-    *io_register(IO_IME) = IME_DISABLED;
+    *gba_io_u16(IO_IME) = IME_DISABLED;
     RegisterRamReset(resetFlags);
     clear_memory(BIOS_RAM_AREA_BASE, BIOS_RAM_AREA_SIZE);
     game_hooks_unwind(reset_target, BIOS_RESET_JUMP_VALUE);
@@ -219,7 +218,7 @@ void SoftResetExram(uint32_t resetFlags)
 void IntrWait(uint32_t discardOldFlags, uint32_t waitFlags)
 {
     uint16_t wanted = (uint16_t)(waitFlags & UINT16_MAX);
-    *io_register(IO_IME) = IME_ENABLED;
+    *gba_io_u16(IO_IME) = IME_ENABLED;
     if (discardOldFlags != 0) {
         *intr_check() = (uint16_t)(*intr_check() & ~wanted);
     }

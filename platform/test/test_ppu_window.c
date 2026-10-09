@@ -295,8 +295,8 @@ PTEST(a_window_hides_objs_without_its_obj_bit)
     io_write16(IO_WINOUT, SHOW_BG0 | SHOW_BG1 | SHOW_OBJ);
     uint16_t out[SCREEN_W];
     PT_ASSERT_EQ_INT(ppu_render_line(0, out), PPU_OK);
-    PT_ASSERT_EQ_INT(first_mismatch(out, 0, 8, FRONT), -1);                 /* OBJ 0 hidden */
-    PT_ASSERT_EQ_INT(first_mismatch(out, 100, 108, rgb(31, 31, 0)), -1);    /* OBJ 1 shown */
+    PT_ASSERT_EQ_INT(first_mismatch(out, 0, 8, FRONT), -1);              /* OBJ 0 hidden */
+    PT_ASSERT_EQ_INT(first_mismatch(out, 100, 108, rgb(31, 31, 0)), -1); /* OBJ 1 shown */
 }
 
 /* ---- the span rule ---- */

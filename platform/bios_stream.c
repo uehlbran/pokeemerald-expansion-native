@@ -33,8 +33,8 @@
 /* A "Vram" writer's unit: 16 bits, two bytes. */
 #define WRITE16_UNIT_SIZE 2u
 
-int bios_stream_open(struct bios_source *source, const char *function, const void *src, size_t src_size,
-                     unsigned type, struct bios_stream_header *header)
+int bios_stream_open(struct bios_source *source, const char *function, const void *src, size_t src_size, unsigned type,
+                     struct bios_stream_header *header)
 {
     if (src_size < BIOS_STREAM_HEADER_SIZE) {
         return BIOS_ERR_TRUNCATED;
@@ -60,8 +60,7 @@ bool bios_source_byte(struct bios_source *source, uint8_t *byte)
     return true;
 }
 
-int bios_sink_open(struct bios_sink *sink, const char *function, void *dest, size_t size,
-                   enum bios_write_width width)
+int bios_sink_open(struct bios_sink *sink, const char *function, void *dest, size_t size, enum bios_write_width width)
 {
     if (size != 0 && !bios_range_ok(function, "destination", dest, size, TRANSFER_WRITE)) {
         return BIOS_ERR_RANGE;
@@ -86,7 +85,7 @@ void bios_sink_put(struct bios_sink *sink, uint8_t byte)
     } else if (sink->position % WRITE16_UNIT_SIZE == 0) {
         sink->held = byte;
     } else {
-        const uint8_t unit[WRITE16_UNIT_SIZE] = { sink->held, byte };
+        const uint8_t unit[WRITE16_UNIT_SIZE] = {sink->held, byte};
         memcpy(sink->bytes + sink->position - 1, unit, sizeof unit);
     }
     sink->position++;
@@ -101,13 +100,13 @@ void bios_stream_report(const char *function, int error)
 {
     switch (error) {
     case BIOS_ERR_HEADER:
-        fprintf(stderr, "bios: %s: the header names another format; nothing written\n", function);
+        (void)fprintf(stderr, "bios: %s: the header names another format; nothing written\n", function);
         break;
     case BIOS_ERR_STREAM:
-        fprintf(stderr, "bios: %s: malformed stream; output stopped\n", function);
+        (void)fprintf(stderr, "bios: %s: malformed stream; output stopped\n", function);
         break;
     case BIOS_ERR_TRUNCATED:
-        fprintf(stderr, "bios: %s: stream ended early; output stopped\n", function);
+        (void)fprintf(stderr, "bios: %s: stream ended early; output stopped\n", function);
         break;
     default:
         break;

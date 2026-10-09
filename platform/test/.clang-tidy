@@ -1,0 +1,17 @@
+# Tests: the repository's .clang-tidy, minus three checks that do not fit a test.
+#   readability-function-cognitive-complexity   PT_ASSERT and friends expand to an if (and
+#                                               PTEST_REQUIRE_ to a do/while), so a test that
+#                                               is a list of assertions scores as deeply nested
+#   clang-analyzer-optin.core.EnumCastOutOfRange   tests pass out-of-range enum values on purpose
+#                                               to check that the module rejects them
+#   bugprone-implicit-widening-of-multiplication-result
+#                                               (64-bit only) fixtures multiply a loop index or
+#                                               a constant by a size; every operand is bounded
+#                                               by a fixture's size, far below 32 bits, and the
+#                                               module code is held to the check
+#   bugprone-casting-through-void               fixtures reinterpret byte buffers as the
+#                                               structure under test (voicegroups, ELF tables)
+#   readability-magic-numbers                   tests spell out the expected values from GBATEK
+#                                               as literals
+InheritParentConfig: true
+Checks: '-readability-magic-numbers,-readability-function-cognitive-complexity,-clang-analyzer-optin.core.EnumCastOutOfRange,-bugprone-implicit-widening-of-multiplication-result,-bugprone-casting-through-void'

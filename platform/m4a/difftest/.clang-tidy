@@ -1,0 +1,5 @@
+# The m4a difftest driver: generates random songs and voices from tables of
+# literals, and is not module code.
+#   readability-magic-numbers   its data is literal by nature
+InheritParentConfig: true
+Checks: '-readability-magic-numbers'

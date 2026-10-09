@@ -10,10 +10,12 @@
 #include "test_m4a_c_reference.h"
 #include "test_m4a_support.h"
 
+// NOLINTBEGIN(readability-magic-numbers): test stand-ins: a table size, channel fields and a generator's constants
+
 /* IWRAM (GBATEK "GBA Memory Map"), which holds SOUND_INFO_PTR at 0x03007FF0. */
-#define TEST_IWRAM_ADDR      0x03000000u
+#define TEST_IWRAM_ADDR 0x03000000u
 /* The I/O register page, REG_BASE (GBATEK "GBA I/O Map"). */
-#define TEST_IO_PAGE_ADDR    0x04000000u
+#define TEST_IO_PAGE_ADDR 0x04000000u
 /* VCOUNT while the native game runs (docs/ARCHITECTURE.md, "The frame"). */
 #define TEST_VCOUNT_IN_VBLANK 160u
 
@@ -68,10 +70,9 @@ extern char gba_linked_io_start[];
 
 static bool GbaRegionsLinked(void)
 {
-    if ((uintptr_t)gba_linked_iwram_start != TEST_IWRAM_ADDR || (uintptr_t)gba_linked_io_start != TEST_IO_PAGE_ADDR)
-    {
-        fprintf(stderr, "test_m4a_support: GBA regions linked at %p and %p, not at their GBA addresses\n",
-                (void *)gba_linked_iwram_start, (void *)gba_linked_io_start);
+    if ((uintptr_t)gba_linked_iwram_start != TEST_IWRAM_ADDR || (uintptr_t)gba_linked_io_start != TEST_IO_PAGE_ADDR) {
+        (void)fprintf(stderr, "test_m4a_support: GBA regions linked at %p and %p, not at their GBA addresses\n",
+                      (void *)gba_linked_iwram_start, (void *)gba_linked_io_start);
         return false;
     }
     return true;
@@ -80,20 +81,18 @@ static bool GbaRegionsLinked(void)
 static int MapLowPage(void)
 {
     void *wanted = (void *)(uintptr_t)TEST_LOW_PAGE_ADDR;
-    void *got = mmap(wanted, TEST_PAGE_SIZE, PROT_READ | PROT_WRITE,
-                     MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED_NOREPLACE, -1, 0);
+    void *got = mmap(wanted, TEST_PAGE_SIZE, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED_NOREPLACE,
+                     -1, 0);
 
-    if (got == MAP_FAILED)
-    {
-        fprintf(stderr, "test_m4a_support: mmap at 0x%08x failed: %s\n",
-                (unsigned)TEST_LOW_PAGE_ADDR, strerror(errno));
+    if (got == MAP_FAILED) {
+        (void)fprintf(stderr, "test_m4a_support: mmap at 0x%08x failed: %s\n", (unsigned)TEST_LOW_PAGE_ADDR,
+                      strerror(errno));
         return -1;
     }
-    if (got != wanted)
-    {
-        fprintf(stderr, "test_m4a_support: mmap at 0x%08x returned %p\n", (unsigned)TEST_LOW_PAGE_ADDR, got);
+    if (got != wanted) {
+        (void)fprintf(stderr, "test_m4a_support: mmap at 0x%08x returned %p\n", (unsigned)TEST_LOW_PAGE_ADDR, got);
         if (munmap(got, TEST_PAGE_SIZE) != 0)
-            fprintf(stderr, "test_m4a_support: munmap failed: %s\n", strerror(errno));
+            (void)fprintf(stderr, "test_m4a_support: munmap failed: %s\n", strerror(errno));
         return -1;
     }
     return 0;
@@ -104,8 +103,8 @@ __attribute__((destructor)) static void UnmapLowPage(void)
     if (!sLowPageMapped)
         return;
     if (munmap((void *)(uintptr_t)TEST_LOW_PAGE_ADDR, TEST_PAGE_SIZE) != 0)
-        fprintf(stderr, "test_m4a_support: munmap at 0x%08x failed: %s\n",
-                (unsigned)TEST_LOW_PAGE_ADDR, strerror(errno));
+        (void)fprintf(stderr, "test_m4a_support: munmap at 0x%08x failed: %s\n", (unsigned)TEST_LOW_PAGE_ADDR,
+                      strerror(errno));
     sLowPageMapped = 0;
 }
 
@@ -119,13 +118,12 @@ static int MapPages(void)
     return 0;
 }
 
-static void LogCall(enum M4aCallKind kind, const void *ptr0, const void *ptr1,
-                    uint32_t arg0, uint32_t arg1, uint32_t arg2, uint32_t playerIdent)
+static void LogCall(enum M4aCallKind kind, const void *ptr0, const void *ptr1, uint32_t arg0, uint32_t arg1,
+                    uint32_t arg2, uint32_t playerIdent)
 {
     struct M4aCall *call;
 
-    if (sCallCount >= M4A_CALL_LOG_SIZE)
-    {
+    if (sCallCount >= M4A_CALL_LOG_SIZE) {
         sCallLogOverflow = 1;
         return;
     }
@@ -163,8 +161,7 @@ uint32_t M4aTestCountCalls(enum M4aCallKind kind)
 {
     uint32_t count = 0;
 
-    for (size_t i = 0; i < sCallCount; i++)
-    {
+    for (size_t i = 0; i < sCallCount; i++) {
         if (sCalls[i].kind == kind)
             count++;
     }
@@ -214,15 +211,13 @@ static u32 TestMidiKeyToCgbFreq(u8 chanNum, u8 key, u8 fineAdjust)
 // cppcheck-suppress constParameterPointer ; assigned to a function pointer type whose parameters are non-const
 void TestMPlayMainHead(struct MusicPlayerInfo *mplayInfo)
 {
-    LogCall(CALL_MPLAY_MAIN_HEAD, mplayInfo, NULL, 0, 0, 0,
-            mplayInfo != NULL ? mplayInfo->ident : 0);
+    LogCall(CALL_MPLAY_MAIN_HEAD, mplayInfo, NULL, 0, 0, 0, mplayInfo != NULL ? mplayInfo->ident : 0);
 }
 
 // cppcheck-suppress constParameterPointer ; assigned to a function pointer type whose parameters are non-const
 void TestMPlayNext(struct MusicPlayerInfo *mplayInfo)
 {
-    LogCall(CALL_MPLAY_NEXT, mplayInfo, NULL, 0, 0, 0,
-            mplayInfo != NULL ? mplayInfo->ident : 0);
+    LogCall(CALL_MPLAY_NEXT, mplayInfo, NULL, 0, 0, 0, mplayInfo != NULL ? mplayInfo->ident : 0);
 }
 
 // cppcheck-suppress constParameterPointer ; assigned to a function pointer type whose parameters are non-const
@@ -254,13 +249,13 @@ void ClearChain(void *x)
         func(x);
 }
 
-void Clear64byte(void *x)
+void Clear64byte(void *addr)
 {
     void (*func)(void *) = gMPlayJumpTable[35];
 
-    LogCall(CALL_CLEAR_64_BYTE, x, NULL, 0, 0, 0, 0);
+    LogCall(CALL_CLEAR_64_BYTE, addr, NULL, 0, 0, 0, 0);
     if (func != NULL)
-        func(x);
+        func(addr);
 }
 
 /* src/m4a.c's TrkVolPitSet and MidiKeyToFreq, logged, then as m4a.c computes them. */
@@ -280,8 +275,8 @@ u32 MidiKeyToFreq(struct WaveData *wav, u8 key, u8 fineAdjust)
 
 /* Test data */
 
-struct WaveData *M4aTestMakeWave(union M4aTestWave *w, uint16_t type, uint16_t status,
-                                 uint32_t freq, uint32_t loopStart, uint32_t size)
+struct WaveData *M4aTestMakeWave(union M4aTestWave *w, uint16_t type, uint16_t status, uint32_t freq,
+                                 uint32_t loopStart, uint32_t size)
 {
     memset(w, 0, sizeof(*w));
     w->wave.type = type;
@@ -294,9 +289,8 @@ struct WaveData *M4aTestMakeWave(union M4aTestWave *w, uint16_t type, uint16_t s
 
 void M4aTestSetWaveByte(union M4aTestWave *w, uint32_t dataIndex, uint8_t value)
 {
-    if (dataIndex >= TEST_WAVE_MAX_DATA)
-    {
-        fprintf(stderr, "test_m4a_support: wave byte %u out of range\n", (unsigned)dataIndex);
+    if (dataIndex >= TEST_WAVE_MAX_DATA) {
+        (void)fprintf(stderr, "test_m4a_support: wave byte %u out of range\n", (unsigned)dataIndex);
         return;
     }
     w->bytes[TEST_WAVE_HEADER_SIZE + dataIndex] = value;
@@ -339,16 +333,15 @@ bool M4aTestPutPointer(uint8_t *dst, const void *target)
 void M4aTestLinkChannels(struct MusicPlayerTrack *track, struct SoundChannel *const *chans, size_t n)
 {
     track->chan = n > 0 ? chans[0] : NULL;
-    for (size_t i = 0; i < n; i++)
-    {
+    for (size_t i = 0; i < n; i++) {
         chans[i]->track = track;
         chans[i]->prevChannelPointer = i > 0 ? chans[i - 1] : NULL;
         chans[i]->nextChannelPointer = i + 1 < n ? chans[i + 1] : NULL;
     }
 }
 
-struct SoundInfo *M4aTestSetUpPlayer(struct MusicPlayerInfo *player, struct MusicPlayerTrack *tracks,
-                                     size_t numTracks, uint8_t trackCount)
+struct SoundInfo *M4aTestSetUpPlayer(struct MusicPlayerInfo *player, struct MusicPlayerTrack *tracks, size_t numTracks,
+                                     uint8_t trackCount)
 {
     struct SoundInfo *si = M4aTestSetUp();
 
@@ -365,8 +358,8 @@ struct SoundInfo *M4aTestSetUpPlayer(struct MusicPlayerInfo *player, struct Musi
 
 /* Mixer fixtures */
 
-struct SoundChannel *M4aTestStartChannel(struct SoundInfo *si, size_t index, struct WaveData *wav,
-                                         uint8_t type, uint32_t step, uint32_t startOffset)
+struct SoundChannel *M4aTestStartChannel(struct SoundInfo *si, size_t index, struct WaveData *wav, uint8_t type,
+                                         uint32_t step, uint32_t startOffset)
 {
     struct SoundChannel *chan = &si->chans[index];
 
@@ -432,3 +425,4 @@ struct SoundInfo *M4aTestSetUp(void)
     sSoundInfo.plynote = ply_note;
     return &sSoundInfo;
 }
+// NOLINTEND(readability-magic-numbers)

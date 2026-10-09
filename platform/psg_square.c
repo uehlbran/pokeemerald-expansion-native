@@ -40,7 +40,7 @@
 /* GBATEK "Wave Duty": 0: 12.5% "-_______", 1: 25% "--______", 2: 50%
  * "----____", 3: 75% "------__". One bit per step, step 0 in bit 0. */
 #define DUTY_STEPS 8u
-static const uint8_t duty_patterns[] = { 0x01, 0x03, 0x0F, 0x3F };
+static const uint8_t duty_patterns[] = {0x01, 0x03, 0x0F, 0x3F};
 
 /* GBATEK NR13/NR14 "Frequency; 131072/(2048-n)Hz", eight duty steps per
  * period: steps at 1048576/(2048-n) Hz, (2048-n) * 16 system clock cycles
@@ -67,8 +67,8 @@ static uint32_t step_period(uint16_t frequency)
 
 static uint16_t frequency_of(const struct psg_square_registers *registers)
 {
-    return (uint16_t)(registers->nrx3 | (registers->nrx4 & PSG_NRX4_FREQUENCY_HIGH_MASK)
-                                            << PSG_NRX4_FREQUENCY_HIGH_SHIFT);
+    return (uint16_t)(registers->nrx3
+                      | (registers->nrx4 & PSG_NRX4_FREQUENCY_HIGH_MASK) << PSG_NRX4_FREQUENCY_HIGH_SHIFT);
 }
 
 void psg_square_update(struct psg_square *square, const struct psg_square_registers *registers)

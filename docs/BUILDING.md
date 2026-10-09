@@ -10,7 +10,7 @@ appears if a display is available (WSLg), and nothing depends on it.
 ```
 sudo dpkg --add-architecture i386
 sudo apt-get update
-sudo apt-get install -y build-essential gcc-multilib g++-multilib clang clang-tidy cppcheck cmake ninja-build pkg-config git
+sudo apt-get install -y build-essential gcc-multilib g++-multilib clang clang-format clang-tidy cppcheck cmake ninja-build pkg-config git
 sudo apt-get install -y libsdl2-dev libsdl2-dev:i386 libc6-dev-i386 valgrind
 sudo apt-get install -y gcc-arm-none-eabi binutils-arm-none-eabi libnewlib-arm-none-eabi libpng-dev
 ```
@@ -49,6 +49,20 @@ sanitized:
 make -C platform test BITS=32
 make -C platform test BITS=64
 ```
+
+The platform gate, which a change to anything under `platform/` passes before
+it merges, runs the style check, the static analysis and those tests at both
+widths (about a minute on 32 cores):
+
+```
+make -C platform gate              # format-check, lint (BITS=32, 64), test (BITS=32, 64)
+make -C platform format            # apply clang-format (../.clang-format) to platform/
+make -C platform format-check      # fail, naming the files, if any would change
+make -C platform lint BITS=64      # clang-tidy (../.clang-tidy) and cppcheck; any finding fails
+```
+
+`lint` needs clang-tidy and cppcheck (the prerequisites above install them) and
+clang-format 18 for the style: `format-check` depends on that version, the one `.clang-format` was derived with, and other major versions format differently.
 
 Expansion's test suite against the native build, through expansion's own
 hydra (as `make check` runs it against mgba-rom-test; about 40 seconds on

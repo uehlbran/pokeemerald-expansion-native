@@ -24,12 +24,12 @@ __attribute__((constructor)) static void act_as_the_restarted_process(int argc, 
     if (file == NULL)
         _exit(2);
     for (int i = 0; i < argc; i++)
-        fprintf(file, "%s\n", argv[i]);
-    fclose(file);
+        (void)fprintf(file, "%s\n", argv[i]);
+    (void)fclose(file);
     _exit(0);
 }
 
-static char *const plain[] = { "game", "--headless", "--save", "a.sav" };
+static char *const plain[] = {"game", "--headless", "--save", "a.sav"};
 
 PTEST(appends_resume_at_to_the_original_arguments)
 {
@@ -44,7 +44,7 @@ PTEST(appends_resume_at_to_the_original_arguments)
 
 PTEST(replaces_an_earlier_resume_at_and_its_value)
 {
-    char *const argv[] = { "game", "--resume-at", "5", "--silent" };
+    char *const argv[] = {"game", "--resume-at", "5", "--silent"};
     struct restart_args args;
     PT_ASSERT_EQ_INT(restart_build_args(4, argv, 40, 0, &args), 0);
     PT_ASSERT_EQ_STR(args.argv[1], "--silent");
@@ -55,7 +55,7 @@ PTEST(replaces_an_earlier_resume_at_and_its_value)
 
 PTEST(advances_the_fixed_clock)
 {
-    char *const argv[] = { "game", "--rtc-fixed", "1700000000", "--silent" };
+    char *const argv[] = {"game", "--rtc-fixed", "1700000000", "--silent"};
     struct restart_args args;
     PT_ASSERT_EQ_INT(restart_build_args(4, argv, 3, 1700000123, &args), 0);
     PT_ASSERT_EQ_STR(args.argv[1], "--rtc-fixed");
@@ -74,8 +74,8 @@ PTEST(without_a_fixed_clock_the_epoch_is_ignored)
 
 PTEST(an_option_without_its_value_is_an_error)
 {
-    char *const resume_only[] = { "game", "--resume-at" };
-    char *const epoch_only[] = { "game", "--rtc-fixed" };
+    char *const resume_only[] = {"game", "--resume-at"};
+    char *const epoch_only[] = {"game", "--rtc-fixed"};
     struct restart_args args;
     PT_ASSERT_EQ_INT(restart_build_args(2, resume_only, 1, 0, &args), -1);
     PT_ASSERT_EQ_INT(restart_build_args(2, epoch_only, 1, 0, &args), -1);
@@ -87,14 +87,15 @@ PTEST(too_many_arguments_are_an_error)
     struct restart_args args;
     for (size_t i = 0; i < RESTART_MAX_ARGS + 2; i++)
         many[i] = "x";
-    PT_ASSERT_EQ_INT(restart_build_args((int)RESTART_MAX_ARGS - 1, many, 1, 0, &args), -1); /* no room for the two added */
+    PT_ASSERT_EQ_INT(restart_build_args((int)RESTART_MAX_ARGS - 1, many, 1, 0, &args),
+                     -1); /* no room for the two added */
     PT_ASSERT_EQ_INT(restart_build_args((int)RESTART_MAX_ARGS - 2, many, 1, 0, &args), 0);
     PT_ASSERT_EQ_INT(restart_build_args((int)RESTART_MAX_ARGS + 1, many, 1, 0, &args), -1);
 }
 
 PTEST(a_large_epoch_and_line_fit_their_buffers)
 {
-    char *const argv[] = { "game", "--rtc-fixed", "1" };
+    char *const argv[] = {"game", "--rtc-fixed", "1"};
     struct restart_args args;
     PT_ASSERT_EQ_INT(restart_build_args(3, argv, UINT32_MAX, INT64_MIN, &args), 0);
     PT_ASSERT_EQ_STR(args.argv[2], "-9223372036854775808");
@@ -107,10 +108,10 @@ PTEST(exec_runs_this_executable_again_with_the_arguments)
     int fd = mkstemp(path);
     PT_ASSERT(fd >= 0);
     close(fd);
-    fflush(NULL);
+    (void)fflush(NULL);
     pid_t pid = fork();
     if (pid == 0) {
-        char *const argv[] = { "child-name", "--one", "two" };
+        char *const argv[] = {"child-name", "--one", "two"};
         struct restart_args args;
         setenv(CHILD_FILE_VARIABLE, path, 1);
         if (restart_build_args(3, argv, 9, 0, &args) == 0)
@@ -123,7 +124,7 @@ PTEST(exec_runs_this_executable_again_with_the_arguments)
     FILE *file = fopen(path, "r");
     size_t length = file != NULL ? fread(content, 1, sizeof content - 1, file) : 0;
     if (file != NULL)
-        fclose(file);
+        (void)fclose(file);
     content[length] = '\0';
     unlink(path);
     PT_ASSERT(WIFEXITED(status) && WEXITSTATUS(status) == 0);

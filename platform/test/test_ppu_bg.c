@@ -17,7 +17,10 @@
 #define FIXED(n) ((n) * 256) /* GBATEK: reference points and PA-PD have 8 fraction bits */
 
 /* BG palette bank 3, colour i: red i, blue 31 - i. Distinct from BACKDROP. */
-static uint16_t bank3(unsigned index) { return rgb(index, 0, 31u - index); }
+static uint16_t bank3(unsigned index)
+{
+    return rgb(index, 0, 31u - index);
+}
 
 static void set_bank3(void)
 {
@@ -26,7 +29,10 @@ static void set_bank3(void)
 }
 
 /* 8bpp colours: entry i is green i / 32, blue i % 32 (distinct for 1..255). */
-static uint16_t colour256(unsigned index) { return rgb(0, index / 32u, index % 32u); }
+static uint16_t colour256(unsigned index)
+{
+    return rgb(0, index / 32u, index % 32u);
+}
 
 static void set_palette256(void)
 {
@@ -72,7 +78,7 @@ PTEST(a_4bpp_tile_renders_at_its_map_position)
     set_bank3();
     tile_pixels pixels;
     pattern_tile(pixels);
-    put_tile_4bpp(1 * 32u, pixels); /* tile 1, character block 0 */
+    put_tile_4bpp(1 * 32u, pixels);                                   /* tile 1, character block 0 */
     put_map_entry(31 * SCREEN_BLOCK_BYTES, 2, 1, map_entry(1, 3, 0)); /* column 2, row 1 */
     io_write16(IO_BG0CNT, bgcnt_screen_block(31));
     io_write16(IO_DISPCNT, DISP_MODE_0 | DISP_BG0);
@@ -153,8 +159,7 @@ PTEST(colour_0_of_an_8bpp_tile_is_transparent)
     solid_tile(solid, 1);
     put_tile_4bpp(CHAR_BLOCK_BYTES + 1 * 32u, solid);
     fill_block(30 * SCREEN_BLOCK_BYTES, map_entry(1, 1, 0));
-    io_write16(IO_BG0CNT + 2,
-               (uint16_t)(bgcnt_priority(1) | bgcnt_char_block(1) | bgcnt_screen_block(30)));
+    io_write16(IO_BG0CNT + 2, (uint16_t)(bgcnt_priority(1) | bgcnt_char_block(1) | bgcnt_screen_block(30)));
     io_write16(IO_DISPCNT, DISP_MODE_0 | DISP_BG0 | DISP_BG1);
     PT_ASSERT_EQ_INT(ppu_render_line(0, out), PPU_OK);
     for (unsigned x = 0; x < SCREEN_W; x++)
@@ -184,10 +189,22 @@ static void check_flipped_tile(uint16_t flips, bool hflip, bool vflip)
     }
 }
 
-PTEST(horizontal_flip_mirrors_the_columns) { check_flipped_tile(MAP_HFLIP, true, false); }
-PTEST(vertical_flip_mirrors_the_rows) { check_flipped_tile(MAP_VFLIP, false, true); }
-PTEST(both_flips_mirror_both) { check_flipped_tile(MAP_HFLIP | MAP_VFLIP, true, true); }
-PTEST(no_flip_bits_draw_the_tile_as_stored) { check_flipped_tile(0, false, false); }
+PTEST(horizontal_flip_mirrors_the_columns)
+{
+    check_flipped_tile(MAP_HFLIP, true, false);
+}
+PTEST(vertical_flip_mirrors_the_rows)
+{
+    check_flipped_tile(MAP_VFLIP, false, true);
+}
+PTEST(both_flips_mirror_both)
+{
+    check_flipped_tile(MAP_HFLIP | MAP_VFLIP, true, true);
+}
+PTEST(no_flip_bits_draw_the_tile_as_stored)
+{
+    check_flipped_tile(0, false, false);
+}
 
 PTEST(flips_apply_to_8bpp_tiles)
 {
@@ -223,7 +240,7 @@ PTEST(horizontal_scroll_wraps_at_256_on_a_256_wide_map)
     put_map_entry(31 * SCREEN_BLOCK_BYTES, 0, 0, map_entry(1, 3, 0));
     io_write16(IO_BG0CNT, bgcnt_screen_block(31));
     io_write16(IO_DISPCNT, DISP_MODE_0 | DISP_BG0);
-    const uint16_t offsets[] = { 252, 508 }; /* 508 & 255 == 252 on a 256-wide map */
+    const uint16_t offsets[] = {252, 508}; /* 508 & 255 == 252 on a 256-wide map */
     for (unsigned i = 0; i < 2; i++) {
         io_write16(IO_BG0HOFS, offsets[i]);
         PT_ASSERT_EQ_INT(ppu_render_line(0, out), PPU_OK);
@@ -246,7 +263,11 @@ PTEST(vertical_scroll_wraps_at_256_on_a_256_tall_map)
     io_write16(IO_DISPCNT, DISP_MODE_0 | DISP_BG0);
     for (uint16_t line = 0; line < 20; line++) {
         PT_ASSERT_EQ_INT(ppu_render_line(line, out), PPU_OK);
-        const uint16_t expected = line < 4 ? bank3(2) : line < 12 ? bank3(1) : BACKDROP;
+        uint16_t expected = BACKDROP;
+        if (line < 4)
+            expected = bank3(2);
+        else if (line < 12)
+            expected = bank3(1);
         PT_ASSERT_EQ_U32(out[0], expected);
         PT_ASSERT_EQ_U32(out[7], expected);
         PT_ASSERT_EQ_U32(out[8], BACKDROP);
@@ -259,8 +280,8 @@ PTEST(a_512x256_map_puts_sc1_to_the_right_and_wraps_at_512)
     scene_reset();
     palette_set(0, BACKDROP);
     four_solid_tiles();
-    put_map_entry(28 * SCREEN_BLOCK_BYTES, 0, 0, map_entry(1, 3, 0));  /* SC0 */
-    put_map_entry(29 * SCREEN_BLOCK_BYTES, 0, 0, map_entry(2, 3, 0));  /* SC1 = SC0 + 2K */
+    put_map_entry(28 * SCREEN_BLOCK_BYTES, 0, 0, map_entry(1, 3, 0)); /* SC0 */
+    put_map_entry(29 * SCREEN_BLOCK_BYTES, 0, 0, map_entry(2, 3, 0)); /* SC1 = SC0 + 2K */
     put_map_entry(29 * SCREEN_BLOCK_BYTES, 31, 0, map_entry(3, 3, 0));
     io_write16(IO_BG0CNT, (uint16_t)(bgcnt_screen_block(28) | bgcnt_size(1)));
     io_write16(IO_DISPCNT, DISP_MODE_0 | DISP_BG0);
@@ -312,8 +333,8 @@ PTEST(a_512x512_map_has_four_screen_blocks)
         put_map_entry((24 + sc) * SCREEN_BLOCK_BYTES, 0, 0, map_entry(sc + 1, 3, 0));
     io_write16(IO_BG0CNT, (uint16_t)(bgcnt_screen_block(24) | bgcnt_size(3)));
     io_write16(IO_DISPCNT, DISP_MODE_0 | DISP_BG0);
-    const uint16_t hofs[4] = { 0, 256, 0, 256 };
-    const uint16_t vofs[4] = { 0, 0, 256, 256 };
+    const uint16_t hofs[4] = {0, 256, 0, 256};
+    const uint16_t vofs[4] = {0, 0, 256, 256};
     for (unsigned sc = 0; sc < 4; sc++) {
         io_write16(IO_BG0HOFS, hofs[sc]);
         io_write16(IO_BG0VOFS, vofs[sc]);
@@ -475,8 +496,7 @@ static void affine_scene(unsigned size, uint16_t flags)
         for (unsigned col = 0; col < tiles; col++)
             vram_write8(AFFINE_SCREEN_BLOCK * SCREEN_BLOCK_BYTES + row * tiles + col,
                         (uint8_t)(((col + row) % 2u) ? 2 : 1));
-    io_write16(IO_BG0CNT + 4,
-               (uint16_t)(bgcnt_screen_block(AFFINE_SCREEN_BLOCK) | bgcnt_size(size) | flags));
+    io_write16(IO_BG0CNT + 4, (uint16_t)(bgcnt_screen_block(AFFINE_SCREEN_BLOCK) | bgcnt_size(size) | flags));
     affine_regs(FIXED(1), 0, 0, FIXED(1));
     io_write16(IO_DISPCNT, DISP_MODE_1 | DISP_BG2);
     ppu_latch_vblank();
@@ -659,7 +679,7 @@ PTEST(a_reference_write_mid_frame_relatches_at_the_current_line)
 PTEST(a_reference_write_after_the_vblank_latch_applies_from_line_0)
 {
     uint16_t out[SCREEN_W];
-    affine_scene(2, BGCNT_WRAP); /* latched */
+    affine_scene(2, BGCNT_WRAP);   /* latched */
     io_write32(IO_BG2X, FIXED(7)); /* the VBlank handler flushing buffered registers */
     PT_ASSERT_EQ_INT(ppu_render_line(0, out), PPU_OK);
     PT_ASSERT_EQ_U32(out[0], texel(7, 0));
@@ -723,21 +743,20 @@ PTEST(sign_extend_takes_bit_27_as_the_sign)
 
 PTEST(the_reference_point_wraps_at_28_bits_when_stepped)
 {
-    struct ppu_affine_regs regs = { .pa = 256, .pb = 256, .pc = 0, .pd = -256,
-                                    .x = UINT32_C(0x07FFFF00), .y = UINT32_C(0x08000000) };
+    struct ppu_affine_regs regs = {
+        .pa = 256, .pb = 256, .pc = 0, .pd = -256, .x = UINT32_C(0x07FFFF00), .y = UINT32_C(0x08000000)};
     struct ppu_affine_reference ref;
     ppu_affine_reference_latch(&ref, &regs);
     PT_ASSERT_EQ_INT(ref.x, 0x07FFFF00);
     PT_ASSERT_EQ_INT(ref.y, -134217728);
     ppu_affine_reference_step(&ref, &regs);
-    PT_ASSERT_EQ_INT(ref.x, -134217728); /* 0x08000000 is the most negative */
+    PT_ASSERT_EQ_INT(ref.x, -134217728);      /* 0x08000000 is the most negative */
     PT_ASSERT_EQ_INT(ref.y, 134217728 - 256); /* below the most negative wraps to the top */
 }
 
 PTEST(picking_up_writes_relatches_only_a_changed_register)
 {
-    struct ppu_affine_regs regs = { .pa = 256, .pb = 512, .pc = 0, .pd = 256,
-                                    .x = FIXED(1), .y = FIXED(2) };
+    struct ppu_affine_regs regs = {.pa = 256, .pb = 512, .pc = 0, .pd = 256, .x = FIXED(1), .y = FIXED(2)};
     struct ppu_affine_reference ref;
     ppu_affine_reference_latch(&ref, &regs);
     ppu_affine_reference_step(&ref, &regs);

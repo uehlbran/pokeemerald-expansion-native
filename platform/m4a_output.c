@@ -19,7 +19,7 @@
 
 #include <gba/m4a_internal.h>
 
-_Static_assert(sizeof(((struct SoundInfo *)0)->pcmBuffer) == 2 * PCM_DMA_BUF_SIZE,
+_Static_assert(sizeof(((struct SoundInfo *)0)->pcmBuffer) == (size_t)2 * PCM_DMA_BUF_SIZE,
                "the ring is two FIFO halves of PCM_DMA_BUF_SIZE bytes");
 
 /* m4aSoundVSync runs while ident is ID_NUMBER or ID_NUMBER + 1 (the latter

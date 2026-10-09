@@ -42,13 +42,13 @@
 #define WAVE_FREQ_SIZE 4u
 
 #define HALFTONES_PER_OCTAVE 12u
-#define HIGHEST_KEY 178u        /* the factor of key 179 is the last below 2^32 */
+#define HIGHEST_KEY 178u /* the factor of key 179 is the last below 2^32 */
 #define HIGHEST_FINE 255u
 /* Key 168 is the top octave's first key: 168 / 12 = 14 octaves above key 0,
  * whose factor is 2^31 >> 14. */
 #define TOP_OCTAVE 14u
-#define FINE_STEPS_SHIFT 8u     /* fp is in 1/256 halftones */
-#define FACTOR_SHIFT 32u        /* the factor is a 0.32 fraction of 2 */
+#define FINE_STEPS_SHIFT 8u /* fp is in 1/256 halftones */
+#define FACTOR_SHIFT 32u    /* the factor is a 0.32 fraction of 2 */
 
 /* round(2^31 * 2^(n/12)), n = 0..11. */
 static const uint32_t halftone_factor[HALFTONES_PER_OCTAVE] = {
@@ -56,15 +56,10 @@ static const uint32_t halftone_factor[HALFTONES_PER_OCTAVE] = {
     3037000500u, 3217589947u, 3408917802u, 3611622603u, 3826380858u, 4053909305u,
 };
 
-static volatile uint16_t *soundbias(void)
-{
-    return (volatile uint16_t *)(uintptr_t)(GBA_IO_BASE + IO_SOUNDBIAS);
-}
-
 void SoundBiasChange(uint32_t level)
 {
-    uint16_t kept = (uint16_t)(*soundbias() & ~SOUNDBIAS_LEVEL_MASK);
-    *soundbias() = (uint16_t)(kept | (level != 0 ? SOUNDBIAS_LEVEL_SET : SOUNDBIAS_LEVEL_ZERO));
+    uint16_t kept = (uint16_t)(*gba_io_u16(IO_SOUNDBIAS) & ~SOUNDBIAS_LEVEL_MASK);
+    *gba_io_u16(IO_SOUNDBIAS) = (uint16_t)(kept | (level != 0 ? SOUNDBIAS_LEVEL_SET : SOUNDBIAS_LEVEL_ZERO));
 }
 
 void SoundBiasReset(void)

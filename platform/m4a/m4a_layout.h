@@ -151,8 +151,10 @@ _Static_assert(sizeof(struct ToneData) == 0x0C, "ToneData_size, the voicegroup s
 _Static_assert(offsetof(struct SoundChannel, wav) == 0x24, "o_SoundChannel_wav: flagged 64-bit");
 _Static_assert(offsetof(struct SoundChannel, currentPointer) == 0x28, "o_SoundChannel_currentPointer: flagged 64-bit");
 _Static_assert(offsetof(struct SoundChannel, track) == 0x2C, "o_SoundChannel_track: flagged 64-bit");
-_Static_assert(offsetof(struct SoundChannel, prevChannelPointer) == 0x30, "o_SoundChannel_prevChannelPointer: flagged 64-bit");
-_Static_assert(offsetof(struct SoundChannel, nextChannelPointer) == 0x34, "o_SoundChannel_nextChannelPointer: flagged 64-bit");
+_Static_assert(offsetof(struct SoundChannel, prevChannelPointer) == 0x30,
+               "o_SoundChannel_prevChannelPointer: flagged 64-bit");
+_Static_assert(offsetof(struct SoundChannel, nextChannelPointer) == 0x34,
+               "o_SoundChannel_nextChannelPointer: flagged 64-bit");
 _Static_assert(offsetof(struct SoundChannel, xpi) == 0x3C, "o_SoundChannel_xpi: flagged 64-bit");
 _Static_assert(offsetof(struct SoundChannel, xpc) == 0x3E, "o_SoundChannel_xpc: flagged 64-bit");
 _Static_assert(sizeof(struct SoundChannel) == 0x40, "SoundChannel_size: flagged 64-bit");
@@ -160,16 +162,20 @@ _Static_assert(sizeof(struct SoundChannel) == 0x40, "SoundChannel_size: flagged 
 /* struct CgbChannel */
 _Static_assert(offsetof(struct CgbChannel, wavePointer) == 0x24, "o_CgbChannel_wavePointer: flagged 64-bit");
 _Static_assert(offsetof(struct CgbChannel, track) == 0x2C, "o_CgbChannel_track: flagged 64-bit");
-_Static_assert(offsetof(struct CgbChannel, prevChannelPointer) == 0x30, "o_CgbChannel_prevChannelPointer: flagged 64-bit");
-_Static_assert(offsetof(struct CgbChannel, nextChannelPointer) == 0x34, "o_CgbChannel_nextChannelPointer: flagged 64-bit");
+_Static_assert(offsetof(struct CgbChannel, prevChannelPointer) == 0x30,
+               "o_CgbChannel_prevChannelPointer: flagged 64-bit");
+_Static_assert(offsetof(struct CgbChannel, nextChannelPointer) == 0x34,
+               "o_CgbChannel_nextChannelPointer: flagged 64-bit");
 _Static_assert(sizeof(struct CgbChannel) == 0x40, "CgbChannel_size, the gCgbChans stride: flagged 64-bit");
 
 /* struct MusicPlayerTrack */
 _Static_assert(offsetof(struct MusicPlayerTrack, tone) == 0x24, "o_MusicPlayerTrack_ToneData_type: flagged 64-bit");
 _Static_assert(offsetof(struct MusicPlayerTrack, unk_3C) == 0x3C, "o_MusicPlayerTrack_unk_3C: flagged 64-bit");
 _Static_assert(offsetof(struct MusicPlayerTrack, cmdPtr) == 0x40, "o_MusicPlayerTrack_cmdPtr: flagged 64-bit");
-_Static_assert(offsetof(struct MusicPlayerTrack, patternStack) == 0x44, "o_MusicPlayerTrack_patternStack: flagged 64-bit");
-_Static_assert(sizeof(struct MusicPlayerTrack) == 0x50, "MusicPlayerTrack_size, TRACK_SIZE in sound/music_player_table.inc: flagged 64-bit");
+_Static_assert(offsetof(struct MusicPlayerTrack, patternStack) == 0x44,
+               "o_MusicPlayerTrack_patternStack: flagged 64-bit");
+_Static_assert(sizeof(struct MusicPlayerTrack) == 0x50,
+               "MusicPlayerTrack_size, TRACK_SIZE in sound/music_player_table.inc: flagged 64-bit");
 _Static_assert(offsetof(struct MusicPlayerTrack, cmdPtr) == M4A_CLEAR_SIZE, "Clear64byte keeps cmdPtr: flagged 64-bit");
 
 /* struct MusicPlayerInfo: everything after songHeader moves with the pointer size. */
@@ -187,7 +193,8 @@ _Static_assert(offsetof(struct MusicPlayerInfo, tone) == 0x30, "o_MusicPlayerInf
 _Static_assert(offsetof(struct MusicPlayerInfo, ident) == 0x34, "o_MusicPlayerInfo_ident: flagged 64-bit");
 _Static_assert(offsetof(struct MusicPlayerInfo, MPlayMainNext) == 0x38, "o_MusicPlayerInfo_func: flagged 64-bit");
 _Static_assert(offsetof(struct MusicPlayerInfo, musicPlayerNext) == 0x3C, "o_MusicPlayerInfo_intp: flagged 64-bit");
-_Static_assert(sizeof(struct MusicPlayerInfo) == M4A_CLEAR_SIZE, "MusicPlayerInfo_size, cleared by Clear64byte in MPlayOpen: flagged 64-bit");
+_Static_assert(sizeof(struct MusicPlayerInfo) == M4A_CLEAR_SIZE,
+               "MusicPlayerInfo_size, cleared by Clear64byte in MPlayOpen: flagged 64-bit");
 
 /* struct SoundInfo */
 _Static_assert(offsetof(struct SoundInfo, cgbChans) == 0x1C, "o_SoundInfo_cgbChans: flagged 64-bit");

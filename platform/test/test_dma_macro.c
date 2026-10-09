@@ -24,8 +24,8 @@
 #include "transfer_bounds.h"
 
 /* include/scanline_effect.h, SCANLINE_EFFECT_DMACNT_16BIT, in u32. */
-#define SCANLINE_16BIT_CNT_H (DMA_ENABLE | DMA_START_HBLANK | DMA_REPEAT | DMA_SRC_INC \
-                              | DMA_DEST_INC | DMA_16BIT | DMA_DEST_RELOAD)
+#define SCANLINE_16BIT_CNT_H \
+    (DMA_ENABLE | DMA_START_HBLANK | DMA_REPEAT | DMA_SRC_INC | DMA_DEST_INC | DMA_16BIT | DMA_DEST_RELOAD)
 #define SCANLINE_16BIT (((u32)SCANLINE_16BIT_CNT_H << 16) | 1)
 /* What expansion's DmaCopy16/DmaCopy32 put in CNT_H. */
 #define COPY16_CNT_H (DMA_ENABLE | DMA_START_NOW | DMA_16BIT | DMA_SRC_INC | DMA_DEST_INC)

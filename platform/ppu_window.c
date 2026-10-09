@@ -61,15 +61,14 @@ static void apply_rectangle(const struct ppu_regs *regs, enum window_number wind
 {
     if (!ppu_window_span_contains(regs->winv[window], line))
         return;
-    const uint8_t inside = window == WINDOW_1 ? high_control_byte(regs->winin)
-                                              : low_control_byte(regs->winin);
+    const uint8_t inside = window == WINDOW_1 ? high_control_byte(regs->winin) : low_control_byte(regs->winin);
     for (uint16_t x = 0; x < PPU_SCREEN_WIDTH; x++)
         if (ppu_window_span_contains(regs->winh[window], x))
             control[x] = inside;
 }
 
-void ppu_window_render_line(const struct ppu_regs *regs, uint16_t line,
-                            const struct ppu_obj_line *obj, uint8_t control[PPU_SCREEN_WIDTH])
+void ppu_window_render_line(const struct ppu_regs *regs, uint16_t line, const struct ppu_obj_line *obj,
+                            uint8_t control[PPU_SCREEN_WIDTH])
 {
     const uint16_t enabled = regs->dispcnt & (PPU_DISPCNT_WIN0_ON | PPU_DISPCNT_WIN1_ON | PPU_DISPCNT_OBJWIN_ON);
     if (enabled == 0) {

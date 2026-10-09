@@ -27,10 +27,14 @@ static void fake_raise(enum gba_irq source)
 
 static void setup(void)
 {
-    REG_TM0CNT_L = 0; REG_TM0CNT_H = 0;
-    REG_TM1CNT_L = 0; REG_TM1CNT_H = 0;
-    REG_TM2CNT_L = 0; REG_TM2CNT_H = 0;
-    REG_TM3CNT_L = 0; REG_TM3CNT_H = 0;
+    REG_TM0CNT_L = 0;
+    REG_TM0CNT_H = 0;
+    REG_TM1CNT_L = 0;
+    REG_TM1CNT_H = 0;
+    REG_TM2CNT_L = 0;
+    REG_TM2CNT_H = 0;
+    REG_TM3CNT_L = 0;
+    REG_TM3CNT_H = 0;
     for (unsigned i = 0; i < sizeof raised / sizeof raised[0]; i++)
         raised[i] = 0;
     timer_init(fake_raise);
@@ -39,10 +43,14 @@ static void setup(void)
 static void teardown(void)
 {
     timer_shutdown();
-    REG_TM0CNT_L = 0; REG_TM0CNT_H = 0;
-    REG_TM1CNT_L = 0; REG_TM1CNT_H = 0;
-    REG_TM2CNT_L = 0; REG_TM2CNT_H = 0;
-    REG_TM3CNT_L = 0; REG_TM3CNT_H = 0;
+    REG_TM0CNT_L = 0;
+    REG_TM0CNT_H = 0;
+    REG_TM1CNT_L = 0;
+    REG_TM1CNT_H = 0;
+    REG_TM2CNT_L = 0;
+    REG_TM2CNT_H = 0;
+    REG_TM3CNT_L = 0;
+    REG_TM3CNT_H = 0;
 }
 
 PTEST(init_rejects_null_raise)

@@ -9,7 +9,7 @@
  * module's source rather than widening its public header; it is therefore
  * not linked with gba_memmap.o (no test is named after gba_memmap_layout.c).
  */
-#include "gba_memmap.c"
+#include "gba_memmap.c" // NOLINT(bugprone-suspicious-include): tests the unit's static functions
 
 #include "ptest.h"
 
@@ -27,14 +27,14 @@ struct expected_section {
 };
 
 static const struct expected_section expected_sections[] = {
-    { GBA_REGION_EWRAM, 0x02000000u, 256 * KIB, "EWRAM" },
-    { GBA_REGION_IWRAM, 0x03000000u, 32 * KIB, "IWRAM" },
-    { GBA_REGION_IO, 0x04000000u, PAGE, "I/O" },
-    { GBA_REGION_MGBA_DEBUG, 0x04FFF000u, PAGE, "mGBA debug" },
-    { GBA_REGION_PALETTE_RAM, 0x05000000u, PAGE, "palette RAM" },
-    { GBA_REGION_VRAM, 0x06000000u, 96 * KIB, "VRAM" },
-    { GBA_REGION_OAM, 0x07000000u, PAGE, "OAM" },
-    { GBA_REGION_SRAM, 0x0E000000u, 128 * KIB, "SRAM" },
+    {GBA_REGION_EWRAM, 0x02000000u, 256 * KIB, "EWRAM"},
+    {GBA_REGION_IWRAM, 0x03000000u, 32 * KIB, "IWRAM"},
+    {GBA_REGION_IO, 0x04000000u, PAGE, "I/O"},
+    {GBA_REGION_MGBA_DEBUG, 0x04FFF000u, PAGE, "mGBA debug"},
+    {GBA_REGION_PALETTE_RAM, 0x05000000u, PAGE, "palette RAM"},
+    {GBA_REGION_VRAM, 0x06000000u, 96 * KIB, "VRAM"},
+    {GBA_REGION_OAM, 0x07000000u, PAGE, "OAM"},
+    {GBA_REGION_SRAM, 0x0E000000u, 128 * KIB, "SRAM"},
 };
 #define EXPECTED_SECTION_COUNT (sizeof expected_sections / sizeof expected_sections[0])
 _Static_assert(EXPECTED_SECTION_COUNT == GBA_REGION_COUNT - 1, "a region has no expected section");
@@ -48,7 +48,7 @@ struct layout_check {
 
 static struct layout_check check_layout(enum gba_region id, uintptr_t start, uintptr_t end)
 {
-    struct layout_check check = { .status = GBA_MEMMAP_OK, .log_complete = false, .log = "" };
+    struct layout_check check = {.status = GBA_MEMMAP_OK, .log_complete = false, .log = ""};
     FILE *const log = tmpfile();
     if (log == NULL)
         return check;
@@ -69,8 +69,7 @@ static void expect_rejected(const struct expected_section *section, uintptr_t st
 {
     const struct layout_check check = check_layout(section->id, start, end);
     char expected_name[64];
-    const int length = snprintf(expected_name, sizeof expected_name, "gba_memmap: %s is linked at",
-                                section->name);
+    const int length = snprintf(expected_name, sizeof expected_name, "gba_memmap: %s is linked at", section->name);
     PT_ASSERT(length > 0 && (size_t)length < sizeof expected_name);
     PT_ASSERT(check.log_complete);
     if (check.status != GBA_MEMMAP_ERR_LAYOUT)
@@ -83,8 +82,8 @@ PTEST(exact_sections_pass_silently)
 {
     for (size_t i = 0; i < EXPECTED_SECTION_COUNT; i++) {
         const struct expected_section *const section = &expected_sections[i];
-        const struct layout_check check =
-            check_layout(section->id, section->base, section->base + section->linked_size);
+        const struct layout_check check = check_layout(section->id, section->base,
+                                                       section->base + section->linked_size);
         PT_ASSERT(check.log_complete);
         if (check.status != GBA_MEMMAP_OK)
             PT_FAIL(section->name);

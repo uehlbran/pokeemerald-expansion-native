@@ -86,9 +86,8 @@ _Static_assert(INTERRUPT_DISPATCH_CAP > GBA_IRQ_COUNT, "the cap must allow every
 /* IntrMain's search order, src/crt0.s:53-93: the source at position i runs
  * gIntrTable[i]. Game Pak, tested last (crt0.s:94-96), runs no handler. */
 static const enum gba_irq intr_main_order[] = {
-    GBA_IRQ_VCOUNT, GBA_IRQ_SERIAL, GBA_IRQ_TIMER3, GBA_IRQ_HBLANK, GBA_IRQ_VBLANK,
-    GBA_IRQ_TIMER0, GBA_IRQ_TIMER1, GBA_IRQ_TIMER2, GBA_IRQ_DMA0,   GBA_IRQ_DMA1,
-    GBA_IRQ_DMA2,   GBA_IRQ_DMA3,   GBA_IRQ_KEYPAD,
+    GBA_IRQ_VCOUNT, GBA_IRQ_SERIAL, GBA_IRQ_TIMER3, GBA_IRQ_HBLANK, GBA_IRQ_VBLANK, GBA_IRQ_TIMER0, GBA_IRQ_TIMER1,
+    GBA_IRQ_TIMER2, GBA_IRQ_DMA0,   GBA_IRQ_DMA1,   GBA_IRQ_DMA2,   GBA_IRQ_DMA3,   GBA_IRQ_KEYPAD,
 };
 #define HANDLED_SOURCE_COUNT (sizeof intr_main_order / sizeof intr_main_order[0])
 _Static_assert(HANDLED_SOURCE_COUNT == SLOT_SPURIOUS, "every source but Game Pak has a slot");
@@ -138,25 +137,66 @@ static void handler_ran(size_t slot)
     record.if_seen[slot] = requested();
 }
 
-static void count_slot_0(void) { handler_ran(0); }
-static void count_slot_1(void) { handler_ran(1); }
-static void count_slot_2(void) { handler_ran(2); }
-static void count_slot_3(void) { handler_ran(3); }
-static void count_slot_4(void) { handler_ran(4); }
-static void count_slot_5(void) { handler_ran(5); }
-static void count_slot_6(void) { handler_ran(6); }
-static void count_slot_7(void) { handler_ran(7); }
-static void count_slot_8(void) { handler_ran(8); }
-static void count_slot_9(void) { handler_ran(9); }
-static void count_slot_10(void) { handler_ran(10); }
-static void count_slot_11(void) { handler_ran(11); }
-static void count_slot_12(void) { handler_ran(12); }
-static void count_slot_13(void) { handler_ran(13); }
+static void count_slot_0(void)
+{
+    handler_ran(0);
+}
+static void count_slot_1(void)
+{
+    handler_ran(1);
+}
+static void count_slot_2(void)
+{
+    handler_ran(2);
+}
+static void count_slot_3(void)
+{
+    handler_ran(3);
+}
+static void count_slot_4(void)
+{
+    handler_ran(4);
+}
+static void count_slot_5(void)
+{
+    handler_ran(5);
+}
+static void count_slot_6(void)
+{
+    handler_ran(6);
+}
+static void count_slot_7(void)
+{
+    handler_ran(7);
+}
+static void count_slot_8(void)
+{
+    handler_ran(8);
+}
+static void count_slot_9(void)
+{
+    handler_ran(9);
+}
+static void count_slot_10(void)
+{
+    handler_ran(10);
+}
+static void count_slot_11(void)
+{
+    handler_ran(11);
+}
+static void count_slot_12(void)
+{
+    handler_ran(12);
+}
+static void count_slot_13(void)
+{
+    handler_ran(13);
+}
 
 static const interrupt_handler counting_handlers[TABLE_LENGTH] = {
-    count_slot_0, count_slot_1, count_slot_2,  count_slot_3,  count_slot_4,
-    count_slot_5, count_slot_6, count_slot_7,  count_slot_8,  count_slot_9,
-    count_slot_10, count_slot_11, count_slot_12, count_slot_13,
+    count_slot_0, count_slot_1, count_slot_2, count_slot_3,  count_slot_4,  count_slot_5,  count_slot_6,
+    count_slot_7, count_slot_8, count_slot_9, count_slot_10, count_slot_11, count_slot_12, count_slot_13,
 };
 
 /* The table the controller is given; static, so it outlives every test. */
@@ -273,7 +313,7 @@ struct report {
  * what was written to it. */
 static struct report stderr_of(void (*action)(void *), void *context)
 {
-    struct report report = { .captured = false, .text = "" };
+    struct report report = {.captured = false, .text = ""};
     FILE *const file = tmpfile();
     if (file == NULL)
         return report;
@@ -333,8 +373,7 @@ static bool reports(const struct report *report, const char *call)
 {
     char prefix[64];
     const int length = snprintf(prefix, sizeof prefix, "interrupt: %s:", call);
-    return report->captured && length > 0 && (size_t)length < sizeof prefix &&
-           strstr(report->text, prefix) != NULL;
+    return report->captured && length > 0 && (size_t)length < sizeof prefix && strstr(report->text, prefix) != NULL;
 }
 
 static bool silent(const struct report *report)
@@ -347,7 +386,7 @@ static bool silent(const struct report *report)
 PTEST(init_with_a_null_table_fails_and_is_reported)
 {
     setup();
-    struct init_call call = { .table = NULL, .count = TABLE_LENGTH, .status = INTERRUPT_OK };
+    struct init_call call = {.table = NULL, .count = TABLE_LENGTH, .status = INTERRUPT_OK};
     const struct report report = stderr_of(init_with, &call);
     PT_ASSERT_EQ_INT(call.status, INTERRUPT_ERR_TABLE);
     PT_ASSERT(reports(&report, "interrupt_init"));
@@ -362,12 +401,11 @@ PTEST(init_with_a_null_table_fails_and_is_reported)
 PTEST(init_with_no_entries_or_more_than_gIntrTable_fails)
 {
     setup();
-    struct init_call empty = { .table = table, .count = 0, .status = INTERRUPT_OK };
+    struct init_call empty = {.table = table, .count = 0, .status = INTERRUPT_OK};
     const struct report empty_report = stderr_of(init_with, &empty);
     PT_ASSERT_EQ_INT(empty.status, INTERRUPT_ERR_TABLE);
     PT_ASSERT(reports(&empty_report, "interrupt_init"));
-    struct init_call oversized = { .table = table, .count = TABLE_LENGTH + 1,
-                                   .status = INTERRUPT_OK };
+    struct init_call oversized = {.table = table, .count = TABLE_LENGTH + 1, .status = INTERRUPT_OK};
     const struct report oversized_report = stderr_of(init_with, &oversized);
     PT_ASSERT_EQ_INT(oversized.status, INTERRUPT_ERR_TABLE);
     PT_ASSERT(reports(&oversized_report, "interrupt_init"));
@@ -378,8 +416,7 @@ PTEST(init_clears_if_and_is_silent)
 {
     setup();
     write16(IF_ADDRESS, (uint16_t)(INTR_FLAG_VBLANK | INTR_FLAG_TIMER3));
-    struct init_call call = { .table = table, .count = TABLE_LENGTH,
-                              .status = INTERRUPT_ERR_TABLE };
+    struct init_call call = {.table = table, .count = TABLE_LENGTH, .status = INTERRUPT_ERR_TABLE};
     const struct report report = stderr_of(init_with, &call);
     PT_ASSERT_EQ_INT(call.status, INTERRUPT_OK);
     PT_ASSERT(silent(&report));
@@ -485,7 +522,7 @@ PTEST(raise_of_a_value_that_is_not_a_source_is_rejected_and_reported)
     enum gba_irq past_the_end = GBA_IRQ_COUNT;
     const struct report report = stderr_of(raise_source, &past_the_end);
     PT_ASSERT(reports(&report, "interrupt_raise"));
-    enum gba_irq negative = (enum gba_irq)-1;
+    enum gba_irq negative = (enum gba_irq) - 1;
     const struct report negative_report = stderr_of(raise_source, &negative);
     PT_ASSERT(reports(&negative_report, "interrupt_raise"));
     PT_ASSERT_EQ_U32(requested(), 0u);

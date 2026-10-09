@@ -31,7 +31,7 @@ enum {
     IO_DISPCNT = 0x00,
     IO_DISPSTAT = 0x04,
     IO_VCOUNT = 0x06,
-    IO_BG0CNT = 0x08, /* BGnCNT at 0x08 + 2n */
+    IO_BG0CNT = 0x08,  /* BGnCNT at 0x08 + 2n */
     IO_BG0HOFS = 0x10, /* BGnHOFS at 0x10 + 4n, BGnVOFS 2 after */
     IO_BG0VOFS = 0x12,
     IO_BG2PA = 0x20,
@@ -77,15 +77,23 @@ enum {
 };
 
 /* GBATEK "LCD I/O BG Control", BGxCNT. */
-enum {
-    BGCNT_MOSAIC = 0x0040,
-    BGCNT_8BPP = 0x0080,
-    BGCNT_WRAP = 0x2000
-};
-static inline uint16_t bgcnt_priority(unsigned p) { return (uint16_t)p; }
-static inline uint16_t bgcnt_char_block(unsigned n) { return (uint16_t)(n << 2); }
-static inline uint16_t bgcnt_screen_block(unsigned n) { return (uint16_t)(n << 8); }
-static inline uint16_t bgcnt_size(unsigned n) { return (uint16_t)(n << 14); }
+enum { BGCNT_MOSAIC = 0x0040, BGCNT_8BPP = 0x0080, BGCNT_WRAP = 0x2000 };
+static inline uint16_t bgcnt_priority(unsigned p)
+{
+    return (uint16_t)p;
+}
+static inline uint16_t bgcnt_char_block(unsigned n)
+{
+    return (uint16_t)(n << 2);
+}
+static inline uint16_t bgcnt_screen_block(unsigned n)
+{
+    return (uint16_t)(n << 8);
+}
+static inline uint16_t bgcnt_size(unsigned n)
+{
+    return (uint16_t)(n << 14);
+}
 
 #define CHAR_BLOCK_BYTES 0x4000u   /* BGxCNT bits 2-3, units of 16 KiB */
 #define SCREEN_BLOCK_BYTES 0x0800u /* BGxCNT bits 8-12, units of 2 KiB */
@@ -93,10 +101,7 @@ static inline uint16_t bgcnt_size(unsigned n) { return (uint16_t)(n << 14); }
 #define OBJ_TILE_BYTES 32u         /* OBJ tile numbers count 32-byte units */
 
 /* GBATEK "LCD VRAM BG Screen Data Format", text map entry. */
-enum {
-    MAP_HFLIP = 0x0400,
-    MAP_VFLIP = 0x0800
-};
+enum { MAP_HFLIP = 0x0400, MAP_VFLIP = 0x0800 };
 static inline uint16_t map_entry(unsigned tile, unsigned palette, uint16_t flips)
 {
     return (uint16_t)(tile | palette << 12 | flips);
@@ -117,15 +122,24 @@ enum {
     A1_HFLIP = 0x1000,
     A1_VFLIP = 0x2000
 };
-static inline uint16_t a1_size(unsigned n) { return (uint16_t)(n << 14); }
-static inline uint16_t a1_affine_group(unsigned n) { return (uint16_t)(n << 9); }
+static inline uint16_t a1_size(unsigned n)
+{
+    return (uint16_t)(n << 14);
+}
+static inline uint16_t a1_affine_group(unsigned n)
+{
+    return (uint16_t)(n << 9);
+}
 static inline uint16_t a2(unsigned tile, unsigned priority, unsigned palette)
 {
     return (uint16_t)(tile | priority << 10 | palette << 12);
 }
 
 /* GBATEK "LCD I/O Window Feature", WINxH/WINxV: first coordinate high, end low. */
-static inline uint16_t win_span(unsigned first, unsigned end) { return (uint16_t)(first << 8 | end); }
+static inline uint16_t win_span(unsigned first, unsigned end)
+{
+    return (uint16_t)(first << 8 | end);
+}
 
 /* GBATEK "LCD I/O Color Special Effects", BLDCNT. */
 enum {
@@ -143,7 +157,10 @@ enum {
     BLD_2ND_OBJ = 0x1000,
     BLD_2ND_BD = 0x2000
 };
-static inline uint16_t bldalpha(unsigned eva, unsigned evb) { return (uint16_t)(eva | evb << 8); }
+static inline uint16_t bldalpha(unsigned eva, unsigned evb)
+{
+    return (uint16_t)(eva | evb << 8);
+}
 
 /* GBATEK "LCD Color Palettes": bits 0-4 red, 5-9 green, 10-14 blue. */
 static inline uint16_t rgb(unsigned r, unsigned g, unsigned b)
@@ -225,7 +242,7 @@ static inline void obj_set(unsigned index, uint16_t attr0, uint16_t attr1, uint1
 /* OBJ rotation/scaling group (GBATEK: PA at 07000006 + 32n, PB +8, PC +16, PD +24). */
 static inline void obj_affine_set(unsigned group, int16_t pa, int16_t pb, int16_t pc, int16_t pd)
 {
-    const int16_t values[4] = { pa, pb, pc, pd };
+    const int16_t values[4] = {pa, pb, pc, pd};
     for (unsigned i = 0; i < 4; i++)
         memcpy(gba_pointer(GBA_OAM_BASE + group * 32u + 6u + i * 8u), &values[i], sizeof values[i]);
 }

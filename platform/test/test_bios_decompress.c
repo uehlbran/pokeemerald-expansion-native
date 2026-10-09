@@ -20,10 +20,10 @@
 #include "transfer_bounds.h"
 
 #define STALE 0xEE
-#define LZ77_MAX_DISP 0xFFF  /* 12 bits */
-#define LZ77_MAX_LENGTH 18   /* 4 bits + 3 */
-#define RL_MAX_RUN 130       /* 7 bits + 3 */
-#define RL_MAX_LITERALS 128  /* 7 bits + 1 */
+#define LZ77_MAX_DISP 0xFFF /* 12 bits */
+#define LZ77_MAX_LENGTH 18  /* 4 bits + 3 */
+#define RL_MAX_RUN 130      /* 7 bits + 3 */
+#define RL_MAX_LITERALS 128 /* 7 bits + 1 */
 #define BUILDER_CAPACITY 8192
 
 static void setup(void)
@@ -42,8 +42,8 @@ static void teardown(void)
 struct builder {
     _Alignas(4) uint8_t bytes[BUILDER_CAPACITY];
     size_t size;
-    size_t flag_at;     /* where the current flag byte is */
-    unsigned in_group;  /* blocks under it so far, 0-8 */
+    size_t flag_at;    /* where the current flag byte is */
+    unsigned in_group; /* blocks under it so far, 0-8 */
 };
 
 static void put(struct builder *b, uint8_t byte)
@@ -93,11 +93,10 @@ static void lz_ref(struct builder *b, unsigned length, unsigned disp)
 /* "abcabcabcd": three literals, a 6-byte copy from 3 back (overlapping its
  * own output), a literal. */
 static const _Alignas(4) uint8_t lz_abc[] = {
-    0x10, 0x0A, 0x00, 0x00,  /* type 1, size 10 */
-    0x10,                    /* flags: L L L C L */
-    'a', 'b', 'c',
-    0x30, 0x02,              /* length 3+3, disp 2: from dest-3 */
-    'd', 0x00,
+    0x10, 0x0A, 0x00, 0x00,       /* type 1, size 10 */
+    0x10,                         /* flags: L L L C L */
+    'a',  'b',  'c',  0x30, 0x02, /* length 3+3, disp 2: from dest-3 */
+    'd',  0x00,
 };
 
 PTEST(lz77_literals_and_overlapping_reference)
@@ -173,7 +172,7 @@ PTEST(lz77_vram_disp_zero_reads_unwritten_byte)
     PT_ASSERT_EQ_INT(bios_lz77_uncomp_bounded(stream, sizeof stream, wram, BIOS_WRITE_8BIT), BIOS_OK);
     PT_ASSERT_EQ_INT(bios_lz77_uncomp_bounded(stream, sizeof stream, vram, BIOS_WRITE_16BIT), BIOS_OK);
     PT_ASSERT_MEM_EQ(wram, "aaaaaa", 6);
-    const uint8_t expected_vram[6] = { 'a', STALE, STALE, STALE, STALE, STALE };
+    const uint8_t expected_vram[6] = {'a', STALE, STALE, STALE, STALE, STALE};
     PT_ASSERT_MEM_EQ(vram, expected_vram, sizeof expected_vram);
     teardown();
 }
@@ -216,8 +215,7 @@ PTEST(lz77_stops_at_declared_size_inside_a_block)
     setup();
     static const _Alignas(4) uint8_t stream[] = {
         0x10, 0x04, 0x00, 0x00, /* size 4 */
-        0x40, 'a',
-        0xF0, 0x00,             /* length 15+3, disp 0 */
+        0x40, 'a',  0xF0, 0x00, /* length 15+3, disp 0 */
     };
     uint8_t out[8];
     memset(out, STALE, sizeof out);
@@ -230,7 +228,7 @@ PTEST(lz77_stops_at_declared_size_inside_a_block)
 PTEST(lz77_size_zero_writes_nothing)
 {
     setup();
-    static const _Alignas(4) uint8_t stream[] = { 0x10, 0x00, 0x00, 0x00 };
+    static const _Alignas(4) uint8_t stream[] = {0x10, 0x00, 0x00, 0x00};
     PT_ASSERT_EQ_INT(bios_lz77_uncomp_bounded(stream, sizeof stream, NULL, BIOS_WRITE_8BIT), BIOS_OK);
     teardown();
 }
@@ -247,7 +245,7 @@ PTEST(lz77_declared_size_beyond_destination_region_refused)
     memset(tail, STALE, 8);
     PT_ASSERT_EQ_INT(bios_lz77_uncomp_bounded(b.bytes, b.size, tail, BIOS_WRITE_8BIT), BIOS_ERR_RANGE);
     PT_ASSERT_EQ_INT(bios_lz77_uncomp_bounded(b.bytes, b.size, tail, BIOS_WRITE_16BIT), BIOS_ERR_RANGE);
-    uint32_t words[8] = { 0 }; /* 26 stream bytes */
+    uint32_t words[8] = {0}; /* 26 stream bytes */
     PT_ASSERT(b.size <= sizeof words);
     memcpy(words, b.bytes, b.size);
     LZ77UnCompVram(words, tail);
@@ -273,8 +271,8 @@ PTEST(lz77_truncated_stream)
 PTEST(lz77_wrong_type_refused)
 {
     setup();
-    static const _Alignas(4) uint8_t stream[] = { 0x30, 0x02, 0x00, 0x00, 0x00, 'a', 'b', 0x00 };
-    uint8_t out[2] = { STALE, STALE };
+    static const _Alignas(4) uint8_t stream[] = {0x30, 0x02, 0x00, 0x00, 0x00, 'a', 'b', 0x00};
+    uint8_t out[2] = {STALE, STALE};
     PT_ASSERT_EQ_INT(bios_lz77_uncomp_bounded(stream, sizeof stream, out, BIOS_WRITE_8BIT), BIOS_ERR_HEADER);
     PT_ASSERT_EQ_U32(out[0], STALE);
     teardown();
@@ -297,7 +295,7 @@ PTEST(lz77_reference_before_output_refused)
 static const _Alignas(4) uint8_t rl_stream[] = {
     0x30, 0x08, 0x00, 0x00, /* type 3, size 8 */
     0x82, 'A',              /* run of 2+3 */
-    0x02, 'B', 'C', 'D',    /* 2+1 literals */
+    0x02, 'B',  'C',  'D',  /* 2+1 literals */
     0x00, 0x00,
 };
 
@@ -351,7 +349,7 @@ PTEST(rl_maximum_lengths)
 PTEST(rl_vram_odd_size_and_stop_inside_a_run)
 {
     setup();
-    static const _Alignas(4) uint8_t stream[] = { 0x30, 0x03, 0x00, 0x00, 0xFF, 'z', 0x00, 0x00 };
+    static const _Alignas(4) uint8_t stream[] = {0x30, 0x03, 0x00, 0x00, 0xFF, 'z', 0x00, 0x00};
     uint8_t wram[6], vram[6];
     memset(wram, STALE, sizeof wram);
     memset(vram, STALE, sizeof vram);
@@ -387,17 +385,17 @@ static const _Alignas(4) uint8_t huff_8bit[] = {
     0x80,                   /* root: node0 is data; children at 4+0*2+2 = 6, 7 */
     'f',                    /* 6: data */
     0xC0,                   /* 7: both children data, at 6+0*2+2 = 8, 9 */
-    'H', 'u', 0x00, 0x00,   /* 8, 9; padding to the word */
+    'H',  'u',  0x00, 0x00, /* 8, 9; padding to the word */
     0x00, 0x00, 0x00, 0xB0, /* bits 1 0 1 1 0 0 from bit 31 */
 };
 
 /* Four leaves 1, 2, 3, 4 with codes 00, 01, 10, 11. */
-#define HUFF_4BIT_TREE                                                     \
-    0x03,                  /* tree size 3 */                               \
-    0x00,                  /* root: children at 6 (A) and 7 (B) */         \
-    0xC0,                  /* 6, A: data children at 6+0*2+2 = 8, 9 */     \
-    0xC1,                  /* 7, B: data children at 6+1*2+2 = 10, 11 */   \
-    0x01, 0x02, 0x03, 0x04 /* 8-11 */
+#define HUFF_4BIT_TREE                                                       \
+    0x03,                      /* tree size 3 */                             \
+        0x00,                  /* root: children at 6 (A) and 7 (B) */       \
+        0xC0,                  /* 6, A: data children at 6+0*2+2 = 8, 9 */   \
+        0xC1,                  /* 7, B: data children at 6+1*2+2 = 10, 11 */ \
+        0x01, 0x02, 0x03, 0x04 /* 8-11 */
 
 PTEST(huffman_8bit_gbatek_example)
 {
@@ -422,15 +420,14 @@ PTEST(huffman_4bit_across_words)
 {
     setup();
     static const _Alignas(4) uint8_t stream[] = {
-        0x24, 0x0C, 0x00, 0x00, /* 4-bit units, type 2, size 12 */
-        HUFF_4BIT_TREE,
-        0x1B, 0x1B, 0x1B, 0x1B, /* 00 01 10 11 x 4, from bit 31 */
-        0x00, 0x00, 0x1B, 0x1B, /* 00 01 10 11 x 2, then unused bits */
+        0x24,           0x0C, 0x00, 0x00,       /* 4-bit units, type 2, size 12 */
+        HUFF_4BIT_TREE, 0x1B, 0x1B, 0x1B, 0x1B, /* 00 01 10 11 x 4, from bit 31 */
+        0x00,           0x00, 0x1B, 0x1B,       /* 00 01 10 11 x 2, then unused bits */
     };
     uint8_t out[16];
     memset(out, STALE, sizeof out);
     PT_ASSERT_EQ_INT(bios_huff_uncomp_bounded(stream, sizeof stream, out), BIOS_OK);
-    const uint8_t expected[12] = { 0x21, 0x43, 0x21, 0x43, 0x21, 0x43, 0x21, 0x43, 0x21, 0x43, 0x21, 0x43 };
+    const uint8_t expected[12] = {0x21, 0x43, 0x21, 0x43, 0x21, 0x43, 0x21, 0x43, 0x21, 0x43, 0x21, 0x43};
     PT_ASSERT_MEM_EQ(out, expected, sizeof expected);
     PT_ASSERT_EQ_U32(out[12], STALE);
     teardown();
@@ -441,8 +438,8 @@ PTEST(huffman_size_rounds_up_to_words)
 {
     setup();
     static const _Alignas(4) uint8_t stream[] = {
-        0x28, 0x05, 0x00, 0x00, 0x03, 0x80, 'f', 0xC0, 'H', 'u', 0x00, 0x00,
-        0x00, 0x00, 0xC0, 0xB2, /* 10 11 0 0 10 11 0 0: "HuffHuff" */
+        0x28, 0x05, 0x00, 0x00, 0x03, 0x80, 'f',  0xC0,
+        'H',  'u',  0x00, 0x00, 0x00, 0x00, 0xC0, 0xB2, /* 10 11 0 0 10 11 0 0: "HuffHuff" */
     };
     uint8_t out[10];
     memset(out, STALE, sizeof out);
@@ -457,8 +454,8 @@ PTEST(huffman_data_upper_bits_ignored)
 {
     setup();
     static const _Alignas(4) uint8_t stream[] = {
-        0x24, 0x01, 0x00, 0x00, 0x03, 0x00, 0xC0, 0xC1, 0xF1, 0x02, 0x03, 0x04,
-        0x00, 0x00, 0x00, 0x10, /* 00 01: units 1, 2 */
+        0x24, 0x01, 0x00, 0x00, 0x03, 0x00, 0xC0, 0xC1,
+        0xF1, 0x02, 0x03, 0x04, 0x00, 0x00, 0x00, 0x10, /* 00 01: units 1, 2 */
     };
     uint8_t out[4];
     memset(out, STALE, sizeof out);

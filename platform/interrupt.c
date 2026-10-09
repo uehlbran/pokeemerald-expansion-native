@@ -42,9 +42,8 @@ _Static_assert(INTERRUPT_IF_MARKER >= (1u << GBA_IRQ_COUNT), "the IF marker is a
  * handled by gIntrTable[i] (r12 = 4 * i at crt0.s:113-115), except Game Pak,
  * which halts (crt0.s:94-96). */
 static const enum gba_irq intr_main_order[GBA_IRQ_COUNT] = {
-    GBA_IRQ_VCOUNT, GBA_IRQ_SERIAL, GBA_IRQ_TIMER3, GBA_IRQ_HBLANK, GBA_IRQ_VBLANK,
-    GBA_IRQ_TIMER0, GBA_IRQ_TIMER1, GBA_IRQ_TIMER2, GBA_IRQ_DMA0,   GBA_IRQ_DMA1,
-    GBA_IRQ_DMA2,   GBA_IRQ_DMA3,   GBA_IRQ_KEYPAD, GBA_IRQ_GAMEPAK,
+    GBA_IRQ_VCOUNT, GBA_IRQ_SERIAL, GBA_IRQ_TIMER3, GBA_IRQ_HBLANK, GBA_IRQ_VBLANK, GBA_IRQ_TIMER0, GBA_IRQ_TIMER1,
+    GBA_IRQ_TIMER2, GBA_IRQ_DMA0,   GBA_IRQ_DMA1,   GBA_IRQ_DMA2,   GBA_IRQ_DMA3,   GBA_IRQ_KEYPAD, GBA_IRQ_GAMEPAK,
 };
 _Static_assert(GBA_IRQ_COUNT == INTERRUPT_TABLE_LENGTH, "one gIntrTable slot per position");
 
@@ -144,10 +143,9 @@ static void halt_for_game_pak(void)
 {
     *gba_io_u8(GBA_SOUNDCNT_X_OFFSET) = SOUNDCNT_X_ALL_OFF;
     controller.halted = true;
-    (void)fprintf(stderr,
-                  "interrupt: interrupt_dispatch: Game Pak interrupt (cartridge removed): "
-                  "IntrMain turns the sound off and hangs here (src/crt0.s:94-96); no "
-                  "handler runs again until interrupt_init\n"); /* best-effort */
+    (void)fprintf(stderr, "interrupt: interrupt_dispatch: Game Pak interrupt (cartridge removed): "
+                          "IntrMain turns the sound off and hangs here (src/crt0.s:94-96); no "
+                          "handler runs again until interrupt_init\n"); /* best-effort */
 }
 
 /* Calls gIntrTable[slot] unless it is NULL. True if a handler ran. */
@@ -193,8 +191,7 @@ int interrupt_init(interrupt_handler const *table, size_t count)
         (void)fprintf(stderr,
                       "interrupt: interrupt_init: need gIntrTable and its length (1 to %u); "
                       "got a %s table of length %zu\n",
-                      INTERRUPT_TABLE_LENGTH, table == NULL ? "NULL" : "non-NULL",
-                      count); /* best-effort */
+                      INTERRUPT_TABLE_LENGTH, table == NULL ? "NULL" : "non-NULL", count); /* best-effort */
         return INTERRUPT_ERR_TABLE;
     }
     controller.table = table;
@@ -217,13 +214,12 @@ void interrupt_shutdown(void)
 void interrupt_raise(enum gba_irq source)
 {
     if (!controller.initialised) {
-        (void)fputs("interrupt: interrupt_raise: called before interrupt_init\n",
-                    stderr); /* best-effort */
+        (void)fputs("interrupt: interrupt_raise: called before interrupt_init\n", stderr); /* best-effort */
         return;
     }
     if (!is_source(source)) {
-        (void)fprintf(stderr, "interrupt: interrupt_raise: %u is not a source (0 to %d)\n",
-                      (unsigned)source, GBA_IRQ_COUNT - 1); /* best-effort */
+        (void)fprintf(stderr, "interrupt: interrupt_raise: %u is not a source (0 to %d)\n", (unsigned)source,
+                      GBA_IRQ_COUNT - 1); /* best-effort */
         return;
     }
     const size_t slot = slot_of(source);
@@ -242,8 +238,7 @@ void interrupt_raise(enum gba_irq source)
 unsigned interrupt_dispatch(void)
 {
     if (!controller.initialised) {
-        (void)fputs("interrupt: interrupt_dispatch: called before interrupt_init\n",
-                    stderr); /* best-effort */
+        (void)fputs("interrupt: interrupt_dispatch: called before interrupt_init\n", stderr); /* best-effort */
         return 0;
     }
     unsigned handlers_run = 0;

@@ -50,7 +50,7 @@ static struct {
 
 static int sdl_error(const char *call)
 {
-    fprintf(stderr, MODULE ": %s failed: %s\n", call, SDL_GetError());
+    (void)fprintf(stderr, MODULE ": %s failed: %s\n", call, SDL_GetError());
     return -1;
 }
 
@@ -78,11 +78,11 @@ static int create_window_objects(const struct video_config *cfg)
 int video_init(const struct video_config *cfg)
 {
     if (cfg == NULL || cfg->title == NULL || cfg->scale < 1 || cfg->scale > VIDEO_MAX_SCALE) {
-        fprintf(stderr, MODULE ": video_init: invalid config (need a title and scale 1..%d)\n", VIDEO_MAX_SCALE);
+        (void)fprintf(stderr, MODULE ": video_init: invalid config (need a title and scale 1..%d)\n", VIDEO_MAX_SCALE);
         return -1;
     }
     if (state.initialised) {
-        fprintf(stderr, MODULE ": video_init: already initialised\n");
+        (void)fprintf(stderr, MODULE ": video_init: already initialised\n");
         return -1;
     }
     state.headless = cfg->headless;
@@ -104,7 +104,7 @@ int video_init(const struct video_config *cfg)
 int video_present(const uint16_t *frame)
 {
     if (!state.initialised || frame == NULL) {
-        fprintf(stderr, MODULE ": video_present: not initialised or no frame\n");
+        (void)fprintf(stderr, MODULE ": video_present: not initialised or no frame\n");
         return -1;
     }
     if (state.headless)
@@ -128,8 +128,7 @@ bool video_poll_events(void (*on_event)(const union SDL_Event *event, void *ctx)
     while (SDL_PollEvent(&event) != 0) {
         if (on_event != NULL)
             on_event(&event, ctx);
-        if (event.type == SDL_QUIT ||
-            (event.type == SDL_WINDOWEVENT && event.window.event == SDL_WINDOWEVENT_CLOSE))
+        if (event.type == SDL_QUIT || (event.type == SDL_WINDOWEVENT && event.window.event == SDL_WINDOWEVENT_CLOSE))
             keep_running = false;
     }
     return keep_running;
@@ -163,12 +162,12 @@ static uint8_t expand_channel(uint16_t pixel, unsigned shift)
 int video_write_frame_ppm(const uint16_t *frame, const char *path)
 {
     if (frame == NULL || path == NULL) {
-        fprintf(stderr, MODULE ": video_write_frame_ppm: null argument\n");
+        (void)fprintf(stderr, MODULE ": video_write_frame_ppm: null argument\n");
         return -1;
     }
     FILE *f = fopen(path, "wb");
     if (f == NULL) {
-        fprintf(stderr, MODULE ": fopen(%s) failed: %s\n", path, strerror(errno));
+        (void)fprintf(stderr, MODULE ": fopen(%s) failed: %s\n", path, strerror(errno));
         return -1;
     }
     int result = 0;
@@ -188,6 +187,6 @@ int video_write_frame_ppm(const uint16_t *frame, const char *path)
     if (fclose(f) != 0)
         result = -1;
     if (result != 0)
-        fprintf(stderr, MODULE ": writing %s failed\n", path);
+        (void)fprintf(stderr, MODULE ": writing %s failed\n", path);
     return result;
 }

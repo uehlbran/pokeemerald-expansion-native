@@ -39,6 +39,7 @@
 #define FLASH_H
 
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 
 /* GBATEK "GBA Cart Backup Flash ROM": "128 KBytes - 1Mbit Flash ROM", in 4 KiB
@@ -46,7 +47,7 @@
  * MX29L010 and LE26FV10N1TS entries. */
 #define FLASH_SECTOR_SIZE 0x1000u
 #define FLASH_SECTOR_COUNT 32u
-#define FLASH_CHIP_SIZE (FLASH_SECTOR_SIZE * FLASH_SECTOR_COUNT)
+#define FLASH_CHIP_SIZE ((size_t)FLASH_SECTOR_SIZE * FLASH_SECTOR_COUNT)
 
 /* GBATEK "GBA Cart Backup Flash ROM": "erased memory is FFh-filled". */
 #define FLASH_ERASED_BYTE 0xFFu

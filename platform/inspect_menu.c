@@ -50,7 +50,7 @@ static void fact_debug_menu_open(char *out, size_t size)
     unsigned open = 0;
     for (size_t i = 0; i < NUM_TASKS; i++)
         open |= (gTasks[i].isActive && task_function_has_prefix(i, DEBUG_MENU_TASK_PREFIX)) ? 1u : 0u;
-    snprintf(out, size, "%u", open);
+    (void)snprintf(out, size, "%u", open);
 }
 
 /* The active numeric-entry task (src/debug.c: DebugAction_Selection_StepUpdate), or NULL. */
@@ -70,9 +70,9 @@ static void fact_debug_input(char *out, size_t size)
 {
     const struct Task *task = debug_entry_task();
     if (task == NULL)
-        snprintf(out, size, "%s", inspect_none_text);
+        (void)snprintf(out, size, "%s", inspect_none_text);
     else
-        snprintf(out, size, "%u", (unsigned)(uint16_t)task->data[DEBUG_ENTRY_INPUT_DATA]);
+        (void)snprintf(out, size, "%u", (unsigned)(uint16_t)task->data[DEBUG_ENTRY_INPUT_DATA]);
 }
 
 /* Which step of the selection the entry is on, "STEP.SUBSTEP" (the complex Pokemon give
@@ -83,9 +83,9 @@ static void fact_debug_step(char *out, size_t size)
 {
     const struct Task *task = debug_entry_task();
     if (task == NULL)
-        snprintf(out, size, "%s", inspect_none_text);
+        (void)snprintf(out, size, "%s", inspect_none_text);
     else
-        snprintf(out, size, "%d.%d", task->data[DEBUG_ENTRY_STEP_DATA], task->data[DEBUG_ENTRY_SUBSTEP_DATA]);
+        (void)snprintf(out, size, "%d.%d", task->data[DEBUG_ENTRY_STEP_DATA], task->data[DEBUG_ENTRY_SUBSTEP_DATA]);
 }
 
 /* ---- Party, bag, storage -------------------------------------------------- */
@@ -100,7 +100,7 @@ static unsigned party_species_at(unsigned slot)
 static void write_species_name(unsigned species, char *out, size_t size)
 {
     if (species == SPECIES_NONE || species >= NUM_SPECIES) {
-        snprintf(out, size, "%s", inspect_none_text);
+        (void)snprintf(out, size, "%s", inspect_none_text);
         return;
     }
     (void)inspect_decode_text(gSpeciesInfo[species].speciesName, sizeof gSpeciesInfo[species].speciesName, out, size);
@@ -118,7 +118,7 @@ static void fact_party_species(char *out, size_t size)
         used += (size_t)written;
     }
     if (used == 0)
-        snprintf(out, size, "%s", inspect_none_text);
+        (void)snprintf(out, size, "%s", inspect_none_text);
 }
 
 /* Pokemon in PC box `box`; 0 before the storage is allocated (title screen). */
@@ -134,7 +134,7 @@ static unsigned box_count(unsigned box)
 
 static void fact_pc_box0_count(char *out, size_t size)
 {
-    snprintf(out, size, "%u", box_count(0));
+    (void)snprintf(out, size, "%u", box_count(0));
 }
 
 /* The species of the Pokemon the summary screen shows. The screen's own state is
@@ -147,13 +147,13 @@ static void fact_summary_species(char *out, size_t size)
     unsigned species = 0;
     if (gInitialSummaryScreenCallback != NULL)
         species = party_species_at((unsigned)(uint8_t)gPartyMenu.slotId); /* -1 (none) becomes 255: no such slot */
-    snprintf(out, size, "%u", species);
+    (void)snprintf(out, size, "%u", species);
 }
 
 /* The party menu's cursor slot (gPartyMenu.slotId), -1 when none. */
 static void fact_party_slot(char *out, size_t size)
 {
-    snprintf(out, size, "%d", gPartyMenu.slotId);
+    (void)snprintf(out, size, "%d", gPartyMenu.slotId);
 }
 
 /* ---- Facts with an argument: "name:argument" -------------------------------- */
@@ -161,7 +161,7 @@ static void fact_party_slot(char *out, size_t size)
 static void arg_party_species(const uint32_t arguments[INSPECT_MAX_ARGUMENTS], char *out, size_t size)
 {
     const uint32_t slot = arguments[0];
-    snprintf(out, size, "%u", party_species_at(slot));
+    (void)snprintf(out, size, "%u", party_species_at(slot));
 }
 
 static void arg_party_name(const uint32_t arguments[INSPECT_MAX_ARGUMENTS], char *out, size_t size)
@@ -176,7 +176,7 @@ static void arg_party_level(const uint32_t arguments[INSPECT_MAX_ARGUMENTS], cha
     unsigned level = 0;
     if (slot < inspect_party_count() && slot < PARTY_SIZE)
         level = GetMonData(&gParties[B_TRAINER_PLAYER][slot], MON_DATA_LEVEL);
-    snprintf(out, size, "%u", level);
+    (void)snprintf(out, size, "%u", level);
 }
 
 static void arg_bag_item_count(const uint32_t arguments[INSPECT_MAX_ARGUMENTS], char *out, size_t size)
@@ -184,13 +184,13 @@ static void arg_bag_item_count(const uint32_t arguments[INSPECT_MAX_ARGUMENTS], 
     const uint32_t item = arguments[0];
     /* the bag's pockets point into the save block, which does not exist before the game starts */
     unsigned count = inspect_save_blocks_ready() ? CountTotalItemQuantityInBag((enum Item)item) : 0;
-    snprintf(out, size, "%u", count);
+    (void)snprintf(out, size, "%u", count);
 }
 
 static void arg_pc_box_count(const uint32_t arguments[INSPECT_MAX_ARGUMENTS], char *out, size_t size)
 {
     const uint32_t box = arguments[0];
-    snprintf(out, size, "%u", box_count(box));
+    (void)snprintf(out, size, "%u", box_count(box));
 }
 
 /* The species in PC box `box`, by position, comma separated ("none" for an empty box). */
@@ -212,7 +212,7 @@ static void arg_pc_box_species(const uint32_t arguments[INSPECT_MAX_ARGUMENTS], 
         }
     }
     if (used == 0)
-        snprintf(out, size, "%s", inspect_none_text);
+        (void)snprintf(out, size, "%s", inspect_none_text);
 }
 
 /* The properties the debug menu's complex give sets, of a party Pokemon: "shiny=0 dynamax=0 gmax=0 tera=1". */
@@ -220,13 +220,14 @@ static void arg_party_extras(const uint32_t arguments[INSPECT_MAX_ARGUMENTS], ch
 {
     const uint32_t slot = arguments[0];
     if (slot >= inspect_party_count() || slot >= PARTY_SIZE) {
-        snprintf(out, size, "%s", inspect_none_text);
+        (void)snprintf(out, size, "%s", inspect_none_text);
         return;
     }
     struct Pokemon *mon = &gParties[B_TRAINER_PLAYER][slot];
-    snprintf(out, size, "shiny=%u dynamax=%u gmax=%u tera=%u", (unsigned)GetMonData(mon, MON_DATA_IS_SHINY),
-             (unsigned)GetMonData(mon, MON_DATA_DYNAMAX_LEVEL), (unsigned)GetMonData(mon, MON_DATA_GIGANTAMAX_FACTOR),
-             (unsigned)GetMonData(mon, MON_DATA_TERA_TYPE));
+    (void)snprintf(out, size, "shiny=%u dynamax=%u gmax=%u tera=%u", (unsigned)GetMonData(mon, MON_DATA_IS_SHINY),
+                   (unsigned)GetMonData(mon, MON_DATA_DYNAMAX_LEVEL),
+                   (unsigned)GetMonData(mon, MON_DATA_GIGANTAMAX_FACTOR),
+                   (unsigned)GetMonData(mon, MON_DATA_TERA_TYPE));
 }
 
 /* Move MOVE (0 to 3) of party slot SLOT: its move number, 0 for an empty slot or move. */
@@ -237,29 +238,22 @@ static void arg_party_move(const uint32_t arguments[INSPECT_MAX_ARGUMENTS], char
     unsigned id = 0;
     if (slot < inspect_party_count() && slot < PARTY_SIZE)
         id = GetMonData(&gParties[B_TRAINER_PLAYER][slot], MON_DATA_MOVE1 + (s32)move);
-    snprintf(out, size, "%u", id);
+    (void)snprintf(out, size, "%u", id);
 }
 
 const struct inspect_arg_reader inspect_menu_arg_readers[] = {
-    { INSPECT_ARG_PARTY_SPECIES, arg_party_species },
-    { INSPECT_ARG_PARTY_NAME, arg_party_name },
-    { INSPECT_ARG_PARTY_LEVEL, arg_party_level },
-    { INSPECT_ARG_PARTY_EXTRAS, arg_party_extras },
-    { INSPECT_ARG_PARTY_MOVE, arg_party_move },
-    { INSPECT_ARG_BAG_ITEM_COUNT, arg_bag_item_count },
-    { INSPECT_ARG_PC_BOX_COUNT, arg_pc_box_count },
-    { INSPECT_ARG_PC_BOX_SPECIES, arg_pc_box_species },
+    {INSPECT_ARG_PARTY_SPECIES, arg_party_species}, {INSPECT_ARG_PARTY_NAME, arg_party_name},
+    {INSPECT_ARG_PARTY_LEVEL, arg_party_level},     {INSPECT_ARG_PARTY_EXTRAS, arg_party_extras},
+    {INSPECT_ARG_PARTY_MOVE, arg_party_move},       {INSPECT_ARG_BAG_ITEM_COUNT, arg_bag_item_count},
+    {INSPECT_ARG_PC_BOX_COUNT, arg_pc_box_count},   {INSPECT_ARG_PC_BOX_SPECIES, arg_pc_box_species},
 };
 const size_t inspect_menu_arg_reader_count = sizeof inspect_menu_arg_readers / sizeof inspect_menu_arg_readers[0];
 
 /* In dump order, after the game-state facts. */
 const struct inspect_fact inspect_menu_facts[] = {
-    { "party_species", fact_party_species, NULL },
-    { "pc_box0_count", fact_pc_box0_count, NULL },
-    { "summary_species", fact_summary_species, NULL },
-    { "debug_menu_open", fact_debug_menu_open, NULL },
-    { "debug_input", fact_debug_input, NULL },
-    { "debug_step", fact_debug_step, NULL },
-    { "party_slot", fact_party_slot, NULL },
+    {"party_species", fact_party_species, NULL},     {"pc_box0_count", fact_pc_box0_count, NULL},
+    {"summary_species", fact_summary_species, NULL}, {"debug_menu_open", fact_debug_menu_open, NULL},
+    {"debug_input", fact_debug_input, NULL},         {"debug_step", fact_debug_step, NULL},
+    {"party_slot", fact_party_slot, NULL},
 };
 const size_t inspect_menu_fact_count = sizeof inspect_menu_facts / sizeof inspect_menu_facts[0];

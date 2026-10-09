@@ -69,7 +69,7 @@ static FILE *open_channel(void)
         return NULL;
     clear_registers();
     if (gba_memmap_init() != GBA_MEMMAP_OK || debug_channel_init(out) != DEBUG_CHANNEL_OK || !debug_channel_open()) {
-        fclose(out);
+        (void)fclose(out);
         return NULL;
     }
     return out;
@@ -91,7 +91,7 @@ static void close_channel(FILE *out)
     debug_channel_shutdown();
     clear_registers();
     if (out != NULL)
-        fclose(out);
+        (void)fclose(out);
 }
 
 static bool buffer_is_zero(void)
@@ -120,7 +120,7 @@ PTEST(bytes_above_ascii_pass_through)
 {
     FILE *out = open_channel();
     PT_ASSERT(out != NULL);
-    static const char message[] = { '\x1b', '[', '3', '1', 'm', '\xe9', '\x7f' };
+    static const char message[] = {'\x1b', '[', '3', '1', 'm', '\xe9', '\x7f'};
     put_message(message, sizeof message);
     debug_channel_send(SEND_INFO);
     char captured[CAPTURE_SIZE];
@@ -383,7 +383,7 @@ PTEST(a_failed_write_drops_the_message_and_carries_on)
     bool zero = buffer_is_zero();
     debug_channel_shutdown();
     clearerr(out);
-    fclose(out);
+    (void)fclose(out);
     clear_registers();
     PT_ASSERT(zero);
 }

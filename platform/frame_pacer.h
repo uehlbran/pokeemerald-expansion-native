@@ -23,9 +23,14 @@
  * 1e9 Hz. */
 #define FRAME_PACER_MAX_COUNTER_HZ UINT64_C(60000000000000)
 
-/* unthrottled: frame_pacer_wait returns at once (headless gates). Fails if
- * the performance counter rate is 0 or above FRAME_PACER_MAX_COUNTER_HZ. */
-int frame_pacer_init(bool unthrottled);
+/* FRAME_PACER_UNTHROTTLED: frame_pacer_wait returns at once (headless gates). */
+enum frame_pacer_mode { FRAME_PACER_REALTIME, FRAME_PACER_UNTHROTTLED };
+
+/* The mode for the --unthrottled option. */
+enum frame_pacer_mode frame_pacer_mode_for(bool unthrottled);
+
+/* Fails if the performance counter rate is 0 or above FRAME_PACER_MAX_COUNTER_HZ. */
+int frame_pacer_init(enum frame_pacer_mode mode);
 
 /* Returns when the next frame boundary is reached; returns at once if the
  * pacer is unthrottled or not initialised. */

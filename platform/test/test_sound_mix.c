@@ -18,8 +18,8 @@
 #define ENABLED UINT16_C(0x0080)
 #define FRAMES 4u
 
-static void mix_once(const struct sound_mix_registers *registers, const int8_t *a, const int8_t *b,
-                     const int16_t *psg, int16_t *out, size_t frames)
+static void mix_once(const struct sound_mix_registers *registers, const int8_t *a, const int8_t *b, const int16_t *psg,
+                     int16_t *out, size_t frames)
 {
     struct sound_mix_state state;
     memset(&state, 0, sizeof state);
@@ -34,7 +34,7 @@ PTEST(fifo_a_right_and_b_left_at_full_volume)
                       | SOUND_MIX_SOUNDCNT_H_B_FULL,
         .soundcnt_x = ENABLED,
     };
-    const int8_t a[1] = { 10 }, b[1] = { -3 };
+    const int8_t a[1] = {10}, b[1] = {-3};
     int16_t out[2];
     mix_once(&r, a, b, NULL, out, 1);
     /* The first sample of a step passes the DC filter unchanged. */
@@ -48,7 +48,7 @@ PTEST(half_volume_halves)
         .soundcnt_h = SOUND_MIX_SOUNDCNT_H_A_LEFT | SOUND_MIX_SOUNDCNT_H_B_RIGHT,
         .soundcnt_x = ENABLED,
     };
-    const int8_t a[1] = { 100 }, b[1] = { -128 };
+    const int8_t a[1] = {100}, b[1] = {-128};
     int16_t out[2];
     mix_once(&r, a, b, NULL, out, 1);
     PT_ASSERT_EQ_INT(out[0], 100 * SOUND_MIX_FIFO_HALF_SCALE);
@@ -62,7 +62,7 @@ PTEST(both_fifos_on_both_sides_add)
                       | SOUND_MIX_SOUNDCNT_H_B_RIGHT | SOUND_MIX_SOUNDCNT_H_A_FULL,
         .soundcnt_x = ENABLED,
     };
-    const int8_t a[1] = { 2 }, b[1] = { 4 };
+    const int8_t a[1] = {2}, b[1] = {4};
     int16_t out[2];
     mix_once(&r, a, b, NULL, out, 1);
     PT_ASSERT_EQ_INT(out[0], 2 * SOUND_MIX_FIFO_FULL_SCALE + 4 * SOUND_MIX_FIFO_HALF_SCALE);
@@ -71,8 +71,8 @@ PTEST(both_fifos_on_both_sides_add)
 
 PTEST(unrouted_fifos_and_missing_input_are_silent)
 {
-    struct sound_mix_registers r = { .soundcnt_h = 0, .soundcnt_x = ENABLED };
-    const int8_t a[FRAMES] = { 50, 50, 50, 50 };
+    struct sound_mix_registers r = {.soundcnt_h = 0, .soundcnt_x = ENABLED};
+    const int8_t a[FRAMES] = {50, 50, 50, 50};
     int16_t out[2 * FRAMES];
     mix_once(&r, a, a, NULL, out, FRAMES);
     for (size_t i = 0; i < 2 * FRAMES; i++)
@@ -85,9 +85,9 @@ PTEST(unrouted_fifos_and_missing_input_are_silent)
 
 PTEST(psg_is_added_per_side)
 {
-    struct sound_mix_registers r = { .soundcnt_h = SOUND_MIX_SOUNDCNT_H_A_RIGHT, .soundcnt_x = ENABLED };
-    const int8_t a[1] = { 1 };
-    const int16_t psg[2] = { 1000, 2000 };
+    struct sound_mix_registers r = {.soundcnt_h = SOUND_MIX_SOUNDCNT_H_A_RIGHT, .soundcnt_x = ENABLED};
+    const int8_t a[1] = {1};
+    const int16_t psg[2] = {1000, 2000};
     int16_t out[2];
     mix_once(&r, a, NULL, psg, out, 1);
     PT_ASSERT_EQ_INT(out[0], 1000);
@@ -96,9 +96,9 @@ PTEST(psg_is_added_per_side)
 
 PTEST(master_disable_silences_everything)
 {
-    struct sound_mix_registers r = { .soundcnt_h = 0x330C, .soundcnt_x = 0 };
-    const int8_t a[1] = { 127 }, b[1] = { -128 };
-    const int16_t psg[2] = { 15360, 15360 };
+    struct sound_mix_registers r = {.soundcnt_h = 0x330C, .soundcnt_x = 0};
+    const int8_t a[1] = {127}, b[1] = {-128};
+    const int16_t psg[2] = {15360, 15360};
     int16_t out[2];
     mix_once(&r, a, b, psg, out, 1);
     PT_ASSERT_EQ_INT(out[0], 0);
@@ -109,7 +109,7 @@ PTEST(a_constant_offset_decays_to_zero)
 {
     /* The PSG's output is never negative (psg.h): its DC offset goes, as the
      * GBA's output capacitor removes it. */
-    struct sound_mix_registers r = { .soundcnt_h = 0, .soundcnt_x = ENABLED };
+    struct sound_mix_registers r = {.soundcnt_h = 0, .soundcnt_x = ENABLED};
     enum { LONG = 4000 };
     static int16_t psg[2 * LONG], out[2 * LONG];
     for (size_t i = 0; i < 2 * LONG; i++)
@@ -123,8 +123,8 @@ PTEST(a_constant_offset_decays_to_zero)
 
 PTEST(the_filter_state_carries_across_calls)
 {
-    struct sound_mix_registers r = { .soundcnt_h = 0, .soundcnt_x = ENABLED };
-    const int16_t psg[2] = { 5000, 5000 };
+    struct sound_mix_registers r = {.soundcnt_h = 0, .soundcnt_x = ENABLED};
+    const int16_t psg[2] = {5000, 5000};
     int16_t out[2];
     struct sound_mix_state state;
     memset(&state, 0, sizeof state);
@@ -154,11 +154,11 @@ PTEST(extremes_saturate)
         psg_high[2 * i] = 15360;
     struct sound_mix_state state;
     memset(&state, 0, sizeof state);
-    sound_mix(&state, &r, low, low, NULL, out, SETTLE);          /* settles near 0 at -16384 */
-    sound_mix(&state, &r, high, high, psg_high, out, 1);         /* +48000 */
+    sound_mix(&state, &r, low, low, NULL, out, SETTLE);  /* settles near 0 at -16384 */
+    sound_mix(&state, &r, high, high, psg_high, out, 1); /* +48000 */
     PT_ASSERT_EQ_INT(out[0], INT16_MAX);
-    sound_mix(&state, &r, high, high, psg_high, out, SETTLE);    /* settles at 31616 */
-    sound_mix(&state, &r, low, low, NULL, out, 1);               /* -48000 */
+    sound_mix(&state, &r, high, high, psg_high, out, SETTLE); /* settles at 31616 */
+    sound_mix(&state, &r, low, low, NULL, out, 1);            /* -48000 */
     PT_ASSERT_EQ_INT(out[0], INT16_MIN);
 }
 
@@ -169,7 +169,7 @@ PTEST(dc_filter_step_response_matches_the_pole_exactly)
      * y1 = trunc(326040000 / 32768) = 9949, y2 = 9949 + trunc(9949 * 32604 /
      * 32768) = 9899 (a pole of 32603 gives 9898), y3 = 9849. Frames 100 and 199
      * come from iterating the same recurrence. */
-    struct sound_mix_registers r = { .soundcnt_h = 0, .soundcnt_x = ENABLED };
+    struct sound_mix_registers r = {.soundcnt_h = 0, .soundcnt_x = ENABLED};
     enum { LONG = 200 };
     static int16_t psg[2 * LONG], out[2 * LONG];
     for (size_t i = 0; i < LONG; i++)
@@ -188,7 +188,7 @@ PTEST(dc_filter_step_response_matches_the_pole_exactly)
  * above: with a silent input and no previous output, y = -previous_input. */
 static int16_t saturated_output(int32_t previous_input)
 {
-    struct sound_mix_registers r = { .soundcnt_h = 0, .soundcnt_x = ENABLED };
+    struct sound_mix_registers r = {.soundcnt_h = 0, .soundcnt_x = ENABLED};
     struct sound_mix_state state;
     int16_t out[2];
     memset(&state, 0, sizeof state);
@@ -200,17 +200,17 @@ static int16_t saturated_output(int32_t previous_input)
 PTEST(saturation_is_exact_at_the_int16_limits)
 {
     PT_ASSERT_EQ_INT(saturated_output(32767), -32767);
-    PT_ASSERT_EQ_INT(saturated_output(32768), INT16_MIN);     /* exactly the limit */
-    PT_ASSERT_EQ_INT(saturated_output(32769), INT16_MIN);     /* one past it clamps */
+    PT_ASSERT_EQ_INT(saturated_output(32768), INT16_MIN); /* exactly the limit */
+    PT_ASSERT_EQ_INT(saturated_output(32769), INT16_MIN); /* one past it clamps */
     PT_ASSERT_EQ_INT(saturated_output(-32766), 32766);
-    PT_ASSERT_EQ_INT(saturated_output(-32767), INT16_MAX);    /* exactly the limit */
-    PT_ASSERT_EQ_INT(saturated_output(-32768), INT16_MAX);    /* one past it clamps */
+    PT_ASSERT_EQ_INT(saturated_output(-32767), INT16_MAX); /* exactly the limit */
+    PT_ASSERT_EQ_INT(saturated_output(-32768), INT16_MAX); /* one past it clamps */
 }
 
 PTEST(zero_frames_writes_nothing)
 {
-    struct sound_mix_registers r = { .soundcnt_h = 0, .soundcnt_x = ENABLED };
-    int16_t out[2] = { 77, 77 };
+    struct sound_mix_registers r = {.soundcnt_h = 0, .soundcnt_x = ENABLED};
+    int16_t out[2] = {77, 77};
     mix_once(&r, NULL, NULL, NULL, out, 0);
     PT_ASSERT_EQ_INT(out[0], 77);
     PT_ASSERT_EQ_INT(out[1], 77);

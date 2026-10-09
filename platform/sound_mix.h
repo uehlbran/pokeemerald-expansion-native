@@ -57,7 +57,7 @@ struct sound_mix_registers {
  * SOUNDCNT_H, plus psg[2i] (left) and psg[2i + 1] (right) (NULL for none),
  * then the DC filter, saturated to int16_t. With the master enable off the
  * input is silence, which the filter still runs on. */
-void sound_mix(struct sound_mix_state *state, const struct sound_mix_registers *registers,
-               const int8_t *fifo_a, const int8_t *fifo_b, const int16_t *psg, int16_t *out, size_t frames);
+void sound_mix(struct sound_mix_state *state, const struct sound_mix_registers *registers, const int8_t *fifo_a,
+               const int8_t *fifo_b, const int16_t *psg, int16_t *out, size_t frames);
 
 #endif /* SOUND_MIX_H */

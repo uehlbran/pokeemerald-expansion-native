@@ -81,14 +81,14 @@ static bool damaged_copy(char *path, size_t path_size, size_t keep, void (*patch
         return false;
     unsigned char *bytes = malloc(keep);
     size_t got = bytes != NULL ? fread(bytes, 1, keep, source) : 0;
-    fclose(source);
+    (void)fclose(source);
     if (bytes == NULL || got != keep) {
         free(bytes);
         return false;
     }
     if (patch != NULL)
         patch(bytes, keep);
-    snprintf(path, path_size, "/tmp/test_symbols_XXXXXX");
+    (void)snprintf(path, path_size, "/tmp/test_symbols_XXXXXX");
     int fd = mkstemp(path);
     bool ok = fd >= 0 && write(fd, bytes, keep) == (ssize_t)keep;
     if (fd >= 0)
@@ -144,24 +144,24 @@ PTEST(rejects_a_truncated_file_and_an_empty_one)
 #include <sys/stat.h>
 
 enum lie {
-    LIE_SH_SIZE,         /* the symbol table is longer than the file */
-    LIE_SH_OFFSET,       /* the symbol table starts past the end of the file */
-    LIE_SH_RANGE_WRAPS,  /* a valid offset and a size that makes offset + size wrap around to a small number */
-    LIE_SH_LINK,         /* its string table is a section that does not exist */
-    LIE_SH_LINK_WRONG,   /* its string table is a non-empty section that is not one (itself) */
+    LIE_SH_SIZE,            /* the symbol table is longer than the file */
+    LIE_SH_OFFSET,          /* the symbol table starts past the end of the file */
+    LIE_SH_RANGE_WRAPS,     /* a valid offset and a size that makes offset + size wrap around to a small number */
+    LIE_SH_LINK,            /* its string table is a section that does not exist */
+    LIE_SH_LINK_WRONG,      /* its string table is a non-empty section that is not one (itself) */
     LIE_SH_LINK_PAST_COUNT, /* its string table is past the section count, though inside the file */
-    LIE_SH_ENTSIZE,      /* its entries are not symbols */
-    LIE_SH_SIZE_ODD,     /* its size is not a whole number of entries */
-    LIE_SH_SIZE_ZERO,    /* it has no entries */
-    LIE_E_SHNUM,         /* a section count that leaves the symbol table out */
-    LIE_E_SHOFF,         /* the section header table starts past the end of the file */
-    LIE_E_SHENTSIZE,     /* section headers of a size this build does not read */
-    LIE_STRTAB_SMALL,    /* the string table is shorter than the names point to */
-    LIE_STRTAB_SIZE,     /* the string table is longer than the file */
-    LIE_STRTAB_OFFSET,   /* the string table starts past the end of the file */
-    LIE_STRTAB_EMPTY,    /* the string table has no bytes */
-    LIE_NAME_AT_END,     /* every function's name offset is one past the string table's terminating NUL */
-    LIE_E_TYPE           /* a shared object, as a PIE is */
+    LIE_SH_ENTSIZE,         /* its entries are not symbols */
+    LIE_SH_SIZE_ODD,        /* its size is not a whole number of entries */
+    LIE_SH_SIZE_ZERO,       /* it has no entries */
+    LIE_E_SHNUM,            /* a section count that leaves the symbol table out */
+    LIE_E_SHOFF,            /* the section header table starts past the end of the file */
+    LIE_E_SHENTSIZE,        /* section headers of a size this build does not read */
+    LIE_STRTAB_SMALL,       /* the string table is shorter than the names point to */
+    LIE_STRTAB_SIZE,        /* the string table is longer than the file */
+    LIE_STRTAB_OFFSET,      /* the string table starts past the end of the file */
+    LIE_STRTAB_EMPTY,       /* the string table has no bytes */
+    LIE_NAME_AT_END,        /* every function's name offset is one past the string table's terminating NUL */
+    LIE_E_TYPE              /* a shared object, as a PIE is */
 };
 
 static enum lie current_lie;
@@ -200,7 +200,7 @@ static void tell(unsigned char *bytes, size_t size)
         break;
     case LIE_SH_LINK_PAST_COUNT:
         eh.e_shnum = (ElfW(Half))(symtab - sections + 1); /* the symbol table is the last section it admits to */
-        symtab->sh_link = eh.e_shnum;                      /* its successor, which is in the file */
+        symtab->sh_link = eh.e_shnum;                     /* its successor, which is in the file */
         memcpy(bytes, &eh, sizeof eh);
         break;
     case LIE_SH_ENTSIZE:

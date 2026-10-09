@@ -25,13 +25,14 @@
 
 #include <setjmp.h>
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 
 /* Bytes of the stack PlatformCallWithStack runs the battle tests' functions
  * on (see there), and where it is: gba_regions.ld's .platform_call_stack,
  * below 2^27 so that the addresses of the functions' locals fit the 27-bit
  * fields the battle runner keeps them in (include/test/battle.h). */
-#define GAME_HOOKS_CALL_STACK_SIZE (1024u * 1024u)
+#define GAME_HOOKS_CALL_STACK_SIZE ((size_t)1024u * 1024u)
 #define GAME_HOOKS_CALL_STACK_ADDRESS UINT32_C(0x01800000)
 
 /* The value game_hooks longjmps to main's exit target with (non-zero, since

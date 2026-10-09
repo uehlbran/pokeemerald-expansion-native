@@ -17,13 +17,6 @@
 _Static_assert(LCD_VCOUNT_OFFSET + sizeof(uint16_t) <= GBA_IO_SIZE, "VCOUNT is outside the I/O region");
 _Static_assert(LCD_LINE_COUNT - 1u <= VCOUNT_LINE_MASK, "every line fits VCOUNT's eight bits");
 
-static volatile uint16_t *io_halfword(uint32_t offset)
-{
-    /* Integer-to-pointer: the I/O page is mapped at its GBA address (gba_memmap.h);
-     * GBA addresses fit in 32 bits, flagged for the 64-bit milestone there. */
-    return (volatile uint16_t *)(uintptr_t)(GBA_IO_BASE + offset);
-}
-
 static uint16_t lyc(uint16_t dispstat)
 {
     return (uint16_t)(dispstat >> LCD_DISPSTAT_LYC_SHIFT);
@@ -33,7 +26,7 @@ unsigned lcd_status_begin_line(uint16_t line)
 {
     if (line >= LCD_LINE_COUNT)
         return 0;
-    volatile uint16_t *dispstat = io_halfword(LCD_DISPSTAT_OFFSET);
+    volatile uint16_t *dispstat = gba_io_u16(LCD_DISPSTAT_OFFSET);
     uint16_t value = (uint16_t)(*dispstat & ~LCD_DISPSTAT_STATUS_MASK);
     bool vblank = line >= LCD_LINE_VBLANK_START && line <= LCD_LINE_VBLANK_LAST_FLAGGED;
     bool match = line == lyc(value);
@@ -43,7 +36,7 @@ unsigned lcd_status_begin_line(uint16_t line)
         value |= LCD_DISPSTAT_VBLANK_FLAG;
     if (match)
         value |= LCD_DISPSTAT_VCOUNTER_FLAG;
-    *io_halfword(LCD_VCOUNT_OFFSET) = line;
+    *gba_io_u16(LCD_VCOUNT_OFFSET) = line;
     *dispstat = value;
 
     if (line == LCD_LINE_VBLANK_START && (value & LCD_DISPSTAT_VBLANK_IRQ))
@@ -55,7 +48,7 @@ unsigned lcd_status_begin_line(uint16_t line)
 
 unsigned lcd_status_begin_hblank(void)
 {
-    volatile uint16_t *dispstat = io_halfword(LCD_DISPSTAT_OFFSET);
+    volatile uint16_t *dispstat = gba_io_u16(LCD_DISPSTAT_OFFSET);
     uint16_t value = (uint16_t)(*dispstat | LCD_DISPSTAT_HBLANK_FLAG);
     *dispstat = value;
     return (value & LCD_DISPSTAT_HBLANK_IRQ) ? 1u << GBA_IRQ_HBLANK : 0u;
@@ -63,5 +56,5 @@ unsigned lcd_status_begin_hblank(void)
 
 uint16_t lcd_status_line(void)
 {
-    return (uint16_t)(*io_halfword(LCD_VCOUNT_OFFSET) & VCOUNT_LINE_MASK);
+    return (uint16_t)(*gba_io_u16(LCD_VCOUNT_OFFSET) & VCOUNT_LINE_MASK);
 }

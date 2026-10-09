@@ -74,7 +74,7 @@ void BitUnPack(const void *src, void *dest, const struct BitUnPackArgs *info)
     unsigned to = args[UNPACK_DEST_WIDTH];
     uint32_t offset_word = bios_load32(args + UNPACK_OFFSET);
     if (!supported_source_width(from) || !supported_dest_width(to)) {
-        fprintf(stderr, "bios: BitUnPack: unsupported widths %u to %u bits; nothing written\n", from, to);
+        (void)fprintf(stderr, "bios: BitUnPack: unsupported widths %u to %u bits; nothing written\n", from, to);
         return;
     }
     /* length <= FFFFh, so the bit count fits easily. */
@@ -110,8 +110,8 @@ void BitUnPack(const void *src, void *dest, const struct BitUnPackArgs *info)
 
 /* Reads a Diff stream's header, validates its input (header and units)
  * and starts the output; BIOS_OK or an error, printed. */
-static int diff_open(const char *function, const void *src, unsigned unit, void *dest,
-                     enum bios_write_width width, struct bios_stream_header *header, struct bios_sink *out)
+static int diff_open(const char *function, const void *src, unsigned unit, void *dest, enum bios_write_width width,
+                     struct bios_stream_header *header, struct bios_sink *out)
 {
     struct bios_source in;
     int error = bios_stream_open(&in, function, src, BIOS_STREAM_UNBOUNDED, BIOS_STREAM_DIFF, header);

@@ -30,7 +30,7 @@
 #define MODULE "audio"
 
 #define CHANNELS 2u
-#define BYTES_PER_SAMPLE_FRAME (CHANNELS * (uint32_t)sizeof(int16_t))
+#define BYTES_PER_SAMPLE_FRAME ((size_t)CHANNELS * sizeof(int16_t))
 /* SDL wants a power of two. 512 frames is 11 ms at 44.1 kHz. */
 #define DEVICE_BUFFER_SAMPLES 512u
 
@@ -50,15 +50,14 @@ static struct {
 
 static int sdl_error(const char *call)
 {
-    fprintf(stderr, MODULE ": %s failed: %s\n", call, SDL_GetError());
+    (void)fprintf(stderr, MODULE ": %s failed: %s\n", call, SDL_GetError());
     return -1;
 }
 
 size_t audio_max_queued_frames(uint32_t sample_rate_hz)
 {
     /* Frames per video frame, rounded up, times the allowed video frames. */
-    uint64_t per_video_frame =
-        ((uint64_t)sample_rate_hz * GBA_CYCLES_PER_FRAME + GBA_CPU_HZ - 1u) / GBA_CPU_HZ;
+    uint64_t per_video_frame = ((uint64_t)sample_rate_hz * GBA_CYCLES_PER_FRAME + GBA_CPU_HZ - 1u) / GBA_CPU_HZ;
     return (size_t)(per_video_frame * MAX_QUEUED_VIDEO_FRAMES);
 }
 
@@ -80,7 +79,7 @@ static int open_device(void)
     if (state.device == 0)
         return sdl_error("SDL_OpenAudioDevice");
     if (have.freq != want.freq || have.format != want.format || have.channels != want.channels) {
-        fprintf(stderr, MODULE ": SDL_OpenAudioDevice returned a different spec than requested\n");
+        (void)fprintf(stderr, MODULE ": SDL_OpenAudioDevice returned a different spec than requested\n");
         return -1;
     }
     return 0; /* SDL opens devices paused */
@@ -89,12 +88,12 @@ static int open_device(void)
 int audio_init(uint32_t sample_rate_hz, bool silent)
 {
     if (sample_rate_hz == 0u || sample_rate_hz > AUDIO_MAX_SAMPLE_RATE_HZ) {
-        fprintf(stderr, MODULE ": audio_init: sample rate %u Hz out of range 1..%u\n", sample_rate_hz,
-                AUDIO_MAX_SAMPLE_RATE_HZ);
+        (void)fprintf(stderr, MODULE ": audio_init: sample rate %u Hz out of range 1..%u\n", sample_rate_hz,
+                      AUDIO_MAX_SAMPLE_RATE_HZ);
         return -1;
     }
     if (state.initialised) {
-        fprintf(stderr, MODULE ": audio_init: already initialised\n");
+        (void)fprintf(stderr, MODULE ": audio_init: already initialised\n");
         return -1;
     }
     state.sample_rate_hz = sample_rate_hz;
@@ -114,7 +113,7 @@ int audio_init(uint32_t sample_rate_hz, bool silent)
 int audio_set_paused(bool paused)
 {
     if (!state.initialised) {
-        fprintf(stderr, MODULE ": audio_set_paused: not initialised\n");
+        (void)fprintf(stderr, MODULE ": audio_set_paused: not initialised\n");
         return -1;
     }
     state.paused = paused;
@@ -127,7 +126,7 @@ int audio_set_paused(bool paused)
 int audio_queue(const int16_t *stereo, size_t frames)
 {
     if (!state.initialised || (stereo == NULL && frames != 0u)) {
-        fprintf(stderr, MODULE ": audio_queue: not initialised or no samples\n");
+        (void)fprintf(stderr, MODULE ": audio_queue: not initialised or no samples\n");
         return -1;
     }
     if (frames == 0u)
@@ -180,6 +179,15 @@ uint32_t audio_queued_bytes(void)
     return SDL_GetQueuedAudioSize(state.device);
 }
 
-uint64_t audio_dropped_frames(void) { return state.dropped_frames; }
-uint64_t audio_underruns(void) { return state.underruns; }
-uint64_t audio_total_frames(void) { return state.total_frames; }
+uint64_t audio_dropped_frames(void)
+{
+    return state.dropped_frames;
+}
+uint64_t audio_underruns(void)
+{
+    return state.underruns;
+}
+uint64_t audio_total_frames(void)
+{
+    return state.total_frames;
+}

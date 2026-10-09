@@ -30,18 +30,18 @@
 /* SoundChannel.fw: a 9.23 fixed-point position between two samples. */
 #define FW_FRACTION_BITS 23u
 /* bic r9, r9, #0x3F800000: the whole-sample bits cleared after a step. */
-#define FW_WHOLE_MASK    0x3F800000u
+#define FW_WHOLE_MASK 0x3F800000u
 /* SoundMainRAM_Unk1's step for TONEDATA_TYPE_FIX: one sample per output. */
-#define FW_ONE_SAMPLE    0x800000u
+#define FW_ONE_SAMPLE 0x800000u
 
 /* DPCM blocks: 64 samples in 33 bytes, an initial sample and 32 bytes of
  * 4-bit indices into gDeltaEncodingTable (the second byte's high nibble is
  * unused). */
-#define DPCM_BLOCK_SHIFT   6u
+#define DPCM_BLOCK_SHIFT 6u
 #define DPCM_BLOCK_SAMPLES (1u << DPCM_BLOCK_SHIFT)
-#define DPCM_BLOCK_BYTES   33u
-#define DPCM_NIBBLE_BITS   4u
-#define DPCM_NIBBLE_MASK   0xFu
+#define DPCM_BLOCK_BYTES 33u
+#define DPCM_NIBBLE_BITS 4u
+#define DPCM_NIBBLE_MASK 0xFu
 /* The cache key SoundMainRAM_Unk1 stores each frame: no block index is this large. */
 #define DPCM_CACHE_INVALID 0xFF000000u
 
@@ -50,22 +50,19 @@
 static u8 sDecodingBuffer[DPCM_BLOCK_SAMPLES];
 
 /* Where a channel stands in its sample: the assembly's r3, r2 and r9. */
-struct MixCursor
-{
+struct MixCursor {
     u32 index; // the current sample, counted from WaveData.data
     u32 count; // samples left, the current one included
     u32 fw;    // the fraction toward the next sample
 };
 
 /* How a channel's samples are read: as stored, or DPCM-decoded. */
-struct SampleSource
-{
+struct SampleSource {
     struct SoundChannel *chan;
     bool decodesDpcm;
 };
 
-enum MixResult
-{
+enum MixResult {
     MIX_CONTINUES,
     MIX_ENDED,
 };
@@ -76,7 +73,7 @@ enum MixResult
  * index -1 is the last header byte, which reversed playback reads. */
 static u32 WaveSample(const struct WaveData *wav, u32 index)
 {
-    const u8 *bytes = (const u8 *)(const void *)wav;
+    const u8 *bytes = (const u8 *)wav;
 
     return SignExtend8(bytes[(u32)(offsetof(struct WaveData, data) + index)]);
 }
@@ -100,14 +97,13 @@ static bool DpcmBlockInWave(const struct WaveData *wav, u32 block)
 /* SoundMainRAM_Unk2's decoder: one 64-sample block into sDecodingBuffer. */
 static void DecodeDpcmBlock(const struct WaveData *wav, u32 block)
 {
-    const u8 *src = (const u8 *)(const void *)wav + offsetof(struct WaveData, data) + block * DPCM_BLOCK_BYTES;
+    const u8 *src = (const u8 *)wav + offsetof(struct WaveData, data) + (size_t)block * DPCM_BLOCK_BYTES;
     u8 level = src[0];
 
     sDecodingBuffer[0] = level;
     level = (u8)(level + (u8)gDeltaEncodingTable[src[1] & DPCM_NIBBLE_MASK]);
     sDecodingBuffer[1] = level;
-    for (u32 i = 2; i < DPCM_BLOCK_SAMPLES; i += 2)
-    {
+    for (u32 i = 2; i < DPCM_BLOCK_SAMPLES; i += 2) {
         u8 byte = src[i / 2 + 1];
 
         level = (u8)(level + (u8)gDeltaEncodingTable[byte >> DPCM_NIBBLE_BITS]);
@@ -127,8 +123,7 @@ static u32 DpcmSample(struct SoundChannel *chan, u32 index)
 {
     u32 block = index >> DPCM_BLOCK_SHIFT;
 
-    if (block != DpcmCacheKey(chan))
-    {
+    if (block != DpcmCacheKey(chan)) {
         if (!DpcmBlockInWave(chan->wav, block))
             return 0;
         SetDpcmCacheKey(chan, block);
@@ -213,8 +208,7 @@ static u32 WrapIntoLoop(u32 *count, u32 loopLength)
 {
     u32 overshoot = 0 - *count;
 
-    for (;;)
-    {
+    for (;;) {
         bool positive = SumIsPositive(*count, loopLength);
 
         *count += loopLength;
@@ -225,16 +219,14 @@ static u32 WrapIntoLoop(u32 *count, u32 loopLength)
 }
 
 /* _081DD07C: TONEDATA_TYPE_FIX, one stored sample per output sample. */
-static enum MixResult MixFixedRate(const struct WaveData *wav, const struct MixOutput *out,
-                                   struct MixCursor *cursor, const struct LoopRegion *loop)
+static enum MixResult MixFixedRate(const struct WaveData *wav, const struct MixOutput *out, struct MixCursor *cursor,
+                                   const struct LoopRegion *loop)
 {
-    for (u32 i = 0; i < out->samples; i++)
-    {
+    for (u32 i = 0; i < out->samples; i++) {
         MixSample(out, i, WaveSample(wav, cursor->index));
         cursor->index++;
         cursor->count--;
-        if (cursor->count == 0)
-        {
+        if (cursor->count == 0) {
             if (loop->length == 0)
                 return MIX_ENDED;
             cursor->index = loop->start;
@@ -252,24 +244,20 @@ static enum MixResult MixForward(const struct SampleSource *source, const struct
     u32 current = FetchSample(source, cursor->index);
     u32 delta = FetchSample(source, cursor->index + 1) - current;
 
-    for (u32 i = 0; i < out->samples; i++)
-    {
+    for (u32 i = 0; i < out->samples; i++) {
         u32 whole;
 
         MixSample(out, i, InterpolatedSample(current, delta, cursor->fw));
         whole = StepPosition(&cursor->fw, step);
         if (whole == 0)
             continue;
-        if (CountRunsOut(cursor->count, whole))
-        {
+        if (CountRunsOut(cursor->count, whole)) {
             cursor->count -= whole;
             if (loop->length == 0)
                 return MIX_ENDED;
             cursor->index = loop->start + WrapIntoLoop(&cursor->count, loop->length);
             current = FetchSample(source, cursor->index);
-        }
-        else
-        {
+        } else {
             cursor->count -= whole;
             cursor->index += whole;
             current = whole == 1 ? current + delta : FetchSample(source, cursor->index);
@@ -287,8 +275,7 @@ static enum MixResult MixBackward(const struct SampleSource *source, const struc
     u32 current = FetchSample(source, cursor->index);
     u32 delta = FetchSample(source, cursor->index - 1) - current;
 
-    for (u32 i = 0; i < out->samples; i++)
-    {
+    for (u32 i = 0; i < out->samples; i++) {
         u32 whole;
 
         MixSample(out, i, InterpolatedSample(current, delta, cursor->fw));
@@ -313,8 +300,7 @@ static void PlayFixedRate(struct SoundChannel *chan, const struct MixOutput *out
     struct SampleSource source = {chan, false};
     struct MixCursor cursor = {LoadIndex(&source), chan->count, 0};
 
-    if (MixFixedRate(chan->wav, out, &cursor, loop) == MIX_ENDED)
-    {
+    if (MixFixedRate(chan->wav, out, &cursor, loop) == MIX_ENDED) {
         chan->statusFlags = 0;
         return;
     }
@@ -328,8 +314,7 @@ static void PlayResampled(struct SoundChannel *chan, const struct MixOutput *out
     struct SampleSource source = {chan, false};
     struct MixCursor cursor = {LoadIndex(&source), chan->count, chan->fw};
 
-    if (MixForward(&source, out, &cursor, step, loop) == MIX_ENDED)
-    {
+    if (MixForward(&source, out, &cursor, step, loop) == MIX_ENDED) {
         chan->statusFlags = 0;
         return;
     }
@@ -356,11 +341,9 @@ static void PlaySpecial(struct SoundChannel *chan, const struct MixOutput *out, 
     u32 kept;
     enum MixResult result;
 
-    if (!(chan->statusFlags & SOUND_CHANNEL_SF_SPECIAL))
-    {
+    if (!(chan->statusFlags & SOUND_CHANNEL_SF_SPECIAL)) {
         chan->statusFlags |= SOUND_CHANNEL_SF_SPECIAL;
-        if (chan->type & TONEDATA_TYPE_REV)
-        {
+        if (chan->type & TONEDATA_TYPE_REV) {
             cursor.index = wav->size - cursor.index;
             StoreIndex(&source, cursor.index);
         }
@@ -369,8 +352,7 @@ static void PlaySpecial(struct SoundChannel *chan, const struct MixOutput *out, 
     if (source.decodesDpcm)
         SetDpcmCacheKey(chan, DPCM_CACHE_INVALID);
 
-    if (chan->type & TONEDATA_TYPE_REV)
-    {
+    if (chan->type & TONEDATA_TYPE_REV) {
         cursor.index--;
         result = MixBackward(&source, out, &cursor, step);
         /* ended: the assembly's r3 is the next sample when decoding, else the current */
@@ -378,20 +360,15 @@ static void PlaySpecial(struct SoundChannel *chan, const struct MixOutput *out, 
             kept = source.decodesDpcm ? cursor.index - 1 : cursor.index;
         else
             kept = cursor.index + 1;
-    }
-    else if (source.decodesDpcm)
-    {
+    } else if (source.decodesDpcm) {
         result = MixForward(&source, out, &cursor, step, loop);
         kept = result == MIX_ENDED ? cursor.index + 1 : cursor.index;
-    }
-    else
-    {
+    } else {
         /* TONEDATA_TYPE_CMP on an uncompressed sample plays nothing */
         return;
     }
 
-    if (result == MIX_ENDED)
-    {
+    if (result == MIX_ENDED) {
         chan->statusFlags = 0;
         cursor.count = 0;
     }
@@ -409,14 +386,11 @@ void M4aRenderSetStart(struct SoundChannel *chan, u32 offset)
      * turns it into a sample index for a compressed sample before any
      * other use. That pointer would lie past the compressed data, so a
      * compressed sample gets the index directly. */
-    if ((chan->type & (TONEDATA_TYPE_CMP | TONEDATA_TYPE_REV)) && wav->type != 0)
-    {
+    if ((chan->type & (TONEDATA_TYPE_CMP | TONEDATA_TYPE_REV)) && wav->type != 0) {
         struct SampleSource source = {chan, true};
 
         StoreIndex(&source, offset);
-    }
-    else
-    {
+    } else {
         chan->currentPointer = wav->data + offset;
     }
 }

@@ -17,5 +17,5 @@
 #define ROM_HEADER_SOFTWARE_VERSION UINT8_C(0)
 
 /* Not a string: four bytes, no terminator, as in the header. */
-const uint8_t RomHeaderGameCode[ROM_HEADER_GAME_CODE_LENGTH] = { 'B', 'P', 'E', 'E' };
+const uint8_t RomHeaderGameCode[ROM_HEADER_GAME_CODE_LENGTH] = {'B', 'P', 'E', 'E'};
 const uint8_t RomHeaderSoftwareVersion = ROM_HEADER_SOFTWARE_VERSION;

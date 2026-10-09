@@ -51,8 +51,8 @@ static void teardown(void)
 
 static uint32_t unpack_one(uint8_t byte, uint8_t from, uint8_t to, uint32_t offset_and_flag)
 {
-    const struct BitUnPackArgs args = { 1, from, to, offset_and_flag };
-    uint32_t out[2] = { STALE_32, STALE_32 };
+    const struct BitUnPackArgs args = {1, from, to, offset_and_flag};
+    uint32_t out[2] = {STALE_32, STALE_32};
     BitUnPack(&byte, out, &args);
     return out[0];
 }
@@ -101,10 +101,10 @@ PTEST(bitunpack_4_to_16)
 PTEST(bitunpack_8_to_32)
 {
     setup();
-    const uint8_t src[2] = { 0, 5 };
-    const struct BitUnPackArgs plain = { 2, 8, 32, 0x100 };
-    const struct BitUnPackArgs zeros = { 2, 8, 32, ZERO_DATA_FLAG | 0x100 };
-    uint32_t out[3] = { STALE_32, STALE_32, STALE_32 };
+    const uint8_t src[2] = {0, 5};
+    const struct BitUnPackArgs plain = {2, 8, 32, 0x100};
+    const struct BitUnPackArgs zeros = {2, 8, 32, ZERO_DATA_FLAG | 0x100};
+    uint32_t out[3] = {STALE_32, STALE_32, STALE_32};
     BitUnPack(src, out, &plain);
     PT_ASSERT_EQ_U32(out[0], 0);
     PT_ASSERT_EQ_U32(out[1], 0x105);
@@ -130,9 +130,9 @@ PTEST(bitunpack_partial_word_dropped)
 {
     setup();
     PT_ASSERT_EQ_U32(unpack_one(0xFF, 1, 2, 0), STALE_32);
-    const uint8_t src[3] = { 0xFF, 0x00, 0xFF };
-    const struct BitUnPackArgs args = { 3, 1, 2, 0 };
-    uint32_t out[2] = { STALE_32, STALE_32 };
+    const uint8_t src[3] = {0xFF, 0x00, 0xFF};
+    const struct BitUnPackArgs args = {3, 1, 2, 0};
+    uint32_t out[2] = {STALE_32, STALE_32};
     BitUnPack(src, out, &args);
     PT_ASSERT_EQ_U32(out[0], UINT32_C(0x00005555));
     PT_ASSERT_EQ_U32(out[1], STALE_32);
@@ -147,7 +147,7 @@ PTEST(bitunpack_unsupported_widths_and_zero_length_write_nothing)
     PT_ASSERT_EQ_U32(unpack_one(0xFF, 0, 8, 0), STALE_32);
     PT_ASSERT_EQ_U32(unpack_one(0xFF, 1, 64, 0), STALE_32);
     PT_ASSERT_EQ_U32(unpack_one(0xFF, 1, 0, 0), STALE_32);
-    const struct BitUnPackArgs empty = { 0, 1, 4, 0 };
+    const struct BitUnPackArgs empty = {0, 1, 4, 0};
     uint32_t out = STALE_32;
     BitUnPack(NULL, &out, &empty);
     PT_ASSERT_EQ_U32(out, STALE_32);
@@ -158,11 +158,11 @@ PTEST(bitunpack_unaligned_destination)
 {
     setup();
     const uint8_t src = 0xB1;
-    const struct BitUnPackArgs args = { 1, 1, 4, 0 };
+    const struct BitUnPackArgs args = {1, 1, 4, 0};
     uint8_t out[6];
     memset(out, STALE, sizeof out);
     BitUnPack(&src, out + 1, &args);
-    const uint8_t expected[4] = { 0x01, 0x00, 0x11, 0x10 };
+    const uint8_t expected[4] = {0x01, 0x00, 0x11, 0x10};
     PT_ASSERT_MEM_EQ(out + 1, expected, sizeof expected);
     PT_ASSERT_EQ_U32(out[0], STALE);
     PT_ASSERT_EQ_U32(out[5], STALE);
@@ -172,8 +172,8 @@ PTEST(bitunpack_unaligned_destination)
 PTEST(bitunpack_ranges_refused)
 {
     setup();
-    const uint8_t src[2] = { 0xFF, 0xFF };
-    const struct BitUnPackArgs args = { 2, 1, 4, 0 }; /* 8 bytes out */
+    const uint8_t src[2] = {0xFF, 0xFF};
+    const struct BitUnPackArgs args = {2, 1, 4, 0}; /* 8 bytes out */
     uint8_t *tail = (uint8_t *)(uintptr_t)(GBA_VRAM_BASE + GBA_VRAM_SIZE - 4);
     memset(tail, STALE, 4);
     BitUnPack(src, tail, &args);
@@ -182,7 +182,7 @@ PTEST(bitunpack_ranges_refused)
     uint8_t *heap = malloc(2);
     PT_ASSERT(heap != NULL);
     heap[0] = heap[1] = 0xFF;
-    uint32_t out[2] = { STALE_32, STALE_32 };
+    uint32_t out[2] = {STALE_32, STALE_32};
     BitUnPack(heap, out, &args);
     free(heap);
     PT_ASSERT_EQ_U32(out[0], STALE_32);
@@ -194,13 +194,13 @@ PTEST(bitunpack_ranges_refused)
 /* GBATEK's example: 10 +1 +1 ... -> 10 11 ... 19. */
 static const _Alignas(4) uint8_t diff8_example[] = {
     0x81, 0x0A, 0x00, 0x00, /* 8-bit units, type 8, size 10 */
-    10, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0x00, 0x00,
+    10,   1,    1,    1,    1, 1, 1, 1, 1, 1, 0x00, 0x00,
 };
 
 PTEST(diff8_gbatek_example_both_variants)
 {
     setup();
-    const uint8_t expected[10] = { 10, 11, 12, 13, 14, 15, 16, 17, 18, 19 };
+    const uint8_t expected[10] = {10, 11, 12, 13, 14, 15, 16, 17, 18, 19};
     uint8_t wram[12], vram[12];
     memset(wram, STALE, sizeof wram);
     memset(vram, STALE, sizeof vram);
@@ -217,13 +217,13 @@ PTEST(diff8_gbatek_example_both_variants)
 PTEST(diff8_wraps_and_vram_odd_size)
 {
     setup();
-    static const _Alignas(4) uint8_t stream[] = { 0x81, 0x03, 0x00, 0x00, 0xFF, 0x02, 0xFF, 0x00 };
+    static const _Alignas(4) uint8_t stream[] = {0x81, 0x03, 0x00, 0x00, 0xFF, 0x02, 0xFF, 0x00};
     uint8_t wram[4], vram[4];
     memset(wram, STALE, sizeof wram);
     memset(vram, STALE, sizeof vram);
     Diff8bitUnFilterWram(stream, wram);
     Diff8bitUnFilterVram(stream, vram);
-    const uint8_t expected[3] = { 0xFF, 0x01, 0x00 };
+    const uint8_t expected[3] = {0xFF, 0x01, 0x00};
     PT_ASSERT_MEM_EQ(wram, expected, sizeof expected);
     PT_ASSERT_MEM_EQ(vram, expected, 2);
     PT_ASSERT_EQ_U32(vram[2], STALE);
@@ -254,7 +254,7 @@ PTEST(diff16_units_and_wrap)
 PTEST(diff16_odd_size_leaves_last_byte)
 {
     setup();
-    static const _Alignas(4) uint8_t stream[] = { 0x82, 0x03, 0x00, 0x00, 0x34, 0x12, 0x56, 0x00 };
+    static const _Alignas(4) uint8_t stream[] = {0x82, 0x03, 0x00, 0x00, 0x34, 0x12, 0x56, 0x00};
     uint8_t out[4];
     memset(out, STALE, sizeof out);
     Diff16bitUnFilter(stream, out);
@@ -269,11 +269,11 @@ PTEST(diff_headers_must_match)
     setup();
     uint8_t out[12];
     memset(out, STALE, sizeof out);
-    static const _Alignas(4) uint8_t sixteen[] = { 0x82, 0x02, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00 };
-    static const _Alignas(4) uint8_t lz77[] = { 0x11, 0x02, 0x00, 0x00, 0x00, 0x01, 0x02, 0x00 };
-    Diff8bitUnFilterWram(sixteen, out);        /* unit size 2 is not 8-bit */
-    Diff8bitUnFilterVram(lz77, out);           /* unit size 1 but type 1: not a diff filter */
-    Diff16bitUnFilter(diff8_example, out);     /* unit size 1 is not 16-bit */
+    static const _Alignas(4) uint8_t sixteen[] = {0x82, 0x02, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00};
+    static const _Alignas(4) uint8_t lz77[] = {0x11, 0x02, 0x00, 0x00, 0x00, 0x01, 0x02, 0x00};
+    Diff8bitUnFilterWram(sixteen, out);    /* unit size 2 is not 8-bit */
+    Diff8bitUnFilterVram(lz77, out);       /* unit size 1 but type 1: not a diff filter */
+    Diff16bitUnFilter(diff8_example, out); /* unit size 1 is not 16-bit */
     for (size_t i = 0; i < sizeof out; i++)
         PT_ASSERT_EQ_U32(out[i], STALE);
     teardown();

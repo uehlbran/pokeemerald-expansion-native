@@ -71,10 +71,10 @@ static uint16_t io_read(uint32_t offset)
 int frame_init(const struct frame_config *config)
 {
     if (config == NULL) {
-        fprintf(stderr, "frame: frame_init: no configuration\n");
+        (void)fprintf(stderr, "frame: frame_init: no configuration\n");
         return -1;
     }
-    frame = (__typeof__(frame)){ .config = *config, .initialised = true };
+    frame = (__typeof__(frame)){.config = *config, .initialised = true};
     return 0;
 }
 
@@ -134,7 +134,7 @@ static void draw_line(uint16_t line)
 {
     int result = ppu_render_line(line, &pixels[(size_t)line * VIDEO_WIDTH]);
     if (result != PPU_OK && !frame.reported_render_error) {
-        fprintf(stderr, "frame: ppu_render_line(%u) failed with %d (reported once)\n", line, result);
+        (void)fprintf(stderr, "frame: ppu_render_line(%u) failed with %d (reported once)\n", line, result);
         frame.reported_render_error = true;
     }
 }
@@ -174,9 +174,11 @@ static bool fifo_frame(struct m4a_output_frame *fifo)
     if (fifo->samples == FRAME_AUDIO_SAMPLES_PER_FRAME)
         return true;
     if (!frame.sound_rate_mismatch) {
-        fprintf(stderr, "frame: the sound engine mixes %zu samples a frame (%u Hz), the output plays %u (%u Hz); "
-                "its Direct Sound is left silent (reported once)\n", fifo->samples, m4a_output_sample_rate(),
-                FRAME_AUDIO_SAMPLES_PER_FRAME, FRAME_AUDIO_SAMPLE_RATE_HZ);
+        (void)fprintf(stderr,
+                      "frame: the sound engine mixes %zu samples a frame (%u Hz), the output plays %u (%u Hz); "
+                      "its Direct Sound is left silent (reported once)\n",
+                      fifo->samples, m4a_output_sample_rate(), FRAME_AUDIO_SAMPLES_PER_FRAME,
+                      FRAME_AUDIO_SAMPLE_RATE_HZ);
         frame.sound_rate_mismatch = true;
     }
     return false;
@@ -187,7 +189,7 @@ static void mix_sound(void)
     struct m4a_output_frame fifo;
     bool has_fifo = fifo_frame(&fifo);
     if (psg_generate(psg_samples, FRAME_AUDIO_SAMPLES_PER_FRAME) != FRAME_AUDIO_SAMPLES_PER_FRAME) {
-        fprintf(stderr, "frame: psg_generate did not produce %u samples\n", FRAME_AUDIO_SAMPLES_PER_FRAME);
+        (void)fprintf(stderr, "frame: psg_generate did not produce %u samples\n", FRAME_AUDIO_SAMPLES_PER_FRAME);
         fail();
         return;
     }
@@ -198,12 +200,12 @@ static void mix_sound(void)
     sound_mix(&frame.mix, &registers, has_fifo ? fifo.fifo_a : NULL, has_fifo ? fifo.fifo_b : NULL, psg_samples,
               mixed_samples, FRAME_AUDIO_SAMPLES_PER_FRAME);
     if (audio_queue(mixed_samples, FRAME_AUDIO_SAMPLES_PER_FRAME) != 0) {
-        fprintf(stderr, "frame: audio_queue failed\n");
+        (void)fprintf(stderr, "frame: audio_queue failed\n");
         fail();
         return;
     }
     if (++frame.audio_frames_queued == FRAME_AUDIO_PREROLL_FRAMES && audio_set_paused(false) != 0) {
-        fprintf(stderr, "frame: audio_set_paused(false) failed\n");
+        (void)fprintf(stderr, "frame: audio_set_paused(false) failed\n");
         fail();
     }
 }
@@ -241,7 +243,7 @@ static void run_step_hook(void)
 static void present_and_read_keys(void)
 {
     if (video_present(pixels) != 0) {
-        fprintf(stderr, "frame: video_present failed\n");
+        (void)fprintf(stderr, "frame: video_present failed\n");
         fail();
         return;
     }
@@ -254,8 +256,10 @@ static void present_and_read_keys(void)
 static int store_save(void)
 {
     if (save_file_store() != SAVE_FILE_OK) {
-        fprintf(stderr, "frame: the save file could not be stored; the game's save is only in memory, "
-                "retrying in %u frames\n", FRAME_SAVE_RETRY_FRAMES);
+        (void)fprintf(stderr,
+                      "frame: the save file could not be stored; the game's save is only in memory, "
+                      "retrying in %u frames\n",
+                      FRAME_SAVE_RETRY_FRAMES);
         frame.save_retry_wait = FRAME_SAVE_RETRY_FRAMES;
         return -1;
     }
@@ -287,15 +291,15 @@ static void finish_frame(void)
 {
     frame.frames++;
     if (interrupt_halted()) {
-        fprintf(stderr, "frame: the interrupt controller halted on a Game Pak interrupt, as the GBA hangs; "
-                "stopping\n");
+        (void)fprintf(stderr, "frame: the interrupt controller halted on a Game Pak interrupt, as the GBA hangs; "
+                              "stopping\n");
         fail();
     }
     if (frame.config.frame_limit != 0 && frame.frames >= frame.config.frame_limit)
         frame.exit_requested = true;
     if (frame.exit_requested && frame.config.screenshot_path != NULL
         && video_write_frame_ppm(pixels, frame.config.screenshot_path) != 0) {
-        fprintf(stderr, "frame: could not write the screenshot to %s\n", frame.config.screenshot_path);
+        (void)fprintf(stderr, "frame: could not write the screenshot to %s\n", frame.config.screenshot_path);
         frame.exit_status = FRAME_EXIT_STATUS_FAILURE;
     }
 }
@@ -303,7 +307,7 @@ static void finish_frame(void)
 enum frame_result frame_run(void)
 {
     if (!frame.initialised) {
-        fprintf(stderr, "frame: frame_run before frame_init\n");
+        (void)fprintf(stderr, "frame: frame_run before frame_init\n");
         return FRAME_EXIT;
     }
     if (frame.exit_requested)

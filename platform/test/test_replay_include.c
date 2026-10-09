@@ -17,7 +17,7 @@ static char directory[64];
 
 static void make_directory(void)
 {
-    snprintf(directory, sizeof directory, "/tmp/replay_include_test_XXXXXX");
+    (void)snprintf(directory, sizeof directory, "/tmp/replay_include_test_XXXXXX");
     if (mkdtemp(directory) == NULL) {
         perror("mkdtemp");
         exit(2);
@@ -27,7 +27,7 @@ static void make_directory(void)
 static void write_file(const char *name, const char *text)
 {
     char path[256];
-    snprintf(path, sizeof path, "%s/%s", directory, name);
+    (void)snprintf(path, sizeof path, "%s/%s", directory, name);
     FILE *file = fopen(path, "wb");
     if (file == NULL || fputs(text, file) < 0 || fclose(file) != 0) {
         perror(path);
@@ -37,13 +37,14 @@ static void write_file(const char *name, const char *text)
 
 static void path_of(const char *name, char *out, size_t size)
 {
-    snprintf(out, size, "%s/%s", directory, name);
+    (void)snprintf(out, size, "%s/%s", directory, name);
 }
 
 static void remove_all(void)
 {
     char command[256];
-    snprintf(command, sizeof command, "rm -rf '%s'", directory);
+    (void)snprintf(command, sizeof command, "rm -rf '%s'", directory);
+    // NOLINTNEXTLINE(cert-env33-c): the test removes its own temporary directory
     if (system(command) != 0)
         perror("rm");
 }
@@ -105,7 +106,7 @@ PTEST(includes_nest_and_resolve_next_to_the_including_file)
     bool expanded = false;
     char path[256];
     make_directory();
-    snprintf(path, sizeof path, "%s/sub", directory);
+    (void)snprintf(path, sizeof path, "%s/sub", directory);
     PT_ASSERT_EQ_INT(mkdir(path, 0777), 0);
     write_file("sub/inner.replay", "wait 3\n");
     write_file("sub/middle.replay", "include inner.replay\nwait 2\n");
@@ -398,7 +399,7 @@ PTEST(an_absolute_path_is_used_as_it_is)
     make_directory();
     write_file("elsewhere.replay", "wait 9\n");
     path_of("elsewhere.replay", absolute, sizeof absolute);
-    snprintf(text_line, sizeof text_line, "include %s\n", absolute);
+    (void)snprintf(text_line, sizeof text_line, "include %s\n", absolute);
     write_file("main.replay", text_line);
     PT_ASSERT_EQ_INT(expand("main.replay", &text, &expanded, message, sizeof message), 0);
     PT_ASSERT_EQ_STR(text, "wait 9\n");
@@ -411,34 +412,31 @@ PTEST(include_names_of_1023_and_1024_characters)
     char message[REPLAY_INCLUDE_MESSAGE_SIZE];
     char *text;
     bool expanded;
-    char *line = malloc(REPLAY_INCLUDE_MAX_NAME + 64u);
-    char *name = malloc(REPLAY_INCLUDE_MAX_NAME + 8u);
-    PT_ASSERT(line != NULL && name != NULL);
+    char line[REPLAY_INCLUDE_MAX_NAME + 64u];
+    char name[REPLAY_INCLUDE_MAX_NAME + 8u];
     make_directory();
     /* 1023 characters, absolute: accepted as a name (opening it fails, not the length; the message is
      * cut to its buffer, which the long path fills) */
     name[0] = '/';
     fill(name + 1, REPLAY_INCLUDE_MAX_NAME - 1u, 'x');
-    snprintf(line, REPLAY_INCLUDE_MAX_NAME + 64u, "include %s\n", name);
+    (void)snprintf(line, sizeof line, "include %s\n", name);
     write_file("main.replay", line);
     int result_1023 = expand("main.replay", &text, &expanded, message, sizeof message);
     bool named_1023 = strstr(message, "xxxxxxxx") != NULL && strstr(message, "longer than the limit") == NULL
-        && strstr(message, "path is too long") == NULL;
+                      && strstr(message, "path is too long") == NULL;
     /* 1024 characters: refused for its length, with the line */
     fill(name + 1, REPLAY_INCLUDE_MAX_NAME, 'x');
-    snprintf(line, REPLAY_INCLUDE_MAX_NAME + 64u, "include %s\n", name);
+    (void)snprintf(line, sizeof line, "include %s\n", name);
     write_file("main.replay", line);
     int result_1024 = expand("main.replay", &text, &expanded, message, sizeof message);
     bool refused_1024 = strstr(message, "main.replay:1:") != NULL
-        && strstr(message, "include name is longer than the limit") != NULL;
+                        && strstr(message, "include name is longer than the limit") != NULL;
     /* a name of 1023 characters next to a file in a directory: the path does not fit, its own message */
     fill(name, REPLAY_INCLUDE_MAX_NAME, 'y');
-    snprintf(line, REPLAY_INCLUDE_MAX_NAME + 64u, "include %s\n", name);
+    (void)snprintf(line, sizeof line, "include %s\n", name);
     write_file("main.replay", line);
     int result_path = expand("main.replay", &text, &expanded, message, sizeof message);
     bool path_message = strstr(message, "include path is too long") != NULL;
-    free(line);
-    free(name);
     remove_all();
     PT_ASSERT_EQ_INT(result_1023, -1);
     PT_ASSERT(named_1023);
@@ -455,7 +453,7 @@ PTEST(including_a_directory_is_a_read_error)
     bool expanded;
     char path[256];
     make_directory();
-    snprintf(path, sizeof path, "%s/adir", directory);
+    (void)snprintf(path, sizeof path, "%s/adir", directory);
     PT_ASSERT_EQ_INT(mkdir(path, 0777), 0);
     write_file("main.replay", "include adir\n");
     PT_ASSERT_EQ_INT(expand("main.replay", &text, &expanded, message, sizeof message), -1);

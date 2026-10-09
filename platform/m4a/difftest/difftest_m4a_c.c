@@ -27,11 +27,11 @@ void ClearChain(void *x)
     func(x);
 }
 
-void Clear64byte(void *x)
+void Clear64byte(void *addr)
 {
     void (*func)(void *) = gMPlayJumpTable[35];
 
-    func(x);
+    func(addr);
 }
 
 void TrkVolPitSet(struct MusicPlayerInfo *mplayInfo, struct MusicPlayerTrack *track)

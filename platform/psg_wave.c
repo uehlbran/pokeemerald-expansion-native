@@ -59,7 +59,7 @@
 #define NR32_VOLUME_MASK 0x03u
 #define NR32_FORCE_75 0x80u
 #define VOLUME_MUTE 0u
-static const uint8_t volume_shift[] = { 0, 0, 1, 2 }; /* by NR32 volume; 0 is muted instead */
+static const uint8_t volume_shift[] = {0, 0, 1, 2}; /* by NR32 volume; 0 is muted instead */
 #define FORCED_VOLUME_NUMERATOR 3u
 #define FORCED_VOLUME_DENOMINATOR 4u
 
@@ -116,8 +116,8 @@ void psg_wave_update(struct psg_wave *wave, const struct psg_wave_registers *reg
 {
     wave->nr30 = registers->nr30;
     wave->nr32 = registers->nr32;
-    wave->frequency = (uint16_t)(registers->nr33 | (registers->nr34 & PSG_NRX4_FREQUENCY_HIGH_MASK)
-                                                       << PSG_NRX4_FREQUENCY_HIGH_SHIFT);
+    wave->frequency = (uint16_t)(registers->nr33
+                                 | (registers->nr34 & PSG_NRX4_FREQUENCY_HIGH_MASK) << PSG_NRX4_FREQUENCY_HIGH_SHIFT);
     latch_window(wave, registers->window);
     psg_channel_update(&wave->channel, registers->nr34, wave_dac(registers->nr30));
 }
@@ -167,7 +167,7 @@ uint8_t psg_wave_level(const struct psg_wave *wave)
 
 void psg_wave_power_off(struct psg_wave *wave)
 {
-    wave->channel = (struct psg_channel){ 0 };
+    wave->channel = (struct psg_channel){0};
     wave->nr30 = 0;
     wave->nr32 = 0;
     wave->frequency = 0;

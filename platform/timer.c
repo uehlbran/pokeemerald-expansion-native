@@ -37,14 +37,14 @@
 
 /* The prescaler dividers selected by CNT_H bits 0-1, in cycles per tick
  * (GBATEK "GBA Timers": F/1, F/64, F/256, F/1024). */
-static const uint32_t prescaler_cycles[] = { 1, 64, 256, 1024 };
+static const uint32_t prescaler_cycles[] = {1, 64, 256, 1024};
 
 struct timer {
     uint16_t counter;
     uint16_t reload;
-    uint16_t cell_value;  /* what this module last stored in TMxCNT_L */
-    uint32_t residue;     /* cycles not yet worth a tick, below the divider */
-    bool was_enabled;     /* the enable bit at the previous advance */
+    uint16_t cell_value; /* what this module last stored in TMxCNT_L */
+    uint32_t residue;    /* cycles not yet worth a tick, below the divider */
+    bool was_enabled;    /* the enable bit at the previous advance */
 };
 
 static struct timer timers[TIMER_COUNT];
@@ -80,7 +80,7 @@ int timer_init(void (*raise)(enum gba_irq))
         /* cell_value is seeded with the cell, but any other seed gives the same
          * timers: sync_with_game would take the cell as the reload, which is
          * what is seeded here. It makes the first advance see "no game write". */
-        timers[i] = (struct timer){ .counter = cell, .reload = cell, .cell_value = cell };
+        timers[i] = (struct timer){.counter = cell, .reload = cell, .cell_value = cell};
     }
     return TIMER_OK;
 }
@@ -95,7 +95,7 @@ void timer_shutdown(void)
 static uint32_t count_ticks(struct timer *t, uint64_t ticks)
 {
     uint64_t to_overflow = TIMER_COUNTER_RANGE - t->counter;
-    uint64_t period = TIMER_COUNTER_RANGE - t->reload;
+    uint64_t period = TIMER_COUNTER_RANGE - (uint64_t)t->reload;
 
     if (ticks < to_overflow) {
         t->counter = (uint16_t)(t->counter + ticks);

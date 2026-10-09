@@ -12,6 +12,7 @@
  */
 #include "frame_pacer.h"
 
+#include <stdbool.h>
 #include <stdio.h>
 
 #include <SDL.h>
@@ -44,16 +45,21 @@ uint64_t frame_pacer_period_ticks(uint64_t counter_hz, uint32_t *remainder)
     return scaled / (uint64_t)GBA_CPU_HZ;
 }
 
-int frame_pacer_init(bool unthrottled)
+enum frame_pacer_mode frame_pacer_mode_for(bool unthrottled)
+{
+    return unthrottled ? FRAME_PACER_UNTHROTTLED : FRAME_PACER_REALTIME;
+}
+
+int frame_pacer_init(enum frame_pacer_mode mode)
 {
     uint64_t hz = SDL_GetPerformanceFrequency();
     if (hz == 0u || hz > FRAME_PACER_MAX_COUNTER_HZ) {
-        fprintf(stderr, MODULE ": SDL_GetPerformanceFrequency returned %llu, outside 1..%llu\n",
-                (unsigned long long)hz, (unsigned long long)FRAME_PACER_MAX_COUNTER_HZ);
+        (void)fprintf(stderr, MODULE ": SDL_GetPerformanceFrequency returned %llu, outside 1..%llu\n",
+                      (unsigned long long)hz, (unsigned long long)FRAME_PACER_MAX_COUNTER_HZ);
         return -1;
     }
     state.counter_hz = hz;
-    state.unthrottled = unthrottled;
+    state.unthrottled = mode == FRAME_PACER_UNTHROTTLED;
     state.remainder = 0;
     state.deadline = SDL_GetPerformanceCounter();
     state.initialised = true;

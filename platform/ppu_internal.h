@@ -29,10 +29,10 @@
 #include "gba_memmap.h"
 #include "ppu.h"
 
-#define PPU_BG_COUNT 4         /* GBATEK "LCD I/O BG Control": BG0-BG3 */
-#define PPU_AFFINE_BG_FIRST 2  /* GBATEK "LCD I/O BG Rotation/Scaling": BG2 and BG3 */
+#define PPU_BG_COUNT 4        /* GBATEK "LCD I/O BG Control": BG0-BG3 */
+#define PPU_AFFINE_BG_FIRST 2 /* GBATEK "LCD I/O BG Rotation/Scaling": BG2 and BG3 */
 #define PPU_AFFINE_BG_COUNT 2
-#define PPU_WINDOW_COUNT 2     /* GBATEK "LCD I/O Window Feature": WIN0 and WIN1 */
+#define PPU_WINDOW_COUNT 2 /* GBATEK "LCD I/O Window Feature": WIN0 and WIN1 */
 
 /* GBATEK "LCD VRAM Overview", BG Mode 0,1,2: 06000000-0600FFFF is BG map and
  * tile data, 06010000-06017FFF OBJ tiles. */
@@ -59,11 +59,11 @@
 #define PPU_TRANSPARENT 0x8000u
 
 /* GBATEK "LCD I/O Display Control", DISPCNT. */
-#define PPU_DISPCNT_MODE_MASK 0x0007u     /* bits 0-2: BG mode */
-#define PPU_DISPCNT_HBLANK_FREE 0x0020u   /* H-Blank Interval Free */
-#define PPU_DISPCNT_OBJ_1D 0x0040u        /* OBJ Character VRAM Mapping: 1 = one dimensional */
+#define PPU_DISPCNT_MODE_MASK 0x0007u   /* bits 0-2: BG mode */
+#define PPU_DISPCNT_HBLANK_FREE 0x0020u /* H-Blank Interval Free */
+#define PPU_DISPCNT_OBJ_1D 0x0040u      /* OBJ Character VRAM Mapping: 1 = one dimensional */
 #define PPU_DISPCNT_FORCED_BLANK 0x0080u
-#define PPU_DISPCNT_BG0_ON 0x0100u        /* BGn display at bit 8 + n */
+#define PPU_DISPCNT_BG0_ON 0x0100u /* BGn display at bit 8 + n */
 #define PPU_DISPCNT_OBJ_ON 0x1000u
 #define PPU_DISPCNT_WIN0_ON 0x2000u
 #define PPU_DISPCNT_WIN1_ON 0x4000u
@@ -276,22 +276,19 @@ void ppu_affine_reference_latch(struct ppu_affine_reference *ref, const struct p
  * the new value is the origin of the line about to be drawn. Register writes
  * are plain stores here, so a write is noticed by its value changing; a write
  * of the value the register already holds is not noticed. */
-void ppu_affine_reference_pick_up_writes(struct ppu_affine_reference *ref,
-                                         const struct ppu_affine_regs *regs);
+void ppu_affine_reference_pick_up_writes(struct ppu_affine_reference *ref, const struct ppu_affine_regs *regs);
 
 /* Advances the internal reference point by PB (dmx) and PD (dmy), as the
  * hardware does after each line, wrapping at 28 bits. */
 void ppu_affine_reference_step(struct ppu_affine_reference *ref, const struct ppu_affine_regs *regs);
 
 /* Draws text BG bg (0-3) for line into out: a colour per dot, or PPU_TRANSPARENT. */
-void ppu_bg_render_text(const struct ppu_regs *regs, unsigned bg, uint16_t line,
-                        uint16_t out[PPU_SCREEN_WIDTH]);
+void ppu_bg_render_text(const struct ppu_regs *regs, unsigned bg, uint16_t line, uint16_t out[PPU_SCREEN_WIDTH]);
 
 /* Draws rotation/scaling BG bg (2 or 3) for line from its internal reference
  * point into out, as ppu_bg_render_text. */
-void ppu_bg_render_affine(const struct ppu_regs *regs, unsigned bg,
-                          const struct ppu_affine_reference *ref, uint16_t line,
-                          uint16_t out[PPU_SCREEN_WIDTH]);
+void ppu_bg_render_affine(const struct ppu_regs *regs, unsigned bg, const struct ppu_affine_reference *ref,
+                          uint16_t line, uint16_t out[PPU_SCREEN_WIDTH]);
 
 /* ---- ppu_obj.c ---- */
 
@@ -320,8 +317,8 @@ bool ppu_window_span_contains(uint16_t span, uint16_t coordinate);
 /* For each dot of line, the WININ/WINOUT control byte of the region the dot is
  * in (bits 0-4 layers, bit 5 effects), or PPU_WINDOW_ALL_ENABLED when no
  * window is enabled in DISPCNT. */
-void ppu_window_render_line(const struct ppu_regs *regs, uint16_t line,
-                            const struct ppu_obj_line *obj, uint8_t control[PPU_SCREEN_WIDTH]);
+void ppu_window_render_line(const struct ppu_regs *regs, uint16_t line, const struct ppu_obj_line *obj,
+                            uint8_t control[PPU_SCREEN_WIDTH]);
 
 /* ---- ppu_blend.c ---- */
 
@@ -347,7 +344,6 @@ uint16_t ppu_blend_darken(uint16_t colour, uint16_t bldy);
 
 /* The colour a dot shows: the top pixel with BLDCNT's effect and the
  * semi-transparent OBJ rule applied, if the dot's window enables effects. */
-uint16_t ppu_blend_pixel(const struct ppu_regs *regs, const struct ppu_pixel_targets *targets,
-                         bool effects_enabled);
+uint16_t ppu_blend_pixel(const struct ppu_regs *regs, const struct ppu_pixel_targets *targets, bool effects_enabled);
 
 #endif /* PPU_INTERNAL_H */

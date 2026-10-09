@@ -34,10 +34,10 @@ struct options {
     char **argv;
     int scale;
     uint32_t frame_limit;
-    const char *save_path;        /* NULL in test-runner mode: nothing is written to disk */
-    const char *rtc_offset_path;  /* NULL in test-runner mode */
+    const char *save_path;       /* NULL in test-runner mode: nothing is written to disk */
+    const char *rtc_offset_path; /* NULL in test-runner mode */
     const char *screenshot_path;
-    const char *replay_path;  /* NULL: play normally */
+    const char *replay_path; /* NULL: play normally */
     const char *out_dir;
     uint32_t resume_after_line; /* --resume-at, set by a restart */
     bool rtc_fixed;

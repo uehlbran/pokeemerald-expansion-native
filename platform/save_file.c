@@ -71,7 +71,7 @@ _Static_assert(__BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__,
                "a .sav image holds little-endian fields; a big-endian host needs the game to swap them");
 
 #define MAGIC_SIZE 8u
-static const uint8_t magic[MAGIC_SIZE] = { 'P', 'E', 'N', 'S', 'A', 'V', 'E', '\0' };
+static const uint8_t magic[MAGIC_SIZE] = {'P', 'E', 'N', 'S', 'A', 'V', 'E', '\0'};
 
 /* Bytes of each header integer, a u32 stored least significant byte first. */
 #define SAVE_FILE_U32_BYTES 4u
@@ -86,11 +86,13 @@ struct header_bytes {
     uint8_t image_crc32[SAVE_FILE_U32_BYTES];
 };
 _Static_assert(sizeof(struct header_bytes) == SAVE_FILE_HEADER_SIZE, "header size");
+// NOLINTBEGIN(readability-magic-numbers): the offsets are the file format's own (save_file.h)
 _Static_assert(offsetof(struct header_bytes, version) == 8, "version offset");
 _Static_assert(offsetof(struct header_bytes, pointer_bits) == 12, "pointer width offset");
 _Static_assert(offsetof(struct header_bytes, layout_id) == 16, "layout id offset");
 _Static_assert(offsetof(struct header_bytes, image_size) == 20, "image size offset");
 _Static_assert(offsetof(struct header_bytes, image_crc32) == 24, "CRC offset");
+// NOLINTEND(readability-magic-numbers)
 
 static struct {
     bool initialised;
@@ -202,14 +204,13 @@ static bool read_exactly(FILE *file, void *dest, size_t count)
     if (ferror(file))
         report("fread", state.path, errno);
     else
-        (void)fprintf(stderr, "save_file: fread(%s): the file ended %zu bytes early\n",
-                      state.path, count - read); /* best-effort */
+        (void)fprintf(stderr, "save_file: fread(%s): the file ended %zu bytes early\n", state.path,
+                      count - read); /* best-effort */
     return false;
 }
 
 /* SAVE_FILE_CORRUPT, after printing why the file at state.path is unusable. */
-__attribute__((format(printf, 1, 2)))
-static int corrupt(const char *format, ...)
+__attribute__((format(printf, 1, 2))) static int corrupt(const char *format, ...)
 {
     (void)fprintf(stderr, "save_file: %s: ", state.path); /* best-effort */
     va_list args;
@@ -222,12 +223,10 @@ static int corrupt(const char *format, ...)
 
 /* A file that starts with the magic; header holds its first
  * header_length bytes and the file is positioned after them. */
-static int read_versioned(FILE *file, intmax_t file_size, const struct header_bytes *header,
-                          size_t header_length)
+static int read_versioned(FILE *file, intmax_t file_size, const struct header_bytes *header, size_t header_length)
 {
     if (header_length < SAVE_FILE_HEADER_SIZE)
-        return corrupt("the header is cut short at %zu of %u bytes", header_length,
-                       SAVE_FILE_HEADER_SIZE);
+        return corrupt("the header is cut short at %zu of %u bytes", header_length, SAVE_FILE_HEADER_SIZE);
     const uint32_t version = get_u32le(header->version);
     const struct save_file_layout layout = {
         .pointer_bits = get_u32le(header->pointer_bits),
@@ -239,20 +238,20 @@ static int read_versioned(FILE *file, intmax_t file_size, const struct header_by
                        SAVE_FILE_FORMAT_VERSION);
     if (image_size != FLASH_CHIP_SIZE)
         return corrupt("the header gives an image of %" PRIu32 " bytes, but the 1 Mbit chip is "
-                       "%u bytes", image_size, FLASH_CHIP_SIZE);
-    if (file_size != (intmax_t)SAVE_FILE_HEADER_SIZE + FLASH_CHIP_SIZE)
-        return corrupt("the file is %jd bytes, but a version %u save is %u", file_size,
-                       SAVE_FILE_FORMAT_VERSION, SAVE_FILE_HEADER_SIZE + FLASH_CHIP_SIZE);
+                       "%zu bytes",
+                       image_size, (size_t)FLASH_CHIP_SIZE);
+    if (file_size != (intmax_t)SAVE_FILE_HEADER_SIZE + (intmax_t)FLASH_CHIP_SIZE)
+        return corrupt("the file is %jd bytes, but a version %u save is %zu", file_size, SAVE_FILE_FORMAT_VERSION,
+                       SAVE_FILE_HEADER_SIZE + FLASH_CHIP_SIZE);
     if (layout.pointer_bits != POINTER_BITS_32 && layout.pointer_bits != POINTER_BITS_64)
-        return corrupt("the header gives a pointer width of %" PRIu32 " bits, not 32 or 64",
-                       layout.pointer_bits);
+        return corrupt("the header gives a pointer width of %" PRIu32 " bits, not 32 or 64", layout.pointer_bits);
     if (!read_exactly(file, flash_image(), FLASH_CHIP_SIZE))
         return SAVE_FILE_CORRUPT;
     const uint32_t stored_crc = get_u32le(header->image_crc32);
     const uint32_t image_crc = save_file_crc32(flash_image(), FLASH_CHIP_SIZE);
     if (image_crc != stored_crc)
-        return corrupt("the image's CRC-32 is 0x%08" PRIX32 ", but the header gives 0x%08" PRIX32,
-                       image_crc, stored_crc);
+        return corrupt("the image's CRC-32 is 0x%08" PRIX32 ", but the header gives 0x%08" PRIX32, image_crc,
+                       stored_crc);
 
     state.loaded_layout = layout;
     state.has_loaded_layout = true;
@@ -260,9 +259,8 @@ static int read_versioned(FILE *file, intmax_t file_size, const struct header_by
         return SAVE_FILE_OK;
     const struct save_file_layout native = save_file_native_layout();
     (void)fprintf(stderr,
-                  "save_file: %s was written by a %" PRIu32 "-bit build with layout %" PRIu32
-                  "; this is a %" PRIu32 "-bit build with layout %" PRIu32
-                  ", so it is loaded but foreign\n",
+                  "save_file: %s was written by a %" PRIu32 "-bit build with layout %" PRIu32 "; this is a %" PRIu32
+                  "-bit build with layout %" PRIu32 ", so it is loaded but foreign\n",
                   state.path, layout.pointer_bits, layout.layout_id, native.pointer_bits,
                   native.layout_id); /* best-effort */
     return SAVE_FILE_FOREIGN_LAYOUT;
@@ -273,10 +271,11 @@ static int read_legacy(FILE *file, intmax_t file_size)
 {
     if (file_size == FLASH_512K_CHIP_SIZE)
         return corrupt("%u bytes is a save from a 512 Kbit flash cartridge, but Emerald's chip "
-                       "is 1 Mbit (%u bytes)", FLASH_512K_CHIP_SIZE, FLASH_CHIP_SIZE);
-    if (file_size != FLASH_CHIP_SIZE)
-        return corrupt("%jd bytes, with no header, but a bare 1 Mbit flash image is %u bytes",
-                       file_size, FLASH_CHIP_SIZE);
+                       "is 1 Mbit (%zu bytes)",
+                       FLASH_512K_CHIP_SIZE, FLASH_CHIP_SIZE);
+    if (file_size != (intmax_t)FLASH_CHIP_SIZE)
+        return corrupt("%jd bytes, with no header, but a bare 1 Mbit flash image is %zu bytes", file_size,
+                       FLASH_CHIP_SIZE);
     if (!read_exactly(file, flash_image(), FLASH_CHIP_SIZE))
         return SAVE_FILE_CORRUPT;
     return SAVE_FILE_LEGACY;
@@ -296,9 +295,8 @@ static int read_save(FILE *file)
         return corrupt("not a regular file");
     const intmax_t file_size = (intmax_t)info.st_size;
 
-    struct header_bytes header = { 0 }; /* only header_length bytes are read */
-    const size_t header_length = file_size < (intmax_t)sizeof header ? (size_t)file_size
-                                                                       : sizeof header;
+    struct header_bytes header = {0}; /* only header_length bytes are read */
+    const size_t header_length = file_size < (intmax_t)sizeof header ? (size_t)file_size : sizeof header;
     if (!read_exactly(file, &header, header_length))
         return SAVE_FILE_CORRUPT;
     if (header_length >= MAGIC_SIZE && memcmp(header.magic, magic, MAGIC_SIZE) == 0)
@@ -313,8 +311,7 @@ static int read_save(FILE *file)
 int save_file_load(void)
 {
     if (!state.initialised) {
-        (void)fputs("save_file: save_file_load: called before save_file_init\n",
-                    stderr); /* best-effort */
+        (void)fputs("save_file: save_file_load: called before save_file_init\n", stderr); /* best-effort */
         return SAVE_FILE_ERR_NOT_INITIALISED;
     }
     state.has_loaded_layout = false;
@@ -376,7 +373,7 @@ static void discard_tmp(FILE *tmp)
 /* Writes the header and the image to the tmp file and makes it durable. */
 static int write_tmp(void)
 {
-    struct header_bytes header = { 0 };
+    struct header_bytes header = {0};
     encode_header(&header);
     FILE *const tmp = fopen(state.tmp_path, "wb");
     if (tmp == NULL) {
@@ -427,8 +424,7 @@ static int sync_directory(void)
 int save_file_store(void)
 {
     if (!state.initialised) {
-        (void)fputs("save_file: save_file_store: called before save_file_init\n",
-                    stderr); /* best-effort */
+        (void)fputs("save_file: save_file_store: called before save_file_init\n", stderr); /* best-effort */
         return SAVE_FILE_ERR_NOT_INITIALISED;
     }
     if (!state.persistent)

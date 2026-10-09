@@ -92,3 +92,21 @@ emulators (VBA-M, NanoBoyAdvance, mGBA) as the source of their BIOS and
 renderer code, and none of that can be relicensed under this project's
 MIT license. Read them for structure and pitfalls; write ours from GBATEK
 and from expansion's own sources.
+
+## Style and static analysis
+
+`.clang-format` at the repository root encodes the platform layer's style as
+the code was written: 4-space indent, a function's opening brace on its own
+line and every other brace on the line of its statement, 120 columns, the
+pointer star on the name, `&&`, `||` and `?:` at the start of a continuation
+line, comments never re-flowed and includes left in the order written; each
+option beyond LLVM's defaults was kept because it shrank the one-time
+reformat. It applies to whatever clang-format is run on, so enforcement is by
+file list: `make -C platform format` and `make -C platform format-check` cover
+every `.c` and `.h` under `platform/` (the m4a engine, its difftest and the
+tests included) and never expansion's. `.clang-tidy` (with a relaxation in
+`platform/test/.clang-tidy`) names the checks and, in comments, every
+exclusion and why; a `// NOLINT(check): reason` or `// cppcheck-suppress`
+needs its reason on the same line and is rare. `make -C platform
+format-check` and `make -C platform lint` are part of the platform gate,
+`make -C platform gate` (docs/BUILDING.md).

@@ -16,20 +16,20 @@
 #include <unistd.h>
 
 #define TEMP_SUFFIX ".tmp"
-#define FILE_MODE   0644
+#define FILE_MODE 0644
 /* "-" + 16 digits + newline fits in 32; the longest valid file is shorter. */
 #define FILE_BUFFER_SIZE 32
-#define DECIMAL_BASE     10
+#define DECIMAL_BASE 10
 
 void rtc_report_call_failure(const char *call)
 {
     int saved = errno;
-    fprintf(stderr, "rtc: %s failed: %s\n", call, strerror(saved));
+    (void)fprintf(stderr, "rtc: %s failed: %s\n", call, strerror(saved));
 }
 
 static void report_corrupt(const char *path)
 {
-    fprintf(stderr, "rtc: offset file %s is corrupt (expected one decimal integer and a newline)\n", path);
+    (void)fprintf(stderr, "rtc: offset file %s is corrupt (expected one decimal integer and a newline)\n", path);
 }
 
 /* Strict parse of "[-]digits\n" with nothing after, within +-RTC_OFFSET_LIMIT. */
@@ -159,13 +159,13 @@ int rtc_offset_store_save(const char *path, int64_t offset)
     int fd;
 
     if (strlen(path) >= PATH_MAX) {
-        fprintf(stderr, "rtc: offset file path is longer than %d bytes\n", PATH_MAX - 1);
+        (void)fprintf(stderr, "rtc: offset file path is longer than %d bytes\n", PATH_MAX - 1);
         return -1;
     }
     (void)snprintf(temp_path, sizeof temp_path, "%s%s", path, TEMP_SUFFIX); /* sized for it */
     text_length = snprintf(text, sizeof text, "%lld\n", (long long)offset);
     if (text_length < 0 || (size_t)text_length >= sizeof text) {
-        fprintf(stderr, "rtc: offset does not fit the file format\n");
+        (void)fprintf(stderr, "rtc: offset does not fit the file format\n");
         return -1;
     }
 

@@ -86,18 +86,18 @@ _Static_assert(SOUNDCNT_H == REG_OFFSET_SOUNDCNT_H && NR52 == REG_OFFSET_NR52, "
 _Static_assert(WAVE_RAM == REG_OFFSET_WAVE_RAM0, "WAVE_RAM0");
 
 /* Register values, GBATEK. */
-#define MASTER_ENABLE 0x80u   /* SOUNDCNT_X bit 7 */
-#define INITIAL 0x80u         /* NRx4 bit 7, "Initial (1=Restart Sound)" */
-#define LENGTH_ENABLE 0x40u   /* NRx4 bit 6, "Length Flag" */
-#define NR50_FULL 0x77u       /* master volume 7 right (bits 0-2) and left (bits 4-6) */
-#define NR51_ALL 0xFFu        /* channels 1-4 right (bits 0-3) and left (bits 4-7) */
-#define PSG_MIX_100 0x02u     /* SOUNDCNT_H bits 0-1: 0=25%, 1=50%, 2=100% */
+#define MASTER_ENABLE 0x80u    /* SOUNDCNT_X bit 7 */
+#define INITIAL 0x80u          /* NRx4 bit 7, "Initial (1=Restart Sound)" */
+#define LENGTH_ENABLE 0x40u    /* NRx4 bit 6, "Length Flag" */
+#define NR50_FULL 0x77u        /* master volume 7 right (bits 0-2) and left (bits 4-6) */
+#define NR51_ALL 0xFFu         /* channels 1-4 right (bits 0-3) and left (bits 4-7) */
+#define PSG_MIX_100 0x02u      /* SOUNDCNT_H bits 0-1: 0=25%, 1=50%, 2=100% */
 #define NRX2_FULL_STEADY 0xF0u /* initial volume 15, decrease, step time 0 (no envelope) */
-#define WAVE_DAC_ON 0x80u     /* NR30 bit 7, "Sound Channel 3 Off (0=Stop, 1=Playback)" */
-#define WAVE_BANK_1 0x40u     /* NR30 bit 6, bank selected for playback */
-#define WAVE_TWO_BANKS 0x20u  /* NR30 bit 5, "Two banks/64 digits" */
-#define WAVE_VOLUME_100 0x20u /* NR32 bits 5-6 = 1 */
-#define NOISE_7_BIT 0x08u     /* NR43 bit 3 */
+#define WAVE_DAC_ON 0x80u      /* NR30 bit 7, "Sound Channel 3 Off (0=Stop, 1=Playback)" */
+#define WAVE_BANK_1 0x40u      /* NR30 bit 6, bank selected for playback */
+#define WAVE_TWO_BANKS 0x20u   /* NR30 bit 5, "Two banks/64 digits" */
+#define WAVE_VOLUME_100 0x20u  /* NR32 bits 5-6 = 1 */
+#define NOISE_7_BIT 0x08u      /* NR43 bit 3 */
 
 /* Output scale. GBATEK "Max Output Levels": each FIFO spans the full output
  * range, +/-200h units of the 10-bit output, and each PSG channel "one
@@ -214,10 +214,9 @@ static bool all_zero(size_t frames)
 
 /* Channel 1 or 2: NRx1, NRx2, then the frequency and NRx4's flags. The two
  * channels' registers are not laid out alike (06Ah is unused). */
-static void square(unsigned channel, uint8_t duty_length, uint8_t envelope, uint16_t frequency,
-                   uint8_t control)
+static void square(unsigned channel, uint8_t duty_length, uint8_t envelope, uint16_t frequency, uint8_t control)
 {
-    static const uint32_t at[2][4] = { { NR11, NR12, NR13, NR14 }, { NR21, NR22, NR23, NR24 } };
+    static const uint32_t at[2][4] = {{NR11, NR12, NR13, NR14}, {NR21, NR22, NR23, NR24}};
     const uint32_t *const nr = at[channel - 1];
     poke(nr[0], duty_length);
     poke(nr[1], envelope);
@@ -351,7 +350,7 @@ PTEST(square_period_follows_gbatek_frequency_formula)
  * exactly 1, 2, 4 or 6 high samples at level 15. */
 PTEST(square_duty_cycles_have_gbatek_high_fractions)
 {
-    static const size_t high_per_eight[4] = { 1, 2, 4, 6 };
+    static const size_t high_per_eight[4] = {1, 2, 4, 6};
     for (uint8_t pattern = 0; pattern < 4; pattern++) {
         PT_ASSERT(start(RATE_EXACT));
         square(1, duty(pattern), NRX2_FULL_STEADY, SQUARE_ONE_STEP_PER_SAMPLE, INITIAL);
@@ -449,8 +448,7 @@ PTEST(dac_off_blocks_trigger_and_stops_the_channel)
 PTEST(length_counter_stops_the_channel_after_exactly_its_ticks)
 {
     PT_ASSERT(start(RATE_EXACT));
-    square(1, (uint8_t)(duty(2) | 60), NRX2_FULL_STEADY, SQUARE_FOUR_SAMPLE_PERIOD,
-           INITIAL | LENGTH_ENABLE);
+    square(1, (uint8_t)(duty(2) | 60), NRX2_FULL_STEADY, SQUARE_FOUR_SAMPLE_PERIOD, INITIAL | LENGTH_ENABLE);
     PT_ASSERT(run(895));
     PT_ASSERT_EQ_U32(peek(NR52), MASTER_ENABLE | 0x01u);
     PT_ASSERT(run(1));
@@ -640,7 +638,7 @@ static void check_sweep_shift_zero(uint8_t nr10, uint16_t frequency, bool stops_
     square(1, duty(2), NRX2_FULL_STEADY, frequency, INITIAL);
     PT_ASSERT(run(383));
     PT_ASSERT_EQ_U32(peek(NR52), MASTER_ENABLE | 0x01u); /* no check at trigger with shift 0 */
-    PT_ASSERT(run(1 + 3 * 512)); /* the first four steps */
+    PT_ASSERT(run(1 + 3 * 512));                         /* the first four steps */
     PT_ASSERT_EQ_U32(channel1_frequency(), frequency);
     PT_ASSERT_EQ_U32(peek(NR52), stops_at_first_step ? MASTER_ENABLE : MASTER_ENABLE | 0x01u);
 }
@@ -790,13 +788,11 @@ PTEST(wave_two_bank_mode_walks_both_banks_from_the_selected_one)
     PT_ASSERT(run(192));
     for (unsigned k = 0; k < 192; k++) {
         const unsigned position = (k + 1) % 64;
-        const uint8_t expected = position < 32 ? triangle_nibble(position)
-                                               : inverted_triangle_nibble(position - 32);
+        const uint8_t expected = position < 32 ? triangle_nibble(position) : inverted_triangle_nibble(position - 32);
         PT_ASSERT_EQ_INT(left(k), expected * LEVEL_STEP);
     }
     /* Starting from bank 1 instead plays the inverse first. */
-    wave_trigger(WAVE_DAC_ON | WAVE_TWO_BANKS | WAVE_BANK_1, WAVE_VOLUME_100,
-                 WAVE_ONE_PER_SAMPLE);
+    wave_trigger(WAVE_DAC_ON | WAVE_TWO_BANKS | WAVE_BANK_1, WAVE_VOLUME_100, WAVE_ONE_PER_SAMPLE);
     PT_ASSERT(run(64));
     for (unsigned k = 0; k < 31; k++)
         PT_ASSERT_EQ_INT(left(k), inverted_triangle_nibble(k + 1) * LEVEL_STEP);
@@ -912,8 +908,7 @@ static bool reference_lfsr_clock(uint16_t *x, uint16_t taps)
 /* GBATEK NR43: "Frequency = 524288 Hz / r / 2^(s+1) ;For r=0 assume r=0.5".
  * r=1 s=2, r=0 s=3 and r=2 s=1 are all 65536 Hz, one clock per output sample
  * at RATE_EXACT; output k follows clock k+1, at level 15 when HIGH. */
-static void check_noise_sequence(uint8_t nr43, uint16_t seed, uint16_t taps,
-                                 unsigned samples_per_clock)
+static void check_noise_sequence(uint8_t nr43, uint16_t seed, uint16_t taps, unsigned samples_per_clock)
 {
     PT_ASSERT(start(RATE_EXACT));
     poke(NR42, NRX2_FULL_STEADY);
@@ -969,8 +964,8 @@ PTEST(left_and_right_enables_route_each_channel)
             PT_ASSERT(run(256));
             int16_t max_on = 0, max_off = 0, min_both = 0;
             for (size_t k = 0; k < 256; k++) {
-                const int16_t on = side ? left(k) : right(k);
-                const int16_t off = side ? right(k) : left(k);
+                const int16_t on = (int16_t)(side ? left(k) : right(k));
+                const int16_t off = (int16_t)(side ? right(k) : left(k));
                 if (on > max_on)
                     max_on = on;
                 if (off > max_off)
@@ -1008,7 +1003,7 @@ PTEST(master_volume_scales_each_side)
  * 3=Prohibited)"; this module plays 3 as 100% (psg.c). */
 PTEST(soundcnt_h_scales_the_psg_to_25_50_or_100_percent)
 {
-    static const int quarters[4] = { 1, 2, 4, 4 };
+    static const int quarters[4] = {1, 2, 4, 4};
     for (uint8_t setting = 0; setting < 4; setting++) {
         PT_ASSERT(start(RATE_EXACT));
         start_constant_wave();

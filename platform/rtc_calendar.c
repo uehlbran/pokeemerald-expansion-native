@@ -25,20 +25,18 @@
 
 #include <stdbool.h>
 
-#define DAYS_PER_YEAR      365
-#define DAYS_PER_WEEK      7
-#define CHIP_LEAP_PERIOD   4                  /* leap if year divisible by 4 */
-#define CHIP_CYCLE_DAYS    36525              /* 100 * 365 + 25 leap days */
-#define CHIP_WEEKDAY_OF_DAY_ZERO 6            /* 2000-01-01 is a Saturday */
-#define UNIX_DAYS_TO_2000  10957              /* 1970-01-01 to 2000-01-01 */
-#define BCD_BASE           10
-#define BCD_NIBBLE_BITS    4
-#define BCD_NIBBLE_MASK    0x0Fu
-#define BCD_MAX_DIGIT      9
+#define DAYS_PER_YEAR 365
+#define DAYS_PER_WEEK 7
+#define CHIP_LEAP_PERIOD 4         /* leap if year divisible by 4 */
+#define CHIP_CYCLE_DAYS 36525      /* 100 * 365 + 25 leap days */
+#define CHIP_WEEKDAY_OF_DAY_ZERO 6 /* 2000-01-01 is a Saturday */
+#define UNIX_DAYS_TO_2000 10957    /* 1970-01-01 to 2000-01-01 */
+#define BCD_BASE 10
+#define BCD_NIBBLE_BITS 4
+#define BCD_NIBBLE_MASK 0x0Fu
+#define BCD_MAX_DIGIT 9
 
-static const uint8_t days_in_month_common[RTC_MONTHS_PER_YEAR] = {
-    31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31
-};
+static const uint8_t days_in_month_common[RTC_MONTHS_PER_YEAR] = {31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
 
 uint8_t rtc_calendar_to_bcd(int value)
 {
@@ -92,26 +90,27 @@ static int days_from_chip_date(int year, int month, int day)
  * Algorithms", https://howardhinnant.github.io/date_algorithms.html). Years
  * run from 1 March so the leap day is the last day of the year; an era is 400
  * years, 146097 days. */
-#define GREGORIAN_ERA_YEARS       400
-#define GREGORIAN_ERA_DAYS        146097
-#define DAYS_0000_03_01_TO_1970   719468  /* days from 0000-03-01 to 1970-01-01 */
-#define MARCH_BASED_MONTH_MAR     3       /* months counted from March: Mar = 0 */
-#define MARCH_BASED_MONTH_WRAP    9       /* Jan -> 10, Feb -> 11 */
-#define MONTH_DAYS_NUMERATOR      153     /* (153 * m + 2) / 5 = days before month m, March based */
-#define MONTH_DAYS_BIAS           2
-#define MONTH_DAYS_DENOMINATOR    5
-#define LAST_MONTH_OF_OLD_YEAR    2       /* Jan and Feb belong to the previous March-based year */
-#define CENTURY_YEARS             100
+#define GREGORIAN_ERA_YEARS 400
+#define GREGORIAN_ERA_DAYS 146097
+#define DAYS_0000_03_01_TO_1970 719468 /* days from 0000-03-01 to 1970-01-01 */
+#define MARCH_BASED_MONTH_MAR 3        /* months counted from March: Mar = 0 */
+#define MARCH_BASED_MONTH_WRAP 9       /* Jan -> 10, Feb -> 11 */
+#define MONTH_DAYS_NUMERATOR 153       /* (153 * m + 2) / 5 = days before month m, March based */
+#define MONTH_DAYS_BIAS 2
+#define MONTH_DAYS_DENOMINATOR 5
+#define LAST_MONTH_OF_OLD_YEAR 2 /* Jan and Feb belong to the previous March-based year */
+#define CENTURY_YEARS 100
 
 int64_t rtc_calendar_unix_days_from_civil(int64_t year, int month, int day)
 {
     int64_t y = month <= LAST_MONTH_OF_OLD_YEAR ? year - 1 : year;
     int64_t era = floor_div(y, GREGORIAN_ERA_YEARS);
     int64_t year_of_era = y - era * GREGORIAN_ERA_YEARS;
-    int64_t march_month = month > LAST_MONTH_OF_OLD_YEAR ? month - MARCH_BASED_MONTH_MAR : month + MARCH_BASED_MONTH_WRAP;
+    int64_t march_month = month > LAST_MONTH_OF_OLD_YEAR ? month - MARCH_BASED_MONTH_MAR
+                                                         : month + MARCH_BASED_MONTH_WRAP;
     int64_t day_of_year = (MONTH_DAYS_NUMERATOR * march_month + MONTH_DAYS_BIAS) / MONTH_DAYS_DENOMINATOR + day - 1;
-    int64_t day_of_era = year_of_era * DAYS_PER_YEAR + year_of_era / CHIP_LEAP_PERIOD
-                       - year_of_era / CENTURY_YEARS + day_of_year;
+    int64_t day_of_era = year_of_era * DAYS_PER_YEAR + year_of_era / CHIP_LEAP_PERIOD - year_of_era / CENTURY_YEARS
+                         + day_of_year;
     return era * GREGORIAN_ERA_DAYS + day_of_era - DAYS_0000_03_01_TO_1970;
 }
 
@@ -134,14 +133,15 @@ int64_t rtc_calendar_seconds_from(const struct rtc_calendar_time *t)
 struct rtc_calendar_time rtc_calendar_time_from_seconds(int64_t chip_seconds)
 {
     struct rtc_calendar_time t;
-    int64_t day_count = floor_div(chip_seconds, RTC_SECONDS_PER_DAY) - UNIX_DAYS_TO_2000; /* the chip's continuous day counter */
+    int64_t day_count = floor_div(chip_seconds, RTC_SECONDS_PER_DAY)
+                        - UNIX_DAYS_TO_2000; /* the chip's continuous day counter */
     int64_t day_index = floor_mod(day_count, CHIP_CYCLE_DAYS);
     int64_t second_of_day = floor_mod(chip_seconds, RTC_SECONDS_PER_DAY);
     int remaining = (int)day_index;
 
     /* The weekday counter never sees the century wrap, so it runs on day_count. */
     t.weekday = (int)floor_mod(day_count + CHIP_WEEKDAY_OF_DAY_ZERO, DAYS_PER_WEEK);
-    for (t.year = 0; ; t.year++) {
+    for (t.year = 0;; t.year++) {
         int year_days = DAYS_PER_YEAR + (is_chip_leap_year(t.year) ? 1 : 0);
         if (remaining < year_days)
             break;
@@ -150,7 +150,7 @@ struct rtc_calendar_time rtc_calendar_time_from_seconds(int64_t chip_seconds)
     for (t.month = 1; remaining >= rtc_calendar_days_in_month(t.year, t.month); t.month++)
         remaining -= rtc_calendar_days_in_month(t.year, t.month);
     t.day = remaining + 1;
-    t.hour = (int)(second_of_day / (RTC_MINUTES_PER_HOUR * RTC_SECONDS_PER_MINUTE));
+    t.hour = (int)(second_of_day / ((int64_t)RTC_MINUTES_PER_HOUR * RTC_SECONDS_PER_MINUTE));
     t.minute = (int)(second_of_day / RTC_SECONDS_PER_MINUTE % RTC_MINUTES_PER_HOUR);
     t.second = (int)(second_of_day % RTC_SECONDS_PER_MINUTE);
     return t;
