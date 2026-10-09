@@ -24,6 +24,9 @@ and the list classifies that symbol. The check fails unless:
     SSE moves, and UBSan checks the alignment of every load);
   * a "packed" symbol holds only R_X86_64_64 (struct ObjectEventTemplate is
     packed, aligned(4): its script pointer may sit at offset 4 mod 8);
+  * an "operands" symbol (battle script bytecode, which
+    src/battle_script_commands.c reads through CMD_ARGS, packed structs
+    over the bytes) holds only R_X86_64_64, at any alignment;
   * a "tone" symbol (an array of struct ToneData, 24 bytes at 64) holds
     R_X86_64_64 at offset 8 mod 24 (the wav slot) and R_X86_64_32 at offset
     16 mod 24 only (voice_keysplit's key-split table address, which
@@ -57,7 +60,7 @@ TONE_DATA_SIZE = 24            # sizeof(struct ToneData) at 64 bits
 TONE_WAV_OFFSET = 8            # offsetof(struct ToneData, wav)
 TONE_KEY_SPLIT_OFFSET = 16     # offsetof(struct ToneData, attack)
 
-CLASSES = ("pointer", "packed", "tone", "bytecode", "label")
+CLASSES = ("pointer", "packed", "operands", "tone", "bytecode", "label")
 MAX_REPORTS = 20
 READELF_BATCH = 64
 
@@ -207,7 +210,7 @@ def placement_problem(obj, relocation, owner, kind):
     aligned = relocation.offset % POINTER_SIZE == 0 and obj.alignments.get(relocation.section, 0) >= POINTER_SIZE
     if kind == "bytecode":
         return None if relocation.type == ADDRESS_4 else "a bytecode address word must stay 4 bytes"
-    if kind == "packed":
+    if kind in ("packed", "operands"):
         return None if relocation.type == ADDRESS_8 else "a pointer must be 8 bytes"
     if kind == "pointer":
         if relocation.type != ADDRESS_8:
@@ -381,6 +384,18 @@ def self_test_cases():
          {"midi/mus_a.o": make_object({".rodata": 4}, [("mus_a_1", ".rodata", 0), ("mus_a", ".rodata", 12)],
                                       [(".rodata", 4, ADDRESS_4), (".rodata", 16, ADDRESS_4)])},
          []),
+        ("battle script operands at any alignment", [("b.o", "*", "operands", 1)],
+         {"b.o": make_object({"script_data": 1}, [("BattleScript_A", "script_data", 0)],
+                             [("script_data", 1, ADDRESS_8), ("script_data", 10, ADDRESS_8)])},
+         {"b.o": make_object({"script_data": 1}, [("BattleScript_A", "script_data", 0)],
+                             [("script_data", 1, ADDRESS_4), ("script_data", 6, ADDRESS_4)])},
+         []),
+        ("battle script operand left at 4 bytes", [("b.o", "*", "operands", 1)],
+         {"b.o": make_object({"script_data": 1}, [("BattleScript_A", "script_data", 0)],
+                             [("script_data", 1, ADDRESS_8), ("script_data", 10, ADDRESS_4)])},
+         {"b.o": make_object({"script_data": 1}, [("BattleScript_A", "script_data", 0)],
+                             [("script_data", 1, ADDRESS_4), ("script_data", 6, ADDRESS_4)])},
+         ["(BattleScript_A, operands, R_X86_64_32): a pointer must be 8 bytes"]),
         ("packed pointer at 4 mod 8", [("m.o", "*_ObjectEvents", "packed", 1)],
          {"m.o": make_object({".rodata": 8}, [("X_ObjectEvents", ".rodata", 0)],
                              [(".rodata", 16, ADDRESS_8), (".rodata", 44, ADDRESS_8)])},

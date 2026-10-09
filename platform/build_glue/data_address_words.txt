@@ -13,19 +13,26 @@
 #             array members): each must be 8 bytes and 8-byte aligned.
 #   packed    8-byte pointers in a packed struct (ObjectEventTemplate is
 #             packed, aligned(4)); any alignment.
+#   operands  battle script bytecode: src/battle_script_commands.c reads
+#             each command's operands through CMD_ARGS, a packed struct over
+#             the bytes, so every address in it is an 8-byte pointer at 64
+#             bits, at any alignment (asm/macros/battle_script.inc;
+#             check_battle_script_operands.py checks the macros).
 #   tone      an array of struct ToneData (24 bytes at 64 bits): the wav
 #             pointer is 8 bytes at offset 8; voice_keysplit's key-split
 #             table address stays 4 bytes in attack..release (offset 16).
-#   bytecode  script, battle, animation, contest and song bytecode, read a
-#             byte at a time (T1_READ_PTR, ScriptReadWord, the m4a
-#             sequencer): every address stays 4 bytes.
+#   bytecode  event, animation, contest AI, field effect, mystery gift and
+#             song bytecode, read a byte at a time (T1/T2_READ_*,
+#             ScriptReadWord, the m4a sequencer) with explicit 4-byte steps:
+#             every address stays 4 bytes.
 #   label     a symbol that owns no data: keysplit_* labels sit before
 #             their table (sound/keysplit_tables.inc), inside the
 #             voicegroup before it.
 #
 # Derived from the milestone 7 inventory (section 1.5, "address words in
-# the assembled data"). An upstream table or object that is not here fails
-# the 64-bit build until it is classified.
+# the assembled data"), which first counted the battle scripts as 4-byte
+# bytecode. An upstream table or object that is not here fails the 64-bit
+# build until it is classified.
 
 # mapjson output: map layouts, headers, groups and connections
 data/maps.o                             *                               pointer
@@ -54,14 +61,16 @@ data/event_scripts.o                    gStdScripts                     pointer
 data/event_scripts.o                    *                               bytecode
 data/battle_scripts_2.o                 gBattlescriptsForUsingItem      pointer
 data/battle_scripts_2.o                 gBattlescriptsForSafariActions  pointer
-data/battle_scripts_2.o                 *                               bytecode
+data/battle_scripts_2.o                 *                               operands
 data/contest_ai_scripts.o               gContestAI_ScriptsTable         pointer
 data/contest_ai_scripts.o               *                               bytecode
 data/field_effect_scripts.o             gFieldEffectScriptPointers      pointer
 data/field_effect_scripts.o             *                               bytecode
 data/mystery_event_script_cmd_table.o   gMysteryEventScriptCmdTable     pointer
 
+# battle scripts (CMD_ARGS operands)
+data/battle_scripts_1.o                 *                               operands
+
 # bytecode only
 data/battle_anim_scripts.o              *                               bytecode
-data/battle_scripts_1.o                 *                               bytecode
 data/mystery_gift.o                     *                               bytecode
