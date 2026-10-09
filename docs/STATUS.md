@@ -24,17 +24,22 @@ upstream issues were filed (rh-hideout #10892 to #10898, approved text) and
 closed by the maintainer. Every commit is authored by uehlbran.
 
 **In flight.** Milestone 7, the 64-bit build. The Opus inventory is done
-(PLAN.md "Milestone 7 plan" carries its findings and order; DECISIONS.md
-has the three decisions it forced: measure first, a platform-side save
-converter for gate h, the data emitted in the x86-64 layout with the
-bytecode left alone). Four workers started 2026-10-09 00:30 from main at
-174d3f5d9c, each in its own worktree: m7-link (the two link assertions and
-INTR_VECTOR), m7-armdiv (the x86-64 SIGFPE decoder and the ARM 64-bit
-division research), m7-testtable (the test table's spacing at 64 and
-patchelf/hydra reading ELF64), m7-seed (the trainer seed hashing the same
-bytes at both widths). After m7-link merges: the assembled data at 64
-(macros, filter rules, the relocation check), then the replays at 64, the
-save converter and gate (h), the suite at 64, the refactoring pass again.
+(PLAN.md "Milestone 7 plan"; DECISIONS.md has the decisions it forced).
+Merged on 2026-10-09, each by a worker in its own worktree, reviewed by a
+Sonnet reviewer with mutation testing and gated by the orchestrator:
+m7-seed (the trainer seed hashes the same 52 bytes at both widths),
+m7-link (the two link assertions, INTR_VECTOR as a 32-bit store, and a
+Union Room task-data overlay the reviewer found), m7-testtable (the test
+table contiguous at 64 bits and checked at start-up; patchelf and the
+hydra read ELF64, with a committed test), m7-armdiv (one SIGFPE decoder
+for i386 and x86-64, the GBA's 64-bit division-by-zero results measured
+under qemu-arm). The 64-bit build links and starts; it stops in the sound
+engine because the assembled data still holds 4-byte pointers. Running
+now: m7-data (Opus): the data emitted in the x86-64 layout (macros under
+`.ifdef`, filter rules, a relocation check run by the 64-bit link), with
+the opening replay at 64 as its target. Then: the replays at 64 plain and
+sanitized, the save converter and gate (h), the suite at 64, the
+refactoring pass again.
 
 **Broke and fixed.** The debug-menu gate's two battle screenshots flipped
 between male and female for the opponent's Poochyena whenever the binary

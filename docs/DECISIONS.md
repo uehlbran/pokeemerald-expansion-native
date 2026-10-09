@@ -618,3 +618,46 @@ upstream addition cannot slip through. Changing mapjson's or mid2agb's
 output was rejected: their outputs are shared, gitignored files the GBA
 build uses too, so the text cannot differ between builds, and a tool
 change would touch upstream for something the native build can do alone.
+
+## 2026-10-09: Gate "32=" compares like with like, and platform code may change the executables
+
+The 32-bit executables embed the worktree path, so a sha256 recorded on
+main cannot be compared with a build in a worker's worktree; the gate is
+a build of the base commit and of the branch in the same worktree. A
+change to an expansion file under the guard must leave the four 32-bit
+executables byte-identical to that base, which also means keeping the
+32-bit code on its original lines (AddressSanitizer embeds the line
+numbers of instrumented locals in the sanitized executable; a 64-bit
+branch goes below the 32-bit one). A change under platform/ or to the
+test runner legitimately changes every executable that links it; for
+those the gate is the nm diff (only what was added) and the behavioural
+gates (the suite at the baseline counts, the replays). Byte identity was
+first held for platform code too and produced a duplicated decoder in
+arm_division.c; that was reversed before the merge.
+
+## 2026-10-09: The C width test in expansion's files is __SIZEOF_POINTER__ == 8
+
+Not UINTPTR_MAX > UINT32_MAX: in a header included before <stdint.h>
+UINTPTR_MAX is undefined and the test is silently false (the first
+INTR_VECTOR guard kept the 8-byte store for that reason). The predefined
+macro is true in every translation unit. In assembly the test is
+`.ifdef NATIVE_POINTER_SIZE_8`, defined by Makefile.native for BITS=64
+only; the GBA build and BITS=32 never define it.
+
+## 2026-10-09: A 64-bit division by zero natively gives what the GBA's __udivdi3 gives
+
+Expansion compiles the ROM with -mabi=apcs-gnu, so a u64 or s64
+division calls libgcc's __udivdi3/__divdi3, never the __aeabi_* routines
+(checked with nm on the ROM ELF). Their results for a zero divisor were
+measured under qemu-arm against the GBA toolchain's own libgcc
+(platform/arm_division_libgcc, a record rebuilt and compared by hand, as
+the m4a difftest is): with k the bit length of n, n / 0 = 2^(k+1) - 1 and
+n % 0 = n mod 2^(64-k), signed by negation, INT64_MIN / -1 = INT64_MIN
+rem 0. The x86-64 SIGFPE handler gives those results for a REX.W
+division. On the 32-bit build a 64-bit division by zero goes through the
+host's i386 __udivdi3 and the handler completes its internal 32-bit DIV,
+so the result differs from the GBA's; every 64-bit division site in the
+game was listed and none can divide by zero (platform/build_glue/LINK-NEEDS.md),
+so that divergence is recorded as unreachable rather than fixed by
+wrapping the routines, which would change the 32-bit executables for no
+reachable case.
