@@ -3368,7 +3368,7 @@ static void PutPageWindowTilemaps(u8 page)
         if (sMonSummaryScreen->windowIds[i] != WINDOW_NONE)
 #endif
         PutWindowTilemap(sMonSummaryScreen->windowIds[i]);
-#line 3367
+#line 3359
 
     ScheduleBgCopyTilemapToVram(0);
 }

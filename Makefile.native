@@ -57,8 +57,9 @@
 #
 # Assets are target-independent and land where the GBA build puts them:
 # next to their sources (graphics/**, sound/**, src/data/*.h, data/maps/**)
-# and in build/assets/ for INCGFX conversions. The GBA build and this one
-# therefore share them, and `clean` here does not touch them. The one
+# and, for INCGFX conversions, in build/native-assets/ (the GBA build uses build/assets/:
+# the palettes differ, see GFX). The sources-side assets are shared with the GBA
+# build, and `clean` here does not touch them. The one
 # asset made with the C preprocessor, the trainer headers (trainer_rules.mk,
 # `$(CPP) -traditional-cpp`), comes out byte-identical with the host cpp
 # and with arm-none-eabi-cpp (checked for every .party file, TEST=0 and 1).
@@ -132,8 +133,8 @@ endif
 ifeq ($(SANITIZE),1)
   OBJ_DIR := $(OBJ_DIR)-san
 endif
-# Shared with the GBA build: INCGFX outputs do not depend on the target.
-ASSETS_DIR_NAME := $(BUILD_DIR)/assets
+# INCGFX outputs are not shared with the GBA build (see GFX: our palettes are padded).
+ASSETS_DIR_NAME := $(BUILD_DIR)/native-assets
 
 # Directory names as expansion's Makefile spells them; the fragments use them.
 C_SUBDIR = src
@@ -242,7 +243,9 @@ include make_tools.mk
 EXE :=
 SMOLTM       := $(TOOLS_DIR)/compresSmol/compresSmolTilemap$(EXE)
 SMOL         := $(TOOLS_DIR)/compresSmol/compresSmol$(EXE)
-GFX          := $(TOOLS_DIR)/gbagfx/gbagfx$(EXE)
+# gbagfx behind a wrapper that pads palettes to whole banks (platform/build_glue/gbagfx_pad.sh);
+# the GBA build does not use it and has its own build/assets.
+GFX          := platform/build_glue/gbagfx_pad.sh
 WAV2AGB      := $(TOOLS_DIR)/wav2agb/wav2agb$(EXE)
 MID          := $(TOOLS_DIR)/mid2agb/mid2agb$(EXE)
 SCANINC      := $(TOOLS_DIR)/scaninc/scaninc$(EXE)
@@ -477,15 +480,8 @@ generated: $(AUTO_GEN_TARGETS)
 %.1bpp:     %.png  ; $(GFX) $< $@
 %.4bpp:     %.png  ; $(GFX) $< $@
 %.8bpp:     %.png  ; $(GFX) $< $@
-# A palette of fewer than 16 colours (many species have 11 to 15) is not a whole number of
-# 32-byte palette banks, yet LoadSpritePalette and LoadPaletteFast copy a whole bank, so the
-# GBA read the next bytes of ROM (harmless); natively that is a read past the object.
-# Padding the .gbapal with zero colours to a whole bank changes no colour that was ever used.
-define PAD_GBAPAL
-size=$$(stat -c %s $@); pad=$$(( (32 - size % 32) % 32 )); if [ $$pad -gt 0 ]; then head -c $$pad /dev/zero >> $@; fi
-endef
-%.gbapal:   %.pal  ; $(GFX) $< $@ && $(PAD_GBAPAL)
-%.gbapal:   %.png  ; $(GFX) $< $@ && $(PAD_GBAPAL)
+%.gbapal:   %.pal  ; $(GFX) $< $@
+%.gbapal:   %.png  ; $(GFX) $< $@
 %.lz:       %      ; $(GFX) $< $@
 %.smolTM:   %      ; $(SMOLTM) $< $@
 %.fastSmol: %      ; $(SMOL) -w $< $@ false false false
