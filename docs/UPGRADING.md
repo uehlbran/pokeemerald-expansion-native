@@ -172,8 +172,9 @@ git diff OLD NEW -- tools/mgba-rom-test-hydra tools/patchelf tools/scaninc tools
 - `platform/build_glue/asm_filter.py`, `c_filter.sed`,
   `overworld_macros.py`: new assembler constructs or `preproc` output.
 - The assembly translated or replaced in `platform/`: `src/m4a_1.s`
-  (`platform/m4a/`; its differential test against the ARM original needs
-  `make -C platform/m4a/difftest run`, by hand; needs qemu-arm, see `platform/m4a/README.md`),
+  (`platform/m4a/`; its differential test against the ARM original is run by
+  hand: `make -C platform/m4a/difftest run`, needs qemu-arm, see
+  `platform/m4a/README.md`),
   `src/crt0.s`, `src/decompress_asm.s`, `src/libgcnmultiboot.s`,
   `src/rom_header.s`. A change in any of them is a change in a platform
   module.
