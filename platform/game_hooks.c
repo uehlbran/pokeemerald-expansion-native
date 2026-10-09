@@ -195,7 +195,7 @@ static void run_entry(void)
 }
 
 /* The section's place and size are the linker script's; this checks they
- * are what the header says. Flagged 64-bit: addresses compared as integers. */
+ * are what the header says. The addresses are compared as uintptr_t at both widths. */
 static bool call_stack_is_linked(void)
 {
     uintptr_t start = (uintptr_t)platform_call_stack_start;

@@ -13,8 +13,8 @@
  * DMA, save and video code ask gba_memmap_contains() or
  * gba_memmap_region_of() before touching a range a game-supplied address
  * names. Addresses are uintptr_t because each GBA address is also the native
- * address of the same byte. Flagged for the 64-bit milestone: GBA addresses
- * fit in 32 bits, so the identity holds there too (checked on both widths).
+ * address of the same byte. At 64 bits too: the regions are mapped below
+ * 4 GiB at their GBA addresses, so the identity holds (checked on both widths).
  *
  * The constants must equal expansion's EWRAM_START, IWRAM_START, REG_BASE,
  * PLTT, VRAM and OAM (include/gba/defines.h, include/gba/io_reg.h);
@@ -136,7 +136,7 @@ const struct gba_region_info *gba_memmap_info(enum gba_region region);
 /* The I/O register of the given width at `offset` from GBA_IO_BASE (GBATEK
  * "GBA I/O Map"), as a pointer into the mapped page. The integer-to-pointer
  * conversion is the identity because the page is mapped at its GBA address
- * (above); flagged for the 64-bit milestone with that identity. The caller
+ * (above), at both widths. The caller
  * passes an offset of a register that lies inside GBA_IO_SIZE. */
 static inline volatile uint8_t *gba_io_u8(uint32_t offset)
 {

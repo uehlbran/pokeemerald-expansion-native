@@ -140,7 +140,7 @@ static u32 FetchSample(const struct SampleSource *source, u32 index)
 }
 
 /* currentPointer holds a pointer into the sample, or for a compressed
- * sample the index itself (flagged 64-bit: stored as a uintptr_t). */
+ * sample the index itself (stored as a uintptr_t at either width). */
 static u32 LoadIndex(const struct SampleSource *source)
 {
     const struct SoundChannel *chan = source->chan;

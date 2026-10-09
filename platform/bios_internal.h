@@ -25,7 +25,7 @@ _Static_assert(__BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__,
 #define BIOS_BITS_PER_BYTE 8u
 
 /* The GBA address of a native pointer: the same number (gba_memmap.h).
- * uintptr_t, flagged for the 64-bit milestone as gba_memmap.h is. */
+ * uintptr_t at both widths, as gba_memmap.h is. */
 uintptr_t bios_address_of(const void *pointer);
 
 /* transfer_bounds_ok() for [start, start + length) that, on refusal, prints

@@ -28,11 +28,13 @@ Verified by an automated gate (details, dates and commands in
 - Expansion's test suite (5862 tests) runs on the native build and gives,
   per test, the results it gives on the GBA, except nine benchmark tests,
   which cannot run natively and are reported as assumption failures.
+- The 64-bit build (`BITS=64`) links and plays both replays to the same
+  dumps and screenshots, plain and sanitized, and runs expansion's suite with
+  the 32-bit results; a save moves between the two builds (converted on load).
 - The GBA build is unchanged and still passes its own suite.
 
 Not working or not verified:
 
-- 64-bit: the platform's unit tests pass, but the game does not link yet.
 - Windows and macOS: not attempted; Linux (built under WSL2 Ubuntu 24.04)
   is the only platform tried.
 - GBA save interchange: native saves use the host's struct layout and are

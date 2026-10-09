@@ -19,6 +19,20 @@ make -f Makefile.native -j"$(nproc)" native BITS=32 SANITIZE=1      # build/nati
 ASAN_OPTIONS=halt_on_error=0 tests/smoke/run.sh build/native32-san/pokeemerald-native out-san/
 ```
 
+The same expectations hold at 64 bits; the dumps and screenshots must equal the
+32-bit ones (about 30 seconds plain per replay on 32 cores, 2026-10-09):
+
+```
+make -f Makefile.native -j"$(nproc)" native BITS=64                 # build/native64/pokeemerald-native
+tests/smoke/run.sh build/native64/pokeemerald-native out/
+tests/smoke/run_debug_menu.sh build/native64/pokeemerald-native out/
+make -f Makefile.native -j"$(nproc)" native BITS=64 SANITIZE=1      # build/native64-san/pokeemerald-native
+ASAN_OPTIONS=halt_on_error=0 tests/smoke/run.sh build/native64-san/pokeemerald-native out-san/
+ASAN_OPTIONS=halt_on_error=0 tests/smoke/run_debug_menu.sh build/native64-san/pokeemerald-native out-san/
+```
+
+`--update` is run on the 32-bit build only.
+
 `run.sh` builds nothing. It runs the replay with `--headless --silent
 --unthrottled --rtc-fixed 1700000000` and a save file and RTC offset file in
 `OUTDIR/work/`, then compares:

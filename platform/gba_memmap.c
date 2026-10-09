@@ -132,7 +132,7 @@ static int check_linked_section(enum gba_region region, uintptr_t start, uintptr
 int gba_memmap_init(void)
 {
     for (int id = GBA_REGION_NONE + 1; id < GBA_REGION_COUNT; id++) {
-        /* Pointers to integers, flagged: comparing linked addresses with GBA addresses. */
+        /* Pointers to integers: comparing linked addresses with GBA addresses. */
         const uintptr_t start = (uintptr_t)linked_sections[id].start;
         const uintptr_t end = (uintptr_t)linked_sections[id].end;
         const int status = check_linked_section((enum gba_region)id, start, end, stderr);
