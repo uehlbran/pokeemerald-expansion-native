@@ -527,6 +527,9 @@ SELF_TEST_PROGRAMS = (
     (8, "mapjson", "Y_MapConnections: .4byte 2 ; .word L\n",
      "\t.balign 8\nY_MapConnections: .4byte 2 ;\t.space 4 ; .8byte L\n\t.balign 8\n"),
     (8, "mapjson", "X_Layout::\n\t.4byte 30, 20\n", FilterError("one word per statement expected")),
+    # A label ends the scalar words and the padding of the one before it.
+    (8, "mapjson", "A_MapConnections:\nB:\n\t.4byte p\n",
+     "\t.balign 8\nA_MapConnections:\n\t.balign 8\nB:\n\t.8byte p\n\t.balign 8\n"),
 )
 
 
