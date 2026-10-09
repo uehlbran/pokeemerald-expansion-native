@@ -23,32 +23,24 @@ sequence after the last merge and recorded in the table below. Seven
 upstream issues were filed (rh-hideout #10892 to #10898, approved text) and
 closed by the maintainer. Every commit is authored by uehlbran.
 
-**In flight.** Milestone 7, the 64-bit build. The Opus inventory is done
-(PLAN.md "Milestone 7 plan"; DECISIONS.md has the decisions it forced).
+**In flight.** Milestone 7, the 64-bit build, is in its last stretch.
 Merged on 2026-10-09, each by a worker in its own worktree, reviewed by a
 Sonnet reviewer with mutation testing and gated by the orchestrator:
-m7-seed (the trainer seed hashes the same 52 bytes at both widths),
-m7-link (the two link assertions, INTR_VECTOR as a 32-bit store, a Union
-Room task-data overlay the reviewer found), m7-testtable (the test table
-contiguous at 64 bits and checked at start-up; patchelf and the hydra
-read ELF64, with a committed test), m7-armdiv (one SIGFPE decoder for
-i386 and x86-64, the GBA's 64-bit division-by-zero results measured under
-qemu-arm), m7-data (the assembled data emitted in the x86-64 layout, with
-a relocation check, a layout check and a classified symbol list run by the
-64-bit link), m7-bscript (the battle scripts' 174 pointer operands at 8
-bytes, with a checker that parses the macros against the C declarations),
-m7-crit (an upstream out-of-bounds read in GetCriticalHitOdds that the
-64-bit build turned into a crash, fixed natively to the GBA's result).
-**The 64-bit build now plays both replays** (opening and debug menu, all
-dumps and screenshots equal to the 32-bit expectations, mixed audio
-identical frame by frame) and expansion's suite at 64 bits differs from 32
-only in `SaveBlock1 is backwards compatible` (the layout difference gate h
-converts); the 64-bit rows join the gate table once the orchestrator's own
-run on main is recorded. Running now: m7-align (Sonnet; 8-byte alignment
-of the save blocks, the heap, the RFU buffers and task data at 64, which
-is what the sanitized 64-bit replays need; in its review-fix round) and
-m7-save (Opus; the save converter and gate h). Then: the sanitized gates
-at 64, the suite at 64 recorded, the refactoring pass again, 64-bit done.
+m7-seed, m7-link, m7-testtable, m7-armdiv, m7-data, m7-bscript, m7-crit,
+m7-align, m7-san and m7-save (what each did: the "Milestone 7" rows in
+"Verified by a gate" and the merge messages). **The 64-bit build plays
+both replays plain and sanitized, expansion's suite at 64 bits matches
+32 test for test (5409 passed at both widths), the sanitized suites
+report the same accesses at both widths, and a 32-bit save loads in the
+64-bit build and back (gate h, the cross-width script, plain and
+sanitized).** Running now: m7-anim (two GBA-exact animation reads, a
+both-width native fix), m7-docs (BUILDING, ARCHITECTURE, CONTRIBUTING,
+the platform comments brought to the 64-bit state), and the milestone 7
+refactoring pass (refactor7-platform: the platform C added in M7;
+refactor7-glue: the build glue, checkers and scripts; a third group,
+the audit of M7's guarded expansion blocks, follows the animation
+merge). Then the orchestrator's end-to-end read of the milestone 7
+changes, every gate once more on main, "64-bit done", push.
 
 **Broke and fixed.** Milestone 7: the 64-bit plain debug-menu replay
 failed on main right after the alignment merge while the sanitized one

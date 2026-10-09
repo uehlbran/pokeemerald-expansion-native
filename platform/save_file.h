@@ -79,10 +79,11 @@
 /* Identifies how the platform lays out the game's saved structs
  * (SaveBlock1/2/3, PokemonStorage, the special sectors) inside the image,
  * together with the pointer width: the layout the host compiler gives
- * expansion's structs with no conversion layer, which on 32-bit is assumed
- * to match the GBA's (to be verified by the save-compatibility milestone).
- * A build that changes that layout, such as a 64-bit conversion layer, uses
- * a new value. */
+ * expansion's structs, which on 32-bit is assumed to match the GBA's (to be
+ * verified by the save-compatibility milestone). The 32- and 64-bit layouts
+ * share the id; the pointer width tells them apart, and main moves a save
+ * from one to the other with save_convert.h. A build that changes the
+ * layout any other way uses a new value. */
 #define SAVE_FILE_LAYOUT_ID 1u
 
 /* The ABI an image was written with. */

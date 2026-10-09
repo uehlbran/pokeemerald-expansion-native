@@ -1,0 +1,66 @@
+# Gate (h), the last step (run_cross_width.sh): the build that received a save
+# from the other width continues it, saves it in its own layout, and comes up
+# from that save after a cold restart. Runs on the pokeemerald.sav that
+# opening.replay's first half wrote (one save, in Professor Birch's lab).
+
+# ---- Boot, title, Continue on the carried save -------------------------------
+wait-until callback2=MainCB2_Intro max 1000
+wait-until callback2=MainCB2 max 20000
+wait-until task_first=Task_TitleScreenPhase3 max 600
+press START
+wait-until task_first=Task_HandleMainMenuInput max 600
+# a saved game: CONTINUE is the first entry
+press A
+wait-until callback2=CB2_Overworld max 1200
+wait 10  # settle
+wait-until controls_locked=0 max 600
+expect save_counter=1
+expect flash_dirty_writes=0
+expect player_name=Ab
+expect party_count=1
+expect party0_species=252
+expect map_name=MAP_LITTLEROOT_TOWN_PROFESSOR_BIRCHS_LAB
+
+# ---- Save again, in this build's layout --------------------------------------
+press START
+wait-until task_last=Task_ShowStartMenu max 300
+wait 10  # settle
+# POKeMON, BAG, the player, SAVE: three down
+press DOWN
+wait 8  # turn on the spot
+press DOWN
+wait 8  # turn on the spot
+press DOWN
+wait 8  # turn on the spot
+press A
+# "Would you like to save the game?" Yes; "There is already a saved file. Is it
+# OK to overwrite it?" Yes; the save runs; the menu closes
+mash A until controls_locked=0 max 3000
+wait 20  # settle
+dump 28_saved_again
+screenshot 28_saved_again
+expect save_counter=2
+expect player_name=Ab
+expect party0_species=252
+expect map_name=MAP_LITTLEROOT_TOWN_PROFESSOR_BIRCHS_LAB
+
+# ---- Cold restart: the same build, its own save -------------------------------
+restart
+
+wait-until callback2=MainCB2_Intro max 1000
+wait-until callback2=MainCB2 max 20000
+wait-until task_first=Task_TitleScreenPhase3 max 600
+press START
+wait-until task_first=Task_HandleMainMenuInput max 600
+press A
+wait-until callback2=CB2_Overworld max 1200
+wait 10  # settle
+wait-until controls_locked=0 max 600
+dump 29_continued_again
+screenshot 29_continued_again
+expect player_name=Ab
+expect party_count=1
+expect party0_species=252
+expect party0_name=Treecko
+expect map_name=MAP_LITTLEROOT_TOWN_PROFESSOR_BIRCHS_LAB
+expect save_counter=2

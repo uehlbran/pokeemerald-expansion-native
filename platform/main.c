@@ -58,6 +58,7 @@
 #include "replay_session.h"
 #include "restart.h"
 #include "rtc.h"
+#include "save_convert.h"
 #include "save_file.h"
 #include "timer.h"
 #include "transfer_bounds.h"
@@ -226,6 +227,30 @@ static int start_flash(const struct options *o)
     return 0;
 }
 
+/* The cartridge carried over from a build with pointer_bits-bit pointers:
+ * the save in the chip is put into this build's struct layout before the
+ * game reads it (save_convert.h). Not marked dirty, so the file keeps the
+ * other build's layout until the game saves. */
+static int adopt_save_layout(const char *path, uint32_t pointer_bits)
+{
+    const uint32_t native_bits = save_file_native_layout().pointer_bits;
+    if (pointer_bits == native_bits)
+        return 0;
+    const int converted = save_convert_image(flash_image(), pointer_bits, native_bits);
+    if (converted < 0) {
+        (void)fprintf(stderr,
+                      "main: %s has a %u-bit build's save layout, which this build cannot convert; not "
+                      "starting, so it is not overwritten\n",
+                      path, (unsigned)pointer_bits);
+        return -1;
+    }
+    (void)fprintf(stderr,
+                  "main: %s has a %u-bit build's save layout; converted %d save slot(s) to this build's (the file "
+                  "keeps the old layout until the game saves)\n",
+                  path, (unsigned)pointer_bits, converted);
+    return 0;
+}
+
 /* Loads the save. A file this build cannot use is never overwritten: main
  * stops, and the player decides what to do with it. */
 static int start_save_file(const struct options *o)
@@ -233,6 +258,7 @@ static int start_save_file(const struct options *o)
     if (save_file_init(o->save_path) != SAVE_FILE_OK)
         return -1;
     int status = save_file_load();
+    struct save_file_layout layout;
     switch (status) {
     case SAVE_FILE_OK:
     case SAVE_FILE_NEW:
@@ -240,11 +266,13 @@ static int start_save_file(const struct options *o)
     case SAVE_FILE_LEGACY:
         (void)fprintf(stderr, "main: %s has no header (an emulator's .sav or an older build's); loading it\n",
                       o->save_path);
-        return 0;
+        return adopt_save_layout(o->save_path, SAVE_CONVERT_BARE_IMAGE_POINTER_BITS);
     case SAVE_FILE_FOREIGN_LAYOUT:
+        if (save_file_loaded_layout(&layout) && layout.layout_id == SAVE_FILE_LAYOUT_ID)
+            return adopt_save_layout(o->save_path, layout.pointer_bits);
         (void)fprintf(stderr,
                       "main: %s was written by a build with another save layout, which this build cannot "
-                      "read yet; not starting, so it is not overwritten\n",
+                      "read; not starting, so it is not overwritten\n",
                       o->save_path);
         return -1;
     default:

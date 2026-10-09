@@ -138,6 +138,7 @@ returned to the caller (`main` decides what to do; modules never call
 | `m4a/` | the ARM sound engine `src/m4a_1.s`, in C | n/a (game code) | yes, and a differential test against the ARM original under qemu-arm, run by hand (`platform/m4a/README.md`) |
 | `flash` | the 1 Mbit flash chip's driver entry | GBA Cart Backup Flash ROM | yes |
 | `save_file` | the cartridge's persistence | n/a | yes |
+| `save_convert` | the save moving between the 32-bit and the 64-bit build (`SaveBlock1`'s layouts, `save_layout32.h`, `save_layout64.h`) | n/a (expansion's `src/save.c` format) | yes, and gate (h) |
 | `debug_channel` | mGBA's debug registers | mGBA `src/gba/io.c` | yes |
 | `crash_reboot` | the reboot after a crash, keeping IWRAM's last 0x200 bytes (test runner mode) | BIOS Reset Functions | yes (real crashes and re-execs) |
 | `arm_division` | the GBA's software division (libgcc), which returns instead of trapping on a zero divisor | (libgcc, measured under qemu-arm by `arm_division_libgcc/`; the Intel SDM for decoding) | yes |
