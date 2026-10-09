@@ -17,11 +17,17 @@ struct Task
     u8 prev;
     u8 next;
     u8 priority;
-#if PLATFORM_NATIVE && __SIZEOF_POINTER__ == 8
-    // 8-aligned at 64 bits: struct ListMenu and ScrollIndicatorPair, which hold pointers, are
-    // overlaid on data (list_menu.c) and need 8-byte alignment (4 bytes of padding before it).
-    s16 data[NUM_TASK_DATA] ALIGNED(8);
+#if PLATFORM_NATIVE
+#if __SIZEOF_POINTER__ != 8
+#line 20
+    s16 data[NUM_TASK_DATA];
 #else
+    // 8-aligned at 64 bits: struct ListMenu and ScrollIndicatorPair, which hold pointers, are
+    // overlaid on data (list_menu.c) and need 8-byte alignment (data moves from offset 12 to 16).
+    s16 data[NUM_TASK_DATA] ALIGNED(8);
+#endif
+#else
+#line 20
     s16 data[NUM_TASK_DATA];
 #endif
 #if PLATFORM_NATIVE

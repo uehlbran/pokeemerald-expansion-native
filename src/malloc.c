@@ -13,13 +13,18 @@ extern const char __executable_start[];
 static void *sHeapStart;
 static u32 sHeapSize;
 
-#if !PLATFORM_NATIVE || __SIZEOF_POINTER__ != 8
+#if PLATFORM_NATIVE
+#if __SIZEOF_POINTER__ != 8
 #line 10
 ALIGNED(4) EWRAM_DATA u8 gHeap[HEAP_SIZE] = {0};
 #else
 // 8-byte blocks at 64 bits: struct MemBlock holds pointers (24-byte header), so its
 // address and every block size must keep 8-byte alignment.
 ALIGNED(8) EWRAM_DATA u8 gHeap[HEAP_SIZE] = {0};
+#endif
+#else
+#line 10
+ALIGNED(4) EWRAM_DATA u8 gHeap[HEAP_SIZE] = {0};
 #endif
 #line 11
 
@@ -49,10 +54,17 @@ static void *AllocInternal(void *heapStart, u32 size, const char *location)
     u32 foundBlockSize;
 
     // Alignment
-#if PLATFORM_NATIVE && __SIZEOF_POINTER__ == 8
+#if PLATFORM_NATIVE
+#if __SIZEOF_POINTER__ != 8
+#line 38
+    if (size & 3)
+        size = 4 * ((size / 4) + 1);
+#else
     if (size & 7)
         size = 8 * ((size / 8) + 1);
+#endif
 #else
+#line 38
     if (size & 3)
         size = 4 * ((size / 4) + 1);
 #endif
@@ -175,10 +187,17 @@ static void *AllocZeroedInternal(void *heapStart, u32 size, const char *location
 
     if (mem != NULL)
     {
-#if PLATFORM_NATIVE && __SIZEOF_POINTER__ == 8
+#if PLATFORM_NATIVE
+#if __SIZEOF_POINTER__ != 8
+#line 141
+        if (size & 3)
+            size = 4 * ((size / 4) + 1);
+#else
         if (size & 7)
             size = 8 * ((size / 8) + 1);
+#endif
 #else
+#line 141
         if (size & 3)
             size = 4 * ((size / 4) + 1);
 #endif

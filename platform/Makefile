@@ -146,6 +146,11 @@ $(OBJ_DIR)/test/test_arm_division.o: CFLAGS_ALL += -fno-pie
 # as the game is (Makefile.native CPPFLAGS and ARCH_FLAGS), or the structure
 # layouts could differ.
 $(OBJ_DIR)/inspect.o $(OBJ_DIR)/inspect_menu.o $(OBJ_DIR)/inspect_args.o $(OBJ_DIR)/test/test_inspect_args.o: CFLAGS_ALL += $(GAME_DEFINES) -DTESTING=0 -DEMERALD $(GAME_CHAR_FLAGS)
+# -MD, not -MMD: expansion's headers come by -idirafter, which makes them system
+# headers, and -MMD leaves those out of the dependency file, so a change to a game
+# header (include/task.h, ...) would leave these objects compiled against the old
+# structure layouts.
+$(OBJ_DIR)/inspect.o $(OBJ_DIR)/inspect_menu.o $(OBJ_DIR)/inspect_args.o $(OBJ_DIR)/test/test_inspect_args.o: CFLAGS_ALL := $(subst -MMD,-MD,$(CFLAGS_ALL))
 
 # The files a test names on its "// deps:" line.
 test_deps = $(shell sed -n -E 's@^//[[:space:]]*\#?[[:space:]]*deps:@@p' test/$(1).c)

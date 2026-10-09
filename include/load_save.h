@@ -4,13 +4,19 @@
 #include "pokemon_storage_system.h"
 #include "save.h"
 
+#if PLATFORM_NATIVE
+#if __SIZEOF_POINTER__ != 8
+#line 7
 #define SAVEBLOCK_MOVE_RANGE    128
-#if PLATFORM_NATIVE && __SIZEOF_POINTER__ == 8
-// The offset moves in steps of 8 here (src/load_save.c): struct SaveBlock1 and
-// PokemonStorage hold pointers, so they need 8-byte alignment. 256 keeps the
+#else
+// The offset moves in steps of 8 here (src/load_save.c): struct SaveBlock1 holds pointers,
+// so it needs 8-byte alignment (the other two blocks move with it). 256 keeps the
 // GBA's 32 possible positions.
-#undef SAVEBLOCK_MOVE_RANGE
 #define SAVEBLOCK_MOVE_RANGE    256
+#endif
+#else
+#line 7
+#define SAVEBLOCK_MOVE_RANGE    128
 #endif
 #line 8
 
