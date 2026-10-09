@@ -13,12 +13,13 @@ extern const char __executable_start[];
 static void *sHeapStart;
 static u32 sHeapSize;
 
-#if PLATFORM_NATIVE && __SIZEOF_POINTER__ == 8
+#if !PLATFORM_NATIVE || __SIZEOF_POINTER__ != 8
+#line 10
+ALIGNED(4) EWRAM_DATA u8 gHeap[HEAP_SIZE] = {0};
+#else
 // 8-byte blocks at 64 bits: struct MemBlock holds pointers (24-byte header), so its
 // address and every block size must keep 8-byte alignment.
 ALIGNED(8) EWRAM_DATA u8 gHeap[HEAP_SIZE] = {0};
-#else
-ALIGNED(4) EWRAM_DATA u8 gHeap[HEAP_SIZE] = {0};
 #endif
 #line 11
 

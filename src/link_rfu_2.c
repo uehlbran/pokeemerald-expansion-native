@@ -72,10 +72,11 @@ struct RfuDebug
     u8 padding[2];
 };
 
-#if PLATFORM_NATIVE && __SIZEOF_POINTER__ == 8
-COMMON_DATA u32 gRfuAPIBuffer[RFU_API_BUFF_SIZE_RAM / 4] ALIGNED(8) = {0};
-#else
+#if !PLATFORM_NATIVE || __SIZEOF_POINTER__ != 8
+#line 75
 COMMON_DATA u32 gRfuAPIBuffer[RFU_API_BUFF_SIZE_RAM / 4] = {0};
+#else
+COMMON_DATA u32 gRfuAPIBuffer[RFU_API_BUFF_SIZE_RAM / 4] ALIGNED(8) = {0};
 #endif
 #line 76
 COMMON_DATA struct RfuManager gRfu = {0};
