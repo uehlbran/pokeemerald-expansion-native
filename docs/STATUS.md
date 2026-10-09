@@ -33,14 +33,13 @@ both replays plain and sanitized, expansion's suite at 64 bits matches
 32 test for test (5409 passed at both widths), the sanitized suites
 report the same accesses at both widths, and a 32-bit save loads in the
 64-bit build and back (gate h, the cross-width script, plain and
-sanitized).** Running now: m7-anim (two GBA-exact animation reads, a
-both-width native fix), m7-docs (BUILDING, ARCHITECTURE, CONTRIBUTING,
-the platform comments brought to the 64-bit state), and the milestone 7
-refactoring pass (refactor7-platform: the platform C added in M7;
-refactor7-glue: the build glue, checkers and scripts; a third group,
-the audit of M7's guarded expansion blocks, follows the animation
-merge). Then the orchestrator's end-to-end read of the milestone 7
-changes, every gate once more on main, "64-bit done", push.
+sanitized).** m7-anim and m7-docs merged after that (99d36a6290,
+5c17faf576). Running now: the milestone 7 refactoring pass in three
+groups (refactor7-platform: the platform C added in M7; refactor7-glue:
+the build glue, checkers and scripts; refactor7-expansion: the audit of
+M7's guarded expansion blocks). Then the orchestrator's end-to-end read
+of the milestone 7 changes, every gate once more on main, "64-bit done",
+push. The "Milestone 7" section below is the ledger.
 
 **Broke and fixed.** Milestone 7: the 64-bit plain debug-menu replay
 failed on main right after the alignment merge while the sanitized one
@@ -139,6 +138,55 @@ that its gba_memmap_init call is a layout check (main has already
 initialised the regions). Notes that are not defects: ppu_obj.c reads all
 128 OAM entries once per line (performance only); bios_soft_reset relies on
 game_hooks_unwind being noreturn, which it is declared to be.
+
+## Milestone 7: the 64-bit build
+
+Started 2026-10-09 from an Opus inventory of what the 64-bit build
+needed (the pinned 32-bit layouts and the address words in the assembled
+data, measured rather than guessed; DECISIONS.md "Milestone 7 starts
+from a measured inventory"). The order was the plan's: the link, the
+data, the address and integer modules, gate (h), the gates at 64, the
+refactoring pass. Twelve worker branches, each in its own worktree,
+reviewed by a Sonnet reviewer with mutation testing, fixed by its
+author, gated by the orchestrator (the platform gate, the 32-bit build
+and replays like for like, the 64-bit build and replays, `make check`
+at both widths, the GBA ROM) and merged with `--no-ff`:
+
+| Branch | Merge | What changed |
+|---|---|---|
+| m7-seed | ea4fee53cb | the trainer party seed hashes the same 52 bytes at both widths (a pointer had been hashed; the M6 flake's root cause, finished for 64) |
+| m7-link | f9ebd50dd2 | the 64-bit build links and boots: `INTR_VECTOR` as a 32-bit store, `RecordedBattleSave`'s u64 at 4-byte alignment, the Union Room's task-data overlay, `ListMenu` in a task's data (`nativeDataSpill`) |
+| m7-testtable | f96b68877a | the `.tests` table at 64 (`-malign-data=abi` for test objects, crt0 walks the entries), `tools/patchelf` and the hydra read ELF64 |
+| m7-armdiv | 9629ad33a4 | one SIGFPE division decoder for i386 and x86-64; the GBA's 64-bit division-by-zero results measured under qemu-arm (`platform/arm_division_libgcc/`) |
+| m7-data | 53841d35de | the assembled data emitted in the x86-64 layout at 64 (`.ifdef NATIVE_POINTER_SIZE_8` in the macros, `asm_filter.py --pointer-size 8`), `check_relocations.py` with the classified list `data_address_words.txt` and a 4-byte reference assembly |
+| m7-bscript | f53de560e5 | battle script pointer operands at 8 bytes (read through packed `CMD_ARGS` structs), `check_battle_script_operands.py`, `check_data_layout.py` with the host probe; the `table` and `operands` classes |
+| m7-crit | 8436c38f61 | `GetCriticalHitOdds` returns the GBA's words for an out-of-table index (ROM evidence; crashed seven AI tests at 64) with `test/crit_odds.c` |
+| m7-align | 7280370c21 | 8-byte alignment at 64: the save blocks (32 positions in 8-byte steps), the heap, the RFU buffer carve (fixed offsets, static asserts), task data |
+| m7-san | 6fa225a3f8 | the sanitized suite at 64 compared with 32 report by report (`suppress_equal_pcs=0`): the same accesses, nothing new at 64 (SUITE-LOG.md) |
+| m7-save | e2d220a406 | gate (h): `platform/save_convert` between the two SaveBlock1 layouts (15496 and 15768 bytes), both directions, `tests/smoke/run_cross_width.sh` |
+| m7-anim | 99d36a6290 | two out-of-table animation reads given the GBA's value at every width (Doom Desire's coordinate table, `gSineTable[320]` from Extrasensory and `Cos`) |
+| m7-docs | 5c17faf576 | BUILDING, ARCHITECTURE ("The 64-bit build"), CONTRIBUTING, the smoke README, the platform comments brought to the 64-bit state |
+
+What the inventory predicted and what held: the memory model needed no
+change (every region below 4 GiB, the executable at 0x40000000, the tag
+bit); the assembled data was the bulk of the work (61,154 address words,
+19,208 widened, 41,946 left at 4 bytes as bytecode); only one save
+block's layout differs between the widths. What it did not predict:
+the battle scripts' operands are read through packed structs and had to
+widen (m7-bscript), the test table's entries are spaced differently by
+GCC's data alignment (m7-testtable), and three upstream out-of-table
+reads that are harmless at 32 bits crash or change a frame at 64
+(m7-crit, m7-anim). Every decision taken on the way is in DECISIONS.md
+(the entries dated 2026-10-09 from "Milestone 7 starts from a measured
+inventory" on).
+
+**The refactoring pass** (the standing instruction, run again over what
+milestone 7 added): three groups, in flight: refactor7-platform (the
+platform C added in M7: the save converter, the division decoder, crt0's
+table check, main's layout adoption), refactor7-glue (the build glue,
+the three checkers, the smoke scripts, the tools), refactor7-expansion
+(the audit of every guarded expansion block and row). Results, the
+end-to-end read and the final gate rows follow below when they are done.
 
 ## Verified by a gate
 
