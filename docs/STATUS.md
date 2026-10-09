@@ -77,10 +77,16 @@ Nothing yet; nothing exists to be broken.
   Sonnet, with Opus reserved for the pieces that need it (the m4a
   translation, the test-runner protocol, the first boot). The owner asked
   for the model used per branch to be visible; it is in the table below.
-- Upstream bugs found by the native suite, worth reporting to rh-hideout:
-  the rows marked "worth reporting upstream" in `UPSTREAM_MODIFICATIONS.md`
-  and the two tables in `platform/test_runner/SUITE-LOG.md` (class 6 and
-  "The sanitized run"). None changes a test result on the GBA.
+- Upstream bug reports (2026-10-09): nine rows of `UPSTREAM_MODIFICATIONS.md`
+  marked worth reporting were triaged against `rhh/upcoming` and
+  rh-hideout's issues and pull requests (none already fixed, none already
+  reported) and filed as seven issues, rh-hideout/pokeemerald-expansion
+  #10892 to #10898; each row links its issue, so the upgrade runbook
+  knows which rows should disappear when upstream merges a fix. Further
+  candidates (the sanitized-run table in `platform/test_runner/SUITE-LOG.md`,
+  milestone 5's rows) are not filed yet. Every issue offers a pull
+  request; none is opened until the owner has seen the maintainers'
+  request, which is recorded here when it comes.
 
 ## Which model did what
 
