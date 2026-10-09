@@ -38,8 +38,7 @@
 #define SOUND_INFO_PTR (*(struct SoundInfo **)0x3007FF0)
 #define INTR_CHECK     (*(u16 *)0x3007FF8)
 #if PLATFORM_NATIVE
-#include <stdint.h>
-#if UINTPTR_MAX > UINT32_MAX
+#if __SIZEOF_POINTER__ == 8
 #define INTR_VECTOR    (*(u32 *)0x3007FFC)
 #else
 #define INTR_VECTOR    (*(void **)0x3007FFC)

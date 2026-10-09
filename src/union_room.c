@@ -3473,7 +3473,16 @@ static void Task_SearchForChildOrParent(u8 taskId)
     {
         isParent = Rfu_GetCompatiblePlayerData(&rfu.data, rfu.name, i);
 
+#if PLATFORM_NATIVE
+#if __SIZEOF_POINTER__ == 8
+        if (!IsPartnerActivityAcceptable(rfu.data.activity, gTasks[taskId].data[8]))
+#else
         if (!IsPartnerActivityAcceptable(rfu.data.activity, gTasks[taskId].data[4]))
+#endif
+#else
+        if (!IsPartnerActivityAcceptable(rfu.data.activity, gTasks[taskId].data[4]))
+#endif
+#line 3477
             rfu = sUnionRoomPlayer_DummyRfu;
         if (rfu.data.compatibility.language == LANGUAGE_JAPANESE)
             rfu = sUnionRoomPlayer_DummyRfu;
@@ -3502,7 +3511,16 @@ static u8 CreateTask_SearchForChildOrParent(struct RfuIncomingPlayerList *parent
     struct RfuIncomingPlayerList **data = (void *)gTasks[taskId].data;
     data[0] = parentList;
     data[1] = childList;
+#if PLATFORM_NATIVE
+#if __SIZEOF_POINTER__ == 8
+    gTasks[taskId].data[8] = linkGroup;
+#else
     gTasks[taskId].data[4] = linkGroup;
+#endif
+#else
+    gTasks[taskId].data[4] = linkGroup;
+#endif
+#line 3506
     return taskId;
 }
 
@@ -3514,7 +3532,16 @@ static void Task_ListenForCompatiblePartners(u8 taskId)
     for (i = 0; i < RFU_CHILD_MAX; i++)
     {
         Rfu_GetCompatiblePlayerData(&list[0]->players[i].rfu.data, list[0]->players[i].rfu.name, i);
+#if PLATFORM_NATIVE
+#if __SIZEOF_POINTER__ == 8
+        if (!IsPartnerActivityAcceptable(list[0]->players[i].rfu.data.activity, gTasks[taskId].data[4]))
+#else
         if (!IsPartnerActivityAcceptable(list[0]->players[i].rfu.data.activity, gTasks[taskId].data[2]))
+#endif
+#else
+        if (!IsPartnerActivityAcceptable(list[0]->players[i].rfu.data.activity, gTasks[taskId].data[2]))
+#endif
+#line 3518
         {
             list[0]->players[i].rfu = sUnionRoomPlayer_DummyRfu;
         }
@@ -3557,7 +3584,16 @@ static void Task_ListenForWonderDistributor(u8 taskId)
     for (i = 0; i < RFU_CHILD_MAX; i++)
     {
         if (Rfu_GetWonderDistributorPlayerData(&list[0]->players[i].rfu.data, list[0]->players[i].rfu.name, i))
+#if PLATFORM_NATIVE
+#if __SIZEOF_POINTER__ == 8
+            HasWonderCardOrNewsByLinkGroup(&list[0]->players[i].rfu.data, gTasks[taskId].data[4]);
+#else
             HasWonderCardOrNewsByLinkGroup(&list[0]->players[i].rfu.data, gTasks[taskId].data[2]);
+#endif
+#else
+            HasWonderCardOrNewsByLinkGroup(&list[0]->players[i].rfu.data, gTasks[taskId].data[2]);
+#endif
+#line 3561
 
         list[0]->players[i].active = ArePlayersDifferent(&list[0]->players[i].rfu, &sUnionRoomPlayer_DummyRfu);
     }
@@ -3568,7 +3604,16 @@ static u8 CreateTask_ListenForCompatiblePartners(struct RfuIncomingPlayerList *l
     u8 taskId = CreateTask(Task_ListenForCompatiblePartners, 0);
     struct RfuIncomingPlayerList **oldList = (void *) gTasks[taskId].data;
     oldList[0] = list;
+#if PLATFORM_NATIVE
+#if __SIZEOF_POINTER__ == 8
+    gTasks[taskId].data[4] = linkGroup;
+#else
     gTasks[taskId].data[2] = linkGroup;
+#endif
+#else
+    gTasks[taskId].data[2] = linkGroup;
+#endif
+#line 3572
     return taskId;
 }
 
@@ -3577,7 +3622,16 @@ static u8 CreateTask_ListenForWonderDistributor(struct RfuIncomingPlayerList *li
     u8 taskId = CreateTask(Task_ListenForWonderDistributor, 0);
     struct RfuIncomingPlayerList **oldList = (void *) gTasks[taskId].data;
     oldList[0] = list;
+#if PLATFORM_NATIVE
+#if __SIZEOF_POINTER__ == 8
+    gTasks[taskId].data[4] = linkGroup;
+#else
     gTasks[taskId].data[2] = linkGroup;
+#endif
+#else
+    gTasks[taskId].data[2] = linkGroup;
+#endif
+#line 3581
     return taskId;
 }
 

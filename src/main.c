@@ -332,7 +332,7 @@ void InitIntrHandlers(void)
         gIntrTable[i] = gIntrTableTemplate[i];
 
 #if PLATFORM_NATIVE
-#if UINTPTR_MAX > UINT32_MAX
+#if __SIZEOF_POINTER__ == 8
     INTR_VECTOR = (u32)(uintptr_t)IntrMain;
 #else
     INTR_VECTOR = IntrMain;

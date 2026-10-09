@@ -19,7 +19,7 @@ struct Task
     u8 priority;
     s16 data[NUM_TASK_DATA];
 #if PLATFORM_NATIVE
-#if UINTPTR_MAX > UINT32_MAX
+#if __SIZEOF_POINTER__ == 8
     s16 nativeDataSpill[8]; // with data, room for the 48-byte struct ListMenu (list_menu.c)
 #endif
 #endif

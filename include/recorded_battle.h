@@ -8,7 +8,7 @@
 #define BATTLER_RECORD_SIZE 388
 
 #if PLATFORM_NATIVE
-#if UINTPTR_MAX > UINT32_MAX
+#if __SIZEOF_POINTER__ == 8
 // A u64 that is 4-aligned, as in a 32-bit struct, so RecordedBattleSave has
 // the GBA layout (4092 bytes, the save sector's size) at 64 bits.
 typedef u64 __attribute__((aligned(4))) u64_align4;
@@ -34,7 +34,7 @@ struct RecordedBattleSave
     u16 playersGender:4; // 1 bit per player; please don't hate me
     u16 padding:1;
 #if PLATFORM_NATIVE
-#if UINTPTR_MAX > UINT32_MAX
+#if __SIZEOF_POINTER__ == 8
     u64_align4 AI_scripts[MAX_BATTLERS_COUNT];
 #else
     u64 AI_scripts[MAX_BATTLERS_COUNT];
