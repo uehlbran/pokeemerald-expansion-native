@@ -44,7 +44,7 @@ that carry it).
 | File | Reason | What changed | Since |
 |---|---|---|---|
 | `README.md` | This repository's front page describes this project | Upstream's README moved to `docs/upstream-README.md`; new README written | M1 |
-| `CONTRIBUTING.md` | Contribution rules differ (C rules, gates) | Upstream's moved to `docs/upstream-CONTRIBUTING.md`; a new file is to be written in M6 (not present yet) | M1 |
+| `CONTRIBUTING.md` | Contribution rules differ (C rules, gates) | Upstream's moved to `docs/upstream-CONTRIBUTING.md`; this project's own file written in M6 | M1, M6 |
 | `.gitignore` | The native build's default real-time-clock offset file (`pokeemerald.rtc`, `platform/main.c`) is a build product | Three lines appended: a comment and `/pokeemerald.rtc`; unguarded, ignored by the GBA build | M2 |
 | `CREDITS.md` | Credit the reference ports and sources | A section added at the top; upstream content kept verbatim below | M1 |
 | `LICENSE` | Scoped license for the platform layer | New file; upstream has none | M1 |
