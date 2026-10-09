@@ -181,12 +181,46 @@ reads that are harmless at 32 bits crash or change a frame at 64
 inventory" on).
 
 **The refactoring pass** (the standing instruction, run again over what
-milestone 7 added): three groups, in flight: refactor7-platform (the
-platform C added in M7: the save converter, the division decoder, crt0's
-table check, main's layout adoption), refactor7-glue (the build glue,
-the three checkers, the smoke scripts, the tools), refactor7-expansion
-(the audit of every guarded expansion block and row). Results, the
-end-to-end read and the final gate rows follow below when they are done.
+milestone 7 added): three groups, each reviewed by a Sonnet reviewer with
+mutation testing, fixed by its author and merged after the orchestrator's
+own checks:
+
+| Group | Merge | What changed |
+|---|---|---|
+| platform (the save converter, the division decoder, crt0's table check, main's layout adoption, the libgcc record) | aae4fef03c | production code unchanged apart from comments and the record program's shared printers; tests added for the decoder's refusals at both widths, the prefix limit from both sides, a non-divide SIGFPE and a plain previous handler, the default action in a forked child (bounded by a timeout, core dumps off), the si_code check, the crt0 table walk (short, long and padded tables), and the converter's edges (the counter, the last sector of the save area, sectors beyond the slots, ids 0, 5 and 0xFFFF, a double round trip, the width-confusion limit pinned byte for byte) |
+| build glue (the three checkers, the filter, the Makefile stamps, the smoke library, the tools) | 94f3c70f62 | four shared modules with self-tests (`elf_object.py`, one ELF64 reader; `check_support.py`, errors, caps, options and rules; `asm_syntax.py`, comments, statements and labels; `preprocessor_conditions.py`, a recursive-descent reader in place of `eval()`); the checkers split into one function per problem, every message naming file, symbol and line; the 64-bit checks as separate Makefile stamps with one self-test stamp; `glue-test` in the platform gate (the eight self-tests ran in no gate before); `play`, `fail` and `same_facts` shared in lib.sh; the probe's words named; filtered output, objects and both executables byte-identical before and after |
+| expansion (the audit of every guarded block milestone 7 added) | 9e3ce40979 | no defect; one latent wrong `#line` pair in test/save.c (13/14, now 7/8), five blocks brought to the canonical shape, a 25-line comment cut to six, rows corrected (`#line` values, the test-table sentinel, the 64-bit mark on six width rows); every `#line` verified against expansion/1.17.1 by script (96 values), the preprocessed text identical at both widths, the four 32-bit executables and the ROM byte-identical |
+
+Decisions taken in the pass: the tools (patchelf, the hydra) keep the
+milestone 7 form rather than a helper layer the glue worker had written
+(expansion's files take the smallest clear change; about 75 lines per
+tool for no behaviour change); the `CRITICAL_HIT_ALWAYS` branch in
+`GetCriticalHitOdds`, unreachable today, stays (two lines, ROM evidence,
+and removing it changes the 32-bit executables); the 174 repeated
+`.ifdef` blocks in battle_script.inc stay (a helper macro would rewrite
+upstream's lines, and the operand checker guards them).
+
+**The end-to-end read.** After the three merges the orchestrator read
+every file milestone 7 added or changed in `platform/` and the build glue
+on main at 94f3c70f62: the save converter and its two layout tables (the
+segment table, the sector search, the chunk sizes at each width, the
+Enigma checksum rule), the division decoder (prefixes, REX, ModRM, SIB,
+RIP-relative addressing, the 32- and 64-bit libgcc rules), the libgcc
+record program, crt0's table check and main's layout adoption, the m4a
+layout assertions, the three checkers and the four shared modules, the
+filter's 8-byte rules, Makefile.native's 64-bit section and stamps, the
+smoke library and the cross-width script, the patchelf test and the new
+unit tests' names. No defect was found. One thing was corrected in the
+commit that records this read (117af1db62, 384f044cd9): three comments
+in save_file.h, save_layout32.h and save_convert.h said the 32-bit native
+SaveBlock1 layout is the GBA's, which DECISIONS.md contradicts (the GBA
+rounds the block to 15568 bytes, i386 to 15496); they now say an
+emulator's save is in neither width's layout and is not supported. Also
+settled on the way: at 64 bits `Clear64byte` clears `MusicPlayerInfo` only
+up to `tone`, which is enough (the players are zero at every `MPlayOpen`,
+`MPlayOpen` writes `ident` and the links, `MPlayStart` writes `tone`
+before it is read); a static assertion in m4a_layout.h pins that field
+order (531011a558).
 
 ## Verified by a gate
 
