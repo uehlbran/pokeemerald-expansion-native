@@ -3368,8 +3368,8 @@ static void PutPageWindowTilemaps(u8 page)
         // (the GBA indexed gWindows past its end and drew whatever EWRAM held there).
         if (sMonSummaryScreen->windowIds[i] != WINDOW_NONE)
 #endif
+#line 3358
         PutWindowTilemap(sMonSummaryScreen->windowIds[i]);
-#line 3359
 
     ScheduleBgCopyTilemapToVram(0);
 }

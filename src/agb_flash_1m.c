@@ -8,12 +8,14 @@ KEEP_SECTION USED static const char AgbLibFlashVersion[] = "FLASH1M_V103";
 // this entry's ID, so IdentifyFlash always selects it.
 extern const struct FlashSetupInfo NativeFlash;
 #endif
+#line 5
 
 static const struct FlashSetupInfo *const sSetupInfos[] =
 {
 #if PLATFORM_NATIVE
     &NativeFlash,
 #endif
+#line 8
     &MX29L010,
     &LE26FV10N1TS,
     &DefaultFlash

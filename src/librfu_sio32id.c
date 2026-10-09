@@ -5,6 +5,7 @@
 // (platform/game_hooks.h), for the timer-polling delay below.
 void PlatformWaitCycles(u32 cycles);
 #endif
+#line 2
 
 static void Sio32IDIntr(void);
 static void Sio32IDInit(void);
@@ -58,6 +59,7 @@ s32 AgbRFU_checkID(u8 maxTries)
         while (regTMCNTL[0] < 32)
             ;
 #endif
+#line 48
         regTMCNTL[1] = 0;
         regTMCNTL[0] = 0;
     }

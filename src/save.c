@@ -503,7 +503,9 @@ static u8 CopySaveSlotData(u16 sectorId, struct SaveSectorLocation *locations)
             gLastWrittenSector = i;
 
 #if PLATFORM_NATIVE
-        // An erased or corrupt sector has an id outside the location table
+        // An erased or corrupt sector has an id outside the location table (0xFFFF on an erased chip);
+        // the GBA reads past the table and then fails the signature check, natively the read leaves
+        // the object.
         if (id >= NUM_SECTORS_PER_SLOT)
             continue;
 #endif

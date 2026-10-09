@@ -66,6 +66,7 @@ u16 ReadFlashId(void)
     return flashId;
 }
 #endif
+#line 64
 
 void FlashTimerIntr(void)
 {
@@ -271,6 +272,7 @@ u32 VerifyFlashSectorNBytes(u16 sectorNum, u8 *src, u32 n)
     return verifyFlashSector_Core(src, tgt, n);
 }
 #endif
+#line 259
 
 u32 ProgramFlashSectorAndVerify(u16 sectorNum, u8 *src)
 {
