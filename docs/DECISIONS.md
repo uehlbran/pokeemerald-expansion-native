@@ -551,3 +551,70 @@ merge. Formatting (clang-format) and clang-tidy come after the pass, so
 that the one-time reformat does not conflict with seven branches and the
 refactors stay readable in the history. Follow-ups the reviews found
 outside their groups are collected in STATUS.md for the end-to-end read.
+
+## 2026-10-09: Milestone 7 starts from a measured inventory, not from the flags
+
+An Opus worker measured the 64-bit build before any code was written
+(the inventory is summarised in PLAN.md "Milestone 7 plan"; the full
+document lived in the session's scratchpad and its findings are carried
+into the task briefs). What it found that a read of the "flagged 64-bit"
+comments would not have: the link fails on exactly two static assertions,
+one of which (RecordedBattleSave) has no pointer in it at all (a u64 that
+x86-64 aligns to 8); the 8-byte INTR_VECTOR store runs off the end of
+IWRAM; the assembled data holds 61,154 address words of which 17,033 must
+widen and 44,121 must not (bytecode); GCC's x86-64 data alignment spaces
+the test runner's `.tests` entries 64 bytes apart; tools/patchelf is
+ELF32-only; and in the save only SaveBlock1 changes layout (two members).
+Each milestone 7 task is one section of that design, gated on the 32-bit
+executables staying byte-identical ("gate 32=": sha256 of the four 32-bit
+executables recorded on main at 174d3f5d9c) and on the GBA ROM's sha1.
+
+## 2026-10-09: Gate (h) is a platform-side save converter, not a shared packed layout
+
+At 64 bits only SaveBlock1's layout differs from the 32-bit build's: the
+64 object event templates grow from 24 to 28 bytes (a script pointer) and
+the Enigma Berry record from 52 to 64 (two description pointers), which
+shifts everything after them and changes the fourth sector's chunk size.
+Every other saved struct is byte-identical once RecordedBattleSave's u64
+is given 4-byte alignment at 64. Two ways were evaluated. A: a platform
+module converts a 32-bit image to the 64-bit layout when save_file_load
+reports a foreign 32-bit layout, slot by slot, through two offset tables
+each pinned by static assertions in its own width's build, recomputing
+the sector and Enigma Berry checksums; expansion is untouched; about 300
+lines plus a test. B: one packed layout for both widths, which means a
+u32 handle behind an accessor at about 20 sites in 9 expansion files and
+a departure from the host-ABI decision. A is chosen: it fits the rule
+that expansion changes only where a hardware assumption cannot be
+isolated, the difference is two members and fully tabled, and the static
+assertions make upstream drift loud. B stays the fallback if upstream
+adds more pointers to saved structs. The stored pointers themselves carry
+no information worth converting: object event scripts are refilled from
+the map header on Continue (as on the GBA) and the Enigma Berry
+descriptions are meaningless at any native width. The container's
+SAVE_FILE_LAYOUT_ID stays 1: the layout is "the host ABI" and the
+pointer width in the header tells the two apart. Open with it: how a
+64-bit build treats a bare image with no header (an emulator's or an old
+native build's): decided when the converter is written, and recorded here.
+
+## 2026-10-09: The 64-bit data is emitted in the x86-64 struct layout; the bytecode is not
+
+The assembled data (maps, map events, layouts, voices, songs, cries, the
+script and special tables) is read by C through struct and array types
+whose pointers are 8 bytes at 64, so those 17,033 address words must be
+8 bytes with the C structs' padding and alignment; the 44,121 words
+inside bytecode (event scripts, battle scripts, song tracks, animation
+scripts) are read byte by byte and must stay 4 bytes, which is lossless
+because every target is below 4 GiB and the ROM_SIZE tag bit survives
+zero-extension. Mechanism, in order of preference: guarded `.ifdef`
+variants of the macros that emit the words (asm/macros/m4a.inc,
+music_voice.inc, map.inc, def_special, the script command table,
+TRACK_SIZE), each a row in UPSTREAM_MODIFICATIONS.md; native-only rules
+in asm_filter.py for the raw words no macro emits (mapjson's output, the
+seven hand-written tables, mid2agb's song headers), selected by an option
+only the 64-bit recipes pass; and a relocation check run by the 64-bit
+link that fails unless every must-widen symbol has only 8-byte
+relocations and every 4-byte relocation left is in bytecode, so an
+upstream addition cannot slip through. Changing mapjson's or mid2agb's
+output was rejected: their outputs are shared, gitignored files the GBA
+build uses too, so the text cannot differ between builds, and a tool
+change would touch upstream for something the native build can do alone.

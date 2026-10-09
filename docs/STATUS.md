@@ -23,11 +23,18 @@ sequence after the last merge and recorded in the table below. Seven
 upstream issues were filed (rh-hideout #10892 to #10898, approved text) and
 closed by the maintainer. Every commit is authored by uehlbran.
 
-**In flight.** Milestone 7, the 64-bit build. An Opus worker's inventory
-of what the 64-bit build needs (the two expansion layout asserts that stop
-the link, the 4-byte pointers in assembled data, the m4a layout contract,
-arm_division on x86-64, the cross-width save gate h) is being written;
-the plan and the worker tasks follow from it (PLAN.md).
+**In flight.** Milestone 7, the 64-bit build. The Opus inventory is done
+(PLAN.md "Milestone 7 plan" carries its findings and order; DECISIONS.md
+has the three decisions it forced: measure first, a platform-side save
+converter for gate h, the data emitted in the x86-64 layout with the
+bytecode left alone). Four workers started 2026-10-09 00:30 from main at
+174d3f5d9c, each in its own worktree: m7-link (the two link assertions and
+INTR_VECTOR), m7-armdiv (the x86-64 SIGFPE decoder and the ARM 64-bit
+division research), m7-testtable (the test table's spacing at 64 and
+patchelf/hydra reading ELF64), m7-seed (the trainer seed hashing the same
+bytes at both widths). After m7-link merges: the assembled data at 64
+(macros, filter rules, the relocation check), then the replays at 64, the
+save converter and gate (h), the suite at 64, the refactoring pass again.
 
 **Broke and fixed.** The debug-menu gate's two battle screenshots flipped
 between male and female for the opponent's Poochyena whenever the binary
