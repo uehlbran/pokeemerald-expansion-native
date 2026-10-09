@@ -1,15 +1,15 @@
 /*
  * test_game_hooks.c: the hooks expansion's guarded game code calls
- * (game_hooks.h), and the stand-ins for its unassembled assembly files: crt0.h,
+ * (game_hooks.h), and the stand-ins for its unassembled assembly files (crt0.h is tested in test_crt0.c):
  * decompress_asm.h, the GameCube multiboot stubs and the ROM header.
  *
  * The expected behaviour comes from expansion's own sources: test/test_runner.c
- * and test/test_runner_battle.c for the hooks, src/crt0.s, src/decompress_asm.s,
+ * and test/test_runner_battle.c for the hooks, src/decompress_asm.s,
  * src/libgcnmultiboot.s and src/rom_header.s (with the Makefile's gbafix
  * arguments) for the rest; the LZ77 format from GBATEK "BIOS Decompression
  * Functions".
  */
-// deps: crt0.c decompress_asm.c gcn_multiboot.c rom_header.c gba_memmap.c debug_channel.c interrupt.c
+// deps: decompress_asm.c gcn_multiboot.c rom_header.c gba_memmap.c debug_channel.c interrupt.c
 #include <setjmp.h>
 #include <stdbool.h>
 #include <stdint.h>
@@ -17,7 +17,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "crt0.h"
 #include "debug_channel.h"
 #include "decompress_asm.h"
 #include "game_hooks.h"
@@ -374,90 +373,6 @@ PTEST(wait_cycles_returns)
 {
     PlatformWaitCycles(0);
     PlatformWaitCycles(UINT32_MAX);
-}
-
-/* --- crt0 ---------------------------------------------------------------- */
-
-PTEST(intr_main_is_0x800_bytes_of_data)
-{
-    PT_ASSERT(sizeof IntrMain == 0x800);
-    for (size_t i = 0; i < sizeof IntrMain / sizeof IntrMain[0]; i++)
-        PT_ASSERT_EQ_U32(IntrMain[i], 0);
-}
-
-/* An EWRAM_INIT variable (include/gba/defines.h): gba_regions.ld puts it at
- * the bottom of EWRAM with its initial value. */
-static __attribute__((section(".ewram"), used)) volatile uint8_t ewram_init_byte = 0x5A;
-
-PTEST(ewram_init_data_sits_at_the_bottom_of_ewram)
-{
-    PT_ASSERT(address_of(&ewram_init_byte) == GBA_EWRAM_BASE);
-    PT_ASSERT(crt0_ewram_init_size() == sizeof ewram_init_byte);
-}
-
-PTEST(reinitialize_ewram_restores_the_initial_value)
-{
-    ReInitializeEWRAM(); /* before crt0_init: nothing to restore, nothing happens */
-    PT_ASSERT_EQ_INT(crt0_init(), CRT0_OK);
-    ewram_init_byte = 0x00; /* RegisterRamReset(RESET_EWRAM) */
-    ReInitializeEWRAM();
-    PT_ASSERT_EQ_INT(ewram_init_byte, 0x5A);
-    ewram_init_byte = 0x77;
-    crt0_restart();
-    PT_ASSERT_EQ_INT(ewram_init_byte, 0x5A);
-    crt0_shutdown();
-    ewram_init_byte = 0x33;
-    ReInitializeEWRAM(); /* after shutdown: nothing happens */
-    PT_ASSERT_EQ_INT(ewram_init_byte, 0x33);
-    ewram_init_byte = 0x5A;
-    crt0_shutdown(); /* twice is safe */
-}
-
-/* A COMMON_DATA and an IWRAM_INIT variable (include/gba/defines.h):
- * gba_game.ld puts them in game_bss and game_data whatever object they come
- * from, as it does the game's. */
-static __attribute__((section("common_data"), used)) volatile uint32_t game_bss_word;
-static __attribute__((section(".iwram"), used)) volatile uint32_t game_data_word = UINT32_C(0x1234ABCD);
-
-extern unsigned char game_data_start[], game_data_end[], game_bss_start[], game_bss_end[];
-
-PTEST(game_variables_are_bracketed)
-{
-    PT_ASSERT(address_of(&game_bss_word) >= address_of(game_bss_start));
-    PT_ASSERT(address_of(&game_bss_word) + sizeof game_bss_word <= address_of(game_bss_end));
-    PT_ASSERT(address_of(&game_data_word) >= address_of(game_data_start));
-    PT_ASSERT(address_of(&game_data_word) + sizeof game_data_word <= address_of(game_data_end));
-    PT_ASSERT(crt0_game_bss_size() >= sizeof game_bss_word);
-    PT_ASSERT(crt0_game_data_size() >= sizeof game_data_word);
-}
-
-PTEST(a_second_crt0_init_replaces_the_copy_and_leaks_nothing)
-{
-    /* The first copy of the game's initialised data is malloc'd: dropping the
-     * shutdown at the top of crt0_init would leave it for LeakSanitizer. */
-    PT_ASSERT(crt0_game_data_size() > 0);
-    PT_ASSERT_EQ_INT(crt0_init(), CRT0_OK);
-    PT_ASSERT_EQ_INT(crt0_init(), CRT0_OK);
-    game_data_word = 7;
-    crt0_restart();
-    PT_ASSERT_EQ_U32(game_data_word, UINT32_C(0x1234ABCD));
-    crt0_shutdown();
-    game_data_word = UINT32_C(0x1234ABCD);
-}
-
-PTEST(crt0_restart_zeroes_game_bss_and_restores_game_data)
-{
-    PT_ASSERT_EQ_INT(crt0_init(), CRT0_OK); /* not the game: no object check */
-    game_bss_word = UINT32_C(0xDEADBEEF);
-    game_data_word = 7;
-    crt0_restart();
-    PT_ASSERT_EQ_U32(game_bss_word, 0);
-    PT_ASSERT_EQ_U32(game_data_word, UINT32_C(0x1234ABCD));
-    crt0_shutdown();
-    game_data_word = 9;
-    crt0_restart(); /* after shutdown: nothing happens */
-    PT_ASSERT_EQ_U32(game_data_word, 9);
-    game_data_word = UINT32_C(0x1234ABCD);
 }
 
 /* --- FastUnsafeCopy32 ---------------------------------------------------- */
