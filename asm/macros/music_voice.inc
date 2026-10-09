@@ -14,6 +14,22 @@
 	.endm
 
 	.macro _voice_directsound base_midi_key:req, pan:req, sample_data_pointer:req, attack:req, decay:req, sustain:req, release:req
+	.ifdef NATIVE_POINTER_SIZE_8  @ PLATFORM_NATIVE, 64-bit: struct ToneData is 24 bytes
+	.byte \base_midi_key
+	.byte 0
+	.if \pan != 0
+	.byte (0x80 | \pan)
+	.else
+	.byte 0
+	.endif
+	.space 4  @ Padding
+	.8byte \sample_data_pointer
+	.byte \attack
+	.byte \decay
+	.byte \sustain
+	.byte \release
+	.space 4  @ Padding
+	.else
 	.byte \base_midi_key
 	.byte 0
 	.if \pan != 0
@@ -26,6 +42,7 @@
 	.byte \decay
 	.byte \sustain
 	.byte \release
+	.endif
 	.endm
 
 	.macro voice_square_1 base_midi_key:req, pan:req, sweep:req, duty_cycle:req, attack:req, decay:req, sustain:req, release:req
@@ -37,6 +54,24 @@
 	.endm
 
 	.macro _voice_square_1 type:req, base_midi_key:req, pan:req, sweep:req, duty_cycle:req, attack:req, decay:req, sustain:req, release:req
+	.ifdef NATIVE_POINTER_SIZE_8  @ PLATFORM_NATIVE, 64-bit: struct ToneData is 24 bytes
+	.byte \type
+	.byte \base_midi_key
+	.if \pan != 0
+	.byte (0x80 | \pan)
+	.else
+	.byte 0
+	.endif
+	.byte \sweep
+	.space 4  @ Padding
+	.byte (\duty_cycle & 0x3)
+	.byte 0, 0, 0, 0, 0, 0, 0
+	.byte (\attack  & 0x7)
+	.byte (\decay   & 0x7)
+	.byte (\sustain & 0xF)
+	.byte (\release & 0x7)
+	.space 4  @ Padding
+	.else
 	.byte \type
 	.byte \base_midi_key
 	.if \pan != 0
@@ -51,6 +86,7 @@
 	.byte (\decay   & 0x7)
 	.byte (\sustain & 0xF)
 	.byte (\release & 0x7)
+	.endif
 	.endm
 
 	.macro voice_square_2 base_midi_key:req, pan:req, duty_cycle:req, attack:req, decay:req, sustain:req, release:req
@@ -62,6 +98,24 @@
 	.endm
 
 	.macro _voice_square_2 type:req, base_midi_key:req, pan:req, duty_cycle:req, attack:req, decay:req, sustain:req, release:req
+	.ifdef NATIVE_POINTER_SIZE_8  @ PLATFORM_NATIVE, 64-bit: struct ToneData is 24 bytes
+	.byte \type
+	.byte \base_midi_key
+	.if \pan != 0
+	.byte (0x80 | \pan)
+	.else
+	.byte 0
+	.endif
+	.byte 0
+	.space 4  @ Padding
+	.byte (\duty_cycle & 0x3)
+	.byte 0, 0, 0, 0, 0, 0, 0
+	.byte (\attack  & 0x7)
+	.byte (\decay   & 0x7)
+	.byte (\sustain & 0xF)
+	.byte (\release & 0x7)
+	.space 4  @ Padding
+	.else
 	.byte \type
 	.byte \base_midi_key
 	.if \pan != 0
@@ -76,6 +130,7 @@
 	.byte (\decay   & 0x7)
 	.byte (\sustain & 0xF)
 	.byte (\release & 0x7)
+	.endif
 	.endm
 
 	.macro voice_programmable_wave base_midi_key:req, pan:req, wave_samples_pointer:req, attack:req, decay:req, sustain:req, release:req
@@ -87,6 +142,23 @@
 	.endm
 
 	.macro _voice_programmable_wave type:req, base_midi_key:req, pan:req, wave_samples_pointer:req, attack:req, decay:req, sustain:req, release:req
+	.ifdef NATIVE_POINTER_SIZE_8  @ PLATFORM_NATIVE, 64-bit: struct ToneData is 24 bytes
+	.byte \type
+	.byte \base_midi_key
+	.if \pan != 0
+	.byte (0x80 | \pan)
+	.else
+	.byte 0
+	.endif
+	.byte 0
+	.space 4  @ Padding
+	.8byte \wave_samples_pointer
+	.byte (\attack  & 0x7)
+	.byte (\decay   & 0x7)
+	.byte (\sustain & 0xF)
+	.byte (\release & 0x7)
+	.space 4  @ Padding
+	.else
 	.byte \type
 	.byte \base_midi_key
 	.if \pan != 0
@@ -100,6 +172,7 @@
 	.byte (\decay   & 0x7)
 	.byte (\sustain & 0xF)
 	.byte (\release & 0x7)
+	.endif
 	.endm
 
 	.macro voice_noise base_midi_key:req, pan:req, period:req, attack:req, decay:req, sustain:req, release:req
@@ -111,6 +184,24 @@
 	.endm
 
 	.macro _voice_noise type:req, base_midi_key:req, pan:req, period:req, attack:req, decay:req, sustain:req, release:req
+	.ifdef NATIVE_POINTER_SIZE_8  @ PLATFORM_NATIVE, 64-bit: struct ToneData is 24 bytes
+	.byte \type
+	.byte \base_midi_key
+	.if \pan != 0
+	.byte (0x80 | \pan)
+	.else
+	.byte 0
+	.endif
+	.byte 0
+	.space 4  @ Padding
+	.byte (\period & 0x1)
+	.byte 0, 0, 0, 0, 0, 0, 0
+	.byte (\attack  & 0x7)
+	.byte (\decay   & 0x7)
+	.byte (\sustain & 0xF)
+	.byte (\release & 0x7)
+	.space 4  @ Padding
+	.else
 	.byte \type
 	.byte \base_midi_key
 	.if \pan != 0
@@ -125,40 +216,89 @@
 	.byte (\decay   & 0x7)
 	.byte (\sustain & 0xF)
 	.byte (\release & 0x7)
+	.endif
 	.endm
 
 	.macro voice_keysplit voice_group_pointer:req, keysplit_table_pointer:req
+	.ifdef NATIVE_POINTER_SIZE_8  @ PLATFORM_NATIVE, 64-bit: struct ToneData is 24 bytes
+	.byte 0x40, 0, 0, 0
+	.space 4  @ Padding
+	.8byte \voice_group_pointer
+	.4byte \keysplit_table_pointer  @ read as attack..release, four bytes
+	.space 4  @ Padding
+	.else
 	.byte 0x40, 0, 0, 0
 	.4byte \voice_group_pointer
 	.4byte \keysplit_table_pointer
+	.endif
 	.endm
 
 	.macro voice_keysplit_all voice_group_pointer:req
+	.ifdef NATIVE_POINTER_SIZE_8  @ PLATFORM_NATIVE, 64-bit: struct ToneData is 24 bytes
+	.byte 0x80, 0, 0, 0
+	.space 4  @ Padding
+	.8byte \voice_group_pointer
+	.4byte 0
+	.space 4  @ Padding
+	.else
 	.byte 0x80, 0, 0, 0
 	.4byte \voice_group_pointer
 	.4byte 0
+	.endif
 	.endm
 
 	.macro cry sample:req
+	.ifdef NATIVE_POINTER_SIZE_8  @ PLATFORM_NATIVE, 64-bit: struct ToneData is 24 bytes
+	.byte 0x20, 60, 0, 0
+	.space 4  @ Padding
+	.8byte \sample
+	.byte 0xff, 0, 0xff, 0
+	.space 4  @ Padding
+	.else
 	.byte 0x20, 60, 0, 0
 	.4byte \sample
 	.byte 0xff, 0, 0xff, 0
+	.endif
 	.endm
 
 	.macro cry_reverse sample:req
+	.ifdef NATIVE_POINTER_SIZE_8  @ PLATFORM_NATIVE, 64-bit: struct ToneData is 24 bytes
+	.byte 0x30, 60, 0, 0
+	.space 4  @ Padding
+	.8byte \sample
+	.byte 0xff, 0, 0xff, 0
+	.space 4  @ Padding
+	.else
 	.byte 0x30, 60, 0, 0
 	.4byte \sample
 	.byte 0xff, 0, 0xff, 0
+	.endif
 	.endm
 
 	.macro cry_uncomp sample @ not compressed
+	.ifdef NATIVE_POINTER_SIZE_8  @ PLATFORM_NATIVE, 64-bit: struct ToneData is 24 bytes
+	.byte 0x0, 60, 0, 0
+	.space 4  @ Padding
+	.8byte \sample
+	.byte 0xff, 0, 0xff, 0
+	.space 4  @ Padding
+	.else
 	.byte 0x0, 60, 0, 0
 	.4byte \sample
 	.byte 0xff, 0, 0xff, 0
+	.endif
 	.endm
 
 	.macro cry_reverse_uncomp sample @ not compressed
+	.ifdef NATIVE_POINTER_SIZE_8  @ PLATFORM_NATIVE, 64-bit: struct ToneData is 24 bytes
+	.byte 0x10, 60, 0, 0
+	.space 4  @ Padding
+	.8byte \sample
+	.byte 0xff, 0, 0xff, 0
+	.space 4  @ Padding
+	.else
 	.byte 0x10, 60, 0, 0
 	.4byte \sample
 	.byte 0xff, 0, 0xff, 0
+	.endif
 	.endm

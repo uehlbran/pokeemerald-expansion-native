@@ -28,11 +28,12 @@ follows reaches the assembler, which rejects it.
 
 With '--pointer-size 8', which Makefile.native passes for the 64-bit build
 only, the filter also lays the data out for C structs whose pointers are 8
-bytes (rules below, per kind of input). Without it, or with
-'--pointer-size 4', the output is the same as before the option existed.
+bytes (the rules are below, per kind of input, '--input'). Without it, or
+with '--pointer-size 4', the output is the same as before the option
+existed.
 
 Reads stdin, writes stdout. Run as
-'python3 -I asm_filter.py [--pointer-size 4|8]'.
+'python3 -I asm_filter.py [--pointer-size 4|8] [--input KIND]'.
 'python3 -I asm_filter.py --self-test' checks the rules above and exits
 non-zero on a failure.
 """
@@ -153,6 +154,196 @@ SELF_TEST_CASES = (
 )
 
 
+# --------------------------------------------------------------------------
+# 8-byte pointers (--pointer-size 8)
+#
+# At 64 bits the C structs that read the data have 8-byte, 8-aligned
+# pointers. The macros that emit such structs have guarded 64-bit variants
+# (asm/macros/m4a.inc, music_voice.inc, ...); these rules lay out the words
+# no macro emits, per kind of input (--input). They act only on statements
+# outside macro definitions, and only on the '.4byte's the filter has
+# already produced; every other '.4byte' (script and song bytecode) stays.
+#
+#   song   a mid2agb song: after the song's last label comes its header,
+#          struct SongHeader: four bytes, then the voicegroup and one word
+#          per track. At 64 bits: aligned to 8, four bytes of padding after
+#          the four bytes, and 8-byte words.
+
+INPUT_KINDS = ("data", "song")
+SONG_HEADER_BYTES = 4      # trackCount, blockCount, priority, reverb
+POINTER_ALIGN = ".balign 8"
+POINTER_WORD = ".8byte"
+HEADER_PADDING = ".space 4"
+
+LABEL = re.compile(r"\s*([A-Za-z_.$][\w.$]*)(::?)")
+DIRECTIVE_NAME = re.compile(r"\s*(\.[\w.]+)")
+
+
+class FilterError(Exception):
+    """Input the 8-byte rules do not recognise; the build must stop."""
+
+
+def parse_statement(statement):
+    """(labels defined, directive or None, start and end of the directive)."""
+    labels = []
+    position = 0
+    while True:
+        match = LABEL.match(statement, position)
+        if not match:
+            break
+        labels.append(match.group(1))
+        position = match.end()
+    match = DIRECTIVE_NAME.match(statement, position)
+    if not match:
+        return labels, None, position, position
+    return labels, match.group(1), match.start(1), match.end(1)
+
+
+def operand_count(statement, end):
+    """Number of comma-separated operands after the directive ending at end."""
+    return len([operand for operand in statement[end:].split(",") if operand.strip()])
+
+
+def with_directive(statement, start, end, directive):
+    """The statement with the directive at start..end replaced."""
+    return statement[:start] + directive + statement[end:]
+
+
+def with_prefix(statements, index, directive):
+    """Put directive before statement index: on a line of its own if the
+    statement starts the line, else as a statement before it."""
+    if index == 0:
+        statements[0] = "\t%s\n%s" % (directive, statements[0])
+    else:
+        statements[index] = "\t%s ;%s" % (directive, statements[index])
+
+
+def outside_macros(lines):
+    """Yield (line, its statements, whether they are outside any .macro)."""
+    depth = 0
+    for line in lines:
+        statements = split_statements(line)
+        outside = []
+        for statement in statements:
+            directive = parse_statement(statement)[1]
+            if directive == ".macro":
+                depth += 1
+            outside.append(depth == 0)
+            if directive == ".endm":
+                depth = max(depth - 1, 0)
+        yield line, statements, outside
+
+
+def widen_song(lines):
+    """The 'song' rule on a whole (filtered) song file."""
+    parsed = list(outside_macros(lines))
+    header = None
+    for number, (_, statements, outside) in enumerate(parsed):
+        if any(free and parse_statement(statement)[0] for statement, free in zip(statements, outside)):
+            header = number
+    if header is None:
+        raise FilterError("song: no label, so no header")
+    for line, _, _ in parsed[:header]:
+        yield line
+    header_bytes = 0
+    widened = False
+    for number, (_, statements, _) in enumerate(parsed[header:]):
+        prefixes = {}
+        for index, statement in enumerate(statements):
+            labels, directive, start, end = parse_statement(statement)
+            if labels and number == 0:
+                prefixes[index] = POINTER_ALIGN
+            elif labels:
+                raise FilterError("song header: unexpected %r" % statement.strip())
+            if directive == ".byte" and not widened:
+                header_bytes += operand_count(statement, end)
+            elif directive == ".4byte":
+                statements[index] = with_directive(statement, start, end, POINTER_WORD)
+                if not widened:
+                    if header_bytes != SONG_HEADER_BYTES:
+                        raise FilterError("song header: %d bytes before the first word, not %d"
+                                          % (header_bytes, SONG_HEADER_BYTES))
+                    prefixes[index] = HEADER_PADDING
+                    widened = True
+            elif directive not in (None, ".end"):
+                raise FilterError("song header: unexpected %r" % statement.strip())
+        for index, directive in prefixes.items():
+            with_prefix(statements, index, directive)
+        yield ";".join(statements)
+    if not widened:
+        raise FilterError("song header: no word after the song's last label")
+
+
+def filter_program(lines, pointer_size=4, input_kind="data"):
+    """Yield the filtered lines of a whole input."""
+    filtered = (filter_line(line) for line in lines)
+    if pointer_size == 8 and input_kind == "song":
+        return widen_song(filtered)
+    return filtered
+
+
+SONG = """\
+\t.align\t2
+mus_x_1:
+\t.byte\tVOICE , 1
+\t.word\tmus_x_1_B1\t@ GOTO target, bytecode
+mus_x_1_B1:
+\t.byte\tFINE
+\t.align\t2
+
+mus_x:
+\t.byte\t1\t@ NumTrks
+\t.byte\t0\t@ NumBlks
+\t.byte\tmus_x_pri\t@ Priority
+\t.byte\tmus_x_rev\t@ Reverb.
+
+\t.word\tmus_x_grp
+
+\t.word\tmus_x_1
+
+\t.end
+"""
+
+SONG_8 = """\
+\t.p2align\t2
+mus_x_1:
+\t.byte\tVOICE , 1
+\t.4byte\tmus_x_1_B1
+mus_x_1_B1:
+\t.byte\tFINE
+\t.p2align\t2
+
+\t.balign 8
+mus_x:
+\t.byte\t1
+\t.byte\t0
+\t.byte\tmus_x_pri
+\t.byte\tmus_x_rev
+
+\t.space 4
+\t.8byte\tmus_x_grp
+
+\t.8byte\tmus_x_1
+
+\t.end
+"""
+
+# (pointer size, input kind, input, expected output or the FilterError's text)
+SELF_TEST_PROGRAMS = (
+    (4, "song", SONG, "".join(filter_line(line) for line in SONG.splitlines(True))),
+    (8, "data", SONG, "".join(filter_line(line) for line in SONG.splitlines(True))),
+    (8, "song", SONG, SONG_8),
+    (8, "song", "mus_y: .byte 1, 2, 3, 4 ; .word a, b\n",
+     "\t.balign 8\nmus_y: .byte 1, 2, 3, 4 ;\t.space 4 ; .8byte a, b\n"),
+    (8, "song", SONG.replace("\t.byte\t0\t@ NumBlks\n", ""), FilterError("3 bytes before the first word, not 4")),
+    (8, "song", SONG.replace("\t.end\n", "\t.byte 1\n"), FilterError("unexpected '.byte 1'")),
+    (8, "song", SONG.replace("\t.end\n", "other:\n"), FilterError("no word after the song's last label")),
+    (8, "song", "\t.byte 1\n", FilterError("no label")),
+    # A label inside a macro definition is not the header.
+    (8, "song", SONG + "\t.macro m\nlate:\n\t.endm\n", FilterError("unexpected '.macro m'")),
+)
+
+
 def self_test():
     failures = 0
     for given, expected in SELF_TEST_CASES:
@@ -161,35 +352,48 @@ def self_test():
             failures += 1
             sys.stderr.write("asm_filter self-test: %r\n  expected %r\n  got      %r\n"
                              % (given, expected, actual))
+    for pointer_size, input_kind, given, expected in SELF_TEST_PROGRAMS:
+        try:
+            actual = "".join(filter_program(given.splitlines(True), pointer_size, input_kind))
+        except FilterError as error:
+            actual = error
+        if isinstance(expected, FilterError):
+            passed = isinstance(actual, FilterError) and str(expected) in str(actual)
+        else:
+            passed = actual == expected
+        if not passed:
+            failures += 1
+            sys.stderr.write("asm_filter self-test (--pointer-size %d --input %s): %r\n  expected %r\n  got      %r\n"
+                             % (pointer_size, input_kind, given, expected, actual))
     if failures:
         sys.stderr.write("asm_filter self-test: %d of %d failed\n"
-                         % (failures, len(SELF_TEST_CASES)))
+                         % (failures, len(SELF_TEST_CASES) + len(SELF_TEST_PROGRAMS)))
         return 1
     return 0
 
 
-POINTER_SIZES = ("4", "8")
-USAGE = "usage: asm_filter.py [--pointer-size 4|8] < input > output | --self-test\n"
-
-
-def filter_program(lines, pointer_size):
-    """Yield the filtered lines of a whole input."""
-    for line in lines:
-        yield filter_line(line)
+USAGE = ("usage: asm_filter.py [--pointer-size 4|8] [--input %s] < input > output | --self-test\n"
+         % "|".join(INPUT_KINDS))
 
 
 def main(argv):
     args = argv[1:]
     if args == ["--self-test"]:
         return self_test()
-    pointer_size = "4"
-    if len(args) == 2 and args[0] == "--pointer-size" and args[1] in POINTER_SIZES:
-        pointer_size = args[1]
-    elif args:
+    options = {"--pointer-size": "4", "--input": "data"}
+    choices = {"--pointer-size": ("4", "8"), "--input": INPUT_KINDS}
+    while len(args) >= 2 and args[0] in options and args[1] in choices[args[0]]:
+        options[args[0]] = args[1]
+        args = args[2:]
+    if args:
         sys.stderr.write(USAGE)
         return 2
-    for line in filter_program(sys.stdin, int(pointer_size)):
-        sys.stdout.write(line)
+    try:
+        for line in filter_program(sys.stdin, int(options["--pointer-size"]), options["--input"]):
+            sys.stdout.write(line)
+    except FilterError as error:
+        sys.stderr.write("asm_filter: %s\n" % error)
+        return 1
     return 0
 
 

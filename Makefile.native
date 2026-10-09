@@ -254,9 +254,12 @@ endif
 ifeq (,$(filter 4 8,$(DATA_POINTER_SIZE)))
   $(error DATA_POINTER_SIZE must be 4 or 8, not '$(DATA_POINTER_SIZE)')
 endif
+# Which of the filter's 8-byte rules apply (asm_filter.py, --input): the
+# songs and the map data say so where their recipes are.
+ASM_FILTER_INPUT := data
 ifeq ($(DATA_POINTER_SIZE),8)
   ASFLAGS += --defsym NATIVE_POINTER_SIZE_8=1
-  ASM_FILTER_POINTERS := --pointer-size 8
+  ASM_FILTER_POINTERS = --pointer-size 8 --input $(ASM_FILTER_INPUT)
   # Made by the relocation check (below); the link waits for it.
   DATA_RELOCATIONS_CHECKED := $(OBJ_DIR)/data_relocations.checked
 endif
@@ -667,6 +670,7 @@ $(MID_BUILDDIR)/%.o: $(MID_ASM_DIR)/%.s
 	$(ASM_FILTER) $(ASM_FILTER_POINTERS) < $< | $(HOST_AS) $(ASFLAGS) -I $(dir $(MPLAYDEF_NATIVE)) -o $@
 
 $(MID_OBJS): $(MPLAYDEF_NATIVE)
+$(MID_OBJS): private ASM_FILTER_INPUT := song
 
 $(MPLAYDEF_NATIVE): sound/MPlayDef.s $(ASM_FILTER_CHECKED)
 	@mkdir -p $(@D)
