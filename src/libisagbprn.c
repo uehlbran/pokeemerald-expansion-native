@@ -4,6 +4,10 @@
 #include "config/general.h"
 #include "malloc.h"
 #include "mini_printf.h"
+#if PLATFORM_NATIVE
+#include "platform/game_hooks.h"
+#endif
+#line 7
 
 #define AGB_PRINT_FLUSH_ADDR 0x9FE209D
 #define AGB_PRINT_STRUCT_ADDR 0x9FE20F8
@@ -215,8 +219,16 @@ void NoCashGBAAssert(const char *pFile, s32 nLine, const char *pExpression, bool
 
 bool32 MgbaOpen(void)
 {
+#if PLATFORM_NATIVE
+    // As test/test_runner.c MgbaOpen_: the handshake has a side effect on
+    // mGBA (ENABLE then reads 1DEAh); natively the platform makes it.
+    return PlatformDebugOpen();
+#else
+#line 218
     *REG_DEBUG_ENABLE = 0xC0DE;
     return *REG_DEBUG_ENABLE == 0x1DEA;
+#endif
+#line 220
 }
 
 void MgbaClose(void)
@@ -238,7 +250,17 @@ void MgbaPrintf(s32 level, const char *ptr, ...)
     #error "unspecified pretty printing handler."
     #endif
     va_end(args);
+#if PLATFORM_NATIVE
+    // The store to FLAGS sends the message on mGBA (printing it and clearing
+    // the buffer); natively the register is plain memory and the platform
+    // does both. Without it the text stayed in the buffer, in front of the
+    // test runner's next message.
+    PlatformDebugSend(level | 0x100);
+#else
+#line 241
     *REG_DEBUG_FLAGS = level | 0x100;
+#endif
+#line 242
 }
 
 void MgbaAssert(const char *pFile, s32 nLine, const char *pExpression, bool32 nStopProgram)

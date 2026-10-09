@@ -344,3 +344,109 @@ test) get small guards. One mechanism for both bit widths and no size
 cliff. A 1 MiB `.platform_call_stack` region at 0x01800000 holds the
 battle runner's stack so that a 27-bit address field in the battle
 tests' queued events can hold a stack address.
+
+## 2026-10-09: Native fixes do what the GBA ends up doing
+
+Every site where the GBA reads or writes memory that does not exist
+natively (NULL, past a table, a wrapped counter) gets the smallest
+guarded change that produces the GBA's outcome, worked out from what the
+GBA actually serves there (the BIOS at address 0, open bus past the ROM,
+EWRAM mirrors). Where that outcome is unknowable (an open-bus word used
+as an address) the change does what a correct program would, and the row
+in UPSTREAM_MODIFICATIONS.md says "deliberate divergence". No native
+build ever emulates the bus: the platform does not map page zero
+(`vm.mmap_min_addr` forbids it without privileges, checked) and will
+not, because the faults are how these bugs are found.
+`platform/test_runner/SUITE-LOG.md` has every site with its test count.
+
+## 2026-10-09: Benchmarks are assumption failures natively
+
+`BENCHMARK`/`EXPECT_FASTER` compare GBA cycle counts from Timer 3. The
+native build advances time at frame boundaries, so both counts are 0;
+wall-clock timings on x86 would say nothing about the GBA. The 9
+benchmark tests end in `BenchmarkStart` as assumption failures with the
+reason, which the hydra lists under ASSUMPTIONS_FAILED and does not fail
+on (`gTestRunnerSkipIsFail` is 0 outside rh-hideout's CI). Gate (b)
+counts "per test the GBA baseline but for the 9 benchmarks" as green.
+
+## 2026-10-09: The test runner's persistent state crosses a crash by re-exec
+
+mgba-rom-test restarts the ROM after a crash with the last 0x200 bytes of
+IWRAM intact, which is how the runner resumes after a `CRASH`. Natively
+`platform/crash_reboot` catches the fatal signal, prints `crash_reboot:
+signal N at <pc>, fault address <addr>` on stderr, and re-executes the
+executable with the persistent state passed as `--persistent-state
+<hex>`; `crt0` restores it before `AgbMain`. The alternative, a
+longjmp-style in-process reboot, was rejected: the crashed process's
+heap, sanitizer state and signal context are not trustworthy. The 28-bit
+`address` field holds the test's index in `.tests` plus one rather than
+a native address. The crash line goes to the shared stderr and can
+interleave with the hydra's stdout line for another runner (seen once as
+a crash line inside a PASS line); cosmetic, and the hydra's own result
+lines are unaffected.
+
+## 2026-10-09: Division by zero gives libgcc's ARM results, through a SIGFPE handler
+
+Nine tests divide by zero (`ComputeBallShakeOdds`, `GetHealthPercentage`,
+`AnimSparkElectricityFlashing_Step`, two animation tables); on the GBA
+libgcc's `__udivsi3`/`__divsi3`/`__modsi3` return (0xFFFFFFFF, INT_MAX or
+INT_MIN, the dividend) and the game goes on. `platform/arm_division`
+installs a SIGFPE handler that decodes the faulting `div`/`idiv`, writes
+libgcc's results into the registers and resumes after the instruction,
+reporting each one with its program counter. 32-bit only: the decoder
+refuses 66h/67h-prefixed forms and 64-bit is a hard stop until it is
+redone (milestone 7). Rejected: guarding every division site in
+expansion (nine today, unknown tomorrow) and `-fsanitize=integer-divide-
+by-zero` recovery (which gives x86's result, not ARM's).
+
+## 2026-10-09: Native save-block sizes are checked, not the GBA's
+
+`test/save.c` compares `sizeof` of the save blocks with constants so that
+a hack notices a layout shift. The host ABI gives different sizes
+(DECISIONS.md, "Native structs follow the host ABI"), so under the guard
+the test checks the 32-bit native sizes. The test keeps its purpose, a
+layout shift in the native save still fails it, and the GBA values stay
+in the `#else`. 64-bit will get its own values, and the cross-width
+round trip (gate h) is what makes the two layouts interchangeable.
+
+## 2026-10-09: The sanitized TEST=1 build uses outline AddressSanitizer checks
+
+Inline instrumentation makes the TEST=1 code about 40 MB, past
+0x42000000, where bit 25 of a code address would collide with
+`platform/script_tag.h`'s tag (gba_regions.ld asserts `etext` stays
+below it). `--param=asan-instrumentation-with-call-threshold=0` makes
+every check a call: about 28 MB, the same checks, slower. Applies to
+Makefile.native's SANITIZE=1 build; the platform unit tests are small
+and stay inline.
+
+## 2026-10-09: `check` runs the sanitized suite with halt_on_error=0 and abort_on_error=1
+
+Expansion's objects are built with `-fsanitize-recover=address`, so the
+game's reports are printed and the runner carries on, which is what
+makes the sanitized run useful (one run lists every finding). The
+platform library never recovers, and a report there exited the process,
+losing the rest of that runner's partition (107 tests in one run);
+`abort_on_error=1` turns the exit into SIGABRT, `crash_reboot` reboots,
+and the hydra counts one `CRASH`. The caller's `ASAN_OPTIONS` come last
+and win.
+
+## 2026-10-09: Headless test runs do not draw
+
+The first full suite runs took 15 minutes, almost all in the PPU drawing
+frames nobody sees. In `--test-runner` mode `frame` skips rendering
+unless a replay or a screenshot is active (both need every frame); the
+suite takes about 40 seconds on 32 cores. The game-visible state (VCOUNT,
+DISPSTAT, HBlank DMA, interrupts) is unchanged, which the per-test
+comparison with the GBA baseline confirms. An earlier version skipped
+drawing in every headless run and blacked out the replay's screenshots;
+a test now checks that a replay still draws.
+
+## 2026-10-09: No wall-clock watchdog in the native runner
+
+Expansion's runner times a test out after 60 emulated seconds (Timer 2);
+the native runner advances the timers per frame, so the same path fires
+after the same number of frames, and the hydra has no watchdog of its own.
+A wall-clock limit would add a second, machine-dependent reason for a
+`TIMEOUT` and make the result depend on the host's load. The emulated
+timeout was exercised end to end with a throwaway probe (SUITE-LOG.md,
+"The timeout, end to end").

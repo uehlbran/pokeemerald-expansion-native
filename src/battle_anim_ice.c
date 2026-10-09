@@ -1623,6 +1623,17 @@ static void AnimHailContinue(struct Sprite *sprite)
 static void InitIceBallAnim(struct Sprite *sprite)
 {
     u32 animNum = gAnimDisableStructPtr->rolloutTimer + 1;
+#if PLATFORM_NATIVE
+    // rolloutTimer runs 0 to 4 (src/battle_move_resolution.c), so the fifth
+    // roll asks for affine animation 5 of sAffineAnims_IceBallChunk's five.
+    // The GBA reads the word after the table (the first frame command of
+    // sAffineAnim_IceBallChunk_4, 0x01C001C0) as the animation's address,
+    // unused bus space; natively that address is unmapped. The last chunk
+    // animation is used instead.
+    if (animNum >= ARRAY_COUNT(sAffineAnims_IceBallChunk))
+        animNum = ARRAY_COUNT(sAffineAnims_IceBallChunk) - 1;
+#endif
+#line 1626
 
     StartSpriteAffineAnim(sprite, animNum);
     InitSpritePosToAnimAttacker(sprite, TRUE);

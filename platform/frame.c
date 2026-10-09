@@ -17,7 +17,6 @@
 #include "dma.h"
 #include "flash.h"
 #include "frame_pacer.h"
-#include "game_hooks.h"
 #include "gba_irq.h"
 #include "gba_memmap.h"
 #include "gba_timing.h"
@@ -129,7 +128,6 @@ static void raise_and_dispatch(unsigned requested)
             interrupt_raise((enum gba_irq)source);
     }
     (void)interrupt_dispatch(); /* the count is for tests; failures are reported inside */
-    game_hooks_take_irq_return();
 }
 
 static void draw_line(uint16_t line)
@@ -145,7 +143,10 @@ static void run_visible_lines(void)
 {
     for (uint16_t line = 0; line < LCD_VISIBLE_LINES; line++) {
         raise_and_dispatch(lcd_status_begin_line(line));
-        draw_line(line);
+        /* The only step skip_drawing skips (frame.h); everything else on the
+         * line, and video_present after the frame, still runs. */
+        if (!frame.config.skip_drawing)
+            draw_line(line);
         unsigned hblank = lcd_status_begin_hblank();
         (void)dma_run_timing(DMA_TIMING_HBLANK); /* the block count is informational */
         raise_and_dispatch(hblank);

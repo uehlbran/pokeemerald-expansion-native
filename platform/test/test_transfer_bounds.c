@@ -205,6 +205,26 @@ PTEST(stack_locals_are_readable_and_writable)
     transfer_bounds_shutdown();
 }
 
+/* gba_regions.ld's .platform_call_stack, where game_hooks runs the battle
+ * test runner's functions, whose local buffers the game copies with DMA and
+ * CpuSet like any other stack's. */
+extern char platform_call_stack_start[], platform_call_stack_end[];
+
+PTEST(the_battle_runners_call_stack_is_readable_and_writable_to_its_edges)
+{
+    uintptr_t low = address_of(platform_call_stack_start);
+    size_t size = (size_t)(address_of(platform_call_stack_end) - low);
+    start();
+    bool whole = transfer_bounds_ok(low, size, TRANSFER_WRITE) && transfer_bounds_ok(low, size, TRANSFER_READ);
+    bool past_end = transfer_bounds_ok(low + size - 1, 2, TRANSFER_WRITE);
+    bool before = transfer_bounds_ok(low - 1, 2, TRANSFER_READ);
+    transfer_bounds_shutdown();
+    PT_ASSERT(size > 0);
+    PT_ASSERT(whole);
+    PT_ASSERT(!past_end);
+    PT_ASSERT(!before);
+}
+
 PTEST(native_heap_is_neither_readable_nor_writable)
 {
     uint8_t *heap = malloc(BYTE_COUNT);

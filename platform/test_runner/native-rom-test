@@ -1,0 +1,59 @@
+#!/bin/bash
+# native-rom-test: stands in for mgba-rom-test under expansion's hydra.
+#
+# The hydra (tools/mgba-rom-test-hydra/main.c) copies the test executable it
+# was given to /tmp/mgba-rom-test-hydra-<pid>, patches gTestRunnerN and
+# gTestRunnerI into the copy with tools/patchelf, and runs
+#     stdbuf -oL <this script> -l15 -ClogLevel.gba.dma=16 -Rr0 <copy>
+# reading the copy's stdout. mGBA's options mean: log levels FATAL to INFO,
+# no DMA logging, exit status from r0. The native executable needs none of
+# them: debug_channel prints exactly those levels, and the test runner's
+# exit status is the process's (platform/main.c, --test-runner). So every
+# argument but the last is ignored, and the last, the copy, is run in
+# test-runner mode, headless, silent and unthrottled.
+#
+# The copy is created mode 0600 by the hydra, so it is made executable here;
+# its directory must allow execution (a /tmp mounted noexec does not). The
+# hydra also leaves the descriptor it wrote the copy with open, and it is
+# inherited down to here; Linux refuses to exec a file that is open for
+# writing (ETXTBSY), so this process's descriptors on the copy are closed
+# first. (mgba-rom-test only reads the file, so the hydra never needed to.)
+# Bash, not sh: the descriptor's number can be above 9.
+#
+# stdbuf works by preloading a library into what it runs, which is 64-bit
+# on x86-64 hosts and cannot load into the 32-bit executable (the loader
+# prints an error for every run and every crash reboot). The executable
+# line-buffers stdout and flushes every debug line itself, so stdbuf's
+# preload and settings are dropped here before the exec; any other preload
+# is kept.
+set -eu
+
+if [ "$#" -lt 1 ]; then
+    echo "usage: native-rom-test [mgba-rom-test options...] EXECUTABLE" >&2
+    exit 2
+fi
+for executable; do :; done
+
+chmod u+x "$executable"
+copy=$(readlink -f -- "$executable")
+for entry in /proc/$$/fd/*; do
+    if [ "$(readlink -- "$entry" 2>/dev/null)" = "$copy" ]; then
+        eval "exec ${entry##*/}>&-"
+    fi
+done
+
+preload=
+for library in $(printf '%s' "${LD_PRELOAD-}" | tr ':' ' '); do
+    case "$library" in
+        */libstdbuf.so) ;;
+        *) preload="${preload:+$preload:}$library" ;;
+    esac
+done
+if [ -n "$preload" ]; then
+    export LD_PRELOAD="$preload"
+else
+    unset LD_PRELOAD
+fi
+unset _STDBUF_I _STDBUF_O _STDBUF_E
+
+exec "$executable" --headless --silent --unthrottled --test-runner

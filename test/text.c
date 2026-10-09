@@ -585,6 +585,16 @@ TEST("Map names fit in popup")
     u8 mapName[MAP_POPUP_STRING_BUFFER_LENGTH - MAP_POPUP_PREFIX_BUFFER_LENGTH];
     for (u32 i = 0; MAP_GROUP_COUNT[i] != 0; i++)
     {
+#if PLATFORM_NATIVE
+        // MAP_GROUP_COUNT counts FireRed's map groups too, whose gMapGroups
+        // entries are NULL in Emerald (data/maps/groups.inc). The GBA reads
+        // their header addresses from its BIOS and the headers from wherever
+        // those point; natively NULL is unmapped, so they are skipped.
+        extern const struct MapHeader *const *const gMapGroups[];
+        if (gMapGroups[i] == NULL)
+            continue;
+#endif
+#line 588
         for (u32 j = 0; j < MAP_GROUP_COUNT[i]; j++)
         {
             const struct MapHeader *mapHeader = Overworld_GetMapHeaderByGroupAndId(i, j);

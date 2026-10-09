@@ -42,7 +42,16 @@ The platform maps the GBA regions at their GBA addresses
 | OAM | 0x07000000 | 1 KiB | mapped |
 | Flash | 0x0E000000 | 128 KiB | mapped; the save container persists it |
 
-The executable is linked at 0x40000000 so it never overlaps a region.
+Not GBA memory, placed below 2^27 so its addresses fit the battle test
+runner's 27-bit fields: the stack `PlatformCallWithStack` runs the battle
+tests' functions on, 1 MiB at 0x01800000 (`gba_regions.ld`).
+
+The executable is linked at 0x40000000 so it never overlaps a region. The
+two places where expansion takes a pointer to be in the cartridge ROM are
+guarded: the heap's allocation-site encoding (`src/malloc.c`, an offset
+from the start of the executable) and `SetSpeaker`'s ROM range check
+(`src/field_name_box.c`, `PlatformIsRomPointer`: the executable's
+read-only segments).
 Register writes are plain stores: the layer polls register state at
 scanline and frame boundaries and the few writes that must act at once
 (DMA enable, the sound engine's `swi 0x2A`, the test runner's debug
@@ -60,8 +69,9 @@ order:
 1. Lines 0 to 159. Each line starts (`VCOUNT` = line, the H-Blank flag in
    `DISPSTAT` cleared, the V-Counter flag set and VCount raised when the
    line matches `DISPSTAT`'s setting), dispatch; the PPU renders the line
-   into the frame buffer; H-Blank starts (flag set), HBLANK-timed DMA runs,
-   HBlank is raised, dispatch.
+   into the frame buffer (not in `--test-runner` mode without a replay or a
+   screenshot, where nobody sees it); H-Blank starts (flag set),
+   HBLANK-timed DMA runs, HBlank is raised, dispatch.
 2. Advance the four timers by one frame of cycles; raise their overflow
    interrupts; dispatch.
 3. Enter VBlank: line 160 starts (`VCOUNT` = 160, the V-Blank flag set),
@@ -117,6 +127,8 @@ returned to the caller (`main` decides what to do; modules never call
 | `flash` | the 1 Mbit flash chip's driver entry | GBA Cart Backup Flash ROM | yes |
 | `save_file` | the cartridge's persistence | n/a | yes |
 | `debug_channel` | mGBA's debug registers | mGBA `src/gba/io.c` | yes |
+| `crash_reboot` | the reboot after a crash, keeping IWRAM's last 0x200 bytes (test runner mode) | BIOS Reset Functions | yes (real crashes and re-execs) |
+| `arm_division` | the GBA's software division (libgcc), which returns instead of trapping on a zero divisor | (libgcc, the Intel SDM for decoding) | yes |
 | `lcd_status` | the LCD controller's timing registers, `VCOUNT` and `DISPSTAT` | LCD I/O Interrupts and Status | yes |
 | `m4a_output` | the sound FIFO DMAs, reading the m4a engine's PCM ring | GBA Sound Channel A and B - DMA Sound | yes |
 | `sound_mix` | the sound mixer and output capacitor | GBA Sound Control Registers | yes |

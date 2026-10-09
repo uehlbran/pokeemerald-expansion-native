@@ -16,6 +16,10 @@
 #include "malloc.h"
 #include "constants/speaker_names.h"
 #include "data/speaker_names.h"
+#if PLATFORM_NATIVE
+#include "platform/game_hooks.h"
+#endif
+#line 19
 
 static EWRAM_INIT u8 sNameboxWindowId = WINDOW_NONE;
 EWRAM_DATA const u8 *gSpeakerName = NULL;
@@ -187,7 +191,14 @@ void SetSpeaker(struct ScriptContext *ctx)
 
     if (arg < SP_NAME_COUNT)
         speaker = gSpeakerNamesTable[arg];
+#if PLATFORM_NATIVE
+    // The ROM is the executable's read-only data natively (platform/game_hooks.h).
+    else if (PlatformIsRomPointer(arg))
+#else
+#line 190
     else if (arg >= ROM_START && arg < ROM_END)
+#endif
+#line 191
         speaker = (const u8 *)arg;
 
     gSpeakerName = speaker;

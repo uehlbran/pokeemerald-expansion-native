@@ -7742,7 +7742,18 @@ static void BufferBattlePartyOrderBySide(u8 *partyBattleOrder, u8 flankId, enum 
         partyIndexes[1] = gBattlerPartyIndexes[rightBattler];
         for (i = 0; i < PARTY_SIZE; i++)
         {
+#if PLATFORM_NATIVE
+            // With one Pokémon on a two-battler side (2v1, 1v2) both
+            // battlers have the same party index, j reaches PARTY_SIZE and
+            // the #else branch writes one byte past partyIndexes; on the GBA
+            // it lands in stack padding, natively it hits the stack
+            // protector's canary. The byte is never read.
+            if (i != partyIndexes[0] && i != partyIndexes[1] && j < PARTY_SIZE)
+#else
+#line 7733
             if (i != partyIndexes[0] && i != partyIndexes[1])
+#endif
+#line 7734
             {
                 partyIndexes[j] = i;
                 j++;

@@ -6,10 +6,13 @@
  * JumpToAgbMainLoop (an ARM routine that reloads the stack pointer saved in
  * gAgbMainLoop_sp and jumps to AgbMainLoop, test/test_runner.c), the BIOS
  * Stop call the test runner exits with (swi 0x3, which mgba-rom-test turns
- * into its exit status), and the battle test runner's stack switch (five
- * Thumb routines, test/test_runner_battle.c). Each guarded call site is a
- * row of docs/UPSTREAM_MODIFICATIONS.md. Design: docs/RESEARCH.md, "The test
- * runner on the native build".
+ * into its exit status), the two accesses to mGBA's debug registers that
+ * have side effects (the handshake and the send, test/test_runner.c; the
+ * registers are debug_channel's), and the battle test runner's stack switch
+ * (five Thumb routines, test/test_runner_battle.c), and one ROM address
+ * range check (src/field_name_box.c). Each guarded call site
+ * is a row of docs/UPSTREAM_MODIFICATIONS.md. Design: docs/RESEARCH.md, "The
+ * test runner on the native build".
  *
  * Every jump here is a longjmp or a ucontext switch, never exit(): main owns
  * the process's exit (game_hooks_init's target). Single-threaded.
@@ -21,11 +24,15 @@
 #define PLATFORM_GAME_HOOKS_H
 
 #include <setjmp.h>
+#include <stdbool.h>
 #include <stdint.h>
 
 /* Bytes of the stack PlatformCallWithStack runs the battle tests' functions
- * on (see there). */
+ * on (see there), and where it is: gba_regions.ld's .platform_call_stack,
+ * below 2^27 so that the addresses of the functions' locals fit the 27-bit
+ * fields the battle runner keeps them in (include/test/battle.h). */
 #define GAME_HOOKS_CALL_STACK_SIZE (1024u * 1024u)
+#define GAME_HOOKS_CALL_STACK_ADDRESS UINT32_C(0x01800000)
 
 /* The value game_hooks longjmps to main's exit target with (non-zero, since
  * setjmp's first return is 0). */
@@ -62,14 +69,6 @@ uint32_t game_hooks_exit_code(void);
  * exit, and the BIOS's SoftReset. value must not be 0. Does not return. */
 _Noreturn void game_hooks_unwind(jmp_buf *target, int value);
 
-/* After every interrupt dispatch: a handler that wants the IRQ to return
- * somewhere else writes that address into the BIOS's saved IRQ return
- * address at 03007F9Ch (GBATEK "BIOS RAM Usage": the IRQ stack; expansion's
- * IRQ_LR). Only the test runner's timeout handler does, and only to land in
- * JumpToAgbMainLoop. A dispatch cannot return there natively, so this checks
- * the slot, clears it, and if it was set calls PlatformJumpToAgbMainLoop. */
-void game_hooks_take_irq_return(void);
-
 /* --- For expansion's guarded code ---------------------------------------- */
 
 /* src/main.c, under PLATFORM_NATIVE and TESTING, runs
@@ -88,12 +87,43 @@ void PlatformWaitCycles(uint32_t cycles);
 /* test/test_runner.c JumpToAgbMainLoop: longjmps to the AgbMainLoop target
  * (from the battle runner's stack too, see PlatformCallWithStack). Without a
  * target (a build without TESTING) it reports and exits the game with
- * GAME_HOOKS_EXIT_INTERNAL_ERROR. Does not return. */
+ * GAME_HOOKS_EXIT_INTERNAL_ERROR. Does not return.
+ *
+ * Also called by the runner's Timer 2 handler (Intr_Timer2) when a test
+ * times out, where the GBA rewrote the BIOS's saved IRQ return address
+ * (03007F9Ch, IRQ_LR) so that the interrupt returned into JumpToAgbMainLoop.
+ * Natively the handler runs inside interrupt_dispatch, inside frame_run,
+ * inside the game's VBlankIntrWait, possibly on the battle runner's stack;
+ * the jump leaves all of them. None keeps state across the call that the
+ * jump would leave stale: interrupt_dispatch's only skipped step is the
+ * restore of IE and IME, which the Timer 2 handler leaves as they were (IME
+ * 1, as during any handler but VCount's; IE unchanged), and the next frame
+ * starts afresh from line 0. */
 void PlatformJumpToAgbMainLoop(void);
 
 /* test/test_runner.c MgbaExit_: stores exit_code for main to return and
  * unwinds to main's exit target. Without one, reports and returns. */
 void PlatformTestRunnerExit(uint32_t exit_code);
+
+/* test/test_runner.c MgbaOpen_: the debug registers' handshake
+ * (debug_channel_open): true when the channel is on, as mGBA's ENABLE reads
+ * 1DEAh after C0DEh is written; false otherwise, and the runner exits 2. */
+bool PlatformDebugOpen(void);
+
+/* test/test_runner.c MgbaPutchar_ and MgbaVPrintf_: the store to mGBA's
+ * FLAGS register that sends the message in STRING (debug_channel_send). */
+void PlatformDebugSend(uint16_t flags);
+
+/* src/field_name_box.c SetSpeaker: whether a script's word is the address
+ * of data in the cartridge ROM, which the GBA tests as ROM_START <= address
+ * < ROM_END (08000000h-09FFFFFFh, include/gba/defines.h); SetSpeaker uses
+ * it as the speaker's name if so. Natively the ROM's contents are the
+ * executable's read-only data, linked at 0x40000000: true when address is
+ * inside one of the executable's read-only loadable segments (code,
+ * read-only data, string literals), as its program headers give them;
+ * false for its writable data, the GBA regions, the stacks and the heap.
+ * Linux (getauxval). */
+bool PlatformIsRomPointer(uintptr_t address);
 
 /* test/test_runner_battle.c: calls entry(context) on a separate stack and
  * returns when it returns. On the GBA the stack is the 1 KiB DATA.stack whose
@@ -104,8 +134,9 @@ void PlatformTestRunnerExit(uint32_t exit_code);
  * larger again under AddressSanitizer), and overflowing it would overwrite
  * the runner state it lives in; so stackTop is not used: every call starts
  * at the top of one platform-owned stack of GAME_HOOKS_CALL_STACK_SIZE
- * bytes, which nothing else uses, so locals survive between calls and land
- * at the same addresses each time, which is what the runner relies on. The
+ * bytes at GAME_HOOKS_CALL_STACK_ADDRESS, which nothing else uses, so locals
+ * survive between calls and land at the same addresses each time, which is
+ * what the runner relies on (and their addresses fit its 27-bit fields). The
  * switch is a ucontext swap, annotated for AddressSanitizer's fiber support.
  * A longjmp out of entry (PlatformJumpToAgbMainLoop, PlatformTestRunnerExit)
  * first switches back to the caller's stack. Not reentrant: a call from

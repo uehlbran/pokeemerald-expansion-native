@@ -6271,7 +6271,17 @@ static inline u32 CalcMoveBasePower(struct DamageContext *ctx)
     case EFFECT_DOUBLE_POWER_ON_ARG_STATUS:
         // Comatose targets treated as if asleep
         if ((gBattleMons[battlerDef].status1 | (STATUS1_SLEEP * (ctx->abilities[ctx->battlerDef] == ABILITY_COMATOSE))) & GetMoveEffectArg_Status(move)
+#if PLATFORM_NATIVE
+         // Hex and Venoshock have no additional effect, so entry 0 is read
+         // through NULL: the GBA reads its BIOS there, never
+         // MOVE_EFFECT_REMOVE_STATUS; natively NULL is unmapped.
+         && !(GetMoveAdditionalEffectCount(move) != 0
+           && (GetMoveAdditionalEffectById(move, 0)->moveEffect == MOVE_EFFECT_REMOVE_STATUS) && DoesSubstituteBlockMove(battlerAtk, battlerDef, move)))
+#else
+#line 6274
          && !((GetMoveAdditionalEffectById(move, 0)->moveEffect == MOVE_EFFECT_REMOVE_STATUS) && DoesSubstituteBlockMove(battlerAtk, battlerDef, move)))
+#endif
+#line 6275
             basePower *= 2;
         break;
     case EFFECT_POWER_BASED_ON_TARGET_HP:
@@ -8881,6 +8891,14 @@ bool32 TryClearIllusion(enum BattlerId battler, enum Ability ability)
 
 struct Pokemon *GetIllusionMonPtr(enum BattlerId battler)
 {
+#if PLATFORM_NATIVE
+    // Called outside a battle (test/text.c expands battle strings), when
+    // gBattleStruct is NULL: the GBA reads its BIOS there and finds no
+    // illusion; natively NULL is unmapped.
+    if (gBattleStruct == NULL)
+        return NULL;
+#endif
+#line 8884
     if (gBattleStruct->illusion[battler].state == ILLUSION_NOT_SET)
         SetIllusionMon(GetBattlerMon(battler), battler);
     if (gBattleStruct->illusion[battler].state != ILLUSION_ON)

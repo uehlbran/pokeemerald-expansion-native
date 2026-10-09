@@ -12,6 +12,10 @@
 #include "test_runner.h"
 #include "test/test.h"
 #include "test/battle.h"
+#if PLATFORM_NATIVE
+#include "platform/game_hooks.h"
+#endif
+#line 15
 
 #define TIMEOUT_SECONDS 60
 
@@ -38,6 +42,16 @@ static void Intr_Timer2(void);
 
 extern const struct Test __start_tests[];
 extern const struct Test __stop_tests[];
+#if PLATFORM_NATIVE
+// The persistent state's 28-bit address field cannot hold a native address
+// (the executable is linked at 0x40000000). Natively it holds the test's
+// position in the .tests table plus one, so that 0 still means no test.
+static u32 PersistentTestId(const struct Test *test)
+{
+    return (test - __start_tests) + 1;
+}
+#endif
+#line 41
 
 static enum TestFilterMode DetectFilterMode(const char *pattern)
 {
@@ -217,6 +231,15 @@ top:
 
         gTestRunnerState.filterMode = DetectFilterMode(gTestRunnerArgv);
 
+#if PLATFORM_NATIVE
+        // MoveSaveBlocks_ResetHeap copies *gSaveBlock1Ptr, which is still NULL
+        // here (AgbMain sets only gSaveBlock2Ptr and gPokemonStoragePtr). The
+        // GBA reads the BIOS at address 0, and ClearSaveBlocks wipes the copy
+        // before any test runs; natively address 0 is not mapped.
+        if (gSaveBlock1Ptr == NULL)
+            gSaveBlock1Ptr = &gSaveblock1.block;
+#endif
+#line 220
         MoveSaveBlocks_ResetHeap();
 
         gIntrTable[7] = Intr_Timer2;
@@ -226,7 +249,13 @@ top:
         {
             ClearSaveBlocks();
             gTestRunnerState.test = __start_tests;
+#if PLATFORM_NATIVE
+            while (PersistentTestId(gTestRunnerState.test) != gPersistentTestRunnerState.address)
+#else
+#line 229
             while ((uintptr_t)gTestRunnerState.test != gPersistentTestRunnerState.address)
+#endif
+#line 230
             {
                 AssignCostToRunner();
                 gTestRunnerState.test++;
@@ -319,7 +348,13 @@ top:
         REG_TM2CNT_L = UINT16_MAX - (274 * 60); // Approx. 1 second.
         REG_TM2CNT_H = TIMER_ENABLE | TIMER_INTR_ENABLE | TIMER_1024CLK;
 
+#if PLATFORM_NATIVE
+        gPersistentTestRunnerState.address = PersistentTestId(gTestRunnerState.test);
+#else
+#line 322
         gPersistentTestRunnerState.address = (uintptr_t)gTestRunnerState.test;
+#endif
+#line 323
         gPersistentTestRunnerState.state = CURRENT_TEST_STATE_ESTIMATE;
 
         // If AssignCostToRunner fails, we want to report the failure.
@@ -577,8 +612,18 @@ static void FunctionTest_SetUp(void *data)
 {
     (void)data;
     TestInitConfigData();
+#if PLATFORM_NATIVE
+    // ClearRiggedRng writes through gFunctionTestRunnerState, which is NULL
+    // until the AllocZeroed (the last test's tearDown freed it); the GBA
+    // ignores those writes to its BIOS at address 0, natively they crash.
+    gFunctionTestRunnerState = AllocZeroed(sizeof(*gFunctionTestRunnerState));
+    ClearRiggedRng();
+#else
+#line 580
     ClearRiggedRng();
     gFunctionTestRunnerState = AllocZeroed(sizeof(*gFunctionTestRunnerState));
+#endif
+#line 582
     SeedRng(0);
 }
 
@@ -713,13 +758,12 @@ const struct TestRunner gAssumptionsRunner =
 // The ARM routine in the #else branch reloads the stack pointer saved in
 // gAgbMainLoop_sp and jumps to AgbMainLoop. The platform layer provides
 // that jump.
-void PlatformJumpToAgbMainLoop(void);
-
 static void JumpToAgbMainLoop(void)
 {
     PlatformJumpToAgbMainLoop();
 }
 #else
+#line 712
 static NAKED void JumpToAgbMainLoop(void)
 {
     asm(".arm\n\
@@ -731,6 +775,7 @@ static NAKED void JumpToAgbMainLoop(void)
          .pool");
 }
 #endif
+#line 722
 
 static void ReinitCallbacks(void)
 {
@@ -756,7 +801,20 @@ static void Intr_Timer2(void)
             gTestRunnerState.result = TEST_RESULT_TIMEOUT;
             Test_MgbaPrintf("%s:%d: TIMEOUT", gTestRunnerState.test->filename, SourceLine(0));
             ReinitCallbacks();
+#if PLATFORM_NATIVE
+            // The #else branch makes the BIOS's IRQ return land in
+            // JumpToAgbMainLoop. Natively this handler runs inside the
+            // platform's interrupt dispatch in the frame loop, and the
+            // platform jumps from here. The jump skips the dispatch's
+            // restore of IE and IME, which is harmless: IME was 1 when it
+            // was saved (Timer 2 is taken only with IME set) and this
+            // handler leaves IE as it was.
+            PlatformJumpToAgbMainLoop();
+#else
+#line 747
             IRQ_LR = ((uintptr_t)JumpToAgbMainLoop & ~1) + 4;
+#endif
+#line 748
         }
     }
 }
@@ -820,26 +878,34 @@ void Test_ExitWithResult_(enum TestResult result, u32 stopLine, const void *retu
 
 static bool32 MgbaOpen_(void)
 {
+#if PLATFORM_NATIVE
+    // The handshake has a side effect on mGBA (ENABLE then reads 1DEAh);
+    // natively the register is plain memory and the platform makes it.
+    return PlatformDebugOpen();
+#else
+#line 811
     REG_DEBUG_ENABLE = 0xC0DE;
     return REG_DEBUG_ENABLE == 0x1DEA;
+#endif
+#line 813
 }
 
 #if PLATFORM_NATIVE
 // BIOS Stop (swi 0x3) with the exit code in r0, which mgba-rom-test turns
 // into its process exit code. The platform layer provides the exit.
-void PlatformTestRunnerExit(u32 exitCode);
-
 static void MgbaExit_(u8 exitCode)
 {
     PlatformTestRunnerExit(exitCode);
 }
 #else
+#line 815
 static void MgbaExit_(u8 exitCode)
 {
     register u32 _exitCode asm("r0") = exitCode;
     asm("swi 0x3" :: "r" (_exitCode));
 }
 #endif
+#line 820
 
 s32 Test_MgbaPrintf(const char *fmt, ...)
 {
@@ -854,7 +920,13 @@ static s32 MgbaPutchar_(s32 i, s32 c)
     if (i == 255)
     {
         REG_DEBUG_STRING[i] = '\0';
+#if PLATFORM_NATIVE
+        PlatformDebugSend(MGBA_LOG_INFO | 0x100);
+#else
+#line 834
         REG_DEBUG_FLAGS = MGBA_LOG_INFO | 0x100;
+#endif
+#line 835
         i = 0;
     }
     return i;
@@ -1048,7 +1120,13 @@ static s32 MgbaVPrintf_(const char *fmt, va_list va)
     }
     if (i != 0)
     {
+#if PLATFORM_NATIVE
+        PlatformDebugSend(MGBA_LOG_INFO | 0x100);
+#else
+#line 1028
         REG_DEBUG_FLAGS = MGBA_LOG_INFO | 0x100;
+#endif
+#line 1029
     }
     return i;
 }
@@ -1066,6 +1144,7 @@ void DACSEntry(void)
     DACSHandle();
 }
 #else
+#line 1036
 #if MODERN
 __attribute__((naked, section(".dacs"), target("arm")))
 #else
@@ -1078,6 +1157,7 @@ void DACSEntry(void)
          bx r0\n");
 }
 #endif
+#line 1047
 
 #define DACS_LR (*(vu32 *)0x3007FEC)
 

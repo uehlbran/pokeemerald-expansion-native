@@ -38,7 +38,7 @@ make -f Makefile.native -j$(nproc) native BITS=32        # build/native32/pokeem
 ```
 
 Variants: `TEST=1` builds `build/native32-test/pokeemerald-native-test`
-with expansion's test suite linked in (milestone 4 makes it runnable);
+with expansion's test suite linked in;
 `SANITIZE=1` builds into `build/native32-san/` with AddressSanitizer and
 UndefinedBehaviorSanitizer on everything (expansion's objects recover and
 report every finding with `ASAN_OPTIONS=halt_on_error=0`; the platform
@@ -49,6 +49,18 @@ sanitized:
 make -C platform test BITS=32
 make -C platform test BITS=64
 ```
+
+Expansion's test suite against the native build, through expansion's own
+hydra (as `make check` runs it against mgba-rom-test; about 40 seconds on
+32 cores, about 75 with `SANITIZE=1`, which runs the sanitized build;
+`TESTS=` filters as expansion's does):
+
+```
+make -f Makefile.native -j32 check BITS=32
+```
+
+How it works: `platform/README.md`, "The test runner"; the results against
+the GBA baseline: `platform/test_runner/SUITE-LOG.md`.
 
 The headless smoke boot used as a gate:
 

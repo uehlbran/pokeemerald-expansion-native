@@ -14,7 +14,20 @@
  * says to stop (a frame limit, the window closed, a failure), and
  * PlatformTestRunnerExit (the test runner's result). SoftReset longjmps to
  * the reset target, after which main does what crt0 does and calls AgbMain
- * again. main is the only place that ends the process, by returning.
+ * again. main is the only place that ends the process, by returning; the
+ * one exception is crash_reboot's handler, which, in test-runner mode,
+ * replaces a crashed process with a fresh run of the same program.
+ *
+ * Test-runner mode (--test-runner) makes the process what mgba-rom-test is
+ * to expansion's hydra (tools/mgba-rom-test-hydra, run through
+ * platform/test_runner/native-rom-test): mGBA's debug registers print to
+ * stdout as "GBA Debug: " lines (debug_channel), stdout carries nothing
+ * else and is line-buffered, the exit status is the test runner's
+ * (PlatformTestRunnerExit: 0 all as expected, 1 a test failed, 2 the debug
+ * channel is missing), a crash reboots with the runner's persistent state
+ * (crash_reboot, --persistent-state), and nothing is written to disk: the
+ * save and the clock's offset stay in memory, so parallel runs share no
+ * file.
  */
 #include <errno.h>
 #include <limits.h>
@@ -28,9 +41,12 @@
 
 #include <SDL.h>
 
+#include "arm_division.h"
 #include "audio.h"
 #include "bios.h"
+#include "crash_reboot.h"
 #include "crt0.h"
+#include "debug_channel.h"
 #include "dma.h"
 #include "fixed_clock.h"
 #include "flash.h"
@@ -80,6 +96,10 @@ struct options {
     bool silent;
     bool unthrottled;
     bool help;
+    bool test_runner;
+    const char *persistent_state; /* the hex the crash reboot passes, or NULL */
+    int argc;                     /* main's, for the crash reboot */
+    char **argv;
     int scale;
     uint32_t frame_limit;
     const char *save_path;
@@ -104,6 +124,11 @@ static void print_usage(FILE *out)
             "  --unthrottled      do not hold the GBA frame rate\n"
             "  --frames N         exit after N frames (exit status 0)\n"
             "  --screenshot PATH  write the last frame to PATH as a PPM when the game ends\n"
+            "  --test-runner      run expansion's test runner as mgba-rom-test does for its hydra:\n"
+            "                     debug output on stdout, the runner's exit status, reboot on a\n"
+            "                     crash; no save or clock file is read or written\n"
+            "  --persistent-state HEX\n"
+            "                     (added by the reboot) the runner's state to start from\n"
             "  --replay SCRIPT    play a replay script (tests/smoke/README.md): the keypad reads the script, not the\n"
             "                     keyboard; exit 0 when the script ends, 1 on the first failed command\n"
             "  --out DIR          where the replay's screenshots and dumps go (default %s)\n"
@@ -154,6 +179,8 @@ static int parse_options(int argc, char **argv, struct options *out)
         .frame_limit = MAIN_DEFAULT_FRAME_LIMIT,
         .save_path = MAIN_DEFAULT_SAVE_PATH,
         .rtc_offset_path = MAIN_DEFAULT_RTC_OFFSET_PATH,
+        .argc = argc,
+        .argv = argv,
         .out_dir = MAIN_DEFAULT_OUT_DIR,
     };
     for (int i = 1; i < argc; i++) {
@@ -168,6 +195,11 @@ static int parse_options(int argc, char **argv, struct options *out)
             out->unthrottled = true;
         } else if (strcmp(arg, "--help") == 0) {
             out->help = true;
+        } else if (strcmp(arg, "--test-runner") == 0) {
+            out->test_runner = true;
+        } else if (strcmp(arg, CRASH_REBOOT_OPTION) == 0 && value != NULL) {
+            out->persistent_state = value;
+            i++;
         } else if (strcmp(arg, "--save") == 0 && value != NULL) {
             out->save_path = value;
             i++;
@@ -201,6 +233,14 @@ static int parse_options(int argc, char **argv, struct options *out)
             return MAIN_EXIT_USAGE;
         }
     }
+    if (out->persistent_state != NULL && !out->test_runner) {
+        fprintf(stderr, "main: %s is for --test-runner only\n", CRASH_REBOOT_OPTION);
+        return MAIN_EXIT_USAGE;
+    }
+    if (out->test_runner) {
+        out->save_path = NULL;
+        out->rtc_offset_path = NULL;
+    }
     return 0;
 }
 
@@ -213,6 +253,33 @@ static int start_timer(const struct options *o) { (void)o; return timer_init(int
 static int start_dma(const struct options *o) { (void)o; return dma_init(interrupt_raise); }
 static int start_crt0(const struct options *o) { (void)o; return crt0_init(); }
 static int start_game_hooks(const struct options *o) { (void)o; return game_hooks_init(&exit_target); }
+
+/* Test-runner mode only: stdout is the hydra's, one line at a time. */
+static int start_debug_channel(const struct options *o)
+{
+    if (!o->test_runner)
+        return 0;
+    if (setvbuf(stdout, NULL, _IOLBF, 0) != 0) {
+        fprintf(stderr, "main: setvbuf(stdout, line-buffered) failed\n");
+        return -1;
+    }
+    return debug_channel_init(stdout);
+}
+
+/* Test-runner mode only: put back the state a crash left, then be ready to
+ * reboot on the next one. */
+static int start_crash_reboot(const struct options *o)
+{
+    if (!o->test_runner)
+        return 0;
+    if (o->persistent_state != NULL && crash_reboot_restore(o->persistent_state) != CRASH_REBOOT_OK)
+        return -1;
+    return crash_reboot_init(o->argc, o->argv);
+}
+
+/* After crash_reboot, so that a SIGFPE it cannot complete goes to the
+ * crash reboot in test-runner mode. */
+static int start_arm_division(const struct options *o) { (void)o; return arm_division_init(); }
 static int start_ppu(const struct options *o) { (void)o; return ppu_init(); }
 static int start_psg(const struct options *o) { (void)o; return psg_init(FRAME_AUDIO_SAMPLE_RATE_HZ); }
 static int start_sdl(const struct options *o) { (void)o; return 0; }
@@ -295,7 +362,14 @@ static int start_save_file(const struct options *o)
 
 static int start_frame(const struct options *o)
 {
-    struct frame_config config = { .frame_limit = o->frame_limit, .screenshot_path = o->screenshot_path };
+    struct frame_config config = {
+        .frame_limit = o->frame_limit,
+        .screenshot_path = o->screenshot_path,
+        /* Only the test runner leaves frames undrawn: nobody sees them there.
+         * A replay's screenshot commands and a final screenshot need every
+         * frame drawn. */
+        .skip_drawing = o->test_runner && o->replay_path == NULL && o->screenshot_path == NULL,
+    };
     return frame_init(&config);
 }
 
@@ -317,6 +391,9 @@ struct module_step {
  * subsystems) and ends SDL after all three are shut down. */
 static const struct module_step module_steps[] = {
     { "gba_memmap", start_gba_memmap, gba_memmap_shutdown },
+    { "debug_channel", start_debug_channel, debug_channel_shutdown },
+    { "crash_reboot", start_crash_reboot, crash_reboot_shutdown },
+    { "arm_division", start_arm_division, arm_division_shutdown },
     { "transfer_bounds", start_transfer_bounds, transfer_bounds_shutdown },
     { "interrupt", start_interrupt, interrupt_shutdown },
     { "timer", start_timer, timer_shutdown },
@@ -477,7 +554,8 @@ int main(int argc, char **argv)
     status = run_game();
     if (frame_flush_save() != 0 && status == MAIN_EXIT_OK)
         status = MAIN_EXIT_FAILURE;
-    printf("main: %u frames\n", frame_count());
+    if (!options.test_runner) /* stdout is the hydra's */
+        printf("main: %u frames\n", frame_count());
     bool restart = false;
     if (options.replay_path != NULL)
         status = settle_replay(status, &restart);

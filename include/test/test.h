@@ -204,6 +204,14 @@ struct Benchmark { s32 ticks; };
 
 static inline void BenchmarkStart(void)
 {
+#if PLATFORM_NATIVE
+    // BENCHMARK counts GBA cycles with Timer 3 (below). Natively the game's
+    // code takes no emulated time and x86 timings say nothing about the
+    // GBA's, so the test stops here as an assumption failure rather than
+    // comparing two zeros.
+    Test_ExitWithResult(TEST_RESULT_ASSUMPTION_FAIL, SourceLine(0), "%s:%d: BENCHMARK needs the GBA's cycle timing (Timer 3), which the native build does not have", gTestRunnerState.test->filename, SourceLine(0));
+#endif
+#line 207
     gTestRunnerState.inBenchmark = TRUE;
     // Wait for a v-blank so that comparing two benchmarks is not affected
     // by the v-count (different numbers of IRQs may run).

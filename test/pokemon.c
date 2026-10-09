@@ -687,7 +687,16 @@ TEST("BoxPokemon encryption works")
     EXPECT_EQ(GetMonData(&mon, MON_DATA_SPECIES), SPECIES_TORCHIC);
     EXPECT_EQ(GetMonData(&mon, MON_DATA_MARKINGS), 3);
     const u8 *actualNickname = COMPOUND_STRING("Testing mon");
+#if PLATFORM_NATIVE
+    // GetMonData writes POKEMON_NAME_LENGTH (12) characters and an EOS: on
+    // the GBA the 13th byte lands in stack padding, natively on the stack
+    // protector's canary.
+    u8 nickname[POKEMON_NAME_LENGTH + 1];
+#else
+#line 690
     u8 nickname[12];
+#endif
+#line 691
     GetMonData(&mon, MON_DATA_NICKNAME, nickname);
     u32 charIndex = 0;
     while (actualNickname[charIndex] != EOS)
