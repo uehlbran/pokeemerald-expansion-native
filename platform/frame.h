@@ -32,7 +32,8 @@
  *     (audio_queue).
  *  6. The panel shows the frame (video_present); SDL's events are polled
  *     (video_poll_events, each passed to input_handle_event; a quit ends the
- *     loop after this frame); KEYINPUT is written (input_update_keyinput).
+ *     loop after this frame); the step hook, if one is set, runs (below);
+ *     KEYINPUT is written (input_update_keyinput).
  *  7. If the game wrote the flash chip, the save file is stored.
  *  8. The pacer holds the GBA frame rate (frame_pacer_wait).
  *  9. The frame count; with a frame limit, the last frame ends the loop;
@@ -69,6 +70,20 @@
  * (about one second); the image stays newer than the file meanwhile. */
 #define FRAME_SAVE_RETRY_FRAMES 60u
 
+/* What the step hook tells the frame loop. */
+enum frame_step_result {
+    FRAME_STEP_CONTINUE = 0,
+    FRAME_STEP_STOP = 1, /* end the game after this frame, status 0 */
+    FRAME_STEP_FAIL = 2  /* end the game after this frame, status 1 (the hook has reported why) */
+};
+
+/* A function called once per frame, after the frame has been shown and before
+ * KEYINPUT is written, so what it sets on the keypad (input_script_set) is
+ * what the game reads next. The replay driver is the one user. The frame loop
+ * only schedules the call and acts on the result; what the hook does is its
+ * own. */
+typedef enum frame_step_result (*frame_step_hook)(void *context);
+
 enum frame_result {
     FRAME_CONTINUE = 0,
     FRAME_EXIT = 1 /* stop the game: limit reached, quit, or a failure (frame_exit_status) */
@@ -88,6 +103,10 @@ struct frame_config {
  * module) and zeroes the counters. The modules frame_run uses are main's to
  * initialise. Returns 0, or -1 (reported) for NULL. */
 int frame_init(const struct frame_config *config);
+
+/* Installs (or, with NULL, removes) the step hook. Call after frame_init,
+ * which clears it. */
+void frame_set_step_hook(frame_step_hook hook, void *context);
 
 /* Forgets everything. Safe at any time and twice. */
 void frame_shutdown(void);

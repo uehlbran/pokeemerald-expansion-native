@@ -2488,7 +2488,15 @@ static bool32 ReturnToFieldLink(u8 *state)
 
 static void DoMapLoadLoop(u8 *state)
 {
+#if PLATFORM_NATIVE
+    // On the GBA the VBlank interrupt runs the DMA3 queue while this loop spins on
+    // FreeTempTileDataBuffersIfPossible; natively a frame passes only in VBlankIntrWait.
+    while (!LoadMapInStepsLocal(state, FALSE))
+        VBlankIntrWait();
+#else
     while (!LoadMapInStepsLocal(state, FALSE));
+#endif
+#line 2492
 }
 
 static void ResetMirageTowerAndSaveBlockPtrs(void)

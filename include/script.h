@@ -1,5 +1,9 @@
 #ifndef GUARD_SCRIPT_H
 #define GUARD_SCRIPT_H
+#if PLATFORM_NATIVE
+#include "platform/script_tag.h"
+#endif
+#line 3
 
 struct ScriptContext;
 
@@ -195,21 +199,36 @@ static inline void Script_CheckEffectInstrumentedSpecial(u32 specialId)
     typedef u16 (*SpecialFunc)(void);
     extern const SpecialFunc gSpecials[];
     // In ROM mirror 1.
+#if PLATFORM_NATIVE
+    if (Script_IsAnalyzingEffects() && !script_tag_is_set((uintptr_t)gSpecials[specialId]))
+#else
     if (Script_IsAnalyzingEffects() && (((uintptr_t)gSpecials[specialId]) & 0xE000000) != 0xA000000)
+#endif
+#line 199
         Script_GotoBreak_Internal();
 }
 
 static inline void Script_CheckEffectInstrumentedGotoNative(bool8 (*func)(void))
 {
     // In ROM mirror 1.
+#if PLATFORM_NATIVE
+    if (Script_IsAnalyzingEffects() && !script_tag_is_set((uintptr_t)func))
+#else
     if (Script_IsAnalyzingEffects() && (((uintptr_t)func) & 0xE000000) != 0xA000000)
+#endif
+#line 206
         Script_GotoBreak_Internal();
 }
 
 static inline void Script_CheckEffectInstrumentedCallNative(void (*func)(struct ScriptContext *))
 {
     // In ROM mirror 1.
+#if PLATFORM_NATIVE
+    if (Script_IsAnalyzingEffects() && !script_tag_is_set((uintptr_t)func))
+#else
     if (Script_IsAnalyzingEffects() && (((uintptr_t)func) & 0xE000000) != 0xA000000)
+#endif
+#line 213
         Script_GotoBreak_Internal();
 }
 

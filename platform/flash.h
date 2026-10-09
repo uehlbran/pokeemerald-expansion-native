@@ -142,6 +142,11 @@ void flash_shutdown(void);
  * do flash_init and flash_erase_image, which are not game writes. */
 bool flash_take_dirty(void);
 
+/* How many programs and erases the game has done since flash_init (each
+ * accepted program or erase of a byte, range or sector counts once; it is
+ * not reset by flash_take_dirty). The replay's inspection facts report it. */
+uint32_t flash_write_count(void);
+
 /* For the save file: the FLASH_CHIP_SIZE bytes of the chip, sector n at
  * offset n * FLASH_SECTOR_SIZE. Writes through it are not game writes and do
  * not mark sectors dirty. */

@@ -42,6 +42,8 @@ _Static_assert(VIDEO_WIDTH == GBA_LCD_VISIBLE_DOTS && VIDEO_HEIGHT == GBA_LCD_VI
 
 static struct {
     struct frame_config config;
+    frame_step_hook step_hook;
+    void *step_hook_context;
     bool initialised;
     uint32_t frames;
     bool exit_requested;
@@ -74,6 +76,12 @@ int frame_init(const struct frame_config *config)
     }
     frame = (__typeof__(frame)){ .config = *config, .initialised = true };
     return 0;
+}
+
+void frame_set_step_hook(frame_step_hook hook, void *context)
+{
+    frame.step_hook = hook;
+    frame.step_hook_context = context;
 }
 
 void frame_shutdown(void)
@@ -211,6 +219,23 @@ static void on_sdl_event(const union SDL_Event *event, void *context)
     (void)input_handle_event(event);
 }
 
+static void run_step_hook(void)
+{
+    if (frame.step_hook == NULL)
+        return;
+    switch (frame.step_hook(frame.step_hook_context)) {
+    case FRAME_STEP_CONTINUE:
+        break;
+    case FRAME_STEP_STOP:
+        frame.exit_requested = true;
+        break;
+    case FRAME_STEP_FAIL:
+    default:
+        fail();
+        break;
+    }
+}
+
 static void present_and_read_keys(void)
 {
     if (video_present(pixels) != 0) {
@@ -220,6 +245,7 @@ static void present_and_read_keys(void)
     }
     if (!video_poll_events(on_sdl_event, NULL))
         frame.exit_requested = true;
+    run_step_hook();
     input_update_keyinput();
 }
 

@@ -20,6 +20,8 @@
 #     (a leading "#" after the slashes, "// # deps:", is accepted too).
 # Tests include "ptest.h" (platform/test/ptest.h) and their module's header.
 
+include game_flags.mk
+
 BITS ?= 32
 ifeq ($(filter $(BITS),32 64),)
 $(error BITS must be 32 or 64, not '$(BITS)')
@@ -132,6 +134,11 @@ $(OBJ_DIR)/%.o: %.c
 # -fno-pie code (Makefile.native) uses for its tables and that the SIGFPE
 # decoder must handle; position-independent code cannot encode it.
 $(OBJ_DIR)/test/test_arm_division.o: CFLAGS_ALL += -fno-pie
+
+# inspect.c reads expansion's variables through its headers, so it is compiled
+# as the game is (Makefile.native CPPFLAGS and ARCH_FLAGS), or the structure
+# layouts could differ.
+$(OBJ_DIR)/inspect.o: CFLAGS_ALL += $(GAME_DEFINES) -DTESTING=0 -DEMERALD $(GAME_CHAR_FLAGS)
 
 # The files a test names on its "// deps:" line.
 test_deps = $(shell sed -n -E 's@^//[[:space:]]*\#?[[:space:]]*deps:@@p' test/$(1).c)

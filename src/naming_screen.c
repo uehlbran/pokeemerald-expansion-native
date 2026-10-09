@@ -2071,6 +2071,13 @@ static void PrintControls(void)
 static void CB2_NamingScreen(void)
 {
     RunTasks();
+#if PLATFORM_NATIVE
+    // MainState_Exit frees sNamingScreen inside RunTasks; the sprite callbacks run next
+    // read it (the GBA read ROM through the NULL, natively that is a crash).
+    if (sNamingScreen == NULL)
+        return;
+#endif
+#line 2074
     AnimateSprites();
     BuildOamBuffer();
     UpdatePaletteFade();
@@ -2092,6 +2099,12 @@ static void VBlankCB_NamingScreen(void)
     LoadOam();
     ProcessSpriteCopyRequests();
     TransferPlttBuffer();
+#if PLATFORM_NATIVE
+    // The VBlank after MainState_Exit freed sNamingScreen, before the return callback replaces this one.
+    if (sNamingScreen == NULL)
+        return;
+#endif
+#line 2095
     SetGpuReg(REG_OFFSET_BG1VOFS, sNamingScreen->bg1vOffset);
     SetGpuReg(REG_OFFSET_BG2VOFS, sNamingScreen->bg2vOffset);
     SetGpuReg(REG_OFFSET_BG1CNT, GetGpuReg(REG_OFFSET_BG1CNT) & 0xFFFC);

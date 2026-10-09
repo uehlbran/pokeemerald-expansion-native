@@ -85,6 +85,9 @@ _Static_assert(__BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__,
  * sector n. */
 static uint32_t dirty_sectors;
 
+/* Programs and erases the game has done since power-on (flash_write_count). */
+static uint32_t write_count;
+
 /* The chip: the mapped region at its GBA address. Integer to pointer,
  * flagged for the 64-bit milestone: GBA addresses are native addresses
  * (gba_memmap.h). */
@@ -122,6 +125,7 @@ static uint8_t *sector_bytes(uint32_t sector)
 static void mark_dirty(uint32_t sector)
 {
     dirty_sectors |= UINT32_C(1) << sector;
+    write_count++;
 }
 
 static void erase(uint32_t sector)
@@ -249,6 +253,7 @@ void flash_init(void)
 {
     flash_erase_image();
     dirty_sectors = 0;
+    write_count = 0;
 }
 
 void flash_shutdown(void)
@@ -262,6 +267,11 @@ bool flash_take_dirty(void)
     const bool dirty = dirty_sectors != 0;
     dirty_sectors = 0;
     return dirty;
+}
+
+uint32_t flash_write_count(void)
+{
+    return write_count;
 }
 
 uint8_t *flash_image(void)

@@ -34,7 +34,7 @@ Expected results for 1.17.1 are in `research/gba-baseline-1.17.1.md`.
 ```
 make -f Makefile.native -j$(nproc) native BITS=32        # build/native32/pokeemerald-native
 ./build/native32/pokeemerald-native                       # windowed, scale 3
-./build/native32/pokeemerald-native --help                # options: --headless --silent --unthrottled --frames N --screenshot F --save PATH --rtc-offset PATH --scale N
+./build/native32/pokeemerald-native --help                # options: --headless --silent --unthrottled --frames N --screenshot F --save PATH --rtc-offset PATH --scale N --replay SCRIPT --out DIR --rtc-fixed EPOCH
 ```
 
 Variants: `TEST=1` builds `build/native32-test/pokeemerald-native-test`
@@ -67,6 +67,16 @@ The headless smoke boot used as a gate:
 ```
 ./build/native32/pokeemerald-native --headless --silent --unthrottled --frames 9000 --screenshot title.ppm
 ```
+
+The input-replay smoke test (gate (d): the opening through a save, a cold
+restart and Continue), on the plain and the sanitized build:
+
+```
+tests/smoke/run.sh build/native32/pokeemerald-native out/
+ASAN_OPTIONS=halt_on_error=0 tests/smoke/run.sh build/native32-san/pokeemerald-native out-san/
+```
+
+`tests/smoke/README.md` has how it works and how to update its expectations.
 
 Save file: `pokeemerald.sav` in the working directory (a 28-byte header
 plus the 128 KiB flash image; see `platform/README.md`); RTC offset in

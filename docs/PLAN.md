@@ -10,8 +10,8 @@ resumes by reading both and first posting what it believes is in flight.
 |---|---|---|
 | 1 | Research, `RESEARCH.md`, per-subsystem decisions, license | done 2026-10-08 |
 | 2 | Fork, build system, 32-bit build that boots to the title screen (plain and sanitized); playing the opening needs milestone 3's replay | done 2026-10-09 |
-| 3 | Input-replay smoke test, save round-trip, root-cause fixes | in progress |
-| 4 | Native test-runner integration; suite matches the GBA baseline | not started |
+| 3 | Input-replay smoke test, save round-trip, root-cause fixes | done 2026-10-09 |
+| 4 | Native test-runner integration; suite matches the GBA baseline | in progress (worktree testrunner) |
 | 5 | Debug-menu gate | not started |
 | 6 | Unit tests under sanitizers, clang-tidy, cppcheck, `.clang-format` enforced in the gate, docs, the refactoring pass (below); 32-bit done | not started |
 | 7 | 64-bit audit and build; every gate again, plus the cross-width save round-trip gate (h); the refactoring pass again; 64-bit done | not started |
@@ -20,8 +20,10 @@ resumes by reading both and first posting what it believes is in flight.
 ## Milestone 2 work breakdown
 
 State on 2026-10-09: milestone 2 done; the native build boots to the
-title screen plain and sanitized. Milestone 3 (replay smoke test) is
-being dispatched to one worker in worktree replay.
+title screen plain and sanitized. Milestone 3 (replay smoke test,
+worktree replay, Sonnet) and the milestone 4 test-runner protocol
+(worktree testrunner, Opus; independent files, so started in parallel)
+are in progress.
 
 Wave 1 (no dependencies between them):
 

@@ -1,6 +1,6 @@
 # Status
 
-Last updated 2026-10-09 (milestone 2: the 32-bit native build boots to the title screen, plain and sanitized; milestone 3 starting).
+Last updated 2026-10-09 (milestone 3 done: the scripted opening passes plain and sanitized; milestone 4 in progress).
 
 This file is the honest ledger. A thing is listed as verified only with
 the gate that proved it. Anything without a gate is unverified, whatever
@@ -12,6 +12,8 @@ we believe about it.
 |---|---|---|
 | GBA target builds from a clean clone of this repository | `make -j32` on 2026-10-08, WSL2 Ubuntu 24.04, gcc-arm-none-eabi 13.2.1 | `pokeemerald.gba`, 32 MiB, exit 0 |
 | GBA target passes expansion's test suite | `TEST=1 make -j32 check` on 2026-10-08 | 5862 total: 5414 passed, 18 known failing, 9 expected failing, 421 to-do, exit 0 (`research/gba-baseline-1.17.1.md`) |
+| Gate (d): the scripted, deterministic input replay drives the 32-bit build headless from boot through title, New Game, naming, the truck, Littleroot, the rival, the first battle, Birch's lab, saving, a process restart and Continue, verifying state after each step (27 dumps, 26 screenshots, name/map/species/party equal across the restart) | `tests/smoke/run.sh build/native32/pokeemerald-native out/` | green 2026-10-09, 35 s |
+| The same replay on the sanitized build is clean (identical dumps and screenshots, empty stderr) | `tests/smoke/run.sh build/native32-san/pokeemerald-native out/` with `ASAN_OPTIONS=halt_on_error=0` | green 2026-10-09, after nine root-cause fixes in expansion's code (rows in `UPSTREAM_MODIFICATIONS.md`) |
 | The 32-bit native executable links from a clean clone and boots headless through the intro to the title screen (9000 frames, exit 0, screenshot of the Emerald title screen) | `make -f Makefile.native -j32 native BITS=32` then `./build/native32/pokeemerald-native --headless --silent --unthrottled --frames 9000 --screenshot out.ppm` | green 2026-10-09 |
 | The same boot under AddressSanitizer and UndefinedBehaviorSanitizer is clean through the title screen (no report; screenshot byte-identical to the plain build) | `make -f Makefile.native -j32 native BITS=32 SANITIZE=1` then the same run with `ASAN_OPTIONS=halt_on_error=0` | green 2026-10-09, after three root-cause fixes in expansion's code (see `UPSTREAM_MODIFICATIONS.md`) |
 | The TEST=1 native binary links with the packed `.tests` table (6294 entries) and runs; it exits 2 after one frame because the mGBA debug channel does not exist yet | `make -f Makefile.native -j32 native BITS=32 TEST=1` | links; milestone 4 |
@@ -24,9 +26,13 @@ we believe about it.
 
 ## Not verified
 
-Everything past the title screen. Nothing has pressed Start: new game,
-the overworld, battles, saving and loading are not verified (milestone
-3's input replay will). The windowed path (a real SDL window and audio
+Everything past Birch's lab, and everything the replay does not touch
+(most menus, the Pokédex, PC boxes, trainers, later maps, every
+expansion-only feature); the native test suite (milestone 4, in
+progress) is what proves the engine. Known: save-file bytes differ
+between runs by nine uninitialised bytes in the first party Pokémon
+(expansion's creation code reads uninitialised stack; dumps are
+unaffected). The windowed path (a real SDL window and audio
 device) ran only with SDL's dummy drivers. Interchange with GBA `.sav`
 files is not supported (host struct ABI; see DECISIONS.md). 64-bit does
 not link yet (two expansion layout asserts; milestone 7). The m4a engine
@@ -45,7 +51,7 @@ Nothing yet; nothing exists to be broken.
 | (b) expansion's test suite against the native binary, same results as GBA | not started |
 | (h) a save written by the 32-bit native build loads correctly in the 64-bit native build (cross-width round-trip; the save container is versioned so this stays true) | milestone 7, not started |
 | (c) GBA target builds and passes the suite | green (above) |
-| (d) deterministic input-replay smoke test through the opening | not started |
+| (d) deterministic input-replay smoke test through the opening | green on 32-bit, plain and sanitized |
 | (e) debug-menu gate | not started |
 | (f) unit tests and smoke boot clean under sanitizers | unit tests green under ASan+UBSan on 32 and 64-bit; the boot to the title screen is clean under ASan+UBSan on 32-bit; the full opening awaits milestone 3 |
 | (g) this file | current |
@@ -85,6 +91,8 @@ Nothing yet; nothing exists to be broken.
 | bios | Opus | Sonnet |
 | integration (main, frame loop, link, first boot) | Opus | Sonnet (two passes) |
 | sanfix (three sanitizer findings in game code) | Sonnet | Sonnet |
+| replay (milestone 3: replay, inspect, restart, smoke test) | Sonnet | Sonnet (two passes) |
+| testrunner (milestone 4: debug channel, hydra launcher, suite) | Opus | pending |
 | Research, synthesis, decisions, merges | Fable (orchestrator) | |
 
 ## Environment this was verified in

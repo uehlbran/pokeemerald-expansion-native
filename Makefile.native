@@ -158,7 +158,8 @@ PYTHON ?= python3
 
 # -funsigned-char: plain char is unsigned on ARM, and the game was written
 # for that ABI. Passed to the preprocessing step too, so <limits.h> agrees.
-ARCH_FLAGS := -m$(BITS) -funsigned-char
+include platform/game_flags.mk
+ARCH_FLAGS := -m$(BITS) $(GAME_CHAR_FLAGS)
 
 CPP := $(HOST_CC) -E $(ARCH_FLAGS)
 
@@ -171,7 +172,7 @@ INCLUDE_CPP_ARGS := $(INCLUDE_DIRS:%=-iquote %) -iquote .
 INCLUDE_SCANINC_ARGS := $(INCLUDE_DIRS:%=-I %) -I .
 
 # PLATFORM_NATIVE is the single guard macro (docs/RESEARCH.md, "Guard macro").
-CPPFLAGS := $(INCLUDE_CPP_ARGS) -Wno-trigraphs -DMODERN=1 -DTESTING=$(TEST) -D$(GAME_VERSION) -std=gnu17 -DPLATFORM_NATIVE=1
+CPPFLAGS := $(INCLUDE_CPP_ARGS) -Wno-trigraphs $(GAME_DEFINES) -DTESTING=$(TEST) -D$(GAME_VERSION) -std=gnu17
 
 # As in expansion's Makefile: O_LEVEL and DINFO=1 (debug information) do
 # not change the object directory, so clean when switching them.

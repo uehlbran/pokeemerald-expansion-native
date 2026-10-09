@@ -376,7 +376,7 @@ void rtc_shutdown(void)
     memset(&chip, 0, sizeof chip);
 }
 
-int rtc_init(rtc_time_source source, const char *offset_file_path)
+static int init_with_seed(rtc_time_source source, const char *offset_file_path, bool seed_from_host_zone)
 {
     int64_t offset = 0;
     int64_t utc;
@@ -394,8 +394,8 @@ int rtc_init(rtc_time_source source, const char *offset_file_path)
     }
     chip.source = source != NULL ? source : system_clock;
     if (!found) {
-        /* First run: show the host's wall clock, then run on fixed UTC + offset. */
-        if (host_utc_seconds(&utc) != 0 || local_minus_utc(utc, &offset) != 0
+        /* First run: show the host's wall clock (or, for rtc_init_utc, UTC), then run on fixed UTC + offset. */
+        if (host_utc_seconds(&utc) != 0 || (seed_from_host_zone && local_minus_utc(utc, &offset) != 0)
             || (chip.offset_path[0] != '\0' && rtc_offset_store_save(chip.offset_path, offset) != 0)) {
             rtc_shutdown();
             return -1;
@@ -405,6 +405,16 @@ int rtc_init(rtc_time_source source, const char *offset_file_path)
     chip.status = STATUS_DEFAULT;
     chip.initialised = true;
     return 0;
+}
+
+int rtc_init(rtc_time_source source, const char *offset_file_path)
+{
+    return init_with_seed(source, offset_file_path, true);
+}
+
+int rtc_init_utc(rtc_time_source source, const char *offset_file_path)
+{
+    return init_with_seed(source, offset_file_path, false);
 }
 
 int rtc_get_status(uint8_t *status)

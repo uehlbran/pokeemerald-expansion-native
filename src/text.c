@@ -785,14 +785,8 @@ inline static void GLYPH_COPY(u8 *windowTiles, u32 widthOffset, u32 x0, u32 y0, 
         return;
 
 #if PLATFORM_NATIVE
-    // An ARM shift by a register amount of 32 or more gives 0; x86 takes the
-    // amount modulo 32 (a shift by 32 does nothing) and C leaves both
-    // undefined. This shifts by 32 for an 8-pixel piece (width * 4) and,
-    // below, for a piece at x0 % 8 == 0 (32 - shift0): spelled out, the
-    // GBA's results (an all-ones mask; nothing for the next tile).
-    u32 widthMask = width >= 8 ? 0xFFFFFFFF : (1u << (width * 4)) - 1;
+    u32 widthMask = width >= 8 ? 0xFFFFFFFF : (1 << (width * 4)) - 1; // 1 << 32 is 0 on the GBA
 #else
-#line 787
     u32 widthMask = (1 << (width * 4)) - 1;
 #endif
 #line 788
@@ -813,11 +807,15 @@ inline static void GLYPH_COPY(u8 *windowTiles, u32 widthOffset, u32 x0, u32 y0, 
         mask = mask * 0xF;
 
 #if PLATFORM_NATIVE
-        u32 pixels0 = pixels << shift0, pixels8 = shift8 >= 32 ? 0 : pixels >> shift8;
-        u32 mask0 = mask << shift0, mask8 = shift8 >= 32 ? 0 : mask >> shift8;
+        // A shift by 32 is 0 on the GBA (ARM); x86 masks the count to 5 bits and would copy the glyph into the next tile.
+        u32 pixels0 = pixels << shift0, pixels8 = shift8 < 32 ? pixels >> shift8 : 0;
 #else
-#line 804
         u32 pixels0 = pixels << shift0, pixels8 = pixels >> shift8;
+#endif
+#line 805
+#if PLATFORM_NATIVE
+        u32 mask0 = mask << shift0, mask8 = shift8 < 32 ? mask >> shift8 : 0;
+#else
         u32 mask0 = mask << shift0, mask8 = mask >> shift8;
 #endif
 #line 806
