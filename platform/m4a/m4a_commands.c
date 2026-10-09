@@ -79,8 +79,7 @@ static u8 ReadByte(struct MusicPlayerTrack *track)
 static void JumpToAddressAt(struct MusicPlayerTrack *track)
 {
     const u8 *arg = track->cmdPtr;
-    u32 target = ((u32)arg[3] << 24) | ((u32)arg[2] << 16) | ((u32)arg[1] << 8)
-               | (IsReadAllowed(arg) ? arg[0] : 0u);
+    u32 target = ComposeLe32(IsReadAllowed(arg) ? arg[0] : (u8)0, arg[1], arg[2], arg[3]);
 
     track->cmdPtr = (u8 *)(uintptr_t)target;
 }

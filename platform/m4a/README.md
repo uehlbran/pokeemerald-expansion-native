@@ -33,9 +33,9 @@ instruction. The reference ports' C engines were not used.
 | `m4a_note.c` | `ply_note`: voice selection, channel allocation and stealing, channel start. |
 | `m4a_commands.c` | `MPlayJumpTableCopy` and the `ply_*` track commands, with the BIOS-read guard `chk_adr_r2`. |
 | `m4a_clear64.c` | `SoundMainBTM`, in its own file (see "Notes for integration"). |
-| `../test/test_m4a_*.c` | Unit tests: mixer, render, sequencer (`test_m4a_engine.c`), note, commands. They live with the other platform tests and follow their `// deps:` convention. |
+| `../test/test_m4a_*.c` | Unit tests: mixer, render, sequencer (`test_m4a_engine.c`), note, commands, output (`test_m4a_output.c`, the platform's `m4a_output.c`). They live with the other platform tests and follow their `// deps:` convention. |
 | `test_m4a_support.c/.h`, `test_m4a_c_reference.c/.h` | Test fixtures and the `src/m4a.c` functions the tests need. |
-| `Makefile` | Standalone build of the engine and its tests (`BITS=32` or `64`). |
+| `Makefile` | Standalone build of the engine and its tests (`BITS=32` or `64`); also builds `m4a_output.c` and `gba_memmap.c` for `test_m4a_output.c`. |
 | `difftest/` | Differential test of the C against the original assembly (see "Tests"). |
 
 ## Assembly symbol to C
@@ -250,8 +250,8 @@ the following.
 ## Tests
 
 ```
-make -C platform test [BITS=64]        # every platform test, the 131 m4a ones included
-make -C platform/m4a test [BITS=64]    # the m4a tests alone, five binaries
+make -C platform test [BITS=64]        # every platform test, the 137 m4a ones included
+make -C platform/m4a test [BITS=64]    # the m4a tests alone, six binaries
 make -C platform/m4a/difftest run      # needs arm-none-eabi-gcc (newlib) and qemu-arm
 ```
 

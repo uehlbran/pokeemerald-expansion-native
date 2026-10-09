@@ -211,18 +211,21 @@ static u32 TestMidiKeyToCgbFreq(u8 chanNum, u8 key, u8 fineAdjust)
     return M4aTestCgbFreqFor(chanNum, key, fineAdjust);
 }
 
+// cppcheck-suppress constParameterPointer ; assigned to a function pointer type whose parameters are non-const
 void TestMPlayMainHead(struct MusicPlayerInfo *mplayInfo)
 {
     LogCall(CALL_MPLAY_MAIN_HEAD, mplayInfo, NULL, 0, 0, 0,
             mplayInfo != NULL ? mplayInfo->ident : 0);
 }
 
+// cppcheck-suppress constParameterPointer ; assigned to a function pointer type whose parameters are non-const
 void TestMPlayNext(struct MusicPlayerInfo *mplayInfo)
 {
     LogCall(CALL_MPLAY_NEXT, mplayInfo, NULL, 0, 0, 0,
             mplayInfo != NULL ? mplayInfo->ident : 0);
 }
 
+// cppcheck-suppress constParameterPointer ; assigned to a function pointer type whose parameters are non-const
 void TestPlyNote(u32 noteCmd, struct MusicPlayerInfo *mplayInfo, struct MusicPlayerTrack *track)
 {
     LogCall(CALL_PLY_NOTE, mplayInfo, track, noteCmd, 0, 0, mplayInfo->ident);
@@ -261,12 +264,14 @@ void Clear64byte(void *x)
 }
 
 /* src/m4a.c's TrkVolPitSet and MidiKeyToFreq, logged, then as m4a.c computes them. */
+// cppcheck-suppress constParameterPointer ; prototype fixed by include/gba/m4a_internal.h
 void TrkVolPitSet(struct MusicPlayerInfo *mplayInfo, struct MusicPlayerTrack *track)
 {
     LogCall(CALL_TRK_VOL_PIT_SET, mplayInfo, track, track->flags, 0, 0, mplayInfo->ident);
     M4aRefTrkVolPitSet(track);
 }
 
+// cppcheck-suppress constParameterPointer ; prototype fixed by m4a_engine.h (src/m4a.c signature)
 u32 MidiKeyToFreq(struct WaveData *wav, u8 key, u8 fineAdjust)
 {
     LogCall(CALL_MIDI_KEY_TO_FREQ, wav, NULL, key, fineAdjust, 0, 0);

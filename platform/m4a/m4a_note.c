@@ -61,8 +61,7 @@ static uintptr_t TrackAddress(const struct MusicPlayerTrack *track)
  */
 static const u8 *KeySplitTable(const struct ToneData *tone)
 {
-    u32 address = (u32)tone->attack | ((u32)tone->decay << 8) | ((u32)tone->sustain << 16)
-                | ((u32)tone->release << 24);
+    u32 address = ComposeLe32(tone->attack, tone->decay, tone->sustain, tone->release);
 
     return (const u8 *)(uintptr_t)address;
 }

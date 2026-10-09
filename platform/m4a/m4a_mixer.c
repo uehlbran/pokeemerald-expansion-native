@@ -217,7 +217,7 @@ static bool EnterPseudoEcho(struct SoundChannel *chan, u8 *status, u32 *envelope
 /* A started channel: plays from count (the start offset) with its envelope at 0. */
 static u8 StartChannel(struct SoundChannel *chan)
 {
-    struct WaveData *wav = chan->wav;
+    const struct WaveData *wav = chan->wav;
     u32 offset = chan->count;
     u8 status = SOUND_CHANNEL_SF_ENV_ATTACK;
 

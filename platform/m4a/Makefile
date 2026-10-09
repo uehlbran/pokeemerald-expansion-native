@@ -36,8 +36,12 @@ SUPPORT_SRCS := test_m4a_support.c test_m4a_c_reference.c
 TEST_SRCS    := $(wildcard $(PLATFORM)/test/test_m4a_*.c)
 TEST_BINS    := $(TEST_SRCS:$(PLATFORM)/test/%.c=$(BUILD)/%)
 
+# test_m4a_output.c tests ../m4a_output.c, which reads the engine's SoundInfo
+# through ../gba_memmap.c's regions.
+PLATFORM_SRCS := m4a_output.c gba_memmap.c
+
 COMMON_OBJS := $(ENGINE_SRCS:%.c=$(BUILD)/obj/%.o) $(SUPPORT_SRCS:%.c=$(BUILD)/obj/%.o) \
-               $(BUILD)/obj/m4a_tables.o
+               $(PLATFORM_SRCS:%.c=$(BUILD)/obj/platform/%.o) $(BUILD)/obj/m4a_tables.o
 
 .PHONY: all test clean
 
@@ -68,6 +72,10 @@ $(BUILD)/obj/%.o: %.c
 	$(CC) $(CFLAGS) -c $< -o $@
 
 $(BUILD)/obj/test/%.o: $(PLATFORM)/test/%.c
+	@mkdir -p $(@D)
+	$(CC) $(CFLAGS) -c $< -o $@
+
+$(BUILD)/obj/platform/%.o: $(PLATFORM)/%.c
 	@mkdir -p $(@D)
 	$(CC) $(CFLAGS) -c $< -o $@
 

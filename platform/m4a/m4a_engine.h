@@ -193,6 +193,13 @@ static inline u32 AsrU32(u32 value, unsigned shift)
     return (value >> shift) | signFill;
 }
 
+/* A little-endian 32-bit word from its four bytes, lowest first (the .4byte
+ * addresses in song and voice data). */
+static inline u32 ComposeLe32(u8 byte0, u8 byte1, u8 byte2, u8 byte3)
+{
+    return (u32)byte0 | ((u32)byte1 << 8) | ((u32)byte2 << 16) | ((u32)byte3 << 24);
+}
+
 /* The signed value of a 32-bit two's-complement pattern. */
 static inline s32 AsS32(u32 value)
 {
