@@ -108,12 +108,12 @@ PTEST(syscall_h_names_link_to_the_platform)
     PT_ASSERT_EQ_U32(Sqrt(144), 12);
     PT_ASSERT_EQ_U32(ArcTan2(0, 0x100), 0x4000);
 
-    u16 source[4] = { 1, 2, 3, 4 };
+    const u16 source[4] = { 1, 2, 3, 4 };
     u16 copy[4] = { 0 };
     CpuSet(source, copy, CPU_SET_16BIT | 4);
     PT_ASSERT_MEM_EQ(copy, source, sizeof copy);
 
-    u32 words[8] = { 1, 2, 3, 4, 5, 6, 7, 8 };
+    const u32 words[8] = { 1, 2, 3, 4, 5, 6, 7, 8 };
     u32 fast[8] = { 0 };
     CpuFastSet(words, fast, 8);
     PT_ASSERT_MEM_EQ(fast, words, sizeof fast);

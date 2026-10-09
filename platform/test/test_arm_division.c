@@ -307,15 +307,18 @@ PTEST(other_divide_errors_go_to_the_previous_handler)
     PT_ASSERT_EQ_INT(calls_after(wide_dividend_by_zero), 1);
 }
 
-PTEST(shutdown_twice_is_safe)
+PTEST(shutdown_twice_is_safe_and_restores_the_previous_handler)
 {
+    struct sigaction before;
+    PT_ASSERT_EQ_INT(sigaction(SIGFPE, NULL, &before), 0);
     PT_ASSERT_EQ_INT(arm_division_init(), ARM_DIVISION_OK);
     PT_ASSERT_EQ_INT(arm_division_init(), ARM_DIVISION_OK); /* again: restores, then installs */
     arm_division_shutdown();
     arm_division_shutdown();
     struct sigaction now;
     PT_ASSERT_EQ_INT(sigaction(SIGFPE, NULL, &now), 0);
-    PT_ASSERT((now.sa_flags & SA_SIGINFO) == 0 || now.sa_sigaction != NULL);
+    PT_ASSERT(now.sa_sigaction == before.sa_sigaction);
+    PT_ASSERT_EQ_INT(now.sa_flags & SA_SIGINFO, before.sa_flags & SA_SIGINFO);
 }
 
 #else

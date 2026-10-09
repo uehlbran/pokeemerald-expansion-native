@@ -64,7 +64,7 @@ static void teardown(void)
     transfer_bounds_shutdown();
 }
 
-static uint8_t *at(uint32_t address)
+static uint8_t *mem_at(uint32_t address)
 {
     return (uint8_t *)(uintptr_t)address;
 }
@@ -77,7 +77,7 @@ static volatile u16 *io16(uint32_t offset)
 /* Every byte of [address, address + size) equals value. */
 static int all_bytes(uint32_t address, uint32_t size, uint8_t value)
 {
-    const uint8_t *bytes = at(address);
+    const uint8_t *bytes = mem_at(address);
     for (uint32_t i = 0; i < size; i++) {
         if (bytes[i] != value)
             return 0;
@@ -87,23 +87,23 @@ static int all_bytes(uint32_t address, uint32_t size, uint8_t value)
 
 static void fill_all_regions(void)
 {
-    memset(at(GBA_EWRAM_BASE), PATTERN, GBA_EWRAM_SIZE);
-    memset(at(GBA_IWRAM_BASE), PATTERN, GBA_IWRAM_SIZE);
-    memset(at(GBA_PALETTE_RAM_BASE), PATTERN, GBA_PALETTE_RAM_SIZE);
-    memset(at(GBA_VRAM_BASE), PATTERN, GBA_VRAM_SIZE);
-    memset(at(GBA_OAM_BASE), PATTERN, GBA_OAM_SIZE);
+    memset(mem_at(GBA_EWRAM_BASE), PATTERN, GBA_EWRAM_SIZE);
+    memset(mem_at(GBA_IWRAM_BASE), PATTERN, GBA_IWRAM_SIZE);
+    memset(mem_at(GBA_PALETTE_RAM_BASE), PATTERN, GBA_PALETTE_RAM_SIZE);
+    memset(mem_at(GBA_VRAM_BASE), PATTERN, GBA_VRAM_SIZE);
+    memset(mem_at(GBA_OAM_BASE), PATTERN, GBA_OAM_SIZE);
     for (uint32_t offset = 0; offset < GBA_IO_SIZE; offset += 2)
         *io16(offset) = PATTERN_16;
 }
 
 static void clear_all_regions(void)
 {
-    memset(at(GBA_EWRAM_BASE), 0, GBA_EWRAM_SIZE);
-    memset(at(GBA_IWRAM_BASE), 0, GBA_IWRAM_SIZE);
-    memset(at(GBA_PALETTE_RAM_BASE), 0, GBA_PALETTE_RAM_SIZE);
-    memset(at(GBA_VRAM_BASE), 0, GBA_VRAM_SIZE);
-    memset(at(GBA_OAM_BASE), 0, GBA_OAM_SIZE);
-    memset(at(GBA_IO_BASE), 0, GBA_IO_SIZE);
+    memset(mem_at(GBA_EWRAM_BASE), 0, GBA_EWRAM_SIZE);
+    memset(mem_at(GBA_IWRAM_BASE), 0, GBA_IWRAM_SIZE);
+    memset(mem_at(GBA_PALETTE_RAM_BASE), 0, GBA_PALETTE_RAM_SIZE);
+    memset(mem_at(GBA_VRAM_BASE), 0, GBA_VRAM_SIZE);
+    memset(mem_at(GBA_OAM_BASE), 0, GBA_OAM_SIZE);
+    memset(mem_at(GBA_IO_BASE), 0, GBA_IO_SIZE);
 }
 
 /* ---- Frame hook and the halt functions ---------------------------------- */

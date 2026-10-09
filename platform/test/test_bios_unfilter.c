@@ -10,6 +10,7 @@
  * units are taken from each source byte's low bits first and packed into
  * each word from its low bits up.
  */
+#include <stddef.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
@@ -31,6 +32,11 @@ struct BitUnPackArgs {
     uint8_t destination_width;
     uint32_t offset_and_flag;
 };
+_Static_assert(sizeof(struct BitUnPackArgs) == 8 && offsetof(struct BitUnPackArgs, length) == 0
+                   && offsetof(struct BitUnPackArgs, source_width) == 2
+                   && offsetof(struct BitUnPackArgs, destination_width) == 3
+                   && offsetof(struct BitUnPackArgs, offset_and_flag) == 4,
+               "GBATEK BitUnPack information block layout");
 
 static void setup(void)
 {
@@ -175,8 +181,6 @@ PTEST(bitunpack_ranges_refused)
 
     uint8_t *heap = malloc(2);
     PT_ASSERT(heap != NULL);
-    if (heap == NULL)
-        return;
     heap[0] = heap[1] = 0xFF;
     uint32_t out[2] = { STALE_32, STALE_32 };
     BitUnPack(heap, out, &args);

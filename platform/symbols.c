@@ -145,6 +145,18 @@ static bool load_symbols(FILE *file, uint64_t file_size, const elf_section *symt
     return ok;
 }
 
+/* The length of the file, by seeking to its end. */
+static bool file_length(FILE *file, uint64_t *length)
+{
+    if (fseek(file, 0, SEEK_END) != 0)
+        return false;
+    long end = ftell(file);
+    if (end < 0)
+        return false;
+    *length = (uint64_t)end;
+    return true;
+}
+
 int symbols_load(const char *path)
 {
     symbols_unload();
@@ -156,11 +168,9 @@ int symbols_load(const char *path)
     elf_header header;
     elf_section symtab, strtab;
     uint64_t file_size = 0;
-    bool ok = fseek(file, 0, SEEK_END) == 0 && ftell(file) >= 0;
-    if (ok)
-        file_size = (uint64_t)ftell(file);
-    ok = ok && read_header(file, file_size, &header) && find_symtab(file, file_size, &header, &symtab, &strtab)
-         && load_names(file, file_size, &strtab) && load_symbols(file, file_size, &symtab);
+    bool ok = file_length(file, &file_size) && read_header(file, file_size, &header)
+              && find_symtab(file, file_size, &header, &symtab, &strtab) && load_names(file, file_size, &strtab)
+              && load_symbols(file, file_size, &symtab);
     fclose(file);
     if (!ok) {
         fprintf(stderr, "symbols: %s is not an ELF executable of this build's width with a usable symbol table\n", path);

@@ -142,19 +142,33 @@ PTEST(rejects_a_truncated_file_and_an_empty_one)
 #include <sys/stat.h>
 
 enum lie {
-    LIE_SH_SIZE,       /* the symbol table is longer than the file */
-    LIE_SH_OFFSET,     /* the symbol table starts past the end of the file */
-    LIE_SH_LINK,       /* its string table is a section that does not exist */
-    LIE_SH_LINK_WRONG, /* its string table is a section that is not one */
-    LIE_SH_ENTSIZE,    /* its entries are not symbols */
-    LIE_E_SHNUM,       /* a section count that leaves the symbol table out */
-    LIE_STRTAB_SMALL,  /* the string table is shorter than the names point to */
-    LIE_E_TYPE         /* a shared object, as a PIE is */
+    LIE_SH_SIZE,         /* the symbol table is longer than the file */
+    LIE_SH_OFFSET,       /* the symbol table starts past the end of the file */
+    LIE_SH_RANGE_WRAPS,  /* offset + size wraps around 2^64 (or 2^32) back into the file */
+    LIE_SH_LINK,         /* its string table is a section that does not exist */
+    LIE_SH_LINK_WRONG,   /* its string table is a section that is not one */
+    LIE_SH_ENTSIZE,      /* its entries are not symbols */
+    LIE_SH_SIZE_ODD,     /* its size is not a whole number of entries */
+    LIE_SH_SIZE_ZERO,    /* it has no entries */
+    LIE_E_SHNUM,         /* a section count that leaves the symbol table out */
+    LIE_E_SHOFF,         /* the section header table starts past the end of the file */
+    LIE_E_SHENTSIZE,     /* section headers of a size this build does not read */
+    LIE_STRTAB_SMALL,    /* the string table is shorter than the names point to */
+    LIE_STRTAB_SIZE,     /* the string table is longer than the file */
+    LIE_STRTAB_OFFSET,   /* the string table starts past the end of the file */
+    LIE_STRTAB_EMPTY,    /* the string table has no bytes */
+    LIE_E_TYPE           /* a shared object, as a PIE is */
 };
 
-/* Applies the lie to the bytes of the executable. */
-static void tell(unsigned char *bytes, enum lie lie)
+static enum lie current_lie;
+
+/* The largest value an ElfW(Off) or ElfW(Xword) holds. */
+#define ELF_FIELD_MAX ((ElfW(Off))-1)
+
+/* Applies current_lie to the bytes of the executable. */
+static void tell(unsigned char *bytes, size_t size)
 {
+    (void)size;
     ElfW(Ehdr) eh;
     memcpy(&eh, bytes, sizeof eh);
     ElfW(Shdr) *sections = (ElfW(Shdr) *)(void *)(bytes + eh.e_shoff);
@@ -165,12 +179,17 @@ static void tell(unsigned char *bytes, enum lie lie)
     }
     if (symtab == NULL)
         return;
-    switch (lie) {
+    ElfW(Shdr) *strtab = &sections[symtab->sh_link];
+    switch (current_lie) {
     case LIE_SH_SIZE:
         symtab->sh_size = (ElfW(Xword))0x7FFFFFF0u;
         break;
     case LIE_SH_OFFSET:
         symtab->sh_offset = (ElfW(Off))0x7FFFFFF0u;
+        break;
+    case LIE_SH_RANGE_WRAPS:
+        symtab->sh_offset = ELF_FIELD_MAX - 0x0Fu; /* + any size over 16 wraps to a small number */
+        symtab->sh_size = 0x100u;
         break;
     case LIE_SH_LINK:
         symtab->sh_link = eh.e_shnum + 5u;
@@ -181,12 +200,35 @@ static void tell(unsigned char *bytes, enum lie lie)
     case LIE_SH_ENTSIZE:
         symtab->sh_entsize = 3;
         break;
+    case LIE_SH_SIZE_ODD:
+        symtab->sh_size += sizeof(ElfW(Sym)) - 1u; /* the last entry is cut short, into the next section */
+        break;
+    case LIE_SH_SIZE_ZERO:
+        symtab->sh_size = 0;
+        break;
     case LIE_E_SHNUM:
         eh.e_shnum = 1; /* the symbol table is not among the sections the header admits to */
         memcpy(bytes, &eh, sizeof eh);
         break;
+    case LIE_E_SHOFF:
+        eh.e_shoff = (ElfW(Off))0x7FFFFFF0u;
+        memcpy(bytes, &eh, sizeof eh);
+        break;
+    case LIE_E_SHENTSIZE:
+        eh.e_shentsize = (ElfW(Half))(eh.e_shentsize + 1u);
+        memcpy(bytes, &eh, sizeof eh);
+        break;
     case LIE_STRTAB_SMALL:
-        sections[symtab->sh_link].sh_size = 4;
+        strtab->sh_size = 4;
+        break;
+    case LIE_STRTAB_SIZE:
+        strtab->sh_size = (ElfW(Xword))0x7FFFFFF0u;
+        break;
+    case LIE_STRTAB_OFFSET:
+        strtab->sh_offset = (ElfW(Off))0x7FFFFFF0u;
+        break;
+    case LIE_STRTAB_EMPTY:
+        strtab->sh_size = 0;
         break;
     case LIE_E_TYPE:
         eh.e_type = ET_DYN;
@@ -195,32 +237,16 @@ static void tell(unsigned char *bytes, enum lie lie)
     }
 }
 
+/* Loads a whole copy of this executable with the lie told in it. On
+ * success the symbols stay loaded (the caller unloads). 99: the copy could
+ * not be made. */
 static int load_lying(enum lie lie)
 {
     struct stat st;
-    FILE *source = fopen(SYMBOLS_EXE_PATH, "rb");
-    if (source == NULL || fstat(fileno(source), &st) != 0)
+    if (stat(SYMBOLS_EXE_PATH, &st) != 0)
         return 99;
-    unsigned char *bytes = malloc((size_t)st.st_size);
-    size_t got = bytes != NULL ? fread(bytes, 1, (size_t)st.st_size, source) : 0;
-    fclose(source);
-    if (bytes == NULL || got != (size_t)st.st_size) {
-        free(bytes);
-        return 99;
-    }
-    tell(bytes, lie);
-    char path[64];
-    snprintf(path, sizeof path, "/tmp/test_symbols_XXXXXX");
-    int fd = mkstemp(path);
-    bool ok = fd >= 0 && write(fd, bytes, got) == (ssize_t)got;
-    if (fd >= 0)
-        close(fd);
-    free(bytes);
-    if (!ok)
-        return 99;
-    int result = symbols_load(path);
-    unlink(path);
-    return result;
+    current_lie = lie;
+    return load_damaged((size_t)st.st_size, tell);
 }
 
 PTEST(a_symbol_table_longer_than_the_file_is_refused)
@@ -231,6 +257,11 @@ PTEST(a_symbol_table_longer_than_the_file_is_refused)
 PTEST(a_symbol_table_past_the_end_of_the_file_is_refused)
 {
     PT_ASSERT_EQ_INT(load_lying(LIE_SH_OFFSET), -1);
+}
+
+PTEST(a_symbol_table_whose_offset_plus_size_wraps_around_is_refused)
+{
+    PT_ASSERT_EQ_INT(load_lying(LIE_SH_RANGE_WRAPS), -1);
 }
 
 PTEST(a_string_table_link_that_does_not_exist_or_is_not_a_string_table_is_refused)
@@ -249,11 +280,50 @@ PTEST(a_section_count_that_hides_the_symbol_table_is_refused)
     PT_ASSERT_EQ_INT(load_lying(LIE_E_SHNUM), -1);
 }
 
-PTEST(a_name_past_the_end_of_the_string_table_is_skipped_not_read)
+PTEST(a_section_header_table_past_the_end_of_the_file_is_refused)
 {
-    /* the symbols load; none can have a name inside a 4-byte table, and nothing is read past it */
-    int result = load_lying(LIE_STRTAB_SMALL);
-    PT_ASSERT(result == 0 || result == -1);
+    PT_ASSERT_EQ_INT(load_lying(LIE_E_SHOFF), -1);
+}
+
+PTEST(section_headers_of_another_size_are_refused)
+{
+    PT_ASSERT_EQ_INT(load_lying(LIE_E_SHENTSIZE), -1);
+}
+
+PTEST(a_string_table_longer_than_the_file_or_past_its_end_is_refused)
+{
+    PT_ASSERT_EQ_INT(load_lying(LIE_STRTAB_SIZE), -1);
+    PT_ASSERT_EQ_INT(load_lying(LIE_STRTAB_OFFSET), -1);
+}
+
+PTEST(an_empty_string_table_is_refused)
+{
+    PT_ASSERT_EQ_INT(load_lying(LIE_STRTAB_EMPTY), -1);
+}
+
+PTEST(a_partial_last_entry_is_ignored_not_read)
+{
+    PT_ASSERT_EQ_INT(symbols_load(SYMBOLS_EXE_PATH), 0);
+    uint32_t whole = symbols_count();
+    symbols_unload();
+    PT_ASSERT_EQ_INT(load_lying(LIE_SH_SIZE_ODD), 0);
+    PT_ASSERT_EQ_U32(symbols_count(), whole);
+    symbols_unload();
+}
+
+PTEST(a_symbol_table_without_entries_loads_no_symbols)
+{
+    PT_ASSERT_EQ_INT(load_lying(LIE_SH_SIZE_ZERO), 0);
+    PT_ASSERT_EQ_U32(symbols_count(), 0);
+    PT_ASSERT(symbols_name_at((uintptr_t)symbols_test_function_alpha) == NULL);
+    symbols_unload();
+}
+
+PTEST(names_past_the_end_of_a_short_string_table_are_skipped_not_read)
+{
+    /* every function's name lies beyond the 4 bytes the table has left */
+    PT_ASSERT_EQ_INT(load_lying(LIE_STRTAB_SMALL), 0);
+    PT_ASSERT_EQ_U32(symbols_count(), 0);
     PT_ASSERT(symbols_name_at((uintptr_t)symbols_test_function_alpha) == NULL);
     symbols_unload();
 }
@@ -261,6 +331,14 @@ PTEST(a_name_past_the_end_of_the_string_table_is_skipped_not_read)
 PTEST(a_position_independent_executable_is_refused)
 {
     PT_ASSERT_EQ_INT(load_lying(LIE_E_TYPE), -1);
+}
+
+PTEST(a_refused_load_leaves_nothing_loaded)
+{
+    PT_ASSERT_EQ_INT(symbols_load(SYMBOLS_EXE_PATH), 0);
+    PT_ASSERT_EQ_INT(load_lying(LIE_SH_SIZE), -1);
+    PT_ASSERT_EQ_U32(symbols_count(), 0);
+    PT_ASSERT(symbols_name_at((uintptr_t)symbols_test_function_alpha) == NULL);
 }
 
 PTEST_MAIN()

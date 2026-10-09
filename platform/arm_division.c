@@ -80,9 +80,73 @@ struct division_instruction {
     uint32_t divisor;
 };
 
-/* Decodes the instruction at code. False for anything but a 32-bit DIV or
- * IDIV on a flat segment. The operand is readable: the CPU fetched it
- * before raising the divide error. */
+/* ModRM mod values with a displacement (Intel SDM vol. 2, table 2-2). */
+#define MODRM_MOD_DISP8 1u
+#define MODRM_MOD_DISP32 2u
+#define MODRM_FIELD_SHIFT 3u
+#define MODRM_MOD_SHIFT 6u
+#define MODRM_FIELD_MASK 7u
+#define SIB_SCALE_SHIFT 6u
+#define DISP32_SIZE 4u
+
+/* The fields of a ModRM byte, or of the SIB byte that has the same layout
+ * (Intel SDM vol. 2, 2.1.5: high two bits, then three, then three). */
+struct modrm_fields {
+    unsigned high, middle, low;
+};
+
+static struct modrm_fields split_modrm(uint8_t byte)
+{
+    return (struct modrm_fields){ .high = byte >> MODRM_MOD_SHIFT,
+                                  .middle = (byte >> MODRM_FIELD_SHIFT) & MODRM_FIELD_MASK,
+                                  .low = byte & MODRM_FIELD_MASK };
+}
+
+/* The memory operand's address, from the bytes after the ModRM byte (code
+ * points at them); *used is how many of those bytes (SIB, displacement)
+ * the addressing form takes. mod is not MODRM_MOD_REGISTER. */
+static uint32_t operand_address(const uint8_t *code, const greg_t *gregs, struct modrm_fields modrm, size_t *used)
+{
+    size_t i = 0;
+    uint32_t address = 0;
+    if (modrm.low == MODRM_RM_SIB) {
+        struct modrm_fields sib = split_modrm(code[i++]); /* scale, index, base */
+        if (sib.middle != SIB_INDEX_NONE)
+            address += register_value(gregs, sib.middle) << sib.high;
+        if (sib.low == SIB_BASE_DISP32 && modrm.high == 0) {
+            address += read_u32((uintptr_t)&code[i]);
+            i += DISP32_SIZE;
+        } else {
+            address += register_value(gregs, sib.low);
+        }
+    } else if (modrm.low == MODRM_RM_DISP32 && modrm.high == 0) {
+        address = read_u32((uintptr_t)&code[i]);
+        i += DISP32_SIZE;
+    } else {
+        address = register_value(gregs, modrm.low);
+    }
+    if (modrm.high == MODRM_MOD_DISP8) {
+        int8_t displacement; /* sign-extended */
+        memcpy(&displacement, &code[i], sizeof displacement);
+        const uint32_t offset = (uint32_t)(int32_t)displacement;
+        address += offset;
+        i += sizeof displacement;
+    } else if (modrm.high == MODRM_MOD_DISP32) {
+        address += read_u32((uintptr_t)&code[i]);
+        i += DISP32_SIZE;
+    }
+    *used = i;
+    return address;
+}
+
+/* Decodes the instruction at code. The refusals, each a plain false:
+ *   - a prefix other than ES/CS/SS/DS (66h, 67h, FS, GS, LOCK, REP, ...) in
+ *     front: the byte where the opcode should be is not F7h;
+ *   - an opcode other than F7h (8-bit DIV/IDIV is F6h and cannot be the
+ *     compiler's 32-bit division);
+ *   - ModRM reg other than 6 (DIV) or 7 (IDIV): NOT, NEG, MUL, IMUL, TEST.
+ * The operand is readable: the CPU fetched it before raising the divide
+ * error. */
 static bool decode(const uint8_t *code, const greg_t *gregs, struct division_instruction *out)
 {
     size_t i = 0;
@@ -90,45 +154,17 @@ static bool decode(const uint8_t *code, const greg_t *gregs, struct division_ins
         i++;
     if (code[i++] != OPCODE_GROUP3_32)
         return false;
-    uint8_t modrm = code[i++];
-    unsigned mod = modrm >> 6, reg = (modrm >> 3) & 7u, rm = modrm & 7u;
-    if (reg != MODRM_REG_DIV && reg != MODRM_REG_IDIV)
+    struct modrm_fields modrm = split_modrm(code[i++]);
+    if (modrm.middle != MODRM_REG_DIV && modrm.middle != MODRM_REG_IDIV)
         return false;
-    out->is_signed = reg == MODRM_REG_IDIV;
-    if (mod == MODRM_MOD_REGISTER) {
-        out->divisor = register_value(gregs, rm);
-        out->length = i;
-        return true;
-    }
-    uint32_t address = 0;
-    if (rm == MODRM_RM_SIB) {
-        uint8_t sib = code[i++];
-        unsigned scale = sib >> 6, index = (sib >> 3) & 7u, base = sib & 7u;
-        if (index != SIB_INDEX_NONE)
-            address += register_value(gregs, index) << scale;
-        if (base == SIB_BASE_DISP32 && mod == 0) {
-            address += read_u32((uintptr_t)&code[i]);
-            i += 4;
-        } else {
-            address += register_value(gregs, base);
-        }
-    } else if (rm == MODRM_RM_DISP32 && mod == 0) {
-        address = read_u32((uintptr_t)&code[i]);
-        i += 4;
+    out->is_signed = modrm.middle == MODRM_REG_IDIV;
+    if (modrm.high == MODRM_MOD_REGISTER) {
+        out->divisor = register_value(gregs, modrm.low);
     } else {
-        address = register_value(gregs, rm);
+        size_t used = 0;
+        out->divisor = read_u32(operand_address(&code[i], gregs, modrm, &used));
+        i += used;
     }
-    if (mod == 1) {
-        int8_t displacement; /* sign-extended, Intel SDM vol. 2, 2.1.5 */
-        memcpy(&displacement, &code[i], sizeof displacement);
-        uint32_t offset = (uint32_t)(int32_t)displacement;
-        address += offset;
-        i += 1;
-    } else if (mod == 2) {
-        address += read_u32((uintptr_t)&code[i]);
-        i += 4;
-    }
-    out->divisor = read_u32((uintptr_t)address);
     out->length = i;
     return true;
 }

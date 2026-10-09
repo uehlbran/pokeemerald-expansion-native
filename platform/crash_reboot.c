@@ -166,6 +166,8 @@ static void die_of(int signal_number)
     (void)raise(signal_number); /* pending until the handler returns; a fault would recur anyway */
 }
 
+/* sigaction's sa_sigaction type fixes these parameters as non-const. */
+// cppcheck-suppress constParameterCallback
 static void on_crash(int signal_number, siginfo_t *info, void *context)
 {
     struct report report = { .length = 0 };
