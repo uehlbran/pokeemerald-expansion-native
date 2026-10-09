@@ -19,14 +19,24 @@ on the GBA and the 32-bit build) and with 8-byte pointers. It fails on any
 difference, on a macro that writes operands but no command, and on a C
 member type it does not know (MEMBER_SIZES).
 
+Only the widths are compared, in order: two operands of the same width
+swapped by name (jumpifword's wordPtr and jumpInstr, both pointers) pass.
+
 A command the C file does not implement is skipped: a callnative of an
 undefined function, an opcode missing from the table, or a function with
 an empty body (upstream keeps a few such macros; no script uses them, and
 a use would fail the build or never advance).
 
+One command length is written in C: src/battle_z_move.c skips the
+setzeffect command with Z_EFFECT_BS_LENGTH, which the replays and the
+suite do not reach. Given that file, the script evaluates the
+preprocessor conditions around the constant's definitions (for the native
+build, at each pointer size) and requires it to equal the setzeffect
+macro's length.
+
 Usage:
-  python3 -I check_battle_script_operands.py MACROS C_FILE          check
-  python3 -I check_battle_script_operands.py --table MACROS C_FILE  print the operand table
+  python3 -I check_battle_script_operands.py MACROS C_FILE Z_MOVE_FILE          check
+  python3 -I check_battle_script_operands.py --table MACROS C_FILE Z_MOVE_FILE  print the operand table
   python3 -I check_battle_script_operands.py --self-test
 Exit 0 and no output when consistent; otherwise one line per problem, exit 1.
 """
@@ -313,9 +323,10 @@ def reader(opcode, operands, table, functions):
     return name, functions[name]   # None for a stub
 
 
-def check(macro_text, c_text):
+def check(macro_text, c_text, z_text=None):
     """(problems, table rows, pointer lines). A row is (macro, opcode, C
-    function, [(declaration, width with 4-byte pointers, with 8-byte)])."""
+    function, [(declaration, width with 4-byte pointers, with 8-byte)]).
+    With z_text (src/battle_z_move.c), its command length is checked too."""
     macros = read_macros(macro_text)
     table, functions = read_commands(c_text)
     problems = []
@@ -350,6 +361,8 @@ def check(macro_text, c_text):
                     if item.width in (4, 8):
                         kinds.setdefault(item.line, set()).add(group[0].pointer)
     pointer_lines = sorted(line for line, seen in kinds.items() if seen == {True})
+    if z_text is not None:
+        problems.extend(check_skipped_length(macros, z_text))
     return problems, rows, pointer_lines
 
 
@@ -359,6 +372,100 @@ def print_table(rows, pointer_lines):
         operands = "; ".join("%s (%s/%s)" % (declaration, a, b) for declaration, a, b in row)
         sys.stdout.write("%s | %s | %s | %s\n" % (macro, opcode, name or "-", operands or "none"))
     sys.stdout.write("# pointer operand lines in the macro file: %d\n" % len(pointer_lines))
+
+
+# --------------------------------------------------------------------------
+# The command length in src/battle_z_move.c
+
+SKIPPED_COMMAND = ("Z_EFFECT_BS_LENGTH", "setzeffect")
+DIRECTIVE = re.compile(r"^\s*#\s*(if|ifdef|ifndef|elif|else|endif|define)\b\s*(.*?)\s*(?://.*)?$")
+CONDITION_TOKEN = re.compile(r"\s*(defined\s*\(\s*\w+\s*\)|defined\s+\w+|\w+|&&|\|\||==|!=|<=|>=|[()!<>])")
+
+
+def evaluate(condition, values):
+    """A preprocessor condition over the names in values (others: error)."""
+    words = []
+    position = 0
+    while position < len(condition.rstrip()):
+        match = CONDITION_TOKEN.match(condition, position)
+        if not match:
+            raise CheckError("cannot read the condition %r" % condition)
+        token = match.group(1)
+        position = match.end()
+        if token.startswith("defined"):
+            words.append("1" if re.sub(r"defined|[\s()]", "", token) in values else "0")
+        elif token.isdigit():
+            words.append(token)
+        elif re.match(r"^\w+$", token):
+            if token not in values:
+                raise CheckError("the condition %r depends on %s" % (condition, token))
+            words.append(str(values[token]))
+        else:
+            words.append({"&&": " and ", "||": " or ", "!": " not "}.get(token, token))
+    return bool(eval("".join(words), {"__builtins__": {}}))   # digits, comparisons and logic only
+
+
+def branch_taken(branch, values):
+    kind, condition = branch
+    if kind == "if" or kind == "elif":
+        return evaluate(condition, values)
+    if kind in ("ifdef", "ifndef"):
+        return (condition in values) == (kind == "ifdef")
+    return True   # else
+
+
+def definitions(text, name):
+    """[(value, enclosing conditions)] for each '#define name value'; the
+    conditions are, per open #if, its branches up to the current one."""
+    chains = []
+    found = []
+    for line in text.splitlines():
+        match = DIRECTIVE.match(line)
+        if not match:
+            continue
+        word, rest = match.groups()
+        if word in ("if", "ifdef", "ifndef"):
+            chains.append([(word, rest)])
+        elif word in ("elif", "else"):
+            chains[-1].append((word, rest))
+        elif word == "endif":
+            chains.pop()
+        elif word == "define" and rest.split()[:1] == [name]:
+            found.append((int(rest.split()[1], 0), [list(chain) for chain in chains]))
+    return found
+
+
+def constant_value(text, name, pointer_size):
+    """The value of #define name in text for the native build with
+    pointers of pointer_size bytes, or None if no definition applies. Only
+    the conditions around the definitions are evaluated."""
+    values = {"PLATFORM_NATIVE": 1, "__SIZEOF_POINTER__": pointer_size}
+    active = [value for value, chains in definitions(text, name)
+              if all(branch_taken(chain[-1], values) and not any(branch_taken(b, values) for b in chain[:-1])
+                     for chain in chains)]
+    if len(active) > 1:
+        raise CheckError("%s is defined %d times at %d-byte pointers" % (name, len(active), pointer_size))
+    return active[0] if active else None
+
+
+def check_skipped_length(macros, z_text):
+    """Problems with the length src/battle_z_move.c gives the setzeffect command."""
+    name, macro_name = SKIPPED_COMMAND
+    if macro_name not in macros:
+        raise CheckError("no %s macro" % macro_name)
+    problems = []
+    for pointer_size in POINTER_SIZES:
+        items = expand(macros, macros[macro_name], {}, pointer_size)
+        if len(commands(items)) != 1:
+            raise CheckError("the %s macro is not one command" % macro_name)
+        length = sum(item.width for item in items)
+        value = constant_value(z_text, name, pointer_size)
+        if value is None:
+            raise CheckError("no definition of %s for %d-byte pointers" % (name, pointer_size))
+        if value != length:
+            problems.append("%s is %d with %d-byte pointers; the %s command is %d bytes"
+                            % (name, value, pointer_size, macro_name, length))
+    return problems
 
 
 # --------------------------------------------------------------------------
@@ -524,6 +631,35 @@ def self_test():
            SELF_TEST_C, [])
     expect("unknown statement", SELF_TEST_MACROS.replace("1:\n", "\tnosuchmacro\n"), SELF_TEST_C,
            ["CheckError: jumpifnotx"])
+    # Z_EFFECT_BS_LENGTH: the setzeffect callnative is 5 and 9 bytes.
+    z_macros = SELF_TEST_MACROS + "\n\t.macro setzeffect\n\tcallnative BS_SetZEffect\n\t.endm\n"
+    z_c = SELF_TEST_C + "\nvoid BS_SetZEffect(void)\n{\n    NATIVE_ARGS();\n}\n"
+    z_file = ("#if B_SOME_CONFIG\n#define OTHER 1\n#endif\n"
+              "#if PLATFORM_NATIVE\n#if __SIZEOF_POINTER__ != 8\n#define Z_EFFECT_BS_LENGTH  5\n"
+              "#else\n#define Z_EFFECT_BS_LENGTH  9 // the 64-bit length\n#endif\n"
+              "#else\n#define Z_EFFECT_BS_LENGTH  5\n#endif\n")
+    for name, text, wanted in (
+            ("Z_EFFECT_BS_LENGTH right", z_file, []),
+            ("Z_EFFECT_BS_LENGTH 5 at 64", z_file.replace("LENGTH  9", "LENGTH  5"),
+             ["Z_EFFECT_BS_LENGTH is 5 with 8-byte pointers; the setzeffect command is 9 bytes"]),
+            ("Z_EFFECT_BS_LENGTH unguarded", "#define Z_EFFECT_BS_LENGTH  5\n",
+             ["Z_EFFECT_BS_LENGTH is 5 with 8-byte pointers; the setzeffect command is 9 bytes"]),
+            ("Z_EFFECT_BS_LENGTH 9 on the GBA side only", z_file.replace("!= 8", "== 8"),
+             ["Z_EFFECT_BS_LENGTH is 9 with 4-byte pointers; the setzeffect command is 5 bytes",
+              "Z_EFFECT_BS_LENGTH is 5 with 8-byte pointers; the setzeffect command is 9 bytes"]),
+            ("Z_EFFECT_BS_LENGTH with #ifndef, #elif and logic",
+             "#ifndef PLATFORM_NATIVE\n#define Z_EFFECT_BS_LENGTH 7\n"
+             "#elif PLATFORM_NATIVE && __SIZEOF_POINTER__ == 8\n#define Z_EFFECT_BS_LENGTH 9\n"
+             "#elif !(__SIZEOF_POINTER__ == 8) || 0\n#define Z_EFFECT_BS_LENGTH 5\n#endif\n", []),
+            ("Z_EFFECT_BS_LENGTH missing", "#define OTHER 5\n", ["CheckError: no definition of Z_EFFECT_BS_LENGTH"]),
+            ("Z_EFFECT_BS_LENGTH under an unknown condition", "#if B_SOME_CONFIG\n#define Z_EFFECT_BS_LENGTH 5\n#endif\n",
+             ["CheckError: the condition 'B_SOME_CONFIG' depends on B_SOME_CONFIG"])):
+        try:
+            problems = check(z_macros, z_c, text)[0]
+        except CheckError as error:
+            problems = ["CheckError: %s" % error]
+        if len(problems) != len(wanted) or any(w not in p for w, p in zip(wanted, problems)):
+            failures.append("%s\n  expected %r\n  got      %r" % (name, wanted, problems))
     if failures:
         for failure in failures:
             sys.stderr.write("check_battle_script_operands self-test: %s\n" % failure)
@@ -538,15 +674,15 @@ def main(argv):
     printing = args[:1] == ["--table"]
     if printing:
         args = args[1:]
-    if len(args) != 2:
-        sys.stderr.write("usage: check_battle_script_operands.py [--table] MACROS C_FILE | --self-test\n")
+    if len(args) != 3:
+        sys.stderr.write("usage: check_battle_script_operands.py [--table] MACROS C_FILE Z_MOVE_FILE | --self-test\n")
         return 2
-    with open(args[0]) as handle:
-        macro_text = handle.read()
-    with open(args[1]) as handle:
-        c_text = handle.read()
+    texts = []
+    for path in args:
+        with open(path) as handle:
+            texts.append(handle.read())
     try:
-        problems, rows, pointer_lines = check(macro_text, c_text)
+        problems, rows, pointer_lines = check(*texts)
     except CheckError as error:
         sys.stderr.write("check_battle_script_operands: %s\n" % error)
         return 1

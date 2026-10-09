@@ -743,14 +743,17 @@ $(OBJ_DIR)/data_relocations.checked: $(DATA_ASM_OBJS) $(MID_OBJS) $(CHECK_RELOCA
 
 # The battle script macros must write each command's operands as
 # src/battle_script_commands.c reads them (CMD_ARGS, a packed struct over the
-# bytecode), with 4-byte and with 8-byte pointers; check_battle_script_operands.py
+# bytecode), with 4-byte and with 8-byte pointers, and src/battle_z_move.c's
+# length of the setzeffect command must match; check_battle_script_operands.py
 # explains the rule.
 CHECK_BATTLE_SCRIPTS_SCRIPT := platform/build_glue/check_battle_script_operands.py
 BATTLE_SCRIPT_MACROS := asm/macros/battle_script.inc
 BATTLE_SCRIPT_COMMANDS := $(C_SUBDIR)/battle_script_commands.c
+BATTLE_SCRIPT_Z_MOVE := $(C_SUBDIR)/battle_z_move.c
 
-$(OBJ_DIR)/battle_script_operands.checked: $(CHECK_BATTLE_SCRIPTS_SCRIPT) $(BATTLE_SCRIPT_MACROS) $(BATTLE_SCRIPT_COMMANDS)
+$(OBJ_DIR)/battle_script_operands.checked: $(CHECK_BATTLE_SCRIPTS_SCRIPT) $(BATTLE_SCRIPT_MACROS) $(BATTLE_SCRIPT_COMMANDS) \
+                                           $(BATTLE_SCRIPT_Z_MOVE)
 	$(PYTHON) -I $(CHECK_BATTLE_SCRIPTS_SCRIPT) --self-test
-	$(PYTHON) -I $(CHECK_BATTLE_SCRIPTS_SCRIPT) $(BATTLE_SCRIPT_MACROS) $(BATTLE_SCRIPT_COMMANDS)
+	$(PYTHON) -I $(CHECK_BATTLE_SCRIPTS_SCRIPT) $(BATTLE_SCRIPT_MACROS) $(BATTLE_SCRIPT_COMMANDS) $(BATTLE_SCRIPT_Z_MOVE)
 	@touch $@
 endif
