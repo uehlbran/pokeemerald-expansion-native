@@ -17,6 +17,8 @@
 #              save was converted; the file is unchanged (the conversion is not a game write).
 #   3. bare/   only when FROM is 32-bit: step 2 on the image without its header (what an
 #              emulator writes), which the 64-bit build takes to have the 32-bit layout.
+#      other/  TO_BINARY on a copy whose header names layout id 2: refused at start (exit status
+#              1, the refusal on stderr), the file unchanged.
 #   4. again/  TO_BINARY on another copy, cross_width_save.replay: Continue, save again, restart,
 #              Continue (the replay's own `expect`s); the header then names TO's width, not FROM's,
 #              and both saves show the scene 27_continued shows.
@@ -39,11 +41,14 @@ opening="$here/opening.replay"
 expected="$here/expected"
 work="$outdir/work"
 rm -rf "$work" || die "cannot remove $work"
-mkdir -p "$work/from" "$work/to" "$work/bare" "$work/again" || die "cannot create $work"
+mkdir -p "$work/from" "$work/to" "$work/bare" "$work/other" "$work/again" || die "cannot create $work"
 
 # platform/save_file.h: the 8-byte magic, then version, pointer width and layout id, u32 LE.
 save_header_magic="PENSAVE"
 save_header_size=28
+save_header_layout_id_at=16
+# main.c's exit status when a module cannot start, a refused save among them.
+main_exit_failure=1
 save_image_size=131072
 # platform/fixed_clock.h: the clock advances one second every 60 frames; restart.c advances
 # --rtc-fixed by the seconds the run took.
@@ -176,6 +181,25 @@ if [ "$from_bits" = 32 ]; then
     grep -q "has no header" "$work/bare/stderr.log" || fail "bare: TO did not take the image for a bare one"
 else
     echo "== bare: skipped (only a 32-bit save is ever bare)"
+fi
+
+# ---- 3b. TO refuses a save whose layout id it does not know -------------------------------------
+# The header is not under the CRC, so only the id changes. A run that is not refused stops after a
+# few frames and fails the status check.
+cp "$work/from/pokeemerald.sav" "$work/other/" || die "cannot copy the save"
+printf '\002' | dd of="$work/other/pokeemerald.sav" bs=1 seek="$save_header_layout_id_at" conv=notrunc status=none \
+    || die "cannot patch the layout id"
+cp "$work/other/pokeemerald.sav" "$work/other/before.sav" || die "cannot copy the save"
+echo "== other: $to_binary on a save with layout id 2"
+"$to_binary" --headless --silent --unthrottled --frames 60 --save "$work/other/pokeemerald.sav" \
+    --rtc-offset "$work/other/pokeemerald.rtc" > "$work/other/stdout.log" 2> "$work/other/stderr.log"
+status=$?
+[ "$status" -eq "$main_exit_failure" ] || fail "other: TO ended with status $status, not $main_exit_failure"
+grep -q "was written by a build with another save layout" "$work/other/stderr.log" \
+    || fail "other: TO did not report refusing layout id 2"
+cmp -s "$work/other/before.sav" "$work/other/pokeemerald.sav" || fail "other: the refused save file changed"
+if new_sanitizer_reports "$work/other/stderr.log" "$work/other/sanitizer-new.log"; then
+    fail "other: sanitizer reports in $work/other/stderr.log"
 fi
 
 # ---- 4. TO saves in its own layout and comes up from it -----------------------------------------
