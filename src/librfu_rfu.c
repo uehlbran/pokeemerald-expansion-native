@@ -191,7 +191,7 @@ u16 rfu_initializeAPI(u32 *APIBuffer, u16 buffByteSize, IntrFunc *sioIntrTable_p
     // The 32-bit offsets are the structs' sizes there. At 64 bits the structs holding
     // pointers are larger, so each starts at the previous end rounded up to its alignment;
     // RFU_API_BUFF_SIZE_* is sized to match. The asserts check the carve chains without
-    // overlap, each offset aligned for its struct, and fits the buffer.
+    // overlap, that each offset is aligned for its struct and that the last fits the buffer.
     enum { CARVE_STATIC = 0xb8, CARVE_FIXED = 0xe0, CARVE_NI = 0x1d0, CARVE_UNI = 0x490, CARVE_INTR = 0x530 };
     _Static_assert(CARVE_STATIC >= sizeof(struct RfuLinkStatus), "carve: RfuLinkStatus overlaps RfuStatic");
     _Static_assert(CARVE_FIXED >= CARVE_STATIC + sizeof(struct RfuStatic), "carve: RfuStatic overlaps RfuFixed");
