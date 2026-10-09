@@ -794,3 +794,23 @@ self-tests now run in the platform gate (`glue-test`); before it they ran
 only as the 64-bit build's stamps, so a 32-bit-only change could not have
 broken them unnoticed, but a change to a module would have failed the
 next 64-bit build rather than the gate.
+
+## 2026-10-09: CI starts on Linux only, in this project's own workflow, on pushes to main
+
+Milestone 8 asks for CI for both targets and for Windows and macOS.
+Upstream's workflows trigger on branches this repository does not have
+(`master`, `upcoming`), so they have never run here and are left as
+they are rather than edited (an edit would be a row in
+UPSTREAM_MODIFICATIONS.md for no gain). This project's workflow,
+`.github/workflows/native.yml`, runs the gate STATUS.md records, on
+`ubuntu-latest`, on pushes to `main` and by hand only: a run is about
+an hour of a 4-core runner (the suite alone is four runs of 5862 tests)
+and the private repository's Actions minutes are the owner's budget, so
+a run per branch push would spend them on work the orchestrator's local
+gates already do. Windows and macOS get no CI job before the port
+exists: a `macos-latest` minute counts ten times, and a job that fails
+to build teaches nothing the inventory does not. The orchestrator
+proceeds with the Linux workflow without waiting (the standing orders:
+nothing short of an irreversible choice waits for the owner; a workflow
+file is reverted by deleting it, and the owner can disable Actions in
+the repository settings at any time).

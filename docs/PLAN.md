@@ -158,3 +158,49 @@ What is known before the inventory: the 64-bit build compiles every
 object; the link fails on two expansion `_Static_assert`s about struct
 sizes; with those disabled as an experiment it links (not run). The
 platform's unit tests already pass at 64 bits.
+
+## Milestone 8 plan: CI, Windows and macOS (started 2026-10-09)
+
+What is known at the start: the repository's `.github/workflows/` is
+upstream's (build.yml builds the ROM on pushes to `master` and
+`upcoming`, branches this repository does not have, so it has never run
+here; docs.yml and labels.yml likewise); Actions is enabled on the
+private repository; no MinGW cross-compiler, Wine or macOS machine is
+available in this environment (`docs/BUILDING.md` lists Linux only).
+
+Order of work:
+
+1. CI on Linux, both targets, in a workflow of this project's own
+   (`.github/workflows/native.yml`; upstream's files are not touched):
+   one job that is the gate as `docs/STATUS.md` records it, on
+   `ubuntu-latest`: the prerequisites of BUILDING.md, the GBA ROM with its
+   sha1 compared with the recorded one, `make -C platform gate`, the
+   native builds at both widths plain and sanitized, both replays on each,
+   `make check` at both widths plain and sanitized, the cross-width script
+   both ways. Triggered on pushes to `main` and by hand
+   (`workflow_dispatch`), not on every branch: a run is about an hour of
+   a 4-core runner and the private repository's Actions minutes are the
+   owner's. Tools and converted assets are cached between runs as
+   upstream's workflow caches its tools.
+2. An inventory of the Windows (MinGW) and macOS ports, no code (an Opus
+   worker, to the session scratchpad and summarised here): what in
+   `platform/` and the build glue is Linux-specific (the regions mapped
+   at fixed addresses with mmap, the linker script's absolute sections
+   and the non-PIE image at 0x40000000, the SIGFPE handler and its
+   ucontext register access, the alternate signal stack, /proc and
+   clock_gettime uses, the shell scripts of the gates, SDL2 from apt),
+   what each platform offers instead (VirtualAlloc at fixed addresses and
+   vectored exception handling on Windows; mmap with MAP_FIXED below the
+   4 GiB mark, `-pagezero_size`, Mach exception ports or sigaction on
+   macOS; the 16 KiB page size on Apple silicon against the GBA regions'
+   sizes), and what can be verified here: a MinGW cross-build needs
+   packages the owner must install (the exact commands go to STATUS.md
+   "Needs the owner"); macOS can be built only on a GitHub macOS runner,
+   whose minutes count tenfold, so nothing is attempted there before the
+   inventory says what would run.
+3. The Windows port, module by module, once the cross-compiler is
+   installed, with the same gates where they can run (a cross-built
+   executable cannot be run here without Wine; the CI runner `windows-latest`
+   can run it); then macOS by the same method on a macOS runner, each
+   gate recorded in STATUS.md as it passes. Neither is declared done
+   without the replays and the suite passing on that platform.

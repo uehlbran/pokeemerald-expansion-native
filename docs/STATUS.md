@@ -37,8 +37,12 @@ plain and sanitized, both suites (5409 passed, test for test the 32-bit
 results); and the cross-width save gate (h) in both directions, plain and
 sanitized. The "Milestone 7" section and the table below are the ledger.
 
-**In flight.** Nothing. Milestone 8 (CI for both targets, Windows, macOS)
-is not started; PLAN.md has its row.
+**In flight.** Milestone 8 (CI for both targets, Windows, macOS) started
+after the 64-bit declaration: a Linux workflow of this project's own
+(`.github/workflows/native.yml`, the gate as recorded below, on pushes to
+`main` and by hand; PLAN.md "Milestone 8 plan" and DECISIONS.md say why
+Linux only and why not every push) and an Opus inventory of the Windows
+and macOS ports, no code. Nothing else runs.
 
 **Broke and fixed.** Milestone 7: the 64-bit plain debug-menu replay
 failed on main right after the alignment merge while the sanitized one
@@ -52,7 +56,15 @@ game flags (3249f05722). Milestone 6's screenshot flake (the trainer party
 seed hashing a pointer) is recorded in the milestone 6 section and in
 DECISIONS.md. Earlier breakages are in the milestone logs.
 
-**Needs the owner.** rh-hideout's maintainer replied to all seven upstream
+**Needs the owner.** For milestone 8's Windows port a MinGW cross-compiler
+is needed and is not installed; nothing waits on it yet (the inventory
+runs first), but when convenient:
+`sudo apt-get install -y mingw-w64` (the SDL2 development files for
+MinGW are not in apt; the inventory will say where they come from).
+Also: the Linux CI workflow spends the private repository's Actions
+minutes (about an hour of a 4-core runner per push to main); disable
+Actions in the repository settings if that is not wanted.
+rh-hideout's maintainer replied to all seven upstream
 issues citing their LLM policy and said they will close them (details and a
 recommendation under "Upstream issues" below). Nothing was posted in reply.
 Decide whether to engage personally; no action is taken here without you.
