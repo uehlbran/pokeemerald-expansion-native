@@ -272,10 +272,10 @@ the sanitized replay does.
 The native save is the host ABI's layout (`DECISIONS.md`, "Native structs
 follow the host ABI").
 
-- `test/save.c`: under `PLATFORM_NATIVE` it holds the 32-bit native sizes
+- `test/save.c`: under `PLATFORM_NATIVE` it holds the native sizes
   of `SaveBlock1`, `SaveBlock2`, `SaveBlock3` and `PokemonStorage` (15496,
-  3848, 1, 34144 for 1.17.1). If upstream added fields, the suite fails
-  there. The sizes must be re-measured, and so must the offsets that
+  3848, 1, 34144 for 1.17.1; `SaveBlock1` is 15768 at 64 bits). If
+  upstream added fields, the suite fails there. The sizes must be re-measured, and so must the offsets that
   matter to the layout id below.
 - `SAVE_FILE_LAYOUT_ID` in `platform/save_file.h`: a change to the
   layout of anything written to the flash image (a save block,
