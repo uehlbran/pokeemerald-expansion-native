@@ -515,3 +515,61 @@ before M0's report: a failing build on a x10 runner teaches nothing the probes d
   kernel refusal of a Mach-O shows "Killed: 9" (ext).
 - All jobs keep `out/` of a failed replay as an artifact, as the Linux draft does
   (`pen-worktrees/ci-native/.github/workflows/native.yml:171-176`).
+
+## 7. M1 measurements: the data converted for Mach-O and COFF
+
+Measured 2026-10-09 on `work/m8-dataconv` (from main at 2c170bed5b) with clang 18 and Python
+3.12 on 32 cores (WSL2): `make -f Makefile.native data-flat|check-flat TARGET=...`
+(`platform/build_glue/elf_to_flat.py` and `check_flat.py`; `docs/BUILDING.md`, "The data for
+macOS and Windows").
+
+| | macho-x86_64 | coff-x86_64 |
+|---|---|---|
+| Objects converted, and checked equal | 544, 544 | 544, 544 |
+| Listings (MB) | 544 (56.2) | 544 (55.8) |
+| Objects clang writes (MB; the ELF ones are 26.0) | 22.7 | 22.2 |
+| Section bytes, and zero-fill | 13,752,400, 2,576 | the same |
+| 8-byte words | 19,208 `X86_64_RELOC_UNSIGNED`, `r_length` 3 | 19,208 `IMAGE_REL_AMD64_ADDR64` |
+| 4-byte words | 41,946 `X86_64_RELOC_UNSIGNED`, `r_length` 2 | 41,946 `IMAGE_REL_AMD64_ADDR32` |
+| 16-bit words given their values | 8 | 8 |
+| Symbols (the ELF objects: 298,581) | 298,550 | 298,550 |
+| `data-flat`, then `check-flat`, `-j32` | 3.3 s, 2.2 s | 1.5 s, 4.8 s |
+| the same without `-j` | 22 s, 23 s | 24 s, 71 s |
+
+- **Failures: none.** Every object converts, and the object clang writes from its listing equals
+  the ELF object in bytes, relocations (offset, width, symbol, addend), 16-bit values, symbols
+  (name, section, value, binding) and alignment, for both targets.
+- **Relocations.** 25,753 of the 61,154 address words name a section symbol in the ELF object
+  (GNU as's form for a local label; 21,241 of them 4 bytes, 4,512 8 bytes): the listing names the
+  label at or before the target with the difference as the addend, and the checker compares the
+  place each word reaches. No other relocation type occurs.
+- **The 8 16-bit words** name 6 symbols, all absolute constants (`.set` with `.global`) of other
+  data objects, taken from one table over the 544 objects (0.5 s): `B_MSG_MON_WATCHING` 0,
+  `B_MSG_MON_ANGRY` 1, `B_MSG_MON_EATING` 2 (each defined, with one value, in
+  battle_scripts_1.o and battle_scripts_2.o; one word each in battle_anim_scripts.o),
+  `SPECIAL_CalculatePlayerPartyCount` 0x84, `SPECIAL_ValidateEReaderTrainer` 0xf7,
+  `SPECIAL_GetMysteryGiftCardStat` 0x187 (event_scripts.o; 5 words in mystery_gift.o).
+- **Symbols.** 31 fewer than in the ELF objects: the 25 undefined symbols no relocation names (C
+  enum constants the preprocessor leaves as names, met in `.equiv` aliases and `.if`
+  comparisons: `CONNECTION_*` in three objects, `ANIM_BATTLER`, `TYPE_ROCK`, `TYPE_STEEL`,
+  `STR_VAR_1..3`), and the 6 that only 16-bit words named. The 3,463 names beginning with `L`
+  become `_L...` on Mach-O with the prefix every name gets, which is also the name clang gives
+  the C declaration: no rename. One label lies inside a relocated word, `keysplit_piano`
+  (sound_data.o `.rodata+0x863dc`, 4 bytes into the wav pointer before it, where
+  `sound/keysplit_tables.inc` sets it 36 bytes back from its table); the listing sets it back
+  from the word's end as well (`.set _keysplit_piano, . - 4`), which clang writes as an
+  `N_ALT_ENTRY` symbol on Mach-O.
+- **Absolute symbols.** 257,908, most of them local constants (`MPlayDef.s`, the script
+  macros); all values fit COFF's 32-bit symbol value (8 are -1). 7,930 global absolute names are
+  defined in more than one object, each always with one value. GNU ld accepts that for ELF and
+  PE (measured for ELF; bfd ignores "a redefinition of an absolute symbol to the same value",
+  ext: `bfd/linker.c`); whether ld64 does is the macOS link's question (probe M0 or its
+  successor). Once the 16-bit words have their values no relocation names an absolute symbol,
+  so the converter could make them local if ld64 refuses the duplicates.
+- **COFF's relocation count.** event_scripts.o's script_data holds 111,111 relocations, more
+  than a COFF section header counts (65,535): clang sets `IMAGE_SCN_LNK_NRELOC_OVFL` and puts
+  the count in the first relocation, as the PE format says, and `coff_object.py` reads it so.
+- **Time.** The converter takes 0.22 s for event_scripts.o and 0.5 s for sound_data.o (10.7 MB
+  of `.rodata`), clang under 0.3 s for any listing. The serial COFF check is slow on this
+  machine only: clang's MinGW driver searches `PATH` for a GCC, and under WSL2 `PATH` has 15
+  `/mnt/c` directories, about 80 ms a run (`--sysroot` avoids the search; not used).
