@@ -58,7 +58,10 @@ int restart_build_args(int argc, char *const *argv, uint32_t resume_line, int64_
 
 int restart_exec(const struct restart_args *args)
 {
-    (void)fflush(NULL);
+    if (fflush(NULL) != 0) {
+        (void)fprintf(stderr, "restart: fflush failed before execv: %s\n", strerror(errno));
+        return -1;
+    }
     execv(RESTART_EXE_PATH, args->argv);
     (void)fprintf(stderr, "restart: execv(%s) failed: %s\n", RESTART_EXE_PATH, strerror(errno));
     return -1;

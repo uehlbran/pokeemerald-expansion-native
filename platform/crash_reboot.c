@@ -53,6 +53,7 @@ static const volatile uint8_t *persistent_bytes(void)
  * write(2) so that the lines of processes sharing stderr do not interleave
  * (the hydra runs up to 32). Async-signal-safe: no allocation, no stdio. */
 #define REPORT_SIZE 256u
+#define DECIMAL_BASE 10u /* numbers are written and read in decimal */
 
 struct report {
     char text[REPORT_SIZE];
@@ -87,8 +88,8 @@ static void report_add_unsigned(struct report *report, unsigned value)
     size_t length = sizeof text - 1;
     text[length] = '\0';
     do {
-        text[--length] = (char)('0' + value % 10u);
-        value /= 10u;
+        text[--length] = (char)('0' + value % DECIMAL_BASE);
+        value /= DECIMAL_BASE;
     } while (value > 0 && length > 0);
     report_add(report, &text[length]);
 }

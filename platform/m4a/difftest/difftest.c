@@ -19,8 +19,6 @@
 #include "m4a.h"
 #include "difftest_platform.h"
 
-extern MPlayFunc gMPlayJumpTable[];
-
 /* constants/m4a_constants.inc values the C header lacks */
 #define TYPE_REV 0x10u
 #define TYPE_CMP 0x20u
@@ -74,7 +72,6 @@ enum {
 
 union DiffWave {
     struct WaveData wave;
-    uint32_t align;
     uint8_t bytes[WAVE_HEADER_SIZE + MAX_WAVE_DATA + 16];
 };
 
@@ -111,6 +108,7 @@ static uint32_t Fnv(uint32_t hash, const void *data, size_t size)
     const uint8_t *bytes = data;
 
     for (size_t i = 0; i < size; i++)
+        // NOLINTNEXTLINE(clang-analyzer-core.UndefinedBinaryOperatorResult): false positive; bytes[i] is the caller's object
         hash = (hash ^ bytes[i]) * 16777619u;
     return hash;
 }
@@ -349,11 +347,12 @@ static void MakeMixerWaves(void)
         int compressed = id >= 5;
         uint32_t size = compressed ? CMP_WAVE_SAMPLES : 1 + RandBelow(MAX_WAVE_DATA - 1);
         int loop = (int)RandBelow(2);
-        uint32_t loopStart = RandBelow(size);
+        (void)RandBelow(
+            size); /* drawn and discarded: the recorded run drew it, and the digest depends on the sequence */
 
         if (id < 2)
             size = 1 + RandBelow(40); /* short samples end inside a frame */
-        loopStart = RandBelow(size);
+        const uint32_t loopStart = RandBelow(size);
         MakeWave(id, compressed ? 1 : 0, size, loop, loopStart, Rand());
     }
 }
@@ -443,6 +442,43 @@ static void PutAddress(uint8_t *dst, const void *target)
         dst[i] = (uint8_t)(bits >> (8 * i));
 }
 
+/* Which of sVoices drum key i uses. */
+static int DrumVoice(int i)
+{
+    switch (i % 6) {
+    case 2:
+        return 2;
+    case 4:
+        return 9;
+    case 5:
+        return 8;
+    default:
+        return i % 2;
+    }
+}
+
+static u8 DrumPanSweep(int i)
+{
+    switch (i % 3) {
+    case 0:
+        return (u8)(0x80 + (i * 7) % 128);
+    case 1:
+        return 0x20;
+    default:
+        return 0;
+    }
+}
+
+/* Which of the split voices key i falls in. */
+static uint8_t SplitGroup(int i)
+{
+    if (i < 40)
+        return 0;
+    if (i < 70)
+        return 1;
+    return i < 100 ? 2 : 3;
+}
+
 static void MakeVoices(void)
 {
     struct WaveData *loopWave = MakeWave(0, 0, 500, 1, 100, 13379u << 10);
@@ -458,10 +494,10 @@ static void MakeVoices(void)
     sVoices[1] = (struct ToneData){TONEDATA_TYPE_FIX, 60, 0, 0x80 | 20, shortWave, 200, 255, 255, 100};
     sVoices[2] = (struct ToneData){1, 60, 0, 0x25, (struct WaveData *)(uintptr_t)2, 0, 7, 10, 3};
     sVoices[3] = (struct ToneData){2, 60, 20, 0xC0 + 10, (struct WaveData *)(uintptr_t)1, 0, 2, 15, 0};
-    sVoices[4] = (struct ToneData){3, 60, 0, 0, (struct WaveData *)(void *)sCgbWaveRam, 0, 0, 15, 0};
+    sVoices[4] = (struct ToneData){3, 60, 0, 0, (struct WaveData *)sCgbWaveRam, 0, 0, 15, 0};
     sVoices[5] = (struct ToneData){4, 60, 0, 0, (struct WaveData *)(uintptr_t)0, 0, 1, 8, 2};
-    sVoices[6] = (struct ToneData){TONEDATA_TYPE_RHY, 0, 0, 0, (struct WaveData *)(void *)sDrums, 0, 0, 0, 0};
-    sVoices[7] = (struct ToneData){TONEDATA_TYPE_SPL, 0, 0, 0, (struct WaveData *)(void *)sSplitVoices, 0, 0, 0, 0};
+    sVoices[6] = (struct ToneData){TONEDATA_TYPE_RHY, 0, 0, 0, (struct WaveData *)sDrums, 0, 0, 0, 0};
+    sVoices[7] = (struct ToneData){TONEDATA_TYPE_SPL, 0, 0, 0, (struct WaveData *)sSplitVoices, 0, 0, 0, 0};
     PutAddress(&sVoices[7].attack, sSplitTable); /* voice_keysplit: .4byte in attack..release */
     sVoices[8] = (struct ToneData){TYPE_REV, 60, 0, 0, shortWave, 255, 0, 255, 200};
     sVoices[9] = (struct ToneData){TYPE_CMP, 60, 0, 0, cmpWave, 255, 0, 255, 0};
@@ -469,15 +505,15 @@ static void MakeVoices(void)
     sVoices[11] = (struct ToneData){0, 60, 0, 0, shortWave, 0, 0, 0, 0};
 
     for (int i = 0; i < 128; i++) {
-        sDrums[i] = sVoices[(int)(i % 6 == 2 ? 2 : i % 6 == 4 ? 9 : i % 6 == 5 ? 8 : i % 2)];
+        sDrums[i] = sVoices[DrumVoice(i)];
         sDrums[i].key = (u8)(36 + i % 50);
-        sDrums[i].pan_sweep = (u8)(i % 3 == 0 ? 0x80 + (i * 7) % 128 : i % 3 == 1 ? 0x20 : 0);
+        sDrums[i].pan_sweep = DrumPanSweep(i);
     }
     sDrums[127].type = TONEDATA_TYPE_SPL; /* a nested group plays nothing */
     for (int i = 0; i < 4; i++)
-        sSplitVoices[i] = sVoices[i == 3 ? 3 : i];
+        sSplitVoices[i] = sVoices[i];
     for (int i = 0; i < 128; i++)
-        sSplitTable[i] = (uint8_t)(i < 40 ? 0 : i < 70 ? 1 : i < 100 ? 2 : 3);
+        sSplitTable[i] = SplitGroup(i);
 }
 
 /* Appends one random event; returns the new write position. */

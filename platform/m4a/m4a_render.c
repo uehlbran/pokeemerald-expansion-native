@@ -73,7 +73,7 @@ enum MixResult {
  * index -1 is the last header byte, which reversed playback reads. */
 static u32 WaveSample(const struct WaveData *wav, u32 index)
 {
-    const u8 *bytes = (const u8 *)(const void *)wav;
+    const u8 *bytes = (const u8 *)wav;
 
     return SignExtend8(bytes[(u32)(offsetof(struct WaveData, data) + index)]);
 }
@@ -97,7 +97,7 @@ static bool DpcmBlockInWave(const struct WaveData *wav, u32 block)
 /* SoundMainRAM_Unk2's decoder: one 64-sample block into sDecodingBuffer. */
 static void DecodeDpcmBlock(const struct WaveData *wav, u32 block)
 {
-    const u8 *src = (const u8 *)(const void *)wav + offsetof(struct WaveData, data) + (size_t)block * DPCM_BLOCK_BYTES;
+    const u8 *src = (const u8 *)wav + offsetof(struct WaveData, data) + (size_t)block * DPCM_BLOCK_BYTES;
     u8 level = src[0];
 
     sDecodingBuffer[0] = level;

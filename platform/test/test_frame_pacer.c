@@ -9,6 +9,12 @@
 #include "frame_pacer.h"
 #include "ptest.h"
 
+PTEST(the_unthrottled_option_selects_the_unthrottled_mode)
+{
+    PT_ASSERT_EQ_INT(frame_pacer_mode_for(true), FRAME_PACER_UNTHROTTLED);
+    PT_ASSERT_EQ_INT(frame_pacer_mode_for(false), FRAME_PACER_REALTIME);
+}
+
 PTEST(deadline_advances_by_one_period_when_on_time)
 {
     PT_ASSERT(frame_pacer_next_deadline(1000, 100, 1050, 500) == 1100u);

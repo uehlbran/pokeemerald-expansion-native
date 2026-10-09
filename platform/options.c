@@ -22,6 +22,8 @@
 
 #include "crash_reboot.h"
 
+#define DECIMAL_BASE 10 /* numbers are written and read in decimal */
+
 void options_print_usage(FILE *out)
 {
     (void)fprintf(
@@ -57,7 +59,7 @@ static bool parse_unsigned(const char *text, unsigned long max, unsigned long *o
     if (text == NULL || text[0] < '0' || text[0] > '9')
         return false;
     errno = 0;
-    unsigned long value = strtoul(text, &end, 10);
+    unsigned long value = strtoul(text, &end, DECIMAL_BASE);
     if (errno != 0 || *end != '\0' || value > max)
         return false;
     *out = value;
@@ -71,7 +73,7 @@ static bool parse_epoch(const char *text, int64_t *out)
     if (text == NULL || text[0] < '0' || text[0] > '9')
         return false;
     errno = 0;
-    long long value = strtoll(text, &end, 10);
+    long long value = strtoll(text, &end, DECIMAL_BASE);
     if (errno != 0 || *end != '\0')
         return false;
     *out = value;

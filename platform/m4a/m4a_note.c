@@ -99,7 +99,7 @@ static bool SelectVoice(const struct MusicPlayerTrack *track, struct NoteVoice *
     if (tone->type & TONEDATA_TYPE_SPL)
         index = KeySplitTable(tone)[track->key];
     /* a rhythm or key-split voice's wav points to its voicegroup */
-    group = (const struct ToneData *)(const void *)tone->wav;
+    group = (const struct ToneData *)tone->wav;
     voice->tone = &group[index];
     if (voice->tone->type & (TONEDATA_TYPE_SPL | TONEDATA_TYPE_RHY))
         return false;

@@ -16,6 +16,8 @@
 #include "input.h"
 #include "replay.h"
 
+#define DECIMAL_BASE 10 /* numbers are written and read in decimal */
+
 struct key_name {
     const char *name;
     uint16_t key;
@@ -77,7 +79,7 @@ static bool parse_number(const char *text, uint32_t minimum, uint32_t *out)
         return false;
     char *end;
     errno = 0;
-    unsigned long value = strtoul(text, &end, 10);
+    unsigned long value = strtoul(text, &end, DECIMAL_BASE);
     if (errno != 0 || *end != '\0' || value < minimum || value > REPLAY_MAX_FRAMES)
         return false;
     *out = (uint32_t)value;

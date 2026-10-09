@@ -196,7 +196,8 @@ static void run_write(struct replay *replay, const struct replay_command *comman
         }
         (void)fprintf(file, "%s=%s\n", name, value);
     }
-    if (fclose(file) != 0 && replay->status != REPLAY_FAILED)
+    const bool write_failed = ferror(file) != 0;
+    if ((fclose(file) != 0 || write_failed) && replay->status != REPLAY_FAILED)
         fail(replay, command->line, "dump: could not write %s", path);
 }
 

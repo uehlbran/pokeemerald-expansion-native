@@ -86,11 +86,13 @@ struct header_bytes {
     uint8_t image_crc32[SAVE_FILE_U32_BYTES];
 };
 _Static_assert(sizeof(struct header_bytes) == SAVE_FILE_HEADER_SIZE, "header size");
+// NOLINTBEGIN(readability-magic-numbers): the offsets are the file format's own (save_file.h)
 _Static_assert(offsetof(struct header_bytes, version) == 8, "version offset");
 _Static_assert(offsetof(struct header_bytes, pointer_bits) == 12, "pointer width offset");
 _Static_assert(offsetof(struct header_bytes, layout_id) == 16, "layout id offset");
 _Static_assert(offsetof(struct header_bytes, image_size) == 20, "image size offset");
 _Static_assert(offsetof(struct header_bytes, image_crc32) == 24, "CRC offset");
+// NOLINTEND(readability-magic-numbers)
 
 static struct {
     bool initialised;

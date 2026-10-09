@@ -11,6 +11,8 @@
 #include <stdio.h>
 #include <string.h>
 
+#define DECIMAL_BASE 10u /* numbers are written and read in decimal */
+
 static char decode_char(uint8_t byte)
 {
     if (byte == INSPECT_CHAR_SPACE)
@@ -84,7 +86,7 @@ int inspect_parse_argument(const char *text, uint32_t maximum, uint32_t *out)
     for (size_t i = 0; i < length; i++) {
         if (text[i] < '0' || text[i] > '9')
             return -1;
-        value = value * 10u + (uint32_t)(text[i] - '0');
+        value = value * DECIMAL_BASE + (uint32_t)(text[i] - '0');
     }
     if (value > maximum)
         return -1;

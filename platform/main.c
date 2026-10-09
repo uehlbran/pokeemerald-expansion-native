@@ -192,7 +192,7 @@ static int start_rtc(const struct options *o)
 }
 static int start_frame_pacer(const struct options *o)
 {
-    return frame_pacer_init(o->unthrottled ? FRAME_PACER_UNTHROTTLED : FRAME_PACER_REALTIME);
+    return frame_pacer_init(frame_pacer_mode_for(o->unthrottled));
 }
 
 static void run_frame(void);

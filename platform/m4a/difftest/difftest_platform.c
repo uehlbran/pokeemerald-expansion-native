@@ -42,11 +42,11 @@ void DifftestUnmapGbaPages(void)
 static int MapPage(uint32_t address)
 {
     void *wanted = (void *)(uintptr_t)address;
-    void *got = mmap(wanted, GBA_PAGE_SIZE, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED_NOREPLACE,
-                     -1, 0);
+    const void *got = mmap(wanted, GBA_PAGE_SIZE, PROT_READ | PROT_WRITE,
+                           MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED_NOREPLACE, -1, 0);
 
     if (got == MAP_FAILED || got != wanted) {
-        fprintf(stderr, "difftest: mmap at 0x%08x failed: %s\n", (unsigned)address, strerror(errno));
+        (void)fprintf(stderr, "difftest: mmap at 0x%08x failed: %s\n", (unsigned)address, strerror(errno));
         return -1;
     }
     return 0;
@@ -55,7 +55,7 @@ static int MapPage(uint32_t address)
 static void UnmapPage(uint32_t address)
 {
     if (munmap((void *)(uintptr_t)address, GBA_PAGE_SIZE) != 0)
-        fprintf(stderr, "difftest: munmap at 0x%08x failed: %s\n", (unsigned)address, strerror(errno));
+        (void)fprintf(stderr, "difftest: munmap at 0x%08x failed: %s\n", (unsigned)address, strerror(errno));
 }
 
 int DifftestMapGbaPages(void)

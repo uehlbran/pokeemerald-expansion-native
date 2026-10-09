@@ -9,5 +9,9 @@
 #                                               a constant by a size; every operand is bounded
 #                                               by a fixture's size, far below 32 bits, and the
 #                                               module code is held to the check
+#   bugprone-casting-through-void               fixtures reinterpret byte buffers as the
+#                                               structure under test (voicegroups, ELF tables)
+#   readability-magic-numbers                   tests spell out the expected values from GBATEK
+#                                               as literals
 InheritParentConfig: true
-Checks: '-readability-function-cognitive-complexity,-clang-analyzer-optin.core.EnumCastOutOfRange,-bugprone-implicit-widening-of-multiplication-result'
+Checks: '-readability-magic-numbers,-readability-function-cognitive-complexity,-clang-analyzer-optin.core.EnumCastOutOfRange,-bugprone-implicit-widening-of-multiplication-result,-bugprone-casting-through-void'

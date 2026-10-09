@@ -109,6 +109,8 @@ static const struct io_range sio_registers[] = {
 static void (*frame_hook)(void);
 static jmp_buf *reset_target;
 
+/* The BIOS interrupt-check flag (GBATEK "BIOS RAM Usage", 3007FF8h in IWRAM): not an I/O register, so
+ * not gba_io_u16. Games clear its bits to wait for an interrupt (IntrWait). */
 static volatile uint16_t *intr_check(void)
 {
     return (volatile uint16_t *)(uintptr_t)BIOS_INTR_CHECK_ADDRESS;

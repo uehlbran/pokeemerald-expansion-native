@@ -30,8 +30,11 @@
  * machine or a debugger session. When the limit passes, SIGALRM abandons the
  * test, which is reported as failed ("timed out after N seconds"), and the
  * next test runs; the binary is not killed. The abandoned test's cleanup does
- * not run, so a test that timed out may leave its resources behind and
- * LeakSanitizer may report them: the first failure is the one to fix.
+ * not run, so a test that timed out may leave module state, open files and
+ * locks behind: later failures in the same binary are suspect, LeakSanitizer
+ * may report what it leaked, and the first failure is the one to read. The
+ * reported location is the runner's line in this header; the message carries
+ * the test's name.
  * ptest_set_timeout(seconds) changes the limit of the running test (a test
  * that is legitimately long, or the test of this mechanism). The runner owns
  * SIGALRM and the process's alarm(2) timer while it runs; a test that needs

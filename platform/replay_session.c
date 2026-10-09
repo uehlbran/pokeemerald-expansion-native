@@ -20,6 +20,8 @@
 _Static_assert(REPLAY_FACT_BUFFER_SIZE >= INSPECT_VALUE_SIZE, "a fact must fit the replay's buffer");
 
 /* Where the expansion of a script with `include` lines is written, in the output directory. */
+/* Permissions of the output directory: everything, which the umask narrows (mkdir(2)). */
+#define OUT_DIR_MODE 0777
 #define EXPANDED_SCRIPT_NAME "expanded.replay"
 
 /* The screen at the moment a command failed, in the output directory. */
@@ -98,7 +100,7 @@ static enum frame_step_result step(void *context)
 
 static bool make_out_dir(const char *out_dir)
 {
-    if (mkdir(out_dir, 0777) != 0 && errno != EEXIST) {
+    if (mkdir(out_dir, OUT_DIR_MODE) != 0 && errno != EEXIST) {
         (void)fprintf(stderr, "replay: cannot create the output directory %s: %s\n", out_dir, strerror(errno));
         return false;
     }

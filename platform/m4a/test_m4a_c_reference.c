@@ -6,6 +6,8 @@
  */
 #include "test_m4a_c_reference.h"
 
+// NOLINTBEGIN(readability-magic-numbers): a transcription of src/m4a.c, whose literals are the original's
+
 /* Floor of x / 256, which is what an arithmetic shift right by 8 gives. */
 static s32 FloorDiv256(s32 x)
 {
@@ -91,3 +93,4 @@ DEFINE_UNUSED_XCMD(ply_xleng)
 DEFINE_UNUSED_XCMD(ply_xswee)
 DEFINE_UNUSED_XCMD(ply_xwait)
 DEFINE_UNUSED_XCMD(ply_xcmd_0D)
+// NOLINTEND(readability-magic-numbers)

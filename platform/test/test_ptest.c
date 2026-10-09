@@ -9,6 +9,8 @@
  */
 #include "ptest.h"
 
+#include <time.h>
+
 /* What a probed function did: whether it ran past its assertion, and where the assertion is. */
 struct probe {
     bool reached_end;
@@ -532,6 +534,8 @@ PTEST(registry_contains_this_test)
 
 /* ---- timeout ---- */
 
+#define HANG_ELAPSED_LIMIT_SECONDS 10
+
 static void runner_hanging_case(void)
 {
     ptest_set_timeout(1); /* a short limit for this test only */
@@ -543,14 +547,35 @@ PTEST(runner_fails_a_hanging_test_and_runs_the_next)
     struct ptest_registry registry = {.count = 0};
     ptest_register_in(&registry, "runner_hanging_case", runner_hanging_case);
     ptest_register_in(&registry, "runner_passing_case", runner_passing_case);
+    const time_t started = time(NULL);
     const struct run run = run_registry(&registry);
+    const time_t elapsed = time(NULL) - started;
     PT_ASSERT(run.text_complete);
+    PT_ASSERT(elapsed < HANG_ELAPSED_LIMIT_SECONDS); /* the 1 s limit fired, not the 60 s default */
     PT_ASSERT_EQ_INT(run.status, 1);
     PT_ASSERT(has_text(run.text, ": runner_hanging_case: timed out after 1 seconds\n"));
     PT_ASSERT(count_text(run.text, "FAIL ") == 1);
     PT_ASSERT(has_text(run.text, "1 passed, 1 failed\n"));
     PT_ASSERT_EQ_STR(ptest_current.name, "runner_fails_a_hanging_test_and_runs_the_next");
     PT_ASSERT(!ptest_current.outcome.failed);
+}
+
+#define OUTER_ALARM_SECONDS 50u
+
+PTEST(a_nested_run_restores_the_outer_alarm_target_and_limit)
+{
+    struct ptest_registry registry = {.count = 0};
+    ptest_register_in(&registry, "runner_passing_case", runner_passing_case);
+    const sigjmp_buf *const target_before = ptest_timeout_target;
+    const unsigned limit_before = ptest_timeout_seconds;
+    (void)alarm(OUTER_ALARM_SECONDS);
+    const struct run run = run_registry(&registry);
+    const unsigned remaining = alarm(0);
+    PT_ASSERT(run.text_complete);
+    PT_ASSERT_EQ_INT(run.status, 0);
+    PT_ASSERT(remaining > 0 && remaining <= OUTER_ALARM_SECONDS); /* re-armed with what was left */
+    PT_ASSERT(ptest_timeout_target == target_before);
+    PT_ASSERT_EQ_INT(ptest_timeout_seconds, limit_before);
 }
 
 PTEST(timeout_comes_from_the_environment_when_it_is_a_positive_number)

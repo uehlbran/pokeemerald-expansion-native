@@ -10,6 +10,8 @@
 #include "test_m4a_c_reference.h"
 #include "test_m4a_support.h"
 
+// NOLINTBEGIN(readability-magic-numbers): test stand-ins: a table size, channel fields and a generator's constants
+
 /* IWRAM (GBATEK "GBA Memory Map"), which holds SOUND_INFO_PTR at 0x03007FF0. */
 #define TEST_IWRAM_ADDR 0x03000000u
 /* The I/O register page, REG_BASE (GBATEK "GBA I/O Map"). */
@@ -423,3 +425,4 @@ struct SoundInfo *M4aTestSetUp(void)
     sSoundInfo.plynote = ply_note;
     return &sSoundInfo;
 }
+// NOLINTEND(readability-magic-numbers)

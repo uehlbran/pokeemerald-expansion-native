@@ -184,15 +184,20 @@ clean:
 # Every C file the platform layer owns: modules, the m4a engine and its
 # difftest, tests and their headers. The build's own output is not ours.
 FORMAT_FILES := $(shell find . -path ./build -prune -o \( -name '*.c' -o -name '*.h' \) -print | sort)
-LINT_SRCS    := $(wildcard *.c) $(wildcard m4a/*.c) $(wildcard test/*.c)
+LINT_SRCS    := $(wildcard *.c) $(wildcard m4a/*.c) $(wildcard m4a/difftest/*.c) $(wildcard test/*.c)
+
+# A missing tool must fail the target, not pass it silently.
+require_tool = @command -v $(1) >/dev/null 2>&1 || { echo "$(1) is not installed ($(2))"; exit 1; }
 
 format:
+	$(call require_tool,clang-format,make format)
 	@clang-format -i $(FORMAT_FILES)
 	@echo "format: $(words $(FORMAT_FILES)) files"
 
 # --dry-run -Werror reports every violation and exits non-zero; the file list
 # comes first so a failure says which files to `make format`.
 format-check:
+	$(call require_tool,clang-format,make format-check)
 	@bad=$$(for f in $(FORMAT_FILES); do clang-format --dry-run -Werror $$f >/dev/null 2>&1 || echo $$f; done); \
 	if [ -n "$$bad" ]; then echo "format-check: these files need 'make -C platform format':"; \
 		echo "$$bad"; exit 1; fi; \
@@ -205,7 +210,7 @@ format-check:
 # not ours: ../.clang-tidy's HeaderFilterRegex keeps findings to platform/.
 LINT_DIR := $(BUILD_DIR)/lint
 LINT_GAME_FILES := inspect.c inspect_menu.c inspect_args.c test/test_inspect_args.c
-lint_flags = -m$(BITS) -std=gnu17 $(INCLUDES) $(SDL_CFLAGS) $(if $(filter $(1),$(LINT_GAME_FILES)),$(GAME_DEFINES) -DTESTING=0 -DEMERALD $(GAME_CHAR_FLAGS))
+lint_flags = -m$(BITS) -std=gnu17 $(INCLUDES) $(SDL_CFLAGS) $(if $(filter m4a/difftest/%,$(1)),-Im4a -Im4a/difftest) $(if $(filter $(1),$(LINT_GAME_FILES)),$(GAME_DEFINES) -DTESTING=0 -DEMERALD $(GAME_CHAR_FLAGS))
 LINT_JOBS ?= $(shell nproc)
 
 $(LINT_DIR)/compile_commands.json: Makefile game_flags.mk $(LINT_SRCS)
@@ -220,16 +225,25 @@ $(LINT_DIR)/compile_commands.json: Makefile game_flags.mk $(LINT_SRCS)
 # (parallel output would interleave); findings in headers repeat in every file
 # that includes them, so the combined report is sorted and de-duplicated.
 lint-tidy: $(LINT_DIR)/compile_commands.json
+	$(call require_tool,clang-tidy,make lint)
 	@echo "clang-tidy: $(words $(LINT_SRCS)) files"
 	@rm -rf $(LINT_DIR)/logs && mkdir -p $(LINT_DIR)/logs
 	@printf '%s\n' $(LINT_SRCS) | xargs -P $(LINT_JOBS) -I{} sh -c \
-		'clang-tidy -quiet -p $(LINT_DIR) {} > $(LINT_DIR)/logs/$$(echo {} | tr / _).log 2>&1; true'
+		'f=$$(echo {} | tr / _); clang-tidy -quiet -p $(LINT_DIR) {} > $(LINT_DIR)/logs/$$f.log 2>&1; echo $$? > $(LINT_DIR)/logs/$$f.status'
 	@cat $(LINT_DIR)/logs/*.log | grep -E '^[^ ]+:[0-9]+:[0-9]+: (warning|error): ' | sort -u > $(LINT_DIR)/clang-tidy.log; \
+	broken=""; \
+	for s in $(LINT_DIR)/logs/*.status; do \
+		l=$${s%.status}.log; \
+		if [ "$$(cat $$s)" != 0 ] && ! grep -qE '^[^ ]+:[0-9]+:[0-9]+: (warning|error): ' $$l; then broken="$$broken $$l"; fi; \
+	done; \
+	if [ -n "$$broken" ]; then echo "clang-tidy failed without a finding; see:$$broken"; exit 1; fi; \
+	if [ "$$(ls $(LINT_DIR)/logs/*.status | wc -l)" -ne $(words $(LINT_SRCS)) ]; then echo "clang-tidy: not every file ran"; exit 1; fi; \
 	if [ -s $(LINT_DIR)/clang-tidy.log ]; then cat $(LINT_DIR)/clang-tidy.log; \
 		echo "clang-tidy: $$(wc -l < $(LINT_DIR)/clang-tidy.log) findings (full text in $(LINT_DIR)/logs)"; exit 1; fi; \
 	echo "clang-tidy: clean"
 
 lint-cppcheck:
+	$(call require_tool,cppcheck,make lint)
 	cppcheck --std=c11 --enable=warning,style,performance,portability --inline-suppr -I . -I .. \
 		--suppress='*:../include/*' --suppress=missingIncludeSystem --error-exitcode=1 -q -j $(LINT_JOBS) $(LINT_SRCS)
 

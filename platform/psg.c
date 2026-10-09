@@ -213,23 +213,14 @@ static struct {
     uint8_t nr50, nr51, soundcnt_h;
 } psg;
 
-/* The I/O region is mapped at its GBA address (gba_memmap.h), so the
- * integer-to-pointer conversion is the identity. Flagged for the 64-bit
- * milestone like gba_memmap's addresses: GBA addresses fit in 32 bits. Every
- * offset used is a constant checked against GBA_IO_SIZE above. */
-static uint8_t *io_register(uint32_t offset)
-{
-    return (uint8_t *)(uintptr_t)(GBA_IO_BASE + offset);
-}
-
 static uint8_t read_register(uint32_t offset)
 {
-    return *io_register(offset);
+    return *gba_io_u8(offset);
 }
 
 static void write_register(uint32_t offset, uint8_t value)
 {
-    *io_register(offset) = value;
+    *gba_io_u8(offset) = value;
 }
 
 /* Whether NRx4 holds a trigger the module has not acted on; consumes it (see
@@ -261,7 +252,8 @@ static void power_off(void)
     psg.noise = (struct psg_noise){0};
     psg.nr50 = 0;
     psg.nr51 = 0;
-    memset(io_register(REG_PSG_FIRST), 0, REG_PSG_END - REG_PSG_FIRST);
+    for (uint32_t offset = REG_PSG_FIRST; offset < REG_PSG_END; offset++)
+        write_register(offset, 0);
 }
 
 /* Applies a tone channel's registers; returns whether it was triggered. */
@@ -295,7 +287,8 @@ static void apply_wave(void)
         read_register(REG_NR30), read_register(REG_NR31), read_register(REG_NR32),
         read_register(REG_NR33), read_register(REG_NR34), {0},
     };
-    memcpy(registers.window, io_register(REG_WAVE_RAM), PSG_WAVE_BANK_BYTES);
+    for (uint32_t i = 0; i < PSG_WAVE_BANK_BYTES; i++)
+        registers.window[i] = read_register(REG_WAVE_RAM + i);
     psg_wave_update(&psg.wave, &registers);
     if (trigger)
         psg_wave_trigger(&psg.wave, &registers);

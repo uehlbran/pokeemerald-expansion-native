@@ -45,6 +45,11 @@ uint64_t frame_pacer_period_ticks(uint64_t counter_hz, uint32_t *remainder)
     return scaled / (uint64_t)GBA_CPU_HZ;
 }
 
+enum frame_pacer_mode frame_pacer_mode_for(bool unthrottled)
+{
+    return unthrottled ? FRAME_PACER_UNTHROTTLED : FRAME_PACER_REALTIME;
+}
+
 int frame_pacer_init(enum frame_pacer_mode mode)
 {
     uint64_t hz = SDL_GetPerformanceFrequency();

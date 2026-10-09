@@ -5,14 +5,11 @@
 #
 # Checks: the families the owner named, minus the ones that fight this
 # project's style or its design. Each exclusion and why:
-#   readability-braces-around-statements   the code writes one-statement ifs, loops and
-#                                          early returns without braces (docs/C-RULES.md)
+#   readability-braces-around-statements   the existing style writes one-statement ifs, loops
+#                                          and early returns without braces
 #   readability-uppercase-literal-suffix   the code writes 1u and 0x10u, not 1U
 #   readability-identifier-length          i, x, y, hw register and loop names are the domain
 #   readability-isolate-declaration        "int32_t tx, ty;" for a pair of coordinates is fine
-#   readability-magic-numbers              register addresses and sizes are named constants in
-#                                          modules (reviewed); tests spell out expected values
-#                                          from GBATEK as literals
 #   bugprone-easily-swappable-parameters   hardware calls take (dest, src, size) and (x, y)
 #                                          like the spec and the BIOS do
 #   misc-include-cleaner                   wants every symbol's defining header, not the umbrella
@@ -31,9 +28,6 @@
 #                                          memcpy of a pointer object (&pointer, a table of
 #                                          function pointers) is the type pun docs/C-RULES.md
 #                                          prescribes instead of a cast
-#   bugprone-casting-through-void          (struct T *)(void *)p is how a byte buffer or a
-#                                          voicegroup is reinterpreted without -Wcast-align
-#                                          and -Wcast-qual noise; each site is reviewed
 #   bugprone-signed-char-misuse, cert-str34-c
 #                                          s8 is the GBA's signed 8-bit sample and pan; the
 #                                          sign extension is the point
@@ -52,7 +46,6 @@ Checks: >
   -readability-uppercase-literal-suffix,
   -readability-identifier-length,
   -readability-isolate-declaration,
-  -readability-magic-numbers,
   -bugprone-easily-swappable-parameters,
   -misc-include-cleaner,
   -performance-no-int-to-ptr,
@@ -61,9 +54,15 @@ Checks: >
   -cert-dcl37-c,
   -cert-dcl51-cpp,
   -bugprone-multi-level-implicit-pointer-conversion,
-  -bugprone-casting-through-void,
   -bugprone-signed-char-misuse,
   -cert-str34-c,
   -clang-diagnostic-deprecated-non-prototype
 WarningsAsErrors: '*'
 HeaderFilterRegex: '/platform/'
+CheckOptions:
+  # Plain widths and counts are not magic; everything else in module code is a
+  # named constant with a comment citing the GBATEK section (docs/C-RULES.md).
+  - key: readability-magic-numbers.IgnorePowersOf2IntegerValues
+    value: true
+  - key: readability-magic-numbers.IgnoredIntegerValues
+    value: '0;1;2;3;4;8;16;32;64'

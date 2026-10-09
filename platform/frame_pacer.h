@@ -12,6 +12,7 @@
 #ifndef FRAME_PACER_H
 #define FRAME_PACER_H
 
+#include <stdbool.h>
 #include <stdint.h>
 
 #include "gba_timing.h"
@@ -24,6 +25,9 @@
 
 /* FRAME_PACER_UNTHROTTLED: frame_pacer_wait returns at once (headless gates). */
 enum frame_pacer_mode { FRAME_PACER_REALTIME, FRAME_PACER_UNTHROTTLED };
+
+/* The mode for the --unthrottled option. */
+enum frame_pacer_mode frame_pacer_mode_for(bool unthrottled);
 
 /* Fails if the performance counter rate is 0 or above FRAME_PACER_MAX_COUNTER_HZ. */
 int frame_pacer_init(enum frame_pacer_mode mode);
