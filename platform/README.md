@@ -427,8 +427,13 @@ interrupt dispatch (the GBA patched the BIOS's IRQ return address); a test
 stuck in a loop that never waits for a frame is not timed out (no emulated
 time passes), as there is no wall-clock watchdog.
 
-What the suite needed natively, test by test, and how it compares with the
-GBA baseline: `test_runner/SUITE-LOG.md`.
+`make -f Makefile.native -j32 check SANITIZE=1` runs the suite on the
+sanitized build: the recipe sets `ASAN_OPTIONS=halt_on_error=0:abort_on_error=1`
+(reports carry on; one that stops aborts, so `crash_reboot` turns it into one
+CRASH instead of a lost runner) and `UBSAN_OPTIONS=print_stacktrace=1`.
+
+What the suite needed natively, test by test, how it compares with the GBA
+baseline, and every sanitizer finding: `test_runner/SUITE-LOG.md`.
 
 ## The input replay (`replay`, `inspect`, `restart`, ...)
 

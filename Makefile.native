@@ -197,8 +197,14 @@ endif
 # -fsanitize-recover=address AddressSanitizer does too when run with
 # ASAN_OPTIONS=halt_on_error=0 (by default it still stops at its first
 # report). The platform library always stops at the first.
+#
+# AddressSanitizer's checks are calls, not inline code
+# (asan-instrumentation-with-call-threshold=0): inline, the TEST=1 build's
+# code is about 40 MB and reaches 0x42000000, which platform/script_tag.h's
+# tag bit forbids (gba_regions.ld's ASSERT on etext); as calls it is about
+# 28 MB (measured 2026-10-08), slower but the same checks.
 GAME_SANITIZER_FLAGS := -fsanitize=address,undefined -fno-sanitize=shift-base -fsanitize-recover=address \
-                        -fno-omit-frame-pointer
+                        -fno-omit-frame-pointer --param=asan-instrumentation-with-call-threshold=0
 ifeq ($(SANITIZE),1)
   CFLAGS += $(GAME_SANITIZER_FLAGS)
 endif
@@ -407,11 +413,25 @@ else
 TEST_SKIP_IS_FAIL := \x00
 endif
 
+# With SANITIZE=1 the runners report and carry on (halt_on_error=0, for the
+# game's recoverable checks), and a report that does stop (the platform
+# library's, which never recover) aborts instead of exiting, so that
+# crash_reboot reboots the runner and the hydra counts that test as CRASH
+# rather than losing the rest of its partition (abort_on_error=1); UBSan
+# prints a stack for each report. The caller's ASAN_OPTIONS and
+# UBSAN_OPTIONS come last and win.
+ifeq ($(SANITIZE),1)
+  CHECK_ENV := ASAN_OPTIONS="halt_on_error=0:abort_on_error=1:$$ASAN_OPTIONS" \
+               UBSAN_OPTIONS="print_stacktrace=1:$$UBSAN_OPTIONS"
+else
+  CHECK_ENV :=
+endif
+
 # check-tools (tools/patchelf, tools/mgba-rom-test-hydra) is make_tools.mk's.
 check: $(NATIVE_EXE) check-tools
 	@cp $(NATIVE_EXE) $(NATIVE_TEST_HEADLESS)
 	$(PATCHELF) $(NATIVE_TEST_HEADLESS) gTestRunnerArgv "$(TESTS:%*=%)\0" gTestRunnerHeadless '\x01' gTestRunnerSkipIsFail "$(TEST_SKIP_IS_FAIL)"
-	$(ROMTESTHYDRA) $(NATIVE_ROM_TEST) $(OBJCOPY) $(NATIVE_TEST_HEADLESS)
+	$(CHECK_ENV) $(ROMTESTHYDRA) $(NATIVE_ROM_TEST) $(OBJCOPY) $(NATIVE_TEST_HEADLESS)
 
 # --------------------------------------------------------------------------
 # Expansion's rule fragments, unchanged.

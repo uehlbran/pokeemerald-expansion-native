@@ -171,3 +171,69 @@ run compared with it test by test.
 | 8 | 5862 | 5405 | 18 | 9 | 421 | 0 | 0 | 9 assumption failures; per test equal to the GBA baseline but for those 9 |
 | 9 | 5862 | 5405 | 18 | 9 | 421 | 0 | 0 | as run 8, after the GLYPH_COPY and mega-indicator palette fixes |
 | 10 | 5862 | 5310 | 18 | 9 | 421 | 95 | 1 | linked at 0x40000000 again, without the ROM mirror: class 4 reopened until work/replay's untagging is merged |
+| 11 | 5862 | 5405 | 18 | 9 | 421 | 0 | 0 | after merging main (work/replay's script-tag untagging): class 4 closed; per test equal to the GBA baseline but for the 9 benchmarks; 44 s |
+| SANITIZE=1 | 5862 | 5402 | 18 | 9 | 421 | 3 | 1 | the sanitized run below: 3 CRASH (fatal AddressSanitizer reports), 9 assumption failures; 78 s |
+
+## The sanitized run (SANITIZE=1)
+
+`make -f Makefile.native -j32 check SANITIZE=1 [DINFO=1]` (DINFO=1 gives
+file:line in the reports). The recipe runs the hydra with
+`ASAN_OPTIONS=halt_on_error=0:abort_on_error=1` and
+`UBSAN_OPTIONS=print_stacktrace=1`: the game's reports are recoverable and
+the runner carries on; a report that stops (the platform library is built
+without recovery) aborts, `crash_reboot` reboots the runner, and the hydra
+counts that one test as CRASH instead of losing the rest of the runner's
+partition (without `abort_on_error` three runners exited and 107 tests
+never ran). AddressSanitizer's checks are outline calls in this build
+(Makefile.native): inline, the TEST=1 code is about 40 MB and passes
+0x42000000, which gba_regions.ld's ASSERT for platform/script_tag.h
+forbids; outline it ends at 0x41BB12F8.
+
+Result, against the GBA baseline: 5862 total, 5402 passed, 18 known
+failing, 9 expected failing, 421 to-do, 9 assumption failures
+(benchmarks, class 8), 3 failed, exit 1. The three are CRASH from the
+palette over-reads in the first row below, which the platform's
+`CpuFastSet` reports fatally: "Gimmick Form Change animations work",
+"Move Animations work 2" (move 100 of 222), "Move Animations work 4"
+(move 96 of 222). Every other test has its baseline result.
+
+Every finding, by the site the sanitizer names (line numbers are
+upstream's, as `#line` keeps them), with its root cause. None comes from
+the platform: the two `platform/bios_memory.c` sites are the BIOS copy
+reading what the game asked it to. "Same on GBA" means the GBA performs
+the same out-of-bounds access and survives it; where the bytes it reads or
+writes differ natively (another neighbour), it says so. Not fixed (game
+code); none changes a test result except the three crashes.
+
+| Site | Sanitizer | Root cause | GBA, and native difference |
+|---|---|---|---|
+| `src/graphics.c:35`, `:386`, `:398` (`gBattleAnimSpritePal_MegaParticles`, `_Feint`, `_WringOut`, 10, 5 and 7 colours) via `src/sprite.c` `LoadSpritePalette` -> `src/palette.c:58` `LoadPaletteFast` -> `CpuFastSet` | ASan global-buffer-overflow (fatal: the 3 CRASH) | palettes with fewer than 16 colours, always loaded as 32 bytes | reads the next ROM bytes into colours the sprite does not use; natively the next rodata. main's `sMegaIndicatorPal[16]` guard is the same fix |
+| `src/data/graphics/pokemon.h` `gMonPalette_TatsugiriCurly` (15 colours), `_Okidogi`, `_Meowscarada` (14), `_Nacli` (12) via `src/battle_gfx_sfx_util.c:667` `BattleLoadMonSpriteGfx` -> `src/palette.c:49` `LoadPalette` -> `CpuSet` | ASan global-buffer-overflow | as above, `PLTT_SIZE_4BPP` for every species | as above |
+| `src/battle_util.c:7895` `GetCriticalHitOdds`, from `src/battle_ai_util.c:821` `ShouldCalcCritDamage` | UBSan index 4294967295 of `u32[5]`; ASan | `CalcCritChanceStage` returns `CRITICAL_HIT_BLOCKED` (-1), which the AI passes as a table index (only `CRITICAL_HIT_ALWAYS` is checked) | reads the word before `sGen7CriticalHitOdds`; the AI computes crit damage if it is 1. Natively a different word |
+| `src/battle_util.c:1004`, `:1010`, `:1011`, `:1013` (`HandleAction_NothingIsFainted`, `HandleAction_ActionFinished`), `src/battle_main.c:5052` (`RunTurnActionsFunctions`) | UBSan index 4 of `[4]`, index 12 of `SpecialStatus[4]`; ASan | after the turn's last action `gCurrentTurnActionNumber` is `gBattlersCount`, and `gActionsByTurnOrder`, `gBattlerByTurnOrder` (and `[+1]` at 1010) are read one past the end; 1010 then indexes `gSpecialStatuses` with the byte read | reads the next EWRAM variable: on GBA `gBattleTurnCounter`/`gLastUsedBallMenuPresent`, natively `gBattlerPositions`/`gActionsByTurnOrder` (the native EWRAM order differs). `afterYouActive` then only gates an empty loop. If `RunTurnActionsFunctions` runs again at that index with no battle outcome set, the byte read from `gActionsByTurnOrder[4]` selects the action function, which would differ natively; no test result differs |
+| `src/battle_util.c:1844` `HandleFaintedMonActions`, `src/battle_script_commands.c:2173` `Cmd_getexp` | UBSan index 2 of `u8[2]` | `givenExpMons[GetBattlerTrainer(b) & BIT_FLANK]`: `BIT_FLANK` is 2, so the right-hand trainer gives index 2 (should be `!= 0` or `>> 1`) | reads and sets a bit of the next field, `expSentInMons`, on both (same struct layout): an exp bookkeeping bug in battles against two trainers |
+| `src/battle_script_commands.c:1536` `Cmd_printfromtable` | ASan global-buffer-overflow | `RemoveAllTerrains` (`src/battle_script_commands.c:4920`) sets `MULTISTRING_CHOOSER` to `B_MSG_TERRAIN_COUNT` as a "failsafe" when there is no terrain, but `gTerrainStringIds` has exactly `B_MSG_TERRAIN_COUNT` entries | prints the string id in the next halfword of ROM; natively of rodata |
+| `src/battle_move_resolution.c:1642` `CanPledgeComboAttackHappen` | UBSan index 2 of `u32[2]`; ASan | `newTurnOrder[i] != 0xFF && i < 2`: the element is read before the bound | reads the stack word after the array; the result does not depend on it |
+| `src/battle_controller_recorded_player.c:373`, `_opponent.c:352`, `_partner.c:273` | UBSan index 128/129 of `Move[4]`; ASan in rodata | the recorded move slot carries `RET_GIMMICK` (0x80) and indexes `moveInfo->moves` unmasked, then `gMovesInfo[that halfword]` for the default target | reads stale controller buffer, then a move entry past the table: the default target of a recorded gimmick move can differ natively |
+| `src/battle_interface.c:2106` `UpdateHealthboxAttribute` | UBSan index 101 of `u32[101]`; ASan | `gExperienceTables[rate][level + 1]` for a level 100 Pokémon | the next rate's level 0 (0), or for the last rate whatever follows the table in ROM (natively in rodata): the exp bar of a level 100 Pokémon |
+| `src/pokemon.c:2609` `SetBoxMonData` (nickname), from `src/daycare.c:1058` `SetInitialEggData` | ASan global-buffer-overflow | `sJapaneseEggNickname` (`src/daycare.c:110`) is 4 bytes; `MON_DATA_NICKNAME` copies `POKEMON_NAME_LENGTH` | the bytes after the EOS come from the next ROM (natively rodata) bytes; not displayed |
+| `src/sprite.c:1172` `JumpToTopOfAffineAnimLoop` | ASan global-buffer-overflow | the loop reads `[animCmdIndex - 1]` before testing `animCmdIndex == 0`; `gMetronomeFingerAffineAnimCmds2` (`src/battle_anim_effects_1.c:2234`) has `AFFINEANIMCMD_LOOP(2)` without a `LOOP(0)` start, so the search reaches index 0 | reads the command before the array; both outcomes restart at command 0, so the value does not matter |
+| `test/test_runner_battle.c:2725` `OTName_` (test "Large exp gains are supported", `test/battle/exp.c`) | ASan stack-buffer-overflow | `SetMonData(..., MON_DATA_OT_NAME, &otName)` passes the address of the pointer, not the name | the OT name becomes the pointer's 4 bytes and 3 stack bytes on both; the test only needs a different OT name, so it passes either way |
+| `src/battle_anim_flying.c:375`-`379` `AnimTask_AnimateGustTornadoPalette_Step` | UBSan index 4336 of `u16[512]`, load and store | `IndexOfSpritePaletteTag(ANIM_TAG_GUST)` is 0xFF (palette not loaded): `OBJ_PLTT_ID(0xFF)` is 4336 | writes 16 bytes 8.5 KiB past `gPlttBufferFaded`, inside `gSaveDataBuffer` on both (a scratch buffer used only while saving) |
+| `src/palette.c:49`, `:50` `LoadPalette`, from `src/battle_anim_effects_2.c:2982` `AnimTask_LoadMusicNotesPals` | UBSan index 4336 of `u16[512]` | `IndexOfSpritePaletteTag(ANIM_TAG_MUSIC_NOTES_2)` or `AllocSpritePalette` gives 0xFF | writes 32 bytes 8.5 KiB past both palette buffers, inside `gSaveDataBuffer` on both |
+| `src/battle_script_commands.c:9394` `BS_ItemCureStatus`, `src/pokemon.c:3905` `HealStatusConditions` | UBSan index 4 of `BattlePokemon[4]`, of `u16[4]` | a bag item cures a Pokémon that is not on the field: `targetBattler` stays `MAX_BATTLERS_COUNT` and is used as an index | clears the nightmare bit of `gBattleMons[4]`: a bit of `gDisplayedStringBattle` on GBA, of the last byte of `gBattleTextBuff3` natively; reads one past `gBattlerPartyIndexes` for a text buffer |
+| `src/battle_anim_effects_1.c:6382`, `:6384` `AnimTask_MoonlightEndFade` | UBSan shift exponent 255 | `0x10000 << IndexOfSpritePaletteTag(...)` with 0xFF (palette not loaded) | ARM's shift by 255 gives 0; x86 shifts by 31, which for 0x10000 also gives 0: same result |
+| `src/trig.c:517`, `:523` `Sin`/`Cos`, from `src/battle_anim_electric.c:789` `AnimSparkElectricityFlashing_Step`, `:726` `AnimZapCannonSpark_Step`, `src/battle_anim_ghost.c:1450` `AnimPoltergeistItem` | UBSan index -64, 320, 336 of `s16[320]` | the first step uses the angle argument before masking it with `& 0xFF`; the Poltergeist item reaches angle 256 before its stop test | reads next to `gSineTable` in ROM, natively in rodata: one frame's sprite offset can differ |
+| `src/battle_ai_util.c:428` `GetHealthPercentage` | UBSan division by zero | `maxHP` 0 for an empty battler (switch-in candidate data) | libgcc returns; natively `arm_division` gives libgcc's result |
+| `src/battle_script_commands.c:8159` `ComputeBallShakeOdds` | UBSan division by zero | odds 0 for a ball that cannot catch | as above |
+| `src/battle_anim_electric.c:793` `AnimSparkElectricityFlashing_Step` | UBSan division by zero | `% data[4]`, where `data[4]` is `arg7 & 0x7FFF`, 0 in the scripts that pass 0x8000 or 0 | as above |
+| `src/pokemon_animation.c:1243` `VerticalShakeTwice`, `:3674` `VerticalShakeLowTwice` | UBSan division by zero | the tables end with `{-1, 0}`, and the division by the second value comes before the test for -1 | as above; the result is discarded |
+| `src/battle_anim_water.c:1579` `CreateWaterSpoutRainDroplet` | UBSan signed overflow | `ISO_RANDOMIZE2` multiplies an `int` by 1103515245 | wraps on both (GCC emits a plain multiply) |
+| `src/battle_controllers.c:1837`, `:1838`, `:1840` `SetBattlerMonData` | UBSan misaligned member access | `moveData` points 3 bytes into the controller buffer, misaligned for `struct MovePPInfo` | only addresses are formed; `SetMonData` reads them bytewise (`SET16`): no misaligned load on either |
+
+Gone since the run before the merge (fixed on main): the `if_comptime`
+false positives (`include/metaprogram.h`: `*(int *)0` inside
+`__builtin_constant_p` was instrumented and reported as a load of NULL at
+every `RandomPercentage`/`RandomChance` site), `src/pokemon.c:6278`
+(`gBattleStruct` NULL outside battle), `src/text.c` `GLYPH_COPY`'s shifts
+by 32 and `sMegaIndicatorPal`.
