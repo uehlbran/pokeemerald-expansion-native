@@ -126,8 +126,6 @@ AddressSanitizer or UBSan report, or a changed result count). Two rows are
 decided from reading because no gate reaches them: `src/battle_pyramid_bag.c`
 and `src/dexnav.c`, which have the spin that hung `CB2_Bag`,
 `CB2_InitPartyMenu` and `CB2_InitSummaryScreen` when restored.
-`src/debug.c` is reported by AddressSanitizer on 32-bit only for the
-`options[-1]` read; on 64-bit the same `u32` index is a 4 GiB offset.
 
 `src/siirtc.c` is the one row that could shrink: the `SiiRtc*` API is wholly
 replaced natively, so a platform file providing it plus a build-time filter
