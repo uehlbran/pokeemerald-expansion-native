@@ -101,3 +101,26 @@ the default page zero (A:302-306), and a binary linked with `-pagezero_size 0x10
 page zero of at least 4 GiB. The arm64 layout probe itself never reached the linker: `#` is not a
 comment in the arm64 assembler, so `regions.s` did not assemble (A:217-226); it is now `regions.S`,
 with C comments, and the next run shows what ld64 does with the layout link on arm64.
+
+## Runs 37923542701 and 37925659422 (2026-10-09, the second iteration)
+
+macOS x86_64 (macos-15-intel): `layout_nofixup` (`-Wl,-no_fixup_chains`) and `layout_minos`
+(`-mmacosx-version-min=10.13`) put the header at 0x40000000 with a zero slide and every region at
+its address: 100 of 100 starts, 61 of 61 checks; `layout_plain` and `layout_classic` keep the
+regions but leave the header at 0x1000 (59 of 61). `mapfixed`: 0 of 100 with the default page
+zero, 16 of 100 with a 4 KiB one. Verdict: the model is kept on macOS x86_64, with
+`-no_fixup_chains`.
+
+macOS arm64 (macos-latest): every layout link fails, the linker saying "-no_pie ignored for
+arm64*" and refusing the debug page's address against the 16 KiB page size; `mapfixed` 0 of 100
+(the small page zero is killed, status 137); the x86_64 build under Rosetta passes 61 of 61,
+100 of 100. Verdict: the inventory's stands, the model cannot hold on arm64.
+
+Windows x86_64 (windows-latest, run 37925659422; the second run's job hung in the `cmd.exe`
+start-status command until its timeout, so those commands are bounded now): `as_linked` is
+refused by Windows itself ("The specified executable is not a valid application for this OS
+platform", PowerShell; Git Bash's "Exec format error", status 126, in 100 of 100);
+`filled_gaps` starts 100 of 100 at image base 0x1800000 with 40 of 40 checks, commit charge
+3100 KiB against the 604 KiB baseline (the read-only gaps are not charged); `virtualalloc`
+starts 100 of 100 with 49 of 49 checks, commit charge 34072 KiB (the 32 MiB ROM committed).
+Verdict: the model is kept on Windows as one PE image with the gaps filled.

@@ -283,9 +283,14 @@ log references):
   are filled with uninitialised read-only sections. The run-time
   VirtualAlloc fallback also gets every region (the debug page rounded
   to the 64 KiB granule). The memory model is kept on Windows as one
-  image with filled gaps; the second run's figures (the base over 100
-  starts, the commit charge against a baseline) are recorded when it
-  completes.
+  image with filled gaps. The third run (the second hung in an extra
+  diagnostic command) confirmed it: Windows itself reports the image
+  with gaps as "not a valid application for this OS platform"; the
+  filled image started 100 times of 100 at its base with every check
+  passing (40 of 40), and its commit charge is 3100 KiB against 604 KiB
+  for the same program without regions, so the 1 GiB of read-only gaps
+  costs nothing; the run-time fallback also started 100 of 100 (49 of
+  49 checks), committing the 32 MiB ROM.
 - macOS x86_64: with `-no_pie`, `-pagezero_size 0x1000`, `-image_base
   0x40000000`, the regions as segments at their addresses and
   `-no_fixup_chains` (or a minimum OS version before chained fixups),
