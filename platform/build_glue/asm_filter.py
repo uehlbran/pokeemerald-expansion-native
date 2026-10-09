@@ -24,7 +24,8 @@ the GBA build's.
 
 Malformed input fails loudly rather than being corrupted: after an
 unterminated string nothing is stripped or renamed, so an '@' comment that
-follows reaches the assembler, which rejects it.
+follows reaches the assembler, which rejects it. (asm_syntax.py reads the
+lines: comments, statements, labels and directives.)
 
 With '--pointer-size 8', which Makefile.native passes for the 64-bit build
 only, the filter also lays the data out for C structs whose pointers are 8
