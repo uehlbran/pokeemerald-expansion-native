@@ -27,8 +27,11 @@
  * assembly moves one 32-bit word across two 16-bit fields (SoundChannel
  * xpi and xpc) the C composes the two fields explicitly.
  *
- * Pointer size: this milestone is 32-bit. Everything that depends on the
- * size of a pointer is marked "flagged 64-bit" (here and in m4a_layout.h).
+ * Pointer size: the engine is the same at both widths and uses the structs
+ * of include/gba/m4a_internal.h. The layout the assembly hard-codes is
+ * asserted at 4-byte pointers in m4a_layout.h; at 64 bits the assembled data
+ * is emitted in the C structs' layout and checked at link time
+ * (platform/m4a/README.md, "The 64-bit layout").
  */
 #ifndef GUARD_PLATFORM_M4A_ENGINE_H
 #define GUARD_PLATFORM_M4A_ENGINE_H

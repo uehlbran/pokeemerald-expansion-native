@@ -28,9 +28,10 @@
 /* MPlayJumpTableCopy copies the 36 entries of gMPlayJumpTableTemplate. */
 #define MPLAY_JUMP_TABLE_SIZE 36u
 
-/* Song data holds addresses as 4 bytes, little-endian. Flagged 64-bit: on a
- * 64-bit host that holds only for data linked below 4 GiB, as the native
- * build links it (non-PIE, image at 0x40000000). */
+/* Song data holds addresses as 4 bytes, little-endian, at 64 bits too
+ * (bytecode stays 4-byte, which the relocation check enforces); that holds
+ * because the native build links the data below 4 GiB (non-PIE, image at
+ * 0x40000000). */
 #define SONG_ADDRESS_SIZE 4u
 /* REPT: a count byte, then the address to repeat from. */
 #define REPT_ARGS_SIZE (1u + SONG_ADDRESS_SIZE)
@@ -43,8 +44,7 @@
  * chk_adr_r2: a read below 0x02000000 is refused unless it lies in the
  * BIOS ROM at or after gMPlayJumpTableTemplate (where the BIOS-resident
  * driver kept its table). The game's template is in ROM, so every address
- * below 0x02000000 is refused. Flagged 64-bit: a pointer compared as an
- * integer.
+ * below 0x02000000 is refused. The pointer is compared as a uintptr_t.
  */
 static bool IsReadAllowed(const void *address)
 {
@@ -74,8 +74,8 @@ static u8 ReadByte(struct MusicPlayerTrack *track)
 }
 
 /* ply_goto_1: jumps to the 4-byte little-endian address at cmdPtr; only
- * its low byte goes through the guard. Flagged 64-bit: an address read
- * from song data becomes a pointer. */
+ * its low byte goes through the guard. At 64 bits the 4-byte address read
+ * from song data is zero-extended to a pointer. */
 static void JumpToAddressAt(struct MusicPlayerTrack *track)
 {
     const u8 *arg = track->cmdPtr;

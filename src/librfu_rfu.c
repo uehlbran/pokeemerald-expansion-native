@@ -188,12 +188,11 @@ u16 rfu_initializeAPI(u32 *APIBuffer, u16 buffByteSize, IntrFunc *sioIntrTable_p
     gRfuFixed->STWIBuffer = (struct RfuIntrStruct *)&gRfuSlotStatusUNI[3][1];
     STWI_init_all((struct RfuIntrStruct *)&gRfuSlotStatusUNI[3][1], sioIntrTable_p, copyInterruptToRam);
 #else
-    // The 32-bit offsets below are the structs' sizes there; at 64 bits the structs holding
-    // pointers are larger, so each starts at the previous end rounded up to 8 (the SDK's
-    // buffer is the same carve with the GBA's sizes). RFU_API_BUFF_SIZE_* is sized to match.
-    // The carve's offsets (struct sizes at 64 bits, each rounded up to its alignment).
+    // The 32-bit offsets are the structs' sizes there. At 64 bits the structs holding
+    // pointers are larger, so each starts at the previous end rounded up to its alignment;
+    // RFU_API_BUFF_SIZE_* is sized to match. The asserts check the carve chains without
+    // overlap, that each offset is aligned for its struct and that the last fits the buffer.
     enum { CARVE_STATIC = 0xb8, CARVE_FIXED = 0xe0, CARVE_NI = 0x1d0, CARVE_UNI = 0x490, CARVE_INTR = 0x530 };
-    // The carve chains without overlap, each offset aligned for its struct, and fits the buffer.
     _Static_assert(CARVE_STATIC >= sizeof(struct RfuLinkStatus), "carve: RfuLinkStatus overlaps RfuStatic");
     _Static_assert(CARVE_FIXED >= CARVE_STATIC + sizeof(struct RfuStatic), "carve: RfuStatic overlaps RfuFixed");
     _Static_assert(CARVE_NI >= CARVE_FIXED + sizeof(struct RfuFixed), "carve: RfuFixed overlaps the NI slots");

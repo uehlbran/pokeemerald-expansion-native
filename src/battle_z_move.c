@@ -433,11 +433,14 @@ static void ZMoveSelectionDisplayMoveType(enum Move zMove, enum BattlerId battle
 
 #if PLATFORM_NATIVE
 #if __SIZEOF_POINTER__ != 8
+#line 434
 #define Z_EFFECT_BS_LENGTH  5
 #else
+#line 434
 #define Z_EFFECT_BS_LENGTH  9 // setzeffect is a callnative: its opcode and an 8-byte function pointer
 #endif
 #else
+#line 434
 #define Z_EFFECT_BS_LENGTH  5
 #endif
 #line 435

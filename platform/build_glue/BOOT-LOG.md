@@ -170,8 +170,9 @@ whose layout assertions fail with 8-byte pointers: `src/list_menu.c:18`
 `data`) and `src/recorded_battle.c:34` (`RecordedBattleSaveFreeSpace`: the
 recorded battle no longer fits its save sector). Every other object
 compiles, and a trial link without those two fails only on the symbols they
-define (no relocation or layout error). 64-bit milestone work, not looked
-at further.
+define (no relocation or layout error). Both are guarded now (milestone 7;
+`docs/UPSTREAM_MODIFICATIONS.md`, the `src/list_menu.c` and
+`include/recorded_battle.h` rows).
 
 ## Replay bring-up (milestone 3): playing the opening
 

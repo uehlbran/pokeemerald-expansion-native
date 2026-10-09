@@ -142,10 +142,10 @@ $(OBJ_DIR)/%.o: %.c
 # independent code cannot encode it.
 $(OBJ_DIR)/test/test_arm_division.o: CFLAGS_ALL += -fno-pie
 
-# inspect.c reads expansion's variables through its headers, so it is compiled
-# as the game is (Makefile.native CPPFLAGS and ARCH_FLAGS), or the structure
-# layouts could differ.
-# save_convert.c pins its layout tables to the game's structs the same way.
+# These objects read expansion's structure layouts through its headers, so they
+# are compiled as the game is (Makefile.native CPPFLAGS and ARCH_FLAGS), or the
+# layouts could differ: inspect.c and its tests read the game's variables;
+# save_convert.c pins its layout tables to the game's structs.
 GAME_FLAG_OBJS := $(OBJ_DIR)/inspect.o $(OBJ_DIR)/inspect_menu.o $(OBJ_DIR)/inspect_args.o \
                   $(OBJ_DIR)/test/test_inspect_args.o $(OBJ_DIR)/save_convert.o
 $(GAME_FLAG_OBJS): CFLAGS_ALL += $(GAME_DEFINES) -DTESTING=0 -DEMERALD $(GAME_CHAR_FLAGS)

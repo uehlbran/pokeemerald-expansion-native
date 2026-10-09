@@ -10,10 +10,10 @@
 // Native only: the party seed (src/trainer_util.c, TrainerDataCrc32) hashes the
 // trainer's bytes without the party table's address, so it is a property of the
 // trainer's data and the player's ID. The test build's gTrainers is the
-// test trainers (test/test_runner_battle.c), not src/data/trainers.h, so these are copies of three early trainers' data (Calvin,
-// the Route 103 Brendan, Roxanne) with a dummy party. The constants come from
-// the 32-bit build and pin its value; the 64-bit build, whose struct is 4
-// bytes bigger, must hash the same bytes and so match them.
+// test trainers (test/test_runner_battle.c), not src/data/trainers.h, so
+// these copy three early trainers (Calvin, Brendan on Route 103, Roxanne).
+// The constants come from the 32-bit build and pin its value; the 64-bit
+// build, whose struct is 4 bytes bigger, must hash the same bytes.
 #if PLATFORM_NATIVE
 
 static const struct TrainerMon sDummyPartyA[1] = { { .lvl = 5 } };

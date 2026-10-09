@@ -332,12 +332,14 @@ void InitIntrHandlers(void)
         gIntrTable[i] = gIntrTableTemplate[i];
 
 #if PLATFORM_NATIVE
-#if __SIZEOF_POINTER__ == 8
-    INTR_VECTOR = (u32)(uintptr_t)IntrMain;
-#else
+#if __SIZEOF_POINTER__ != 8
+#line 320
     INTR_VECTOR = IntrMain;
+#else
+    INTR_VECTOR = (u32)(uintptr_t)IntrMain;
 #endif
 #else
+#line 320
     INTR_VECTOR = IntrMain;
 #endif
 #line 321

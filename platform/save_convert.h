@@ -35,6 +35,13 @@
  * adds is zero. The Enigma Berry's own checksum (src/berry.c
  * GetEnigmaBerryChecksum, a byte sum) is recomputed in the target layout if
  * it was valid in the source and copied as it is otherwise.
+ *
+ * The caller says which layout the image has (the save file's header,
+ * save_file.h). The checksums cannot tell: a 32-bit image read as a 64-bit
+ * one passes them (SaveBlock1's last sector is zero past its 32-bit data,
+ * which adds nothing to the sum), so converting it "from 64 bits" would
+ * shift its members; the other way round the last sector's checksum fails
+ * and nothing is converted.
  */
 #ifndef SAVE_CONVERT_H
 #define SAVE_CONVERT_H

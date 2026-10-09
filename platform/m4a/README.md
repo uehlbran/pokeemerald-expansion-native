@@ -127,8 +127,8 @@ in `include/gba/m4a_internal.h`. `m4a_layout.h` asserts, with
 depends on, in two groups. The first holds on every target: offsets
 before any pointer, and the relations the C itself relies on. The second
 is the assembly's exact layout, which the C structs have only where
-pointers are 4 bytes (`#if UINTPTR_MAX == UINT32_MAX`); everything in it
-is flagged 64-bit. It also asserts a few contracts the layout implies:
+pointers are 4 bytes (`#if UINTPTR_MAX == UINT32_MAX`); the 64-bit layout is
+"The 64-bit layout" below. It also asserts a few contracts the layout implies:
 
 - `SoundMainRAM` reads `masterVolume` as `[soundInfo, #o_SoundChannel_release]`,
   which works because both offsets are 7.
@@ -181,36 +181,42 @@ test.
 | A BIOS-region argument refused by `chk_adr_r2` | Loads the byte, then replaces it with 0. | Does not load it, which gives the same result. |
 | The volume and pitch pass in `MPlayMain` | Continues to the next track on the flags of `adds r5, #0x50`, true only below 0x80000000. | Always continues: the result on the GBA, on any host. |
 
-## Flagged 64-bit
+## The 64-bit layout
 
-This milestone is 32-bit. The engine and its unit tests also build and
-pass with `BITS=64`, on data laid out as C structs. The game's assembled
-sound data keeps the 4-byte layout, so on 64-bit the C structs and that
-data disagree; the 64-bit milestone must reconcile them. It must revisit
-the following.
+The engine is the same C at both widths and reads the sound data through the
+structs of `include/gba/m4a_internal.h`. At 4-byte pointers those structs have
+the assembly's layout, which `m4a_layout.h` asserts (its second group, under
+`#if UINTPTR_MAX == UINT32_MAX`). At 8-byte pointers they do not (`ToneData` is
+24 bytes, `MusicPlayerTrack` 112, `Song` 16, `MusicPlayer` 24), so the data is
+what is reconciled, not the engine:
 
-- **Struct layout.** Every offset after the first pointer in each struct,
-  and every struct size, depends on the pointer size. `m4a_layout.h`
-  marks each one "flagged 64-bit". This includes the `TRACK_SIZE` 0x50 in
-  `sound/music_player_table.inc` and the voicegroup stride of 12.
-- **`Clear64byte`.** It clears 64 bytes, which assumes
-  `sizeof(MusicPlayerInfo) == 64` and `offsetof(MusicPlayerTrack, cmdPtr) == 64`.
-- **Key-split voices.** They store a 4-byte table address in
-  `ToneData.attack..release` (`voice_keysplit`). `KeySplitTable` reads it
-  as a 32-bit address (`m4a_note.c`).
-- **Song data.** It holds 4-byte addresses (`GOTO`, `PATT`, `REPT`).
-  `JumpToAddressAt` converts the 32-bit value through `uintptr_t`
-  (`m4a_commands.c`). On a 64-bit host both hold only for data linked
-  below 4 GiB, which the non-PIE build at 0x40000000 provides.
-- **Compressed samples.** `currentPointer` holds a sample index for them,
-  stored as `uintptr_t` (`m4a_render.c`).
-- **Track tie-break.** Ties between equal priorities compare track
-  addresses (`TrackAddress`, `m4a_note.c`).
-- **BIOS-read guard.** `IsReadAllowed` (`chk_adr_r2`, `m4a_commands.c`)
-  compares addresses as integers.
-- **`ply_port`.** It forms the register address through `uintptr_t`, as
-  does the `VCOUNT` read in `m4a_mixer.c`. Neither depends on pointer
-  size; they are listed for completeness.
+- **Struct layout.** The macros that emit the sound data write the C structs'
+  layout under `.ifdef NATIVE_POINTER_SIZE_8` (`asm/macros/m4a.inc`,
+  `asm/macros/music_voice.inc`, `sound/music_player_table.inc`'s `TRACK_SIZE`
+  of 112, the table alignments in `sound/song_table.inc` and
+  `sound/cry_tables.inc`), and `platform/build_glue/asm_filter.py` does the
+  same for mid2agb's song headers. Each is a row in
+  `docs/UPSTREAM_MODIFICATIONS.md`.
+- **Layout check.** The 64-bit link runs `platform/build_glue/check_data_layout.py`,
+  which compares every byte of the assembled `ToneData`, `Song`, `MusicPlayer`
+  and `SongHeader` with a reference assembled with 4-byte pointers, against the
+  struct layout at each width (printed by `data_layout_probe.c`, compiled with
+  the game's flags), and `check_relocations.py`, which checks the width of each
+  address word. `docs/ARCHITECTURE.md`, "The 64-bit build".
+- **`Clear64byte`.** It clears 64 bytes at both widths, as the assembly does;
+  `m4a_layout.h` asserts at both widths that this stops short of a track's
+  `cmdPtr`.
+- **Key-split voices.** The table's address stays a 4-byte word in
+  `ToneData.attack..release` (`voice_keysplit`); the relocation check allows a
+  4-byte word at that offset of a `ToneData` and nowhere else. `KeySplitTable`
+  zero-extends it (`m4a_note.c`).
+- **Song data.** Track bytecode holds 4-byte addresses (`GOTO`, `PATT`, `REPT`),
+  which the relocation check keeps at 4 bytes. `JumpToAddressAt` zero-extends
+  them (`m4a_commands.c`); that holds because the non-PIE build links the data
+  at 0x40000000, below 4 GiB.
+- **Compressed samples, track tie-break, BIOS-read guard, `ply_port`.** Each
+  goes through a `uintptr_t` and is the same at both widths (`m4a_render.c`,
+  `m4a_note.c`, `m4a_commands.c`, `m4a_mixer.c`).
 
 ## Notes for integration
 
