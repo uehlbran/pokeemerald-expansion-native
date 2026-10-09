@@ -284,9 +284,19 @@ follow the host ABI").
   `SAVE_FILE_FOREIGN_LAYOUT` and `main` refuses to start on such a file
   rather than overwrite it. A conversion for the old layout is a
   separate piece of work.
-- The cross-width gate (h), 32-bit save loading in the 64-bit build, is
-  milestone 7 and does not exist yet. Once it does, it is part of this
-  step: write a save in each width, load it in the other.
+- `platform/save_layout32.h` and `save_layout64.h`: where `SaveBlock1`
+  keeps the members `save_convert` moves (its object event templates, its
+  Enigma Berry record, the members around them). Each is pinned by static
+  assertions in `platform/save_convert.c`, compiled with the game's flags,
+  so a change to `SaveBlock1`, `ObjectEventTemplate` or `EnigmaBerry` stops
+  the build of that width with the message "update
+  platform/save_layout<bits>.h". Re-measure with offsetof and sizeof at
+  `-m32` and `-m64` and update the table; if upstream added a pointer to a
+  saved struct, the converter needs a new segment row (or the fallback of
+  `DECISIONS.md`, "Gate (h) is a platform-side save converter").
+- The cross-width gate (h): write a save in each width, load it in the
+  other: `tests/smoke/run_cross_width.sh` from 32 to 64 bits and back
+  (`tests/smoke/README.md`).
 
 ## 11. Finish
 
