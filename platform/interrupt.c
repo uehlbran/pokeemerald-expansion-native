@@ -75,22 +75,14 @@ static struct {
     uint16_t stored;   /* what this module last stored at IF */
 } controller;
 
-/* The register at offset in the I/O page. The integer-to-pointer conversion
- * is the identity because the page is mapped at its GBA address
- * (gba_memmap.h); flagged for the 64-bit milestone with that identity. */
-static volatile uint16_t *io_halfword(uint32_t offset)
-{
-    return (volatile uint16_t *)(uintptr_t)(GBA_IO_BASE + offset);
-}
-
 static uint16_t read_register(uint32_t offset)
 {
-    return *io_halfword(offset);
+    return *gba_io_u16(offset);
 }
 
 static void write_register(uint32_t offset, uint16_t value)
 {
-    *io_halfword(offset) = value;
+    *gba_io_u16(offset) = value;
 }
 
 static uint16_t bit_of(enum gba_irq source)
@@ -150,9 +142,7 @@ static size_t first_in_intr_main_order(uint16_t pending)
 /* crt0.s:94-96: sound off, then spin forever. */
 static void halt_for_game_pak(void)
 {
-    volatile uint8_t *const soundcnt_x =
-        (volatile uint8_t *)(uintptr_t)(GBA_IO_BASE + GBA_SOUNDCNT_X_OFFSET);
-    *soundcnt_x = SOUNDCNT_X_ALL_OFF;
+    *gba_io_u8(GBA_SOUNDCNT_X_OFFSET) = SOUNDCNT_X_ALL_OFF;
     controller.halted = true;
     (void)fprintf(stderr,
                   "interrupt: interrupt_dispatch: Game Pak interrupt (cartridge removed): "

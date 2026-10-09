@@ -40,8 +40,8 @@ _Static_assert(__BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__,
 #define DMA_REGISTER_STRIDE UINT32_C(12)
 #define DMA_SAD_OFFSET UINT32_C(0)
 #define DMA_DAD_OFFSET UINT32_C(4)
-#define DMA_CNT_OFFSET UINT32_C(8)    /* CNT_L, and CNT_L with CNT_H as one word */
-#define DMA_CNT_H_SHIFT 16u              /* CNT_H is the high halfword of that word (GBATEK "GBA DMA Transfers") */
+#define DMA_CNT_OFFSET UINT32_C(8) /* CNT_L, and CNT_L with CNT_H as one word */
+#define DMA_CNT_H_SHIFT 16u        /* CNT_H is the high halfword of that word (GBATEK "GBA DMA Transfers") */
 #define DMA_CNT_H_OFFSET UINT32_C(10)
 
 /* GBATEK "GBA DMA Transfers", DMAxCNT_L: "14 bit, 1..4000h" on DMA0-2,
@@ -107,19 +107,19 @@ static struct {
 
 /* ---- registers ---- */
 
-static uintptr_t register_address(unsigned channel, uint32_t offset)
+static uint32_t register_offset(unsigned channel, uint32_t offset)
 {
-    return (uintptr_t)(GBA_IO_BASE + DMA_REGISTERS_OFFSET + channel * DMA_REGISTER_STRIDE + offset);
+    return DMA_REGISTERS_OFFSET + channel * DMA_REGISTER_STRIDE + offset;
 }
 
 static volatile uint32_t *register32(unsigned channel, uint32_t offset)
 {
-    return (volatile uint32_t *)register_address(channel, offset);
+    return gba_io_u32(register_offset(channel, offset));
 }
 
 static volatile uint16_t *register_cnt_h(unsigned channel)
 {
-    return (volatile uint16_t *)register_address(channel, DMA_CNT_H_OFFSET);
+    return gba_io_u16(register_offset(channel, DMA_CNT_H_OFFSET));
 }
 
 /* The three 32-bit stores of expansion's DmaSetUnchecked. 64-bit: SAD and

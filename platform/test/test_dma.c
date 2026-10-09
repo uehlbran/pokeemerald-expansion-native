@@ -68,24 +68,24 @@ static unsigned raised_total(void)
     return total;
 }
 
-static uint8_t *at(uint32_t base, size_t offset)
+static uint8_t *region_at(uint32_t base, size_t offset)
 {
     return (uint8_t *)(uintptr_t)(base + offset);
 }
 
 static uint8_t *ewram(size_t offset)
 {
-    return at(GBA_EWRAM_BASE, offset);
+    return region_at(GBA_EWRAM_BASE, offset);
 }
 
 static uint8_t *vram(size_t offset)
 {
-    return at(GBA_VRAM_BASE, offset);
+    return region_at(GBA_VRAM_BASE, offset);
 }
 
 static uint8_t *io(size_t offset)
 {
-    return at(GBA_IO_BASE, offset);
+    return region_at(GBA_IO_BASE, offset);
 }
 
 /* An I/O register's address as the pointer dma_set() takes. */

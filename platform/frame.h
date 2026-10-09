@@ -62,6 +62,10 @@
 #define FRAME_AUDIO_SAMPLE_RATE_HZ 13379u
 #define FRAME_AUDIO_SAMPLES_PER_FRAME 224u
 
+/* Output channels: the mix is interleaved left, right (GBATEK "GBA Sound
+ * Controller": the PSG and the FIFOs mix to a stereo output). */
+#define FRAME_AUDIO_CHANNELS 2u
+
 /* Frames queued before playback starts, so the device does not start on an
  * empty queue (audio.h: the device starts paused). */
 #define FRAME_AUDIO_PREROLL_FRAMES 2u

@@ -234,6 +234,27 @@ PTEST(sram_info) { check_info(GBA_REGION_SRAM); }
 
 /* ---- init and shutdown ---- */
 
+PTEST(io_accessors_address_the_register_at_its_gba_offset)
+{
+    PT_ASSERT_EQ_U32((uint32_t)(uintptr_t)gba_io_u8(0), GBA_IO_BASE);
+    PT_ASSERT_EQ_U32((uint32_t)(uintptr_t)gba_io_u16(GBA_SOUNDCNT_H_OFFSET), GBA_IO_BASE + GBA_SOUNDCNT_H_OFFSET);
+    PT_ASSERT_EQ_U32((uint32_t)(uintptr_t)gba_io_u32(GBA_IO_SIZE - 4), GBA_IO_BASE + GBA_IO_SIZE - 4);
+    PT_ASSERT_EQ_U32(sizeof *gba_io_u8(0), 1);
+    PT_ASSERT_EQ_U32(sizeof *gba_io_u16(0), 2);
+    PT_ASSERT_EQ_U32(sizeof *gba_io_u32(0), 4);
+}
+
+PTEST(io_accessors_of_different_widths_see_the_same_bytes_little_endian)
+{
+    const uint32_t word = GBA_SOUNDCNT_H_OFFSET - sizeof(uint16_t); /* SOUNDCNT_L, 4-byte aligned */
+    *gba_io_u32(word) = UINT32_C(0xA1B2C3D4);
+    PT_ASSERT_EQ_U32(*gba_io_u16(word), 0xC3D4);
+    PT_ASSERT_EQ_U32(*gba_io_u16(word + 2), 0xA1B2);
+    PT_ASSERT_EQ_U32(*gba_io_u8(word), 0xD4);
+    PT_ASSERT_EQ_U32(*gba_io_u8(word + 3), 0xA1);
+    *gba_io_u32(word) = 0;
+}
+
 PTEST(init_succeeds)
 {
     PT_ASSERT_EQ_INT(gba_memmap_init(), GBA_MEMMAP_OK);

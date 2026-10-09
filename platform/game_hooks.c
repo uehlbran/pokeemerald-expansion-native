@@ -158,7 +158,7 @@ void PlatformJumpToAgbMainLoop(void)
         PlatformTestRunnerExit(GAME_HOOKS_EXIT_INTERNAL_ERROR);
         return;
     }
-    game_hooks_unwind(&hooks.agb_main_loop, 1);
+    game_hooks_unwind(&hooks.agb_main_loop, GAME_HOOKS_JUMP_AGB_MAIN_LOOP);
 }
 
 bool PlatformDebugOpen(void)

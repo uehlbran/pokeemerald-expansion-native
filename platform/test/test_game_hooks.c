@@ -174,6 +174,19 @@ PTEST(test_runner_exit_unwinds_to_the_exit_target)
     game_hooks_shutdown();
 }
 
+PTEST(test_runner_exit_hands_main_an_exit_code_above_127_unchanged)
+{
+    volatile int jumps = 0;
+    PT_ASSERT_EQ_INT(game_hooks_init(&exit_target), 0);
+    if (setjmp(exit_target) == GAME_HOOKS_JUMP_EXIT)
+        jumps++;
+    if (jumps == 0)
+        PlatformTestRunnerExit(200);
+    PT_ASSERT_EQ_INT(jumps, 1);
+    PT_ASSERT_EQ_U32(game_hooks_exit_code(), 200);
+    game_hooks_shutdown();
+}
+
 PTEST(test_runner_exit_unwinds_from_the_battle_stack)
 {
     volatile int jumps = 0;
@@ -418,6 +431,20 @@ PTEST(game_variables_are_bracketed)
     PT_ASSERT(crt0_game_data_size() >= sizeof game_data_word);
 }
 
+PTEST(a_second_crt0_init_replaces_the_copy_and_leaks_nothing)
+{
+    /* The first copy of the game's initialised data is malloc'd: dropping the
+     * shutdown at the top of crt0_init would leave it for LeakSanitizer. */
+    PT_ASSERT(crt0_game_data_size() > 0);
+    PT_ASSERT_EQ_INT(crt0_init(), CRT0_OK);
+    PT_ASSERT_EQ_INT(crt0_init(), CRT0_OK);
+    game_data_word = 7;
+    crt0_restart();
+    PT_ASSERT_EQ_U32(game_data_word, UINT32_C(0x1234ABCD));
+    crt0_shutdown();
+    game_data_word = UINT32_C(0x1234ABCD);
+}
+
 PTEST(crt0_restart_zeroes_game_bss_and_restores_game_data)
 {
     PT_ASSERT_EQ_INT(crt0_init(), CRT0_OK); /* not the game: no object check */
@@ -614,6 +641,7 @@ PTEST(lz77_type_bits_are_not_checked)
 static const uint32_t rom_table[4] = { 1, 2, 3, 4 };
 static uint32_t writable_word = 5;
 
+/* cppcheck-suppress constParameterPointer ; a function pointer has no const pointee to add */
 static uintptr_t address_of_code(void (*function)(void))
 {
     uintptr_t address = 0;
