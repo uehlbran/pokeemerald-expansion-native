@@ -167,6 +167,25 @@ without the magic, what GBA emulators write, loads as `SAVE_FILE_LEGACY`
 image is the file's last 131072 bytes. Anything else is `SAVE_FILE_CORRUPT`
 and leaves an erased chip.
 
+`save_convert` moves a save between the 32-bit and the 64-bit layout, which
+differ in `SaveBlock1` only: its 64 object event templates and its Enigma
+Berry record hold pointers, so at 64 bits the block is 15768 bytes instead of
+15496 and its fourth sector holds 3864 bytes instead of 3592. For each save
+slot whose four `SaveBlock1` sectors are intact (signature, and checksums at
+the source's chunk sizes), it reassembles the block, moves it member by member
+through a segment table (the scripts zeroed, since the game refills them from
+the map on Continue; the Enigma Berry's descriptions zero-extended or
+truncated; padding zero; the Enigma Berry's checksum recomputed if it held),
+and writes it back with `CalculateChecksum`'s sums; any other slot, and every
+other sector, is left as it is, so the game's own slot fallback sees what it
+would have seen. The offsets are `save_layout32.h` and `save_layout64.h`, each
+pinned by static assertions in the build of its own width. Main converts a
+`SAVE_FILE_FOREIGN_LAYOUT` file with layout id 1, and, in the 64-bit build, a
+`SAVE_FILE_LEGACY` one, which it takes to have the 32-bit layout (its
+producers are emulators and the native builds from before the header). The
+image is not marked dirty: the file keeps its layout until the game saves.
+Gate (h), `tests/smoke/run_cross_width.sh`, plays a save across the widths.
+
 The frame loop must call `save_file_store()` whenever `flash_take_dirty()`
 returns true; that is what persists every path that writes flash, including
 the link saves and `TryWriteSpecialSaveSector`. Full contract: `flash.h`,

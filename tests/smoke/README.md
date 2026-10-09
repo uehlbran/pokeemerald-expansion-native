@@ -181,3 +181,42 @@ The summary screen's own state is static in expansion's code, so
 `summary_species` is the party menu's slot at the time the summary was opened
 (moving to another Pokemon inside the summary screen is not followed; the script
 opens each member from the party menu).
+
+# Gate (h): a save carried between the 32-bit and the 64-bit build
+
+`run_cross_width.sh` plays the first half of the opening on one build and the
+second half on the build of the other width, from the save file the first
+wrote, as a player moving the cartridge's save between the two would. The
+64-bit build lays out `SaveBlock1` differently (two members hold pointers), so
+the second build converts the save when it loads it (`platform/save_convert.h`;
+`docs/DECISIONS.md`, "Gate (h) is a platform-side save converter").
+
+```
+make -f Makefile.native -j"$(nproc)" native BITS=32
+make -f Makefile.native -j"$(nproc)" native BITS=64
+tests/smoke/run_cross_width.sh build/native32/pokeemerald-native build/native64/pokeemerald-native out/   # the gate
+tests/smoke/run_cross_width.sh build/native64/pokeemerald-native build/native32/pokeemerald-native out/   # the way back
+
+make -f Makefile.native -j"$(nproc)" native BITS=64 SANITIZE=1
+ASAN_OPTIONS=halt_on_error=0 tests/smoke/run_cross_width.sh build/native32/pokeemerald-native build/native64-san/pokeemerald-native out-san/
+```
+
+The arguments are FROM, TO and OUTDIR. Each step runs in its own directory of
+`OUTDIR/work/`, with its own copy of the save file:
+
+| Step | Build, script | Checked |
+|---|---|---|
+| `from/` | FROM, `opening.replay` cut just before its `restart` (a copy in the directory, with the file it includes) | exit 0, no sanitizer report, dumps `01_title` .. `25_saved` and their screenshots as in `expected/`, the save file's header names FROM's width and layout 1 |
+| `to/` | TO, `opening.replay` with `--resume-at` the `restart` line and `--rtc-fixed` advanced as `restart` advances it | `26_continue_menu` and `27_continued` and their screenshots as in `expected/`; `player_name`, `map`, `party0_species` and `party_count` of `27_continued` equal to FROM's `25_saved`; stderr says the save was converted; the file is unchanged (a conversion is not a game write) |
+| `bare/` | as `to/`, on the save without its 28-byte header; only when FROM is 32-bit | the same, and stderr says the file has no header |
+| `other/` | TO, no replay, `--frames 60`, on the save with its header's layout id patched to 2 | refused at start: exit status 1, the refusal on stderr, the file unchanged |
+| `again/` | TO, `cross_width_save.replay`: Continue, save, `restart`, Continue | the replay's `expect`s (one save before, two after); the header now names TO's width; `28_saved_again` and `29_continued_again` agree and show the scene of `27_continued` |
+
+Between them FROM and TO must write every dump and screenshot of
+`expected/`. The `restart` line is found from the expansion FROM wrote
+(`from/expanded.replay`, the cut script with its include expanded, ends just
+before it) and checked against the one TO wrote. A bare image is taken to have
+the 32-bit layout (R7 of milestone 7: its only producers are GBA emulators and
+native builds from before the header), which `bare/` checks.
+
+43 seconds plain from 32 to 64 bits (measured on 32 cores, 2026-10-09).

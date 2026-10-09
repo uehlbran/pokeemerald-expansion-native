@@ -46,6 +46,32 @@ grep_or_die() {
     return 0
 }
 
+# The facts of dump $1 that are compared: all but the volatile ones.
+facts_of() { grep_or_die -v -E "$volatile_facts" "$1"; }
+
+# The value of fact $2 in dump $1.
+fact() { grep_or_die "^$2=" "$1" | cut -d= -f2-; }
+
+# The sanitizer reports in the game's stderr $1, minus the known ones, written to $2 (and the
+# full list to $2.all); true if any is left. Files, not substitutions, so that a failing grep
+# stops the run.
+new_sanitizer_reports() {
+    local stderr_log="$1"
+    local new_findings="$2"
+    local findings="$2.all"
+    grep_or_die -E 'runtime error:|ERROR: AddressSanitizer|ERROR: LeakSanitizer|SUMMARY: (Address|Undefined|Leak)Sanitizer' \
+        "$stderr_log" > "$findings"
+    local known="$here/sanitizer-known.txt"
+    if [ -f "$known" ]; then
+        local patterns="$new_findings.known-patterns"
+        grep_or_die -v -e '^#' -e '^$' "$known" > "$patterns"
+        grep_or_die -v -F -f "$patterns" "$findings" > "$new_findings"
+    else
+        cp "$findings" "$new_findings" || die "cannot copy $findings"
+    fi
+    [ -s "$new_findings" ]
+}
+
 smoke_main() {
 local script="$SMOKE_SCRIPT"
 local expected="$SMOKE_EXPECTED"
@@ -82,26 +108,13 @@ if [ "$status" -ne 0 ]; then
     failures=$((failures + 1))
 fi
 
-# Sanitizer findings, minus the known ones (files, not substitutions, so that a failing grep stops the run).
-local findings="$work/sanitizer-findings.log"
+# Sanitizer findings, minus the known ones.
 local new_findings="$work/sanitizer-new.log"
-grep_or_die -E 'runtime error:|ERROR: AddressSanitizer|ERROR: LeakSanitizer|SUMMARY: (Address|Undefined|Leak)Sanitizer' \
-    "$work/stderr.log" > "$findings"
-local known="$here/sanitizer-known.txt"
-if [ -f "$known" ]; then
-    local patterns="$work/sanitizer-known-patterns.log"
-    grep_or_die -v -e '^#' -e '^$' "$known" > "$patterns"
-    grep_or_die -v -F -f "$patterns" "$findings" > "$new_findings"
-else
-    cp "$findings" "$new_findings" || die "cannot copy $findings"
-fi
-if [ -s "$new_findings" ]; then
+if new_sanitizer_reports "$work/stderr.log" "$new_findings"; then
     echo "FAIL: sanitizer reports in $work/stderr.log:"
     sort "$new_findings" | uniq -c | sort -rn | head -40
     failures=$((failures + 1))
 fi
-
-facts_of() { grep_or_die -v -E "$volatile_facts" "$1"; }
 
 if [ "$update" -eq 1 ]; then
     [ "$failures" -eq 0 ] || die "not updating the expectations from a failing run"
@@ -151,7 +164,6 @@ else
 fi
 
 # The save round trips: what the game saved is what Continue loaded.
-fact() { grep_or_die "^$2=" "$1" | cut -d= -f2-; }
 local trip before_dump after_dump keys key before after
 for trip in $SMOKE_ROUND_TRIP; do
     IFS=: read -r before_dump after_dump keys <<< "$trip"
