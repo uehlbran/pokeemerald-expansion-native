@@ -682,5 +682,92 @@ coordinate table, Extrasensory's and Zap Cannon's gSineTable[320], a
 non-affine animation loop) stay unfixed under SUITE-LOG's policy that a
 game-code read which changes no test result is documented, not patched;
 two of them (Doom Desire, Extrasensory) read a different value natively
-than the GBA for one animation frame, and a guarded fix returning the
-GBA's value is a candidate for the refactoring pass, recorded in STATUS.
+than the GBA for one animation frame; those two were then given the
+GBA's value at every width (the entry "Out-of-table reads that change a
+frame get the GBA's value" below).
+
+## 2026-10-09: A bare save image is read as the 32-bit layout, and conversion runs both ways
+
+The native save file carries a header with the layout width, but a file
+written before the header existed (the LEGACY form, a bare image) names
+no width. It is taken as the 32-bit layout (SAVE_CONVERT_BARE_IMAGE_POINTER_BITS
+in platform/save_convert.h): every such file was written by a 32-bit
+build, the only build that existed then. The converter runs in both
+directions (a 32-bit build reads a 64-bit save as well as the reverse),
+so the two builds can share one save directory without a one-way trap.
+A slot is converted only when all four SaveBlock1 sectors are intact
+with each id in exactly one sector; a slot that fails its own checksum
+is left for the game's own recovery, since converting a corrupt sector
+would hide the corruption from it. The cross-width script's fourth step
+(continue, save, restart, continue) checks the 64-bit header round trip.
+
+## 2026-10-09: At 64 bits the save blocks keep 32 positions by doubling the range, and the RFU carve uses fixed offsets
+
+The save blocks are moved to one of 32 positions in 4-byte steps on the
+GBA (SAVEBLOCK_MOVE_RANGE 128). At 64 bits an 8-byte step keeps the
+pointers aligned, and keeping 32 positions means doubling the range
+(256, the three aslr[] tails grow by 128 bytes each, 384 bytes of
+EWRAM); the alternative, 16 positions in the same range, would change
+how often the same trainer id and seed give the same position and is a
+behaviour change for no gain. The RFU library carves its work buffers
+from one array at hand-written offsets; at 64 bits those offsets are
+written out again as fixed numbers in upstream's style, with
+_Static_asserts pinning each one and RFU_API_BUFF_SIZE_RAM/ROM, rather
+than computed from sizeof, so a reader sees the same kind of table at
+both widths and the GBA text does not change.
+
+## 2026-10-09: The battle script operand check parses the macros and the readers, and skips commands that have no reader
+
+check_battle_script_operands.py expands every macro in
+asm/macros/battle_script.inc and compares each operand's width with the
+CMD_ARGS or NATIVE_ARGS struct member that src/battle_script_commands.c
+reads it through, at both pointer sizes, instead of keeping a checked-in
+table of widths: a table would have to be maintained by hand when
+upstream adds a command, and the check's purpose is to catch exactly
+that. Three upstream macros with no reader (tryKO, trymemento,
+tryupperhand) are skipped by name; a macro that writes operands and
+names no command is rejected. The relocation list gained the classes
+`operands` (battle script pointer operands, 8 bytes at 64) and `table`
+(hand-written pointer arrays, whose words must fill the symbol). The
+struct layouts the data checks compare against come from a probe
+compiled with the game's own flags during the build (data_layout_probe.c),
+not from numbers written into the scripts, so a flag change moves the
+reference with it.
+
+## 2026-10-09: The 64-bit division rule is compiled at both widths
+
+The x86-64 part of arm_division (REX.W, the 64-bit registers, the
+__udivdi3 rule) is compiled into the 32-bit build too, where it cannot
+run, rather than guarded out: one decoder with one set of tests at both
+widths, and the 32-bit executables stay byte-identical because the code
+is placed after the existing text (the reviewer and author kept the
+32-bit line numbers for the sanitized build). The duplicated plumbing
+that placement first required was merged in the refactoring pass.
+
+## 2026-10-09: The test table check uses weak symbols and succeeds silently
+
+crt0_init checks that the .tests section holds a whole number of entries
+of the size test/test_runner.c declares (gPlatformTestEntrySize). The
+size and the sentinel are weak references in crt0.c, so a build without
+the test runner has no check and no dependency on test code; the check
+walks the entries rather than dividing the byte count, because a
+padded table can still be a multiple of the entry size. On success it
+prints one line to stderr (the count and entry size) rather than nothing,
+so a run's log shows the table was checked. The hydra ignores ELF64
+symbols above 4 GiB: its Symbol.address is 32 bits, and every game symbol
+is below 4 GiB by the memory model, so widening it would be dead code.
+
+## 2026-10-09: Out-of-table reads that change a frame get the GBA's value, at every width
+
+Two animation reads past a table (Doom Desire's coordinate table at
+index 4, gSineTable[320] from Extrasensory and from Cos with an unmasked
+angle) read a different value natively than on the GBA for one frame,
+and a different value again at 64 bits. They are given the GBA's value
+(0 and 0x041E, with the ROM address as evidence) under the guard at
+every width, not only at 64, so the two native builds draw the same
+frame as the GBA; the fix is small, has ROM evidence and is worth
+reporting upstream, so SUITE-LOG's "documented, not patched" policy
+does not apply. Cos is fixed only at index 320: the other out-of-range
+indices (336 and on, -64) have no evidence gathered and stay as upstream
+wrote them. The constants live in trig.h so the psychic step and Cos
+share one definition.
