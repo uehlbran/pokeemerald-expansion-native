@@ -7,8 +7,10 @@
  * members of SaveBlock1 hold pointers, so a 32-bit build's save and a 64-bit
  * build's differ (docs/DECISIONS.md, "Gate (h) is a platform-side save
  * converter"); save_convert.c moves a save between the two using this table
- * and save_layout64.h. The 32-bit layout is the GBA's (i386 and ARM agree on
- * the size and alignment of every member), so an emulator's save has it too.
+ * and save_layout64.h. The 32-bit layout is i386's, not the GBA's: the GBA
+ * build rounds SaveBlock1 to 15568 bytes (docs/DECISIONS.md, the host
+ * struct ABI decision), so an emulator's save is not in this layout and is
+ * not supported.
  *
  * Every value is pinned by a static assertion in save_convert.c, compiled
  * with the game's flags, in every 32-bit build: an upstream change to
