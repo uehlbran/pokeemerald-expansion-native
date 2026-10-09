@@ -835,3 +835,25 @@ model is a milestone of its own that could reasonably be declined
 (x86_64 builds run on Apple silicon through Rosetta). Probes on the
 runners (W1, M0) settle the loader questions before any port code is
 written, because those facts cannot be measured here.
+
+## 2026-10-09: The data for Windows and macOS is assembled on Linux and converted, not re-assembled
+
+Expansion's data is assembler text in GNU as's dialect (macros, `.if`
+over symbols, `::` labels with `.size` from preproc) that only GNU as
+accepts: clang's assembler, the only one on macOS, gives 20,134 errors
+on event_scripts.s alone and COFF has no 16-bit relocation for the 8
+words that need one (`research/m8-inventory.md` 1.3). The inventory's
+two routes were per-format rules in asm_filter.py for Windows (MinGW's
+as is GNU as) plus a converter for macOS, or one converter for both.
+Decision: one converter for both, `platform/build_glue/`, reading the
+ELF objects the Linux 64-bit build already assembles and checks (the
+three link-time checks, `elf_object.py`) and writing a flat listing
+(labels, `.byte`/`.long`/`.quad` with symbol plus addend, alignment,
+section switches, the target's symbol prefix) that clang and MinGW's
+as accept, with the 16-bit words given their values. One path means
+the data every port links is byte-for-byte the data the Linux checks
+passed, and a second format costs a table of spellings, not a second
+dialect. The Linux build keeps assembling directly; the converter is an
+additional output, gated by a checker that compares each converted
+object's section bytes and relocations with the ELF object's, for both
+targets, on Linux (clang 18 here cross-assembles both).
