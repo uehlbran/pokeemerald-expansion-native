@@ -141,8 +141,8 @@ TEST=1 make -j"$(nproc)" check 2>&1 | tee check.log
 ```
 
 Write `docs/research/gba-baseline-<tag>.md` in the form of
-`gba-baseline-1.17.1.md`: date, toolchain versions, the six counts
-(PASSED, KNOWN_FAILING, EXPECT_FAILING, TO_DO, TOTAL, and the exit code).
+`gba-baseline-1.17.1.md`: date, toolchain versions, the five counts
+(PASSED, KNOWN_FAILING, EXPECT_FAILING, TO_DO, TOTAL) and the exit code.
 It must agree with the reference build in the worktree from step 1;
 if it does not, the guards changed what the GBA tests do. Update the
 totals quoted in `BUILDING.md`, `STATUS.md`, `CONTRIBUTING.md`, and
@@ -173,7 +173,7 @@ git diff OLD NEW -- tools/mgba-rom-test-hydra tools/patchelf tools/scaninc tools
   `overworld_macros.py`: new assembler constructs or `preproc` output.
 - The assembly translated or replaced in `platform/`: `src/m4a_1.s`
   (`platform/m4a/`; its differential test against the ARM original needs
-  qemu-arm and is run by hand, see `platform/m4a/README.md`),
+  `make -C platform/m4a/difftest run`, by hand; needs qemu-arm, see `platform/m4a/README.md`),
   `src/crt0.s`, `src/decompress_asm.s`, `src/libgcnmultiboot.s`,
   `src/rom_header.s`. A change in any of them is a change in a platform
   module.
@@ -206,7 +206,7 @@ seed-assets` after the GBA build makes it faster. `BUILDING.md`.)
   with the tag.
 - A new failure class: use `platform/test_runner/SUITE-LOG.md`, "How a
   failure is found" to locate the site, then fix it under a guard with a
-  row (step 3's checklist below says what to look for).
+  row (the checklist at the end says what to look for).
 - The two replays, plain and sanitized:
 
   ```
@@ -333,9 +333,8 @@ first port; the logs are `platform/build_glue/BOOT-LOG.md` and
 
 ## Findings
 
-- `rom.sha1` in the repository root holds `f3ae0881...`, upstream's value
-  for its default build; `STATUS.md` records `e2d4600d...` as the sha1
+- `rom.sha1` in the repository root holds `f3ae0881...`, upstream's file; `STATUS.md` records `e2d4600d...` as the sha1
   of the GBA build here, built before and after our changes. This file
   uses the sha1 of a fresh build of each tag, not `rom.sha1`, and has
-  not established why the two differ (probably the compiler version);
+  not established why the two differ (not investigated);
   settle it on the first upgrade and replace this note.
