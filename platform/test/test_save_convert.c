@@ -449,6 +449,94 @@ PTEST(a_64_bit_save_is_not_taken_for_a_32_bit_one)
     PT_ASSERT_MEM_EQ(image, original, CHIP_BYTES);
 }
 
+PTEST(the_save_counter_does_not_decide_which_slot_is_converted)
+{
+    /* Both slots intact: the converter moves both, whichever the game would
+     * load (the higher counter), and leaves each counter as it was. */
+    static const uint32_t counters[][2] = {{1, 2}, {5, 5}, {0, UINT32_MAX}, {UINT32_MAX, 0}};
+    static uint8_t expected0[SB1_CAPACITY];
+    static uint8_t expected1[SB1_CAPACITY];
+    for (size_t i = 0; i < sizeof counters / sizeof counters[0]; i++) {
+        make_image_32();
+        write_slot(0, ROTATION_0, counters[i][0], block0, SB1_32);
+        write_slot(1, ROTATION_1, counters[i][1], block1, SB1_32);
+        memcpy(original, image, sizeof image);
+        expected_64(block0, expected0);
+        expected_64(block1, expected1);
+
+        PT_ASSERT_EQ_INT(save_convert_image(image, 32, 64), 2);
+        check_slot(0, ROTATION_0, expected0, SB1_64);
+        check_slot(1, ROTATION_1, expected1, SB1_64);
+        check_special_sectors_untouched();
+    }
+}
+
+PTEST(saveblock1_in_the_last_sector_of_the_slot_and_of_the_save_area_is_converted)
+{
+    /* Slot 1 rotated so that id 4 is at position 13, flash sector 27, the
+     * last one the game's slots use; slot 0 so that id 1 is at its position
+     * 13 (sector 13) and the others wrap to the start. The sectors after
+     * (28 to 31) are the special ones and stay. */
+    static uint8_t expected0[SB1_CAPACITY];
+    static uint8_t expected1[SB1_CAPACITY];
+    const uint32_t rotation_0 = 12;
+    const uint32_t rotation_1 = 9;
+    make_image_32();
+    write_slot(0, rotation_0, COUNTER_0, block0, SB1_32);
+    write_slot(1, rotation_1, COUNTER_1, block1, SB1_32);
+    memcpy(original, image, sizeof image);
+    expected_64(block0, expected0);
+    expected_64(block1, expected1);
+    PT_ASSERT(sector_of_id(1, rotation_1, 4) == image + 27 * SECTOR_BYTES);
+
+    PT_ASSERT_EQ_INT(save_convert_image(image, 32, 64), 2);
+    check_slot(0, rotation_0, expected0, SB1_64);
+    check_slot(1, rotation_1, expected1, SB1_64);
+    check_special_sectors_untouched();
+}
+
+PTEST(valid_saveblock1_sectors_beyond_the_two_slots_are_not_read_or_changed)
+{
+    /* Sectors 28 to 31 hold a valid-looking id 1 to 4 each (as a Hall of
+     * Fame or a recorded battle never would): the converter reads the two
+     * slots only, so these neither count as a second copy nor change. */
+    make_image_32();
+    for (uint32_t id = SB1_FIRST_ID; id < SB1_FIRST_ID + SB1_CHUNKS; id++)
+        memcpy(image + (SLOTS * SECTORS_PER_SLOT + id - SB1_FIRST_ID) * SECTOR_BYTES, sector_of_id(0, ROTATION_0, id),
+               SECTOR_BYTES);
+    memcpy(original, image, sizeof image);
+
+    PT_ASSERT_EQ_INT(save_convert_image(image, 32, 64), 2);
+    check_special_sectors_untouched();
+}
+
+PTEST(a_sector_id_just_outside_saveblock1_is_not_a_chunk)
+{
+    /* id 9's sector says id 0xFFFF (signature and checksum as they were):
+     * not SaveBlock1's, so the slot still converts and that sector stays. */
+    static uint8_t expected0[SB1_CAPACITY];
+    make_image_32();
+    expected_64(block0, expected0);
+    uint8_t *other = sector_of_id(0, ROTATION_0, 9);
+    put_u16(other + ID_AT, UINT16_MAX);
+    memcpy(original, image, sizeof image);
+
+    PT_ASSERT_EQ_INT(save_convert_image(image, 32, 64), 2);
+    check_slot(0, ROTATION_0, expected0, SB1_64);
+    PT_ASSERT_EQ_U32(get_u16(other + ID_AT), UINT16_MAX);
+}
+
+PTEST(the_checksums_cannot_tell_which_width_a_save_has_so_the_callers_width_decides)
+{
+    /* save_convert.h: SaveBlock1's last sector is zero past its 32-bit data,
+     * so a 32-bit image passes the 64-bit chunk sizes' checksums (the way
+     * back converts it); a 64-bit one fails the 32-bit sizes' (nothing is
+     * converted, the test above). The file header tells the caller. */
+    make_image_32();
+    PT_ASSERT_EQ_INT(save_convert_image(image, 64, 32), 2);
+    PT_ASSERT(memcmp(image, original, CHIP_BYTES) != 0);
+}
+
 PTEST(bad_arguments_change_nothing)
 {
     make_image_32();
@@ -468,11 +556,11 @@ PTEST(a_bare_image_is_taken_to_have_the_32_bit_layout)
 
 /* ---- 64 to 32 ---- */
 
-PTEST(the_way_back_restores_the_32_bit_save_but_its_scripts)
+/* make_image_32 with every object event template's script zero, which a
+ * round trip restores (the scripts are not carried over). */
+static void make_image_32_without_scripts(void)
 {
     make_image_32();
-    /* The scripts do not survive (they are refilled from the map on
-     * Continue); with them zero from the start the round trip is exact. */
     for (uint32_t slot = 0; slot < SLOTS; slot++) {
         uint8_t *block = slot == 0 ? block0 : block1;
         for (uint32_t t = 0; t < TEMPLATE_COUNT; t++)
@@ -480,8 +568,30 @@ PTEST(the_way_back_restores_the_32_bit_save_but_its_scripts)
         write_slot(slot, slot == 0 ? ROTATION_0 : ROTATION_1, slot == 0 ? COUNTER_0 : COUNTER_1, block, SB1_32);
     }
     memcpy(original, image, sizeof image);
+}
+
+PTEST(the_way_back_restores_the_32_bit_save_but_its_scripts)
+{
+    /* The scripts do not survive (they are refilled from the map on
+     * Continue); with them zero from the start the round trip is exact. */
+    make_image_32_without_scripts();
 
     PT_ASSERT_EQ_INT(save_convert_image(image, 32, 64), 2);
+    PT_ASSERT_EQ_INT(save_convert_image(image, 64, 32), 2);
+    PT_ASSERT_MEM_EQ(image, original, CHIP_BYTES);
+}
+
+PTEST(the_same_image_moved_to_64_and_back_twice_ends_where_it_began_and_agrees_with_itself)
+{
+    static uint8_t at_64[CHIP_BYTES];
+    make_image_32_without_scripts();
+
+    PT_ASSERT_EQ_INT(save_convert_image(image, 32, 64), 2);
+    memcpy(at_64, image, sizeof image);
+    PT_ASSERT_EQ_INT(save_convert_image(image, 64, 32), 2);
+    PT_ASSERT_MEM_EQ(image, original, CHIP_BYTES);
+    PT_ASSERT_EQ_INT(save_convert_image(image, 32, 64), 2);
+    PT_ASSERT_MEM_EQ(image, at_64, CHIP_BYTES);
     PT_ASSERT_EQ_INT(save_convert_image(image, 64, 32), 2);
     PT_ASSERT_MEM_EQ(image, original, CHIP_BYTES);
 }

@@ -102,8 +102,17 @@ PTEST(crt0_restart_zeroes_game_bss_and_restores_game_data)
     game_data_word = UINT32_C(0x1234ABCD);
 }
 
-/* What the test runner build defines (test/test_runner.c), at 64 bits. */
+/* What the test runner build defines (test/test_runner.c), at 64 bits: the
+ * entry size, and the walk of the table that returns the index of the first
+ * entry with a null name, filename or runner, or -1. Here the walk returns
+ * what a test sets. */
 const size_t gPlatformTestEntrySize = 40;
+static int bad_test_table_entry = -1;
+
+int PlatformTestTableBadEntry(void)
+{
+    return bad_test_table_entry;
+}
 
 PTEST(test_table_of_whole_entries_is_counted)
 {
@@ -125,11 +134,43 @@ PTEST(test_table_with_padded_entries_is_refused)
     PT_ASSERT_EQ_INT(crt0_check_test_table(40, 40, NULL), CRT0_ERR_BAD_TEST_TABLE);
 }
 
+PTEST(test_table_shorter_than_one_entry_or_one_byte_over_is_refused)
+{
+    size_t count = 99;
+    PT_ASSERT_EQ_INT(crt0_check_test_table(39, 40, &count), CRT0_ERR_BAD_TEST_TABLE);
+    PT_ASSERT_EQ_INT(crt0_check_test_table(41, 40, &count), CRT0_ERR_BAD_TEST_TABLE);
+    PT_ASSERT_EQ_INT(crt0_check_test_table(SIZE_MAX, 40, &count), CRT0_ERR_BAD_TEST_TABLE);
+    PT_ASSERT_EQ_INT(crt0_check_test_table(SIZE_MAX, 1, &count), CRT0_OK);
+    PT_ASSERT(count == SIZE_MAX);
+    PT_ASSERT_EQ_INT(crt0_check_test_table(0, 0, &count), CRT0_ERR_BAD_TEST_TABLE);
+}
+
 PTEST(crt0_init_checks_the_empty_test_table_of_a_test_runner_link)
 {
     /* gba_game.ld's .tests is empty here: 0 tests of 40 bytes. */
     PT_ASSERT_EQ_INT(crt0_init(), CRT0_OK);
     crt0_shutdown();
+}
+
+PTEST(crt0_init_refuses_a_test_table_whose_entries_are_padded_and_keeps_no_copy)
+{
+    ewram_init_byte = 0x5A;
+    PT_ASSERT_EQ_INT(crt0_init(), CRT0_OK); /* an earlier good init, dropped by the next */
+    bad_test_table_entry = 0;               /* the first entry; the index only goes into the report */
+    PT_ASSERT_EQ_INT(crt0_init(), CRT0_ERR_BAD_TEST_TABLE);
+    bad_test_table_entry = 1000;
+    PT_ASSERT_EQ_INT(crt0_init(), CRT0_ERR_BAD_TEST_TABLE);
+    /* No copy is in use after the failure: a restart changes nothing. */
+    ewram_init_byte = 0x77;
+    game_data_word = 7;
+    crt0_restart();
+    ReInitializeEWRAM();
+    PT_ASSERT_EQ_INT(ewram_init_byte, 0x77);
+    PT_ASSERT_EQ_U32(game_data_word, 7);
+    bad_test_table_entry = -1;
+    ewram_init_byte = 0x5A;
+    game_data_word = UINT32_C(0x1234ABCD);
+    crt0_shutdown(); /* safe after a failed init */
 }
 
 PTEST_MAIN()
