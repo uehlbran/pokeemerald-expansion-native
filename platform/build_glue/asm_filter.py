@@ -33,13 +33,19 @@ with '--pointer-size 4', the output is the same as before the option
 existed.
 
 Reads stdin, writes stdout. Run as
-'python3 -I asm_filter.py [--pointer-size 4|8] [--input KIND]'.
+'python3 -I asm_filter.py [--pointer-size 4|8] [--input KIND] [--source NAME]';
+NAME, the file the text came from, only prefixes an error message.
 'python3 -I asm_filter.py --self-test' checks the rules above and exits
 non-zero on a failure.
 """
 
+import os
 import re
 import sys
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))   # python3 -I leaves the script's directory off
+from check_support import parse_options  # noqa: E402
+from asm_syntax import operand_count, parse_statement, split_statements, strip_comment  # noqa: E402
 
 # ARM directive -> the x86 directive with the same meaning.
 DIRECTIVE_RENAMES = {
@@ -53,69 +59,6 @@ DIRECTIVE = re.compile(
     r"^(\s*(?:[^\s:;\"']+::?\s*)*)(" +
     "|".join(re.escape(name) for name in DIRECTIVE_RENAMES) +
     r")\b")
-
-
-def end_of_string(line, start):
-    """Index just past the string literal opening at line[start] ('"').
-
-    An unterminated string runs to the end of the line."""
-    index = start + 1
-    while index < len(line):
-        if line[index] == "\\":
-            index += 2
-        elif line[index] == '"':
-            return index + 1
-        else:
-            index += 1
-    return len(line)
-
-
-def end_of_char_constant(line, start):
-    """Index just past the character constant opening at line[start] (').
-
-    GAS writes a character constant as 'c or '\\c; a closing quote, as in
-    C's 'c', is accepted and skipped."""
-    index = start + 1
-    if index < len(line) and line[index] == "\\":
-        index += 1
-    index += 1
-    if index < len(line) and line[index] == "'":
-        index += 1
-    return min(index, len(line))
-
-
-def code_positions(line):
-    """Yield the index of each character outside string and character literals."""
-    index = 0
-    while index < len(line):
-        char = line[index]
-        if char == '"':
-            index = end_of_string(line, index)
-        elif char == "'":
-            index = end_of_char_constant(line, index)
-        else:
-            yield index
-            index += 1
-
-
-def strip_comment(line):
-    """Return the line without an ARM '@' comment."""
-    for index in code_positions(line):
-        if line[index] == "@" and not (index > 0 and line[index - 1] == "\\"):
-            return line[:index].rstrip() + "\n"
-    return line
-
-
-def split_statements(line):
-    """Split a line on the ';' statement separators outside literals."""
-    parts = []
-    start = 0
-    for index in code_positions(line):
-        if line[index] == ";":
-            parts.append(line[start:index])
-            start = index + 1
-    parts.append(line[start:])
-    return parts
 
 
 def rename_directive(statement):
@@ -200,33 +143,8 @@ POINTER_ALIGN = ".balign 8"
 POINTER_WORD = ".8byte"
 SONG_HEADER_PADDING = ".space 4"
 
-LABEL = re.compile(r"\s*([A-Za-z_.$][\w.$]*)(::?)")
-DIRECTIVE_NAME = re.compile(r"\s*(\.[\w.]+)")
-
-
 class FilterError(Exception):
     """Input the 8-byte rules do not recognise; the build must stop."""
-
-
-def parse_statement(statement):
-    """(labels defined, directive or None, start and end of the directive)."""
-    labels = []
-    position = 0
-    while True:
-        match = LABEL.match(statement, position)
-        if not match:
-            break
-        labels.append(match.group(1))
-        position = match.end()
-    match = DIRECTIVE_NAME.match(statement, position)
-    if not match:
-        return labels, None, position, position
-    return labels, match.group(1), match.start(1), match.end(1)
-
-
-def operand_count(statement, end):
-    """Number of comma-separated operands after the directive ending at end."""
-    return len([operand for operand in statement[end:].split(",") if operand.strip()])
 
 
 def with_directive(statement, start, end, directive):
@@ -289,21 +207,23 @@ def widen_tables(lines):
 
 def widen_mapjson(lines):
     """The 'mapjson' rule."""
+    label = None
     scalars = 0
     padding = None
 
     def visit(labels, directive, statement, start, end):
-        nonlocal scalars, padding
+        nonlocal label, scalars, padding
         prefix = None
         if labels:
+            label = labels[-1]
             prefix = POINTER_ALIGN
             scalars, padding = 0, None
             for suffix, count, pad in MAPJSON_SCALAR_WORDS:
-                if labels[-1].endswith(suffix):
+                if label.endswith(suffix):
                     scalars, padding = count, pad
         if directive == ".4byte" and scalars:
             if operand_count(statement, end) != 1:
-                raise FilterError("mapjson: one word per statement expected, got %r" % statement.strip())
+                raise FilterError("mapjson: %s: one word per statement expected, got %r" % (label, statement.strip()))
             scalars -= 1
         elif directive == ".4byte":
             statement = with_directive(statement, start, end, POINTER_WORD)
@@ -315,44 +235,74 @@ def widen_mapjson(lines):
     yield "\t%s\n" % POINTER_ALIGN
 
 
+def last_label_line(lines):
+    """Index of the last line (a list of statements) that defines a label, or None."""
+    header = None
+    for number, statements in enumerate(lines):
+        if any(parse_statement(statement).labels for statement in statements):
+            header = number
+    return header
+
+
+class SongHeaderWidener:
+    """The statements of a song's header, in order: the label, the four
+    bytes, then one voicegroup word and one word per track. Each is passed
+    to visit(); the label is aligned, the first word is preceded by
+    padding, and every word is 8 bytes."""
+
+    def __init__(self, label):
+        self.label = label
+        self.bytes_seen = 0
+        self.widened = False
+
+    def unexpected(self, statement):
+        return FilterError("song header %s: unexpected %r" % (self.label, statement.strip()))
+
+    def visit(self, first_line, statement):
+        """(the statement, a directive to put before it or None)."""
+        labels, directive, start, end = parse_statement(statement)
+        prefix = None
+        if labels and first_line:
+            prefix = POINTER_ALIGN
+        elif labels:
+            raise self.unexpected(statement)
+        if directive == ".byte" and not self.widened:
+            self.bytes_seen += operand_count(statement, end)
+        elif directive == ".4byte":
+            statement = with_directive(statement, start, end, POINTER_WORD)
+            if not self.widened:
+                if self.bytes_seen != SONG_HEADER_BYTES:
+                    raise FilterError("song header %s: %d bytes before the first word, not %d"
+                                      % (self.label, self.bytes_seen, SONG_HEADER_BYTES))
+                prefix = SONG_HEADER_PADDING
+                self.widened = True
+        elif directive not in (None, ".end"):
+            raise self.unexpected(statement)
+        return statement, prefix
+
+
 def widen_song(lines):
     """The 'song' rule on a whole (filtered) song file."""
     lines = [split_statements(line) for line in lines]
-    header = None
-    for number, statements in enumerate(lines):
-        if any(parse_statement(statement)[0] for statement in statements):
-            header = number
+    header = last_label_line(lines)
     if header is None:
-        raise FilterError("song: no label, so no header")
+        raise FilterError("song: no label, so no header (expected the song's label before its header bytes)")
     for statements in lines[:header]:
         yield ";".join(statements)
-    header_bytes = 0
-    widened = False
+    label = next(label for statement in lines[header] for label in parse_statement(statement).labels)
+    widener = SongHeaderWidener(label)
     for number, statements in enumerate(lines[header:]):
         prefixes = {}
         for index, statement in enumerate(statements):
-            labels, directive, start, end = parse_statement(statement)
-            if labels and number == 0:
-                prefixes[index] = POINTER_ALIGN
-            elif labels:
-                raise FilterError("song header: unexpected %r" % statement.strip())
-            if directive == ".byte" and not widened:
-                header_bytes += operand_count(statement, end)
-            elif directive == ".4byte":
-                statements[index] = with_directive(statement, start, end, POINTER_WORD)
-                if not widened:
-                    if header_bytes != SONG_HEADER_BYTES:
-                        raise FilterError("song header: %d bytes before the first word, not %d"
-                                          % (header_bytes, SONG_HEADER_BYTES))
-                    prefixes[index] = SONG_HEADER_PADDING
-                    widened = True
-            elif directive not in (None, ".end"):
-                raise FilterError("song header: unexpected %r" % statement.strip())
-        for index, directive in prefixes.items():
-            with_prefix(statements, index, directive)
+            statements[index], prefix = widener.visit(number == 0, statement)
+            if prefix:
+                prefixes[index] = prefix
+        for index, prefix in prefixes.items():
+            with_prefix(statements, index, prefix)
         yield ";".join(statements)
-    if not widened:
-        raise FilterError("song header: no word after the song's last label")
+    if not widener.widened:
+        raise FilterError("song header %s: no word after the song's last label (expected the voicegroup and track words)"
+                          % label)
 
 
 WIDEN = {"data": widen_tables, "mapjson": widen_mapjson, "song": widen_song}
@@ -517,16 +467,16 @@ SELF_TEST_PROGRAMS = (
     (8, "song", SONG, SONG_8),
     (8, "song", "mus_y: .byte 1, 2, 3, 4 ; .word a, b\n",
      "\t.balign 8\nmus_y: .byte 1, 2, 3, 4 ;\t.space 4 ; .8byte a, b\n"),
-    (8, "song", SONG.replace("\t.byte\t0\t@ NumBlks\n", ""), FilterError("3 bytes before the first word, not 4")),
-    (8, "song", SONG.replace("\t.end\n", "\t.byte 1\n"), FilterError("unexpected '.byte 1'")),
-    (8, "song", SONG.replace("\t.end\n", "other:\n"), FilterError("no word after the song's last label")),
+    (8, "song", SONG.replace("\t.byte\t0\t@ NumBlks\n", ""), FilterError("song header mus_x: 3 bytes before the first word, not 4")),
+    (8, "song", SONG.replace("\t.end\n", "\t.byte 1\n"), FilterError("song header mus_x: unexpected '.byte 1'")),
+    (8, "song", SONG.replace("\t.end\n", "other:\n"), FilterError("song header other: no word after the song's last label")),
     (8, "song", "\t.byte 1\n", FilterError("no label")),
     (8, "data", TABLES, TABLES_8),
     (4, "data", TABLES, "".join(filter_line(line) for line in TABLES.splitlines(True))),
     (8, "mapjson", MAPS, MAPS_8),
     (8, "mapjson", "Y_MapConnections: .4byte 2 ; .word L\n",
      "\t.balign 8\nY_MapConnections: .4byte 2 ;\t.space 4 ; .8byte L\n\t.balign 8\n"),
-    (8, "mapjson", "X_Layout::\n\t.4byte 30, 20\n", FilterError("one word per statement expected")),
+    (8, "mapjson", "X_Layout::\n\t.4byte 30, 20\n", FilterError("mapjson: X_Layout: one word per statement expected, got '.4byte 30, 20'")),
     # A label ends the scalar words and the padding of the one before it.
     (8, "mapjson", "A_MapConnections:\nB:\n\t.4byte p\n",
      "\t.balign 8\nA_MapConnections:\n\t.balign 8\nB:\n\t.8byte p\n\t.balign 8\n"),
@@ -561,27 +511,24 @@ def self_test():
     return 0
 
 
-USAGE = ("usage: asm_filter.py [--pointer-size 4|8] [--input %s] < input > output | --self-test\n"
+USAGE = ("usage: asm_filter.py [--pointer-size 4|8] [--input %s] [--source NAME] < input > output | --self-test\n"
          % "|".join(INPUT_KINDS))
+STDIN_NAME = "<stdin>"
 
 
 def main(argv):
     args = argv[1:]
     if args == ["--self-test"]:
         return self_test()
-    options = {"--pointer-size": "4", "--input": "data"}
-    choices = {"--pointer-size": ("4", "8"), "--input": INPUT_KINDS}
-    while len(args) >= 2 and args[0] in options and args[1] in choices[args[0]]:
-        options[args[0]] = args[1]
-        args = args[2:]
-    if args:
+    options, rest = parse_options(args, {"--pointer-size": ("4", "8"), "--input": INPUT_KINDS, "--source": None})
+    if rest:
         sys.stderr.write(USAGE)
         return 2
     try:
-        for line in filter_program(sys.stdin, int(options["--pointer-size"]), options["--input"]):
+        for line in filter_program(sys.stdin, int(options.get("--pointer-size", "4")), options.get("--input", "data")):
             sys.stdout.write(line)
     except FilterError as error:
-        sys.stderr.write("asm_filter: %s\n" % error)
+        sys.stderr.write("asm_filter: %s: %s\n" % (options.get("--source", STDIN_NAME), error))
         return 1
     return 0
 

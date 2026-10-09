@@ -38,10 +38,10 @@ from check_support import CheckError  # noqa: E402
 ELF_MAGIC = b"\x7fELF"
 ELFCLASS64 = 2
 ELFDATA2LSB = 1
-ET_REL_HEADER_FIELDS = "<IIQQQQIIQQ"   # Elf64_Shdr: name, type, flags, addr, offset, size, link, info, addralign, entsize
-EHDR_E_SHOFF = 0x28
-EHDR_E_SHENTSIZE = 0x3A                # then e_shnum, e_shstrndx (u16 each)
-EHDR_E_SHENTSIZE_FIELDS = "<HHH"
+SECTION_HEADER_FIELDS = "<IIQQQQIIQQ"   # Elf64_Shdr: name, type, flags, addr, offset, size, link, info, addralign, entsize
+SECTION_HEADERS_AT_FIELD = 0x28          # e_shoff, a u64
+SECTION_TABLE_AT = 0x3A               # e_shentsize, e_shnum, e_shstrndx (u16 each)
+SECTION_TABLE_FIELDS = "<HHH"
 SYMBOL_ENTRY_SIZE = 24                 # Elf64_Sym
 SYMBOL_FIELDS = "<IBBHQQ"              # name, info, other, shndx, value, size
 RELA_ENTRY_SIZE = 24                   # Elf64_Rela
@@ -113,9 +113,9 @@ def read_elf64(path):
 def parse_elf64(path, data):
     if data[:4] != ELF_MAGIC or data[4:6] != bytes((ELFCLASS64, ELFDATA2LSB)):
         raise CheckError("%s: expected a little-endian ELF64 object" % path)
-    section_headers_at, = struct.unpack_from("<Q", data, EHDR_E_SHOFF)
-    entry_size, count, names_index = struct.unpack_from(EHDR_E_SHENTSIZE_FIELDS, data, EHDR_E_SHENTSIZE)
-    headers = [struct.unpack_from(ET_REL_HEADER_FIELDS, data, section_headers_at + index * entry_size)
+    section_headers_at, = struct.unpack_from("<Q", data, SECTION_HEADERS_AT_FIELD)
+    entry_size, count, names_index = struct.unpack_from(SECTION_TABLE_FIELDS, data, SECTION_TABLE_AT)
+    headers = [struct.unpack_from(SECTION_HEADER_FIELDS, data, section_headers_at + index * entry_size)
                for index in range(count)]
 
     def string(table, offset):
@@ -213,7 +213,7 @@ def self_test_refusals(failures, directory, good_path):
             ("not ELF", b"hello" * 20, "expected a little-endian ELF64 object"),
             ("ELF32", elf32, "expected a little-endian ELF64 object"),
             ("big-endian", big_endian, "expected a little-endian ELF64 object"),
-            ("truncated headers", good[:EHDR_E_SHOFF + 8 + 8], "truncated or malformed"),
+            ("truncated headers", good[:SECTION_HEADERS_AT_FIELD + 8 + 8], "truncated or malformed"),
             ("truncated section table", good[:len(good) - 40], "truncated or malformed")):
         path = os.path.join(directory, "bad.o")
         with open(path, "wb") as handle:
