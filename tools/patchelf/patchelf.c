@@ -12,6 +12,80 @@
 
 static bool try_patch_value(const char *sym, char *dest, const char *source, size_t size);
 
+// The ELF class picks the structures: the GBA ROM's ELF and the 32-bit native
+// executable are ELF32, the 64-bit native executable ELF64. These read the
+// fields of either with the width of the class folded away.
+struct ElfImage
+{
+    const char *base;
+    bool is64;
+    unsigned shnum;
+    unsigned shstrndx;
+};
+
+struct ElfSection
+{
+    unsigned name;
+    uint64_t addr;
+    uint64_t offset;
+    uint64_t size;
+    uint64_t entsize;
+};
+
+struct ElfSymbol
+{
+    unsigned name;
+    unsigned shndx;
+    uint64_t value;
+    uint64_t size;
+};
+
+static bool read_image(struct ElfImage *image, const char *base)
+{
+    image->base = base;
+    if (base[EI_CLASS] == ELFCLASS32)
+        image->is64 = false;
+    else if (base[EI_CLASS] == ELFCLASS64)
+        image->is64 = true;
+    else
+        return false;
+    image->shnum = image->is64 ? ((const Elf64_Ehdr *)base)->e_shnum : ((const Elf32_Ehdr *)base)->e_shnum;
+    image->shstrndx = image->is64 ? ((const Elf64_Ehdr *)base)->e_shstrndx : ((const Elf32_Ehdr *)base)->e_shstrndx;
+    return true;
+}
+
+static struct ElfSection read_section(const struct ElfImage *image, unsigned index)
+{
+    struct ElfSection section;
+    if (image->is64)
+    {
+        const Elf64_Shdr *shdr = &((const Elf64_Shdr *)(image->base + ((const Elf64_Ehdr *)image->base)->e_shoff))[index];
+        section = (struct ElfSection){ shdr->sh_name, shdr->sh_addr, shdr->sh_offset, shdr->sh_size, shdr->sh_entsize };
+    }
+    else
+    {
+        const Elf32_Shdr *shdr = &((const Elf32_Shdr *)(image->base + ((const Elf32_Ehdr *)image->base)->e_shoff))[index];
+        section = (struct ElfSection){ shdr->sh_name, shdr->sh_addr, shdr->sh_offset, shdr->sh_size, shdr->sh_entsize };
+    }
+    return section;
+}
+
+static struct ElfSymbol read_symbol(const struct ElfImage *image, const struct ElfSection *symtab, unsigned index)
+{
+    struct ElfSymbol symbol;
+    if (image->is64)
+    {
+        const Elf64_Sym *sym = &((const Elf64_Sym *)(image->base + symtab->offset))[index];
+        symbol = (struct ElfSymbol){ sym->st_name, sym->st_shndx, sym->st_value, sym->st_size };
+    }
+    else
+    {
+        const Elf32_Sym *sym = &((const Elf32_Sym *)(image->base + symtab->offset))[index];
+        symbol = (struct ElfSymbol){ sym->st_name, sym->st_shndx, sym->st_value, sym->st_size };
+    }
+    return symbol;
+}
+
 int main(int argc, char *argv[])
 {
     int exit_code = 1;
@@ -50,37 +124,24 @@ int main(int argc, char *argv[])
         goto error;
     }
 
-    // The ELF class picks the structures: the GBA ROM's ELF and the 32-bit
-    // native executable are ELF32, the 64-bit native executable ELF64.
-    bool is64;
-    if (f[EI_CLASS] == ELFCLASS32)
-        is64 = false;
-    else if (f[EI_CLASS] == ELFCLASS64)
-        is64 = true;
-    else
+    struct ElfImage image;
+    if (!read_image(&image, f))
     {
         fprintf(stderr, "unknown ELF class\n");
         goto error;
     }
 
-    const Elf32_Ehdr *ehdr32 = (Elf32_Ehdr *)f;
-    const Elf64_Ehdr *ehdr64 = (Elf64_Ehdr *)f;
-    const Elf32_Shdr *shdrs32 = (Elf32_Shdr *)(f + ehdr32->e_shoff);
-    const Elf64_Shdr *shdrs64 = (Elf64_Shdr *)(f + ehdr64->e_shoff);
-    unsigned shstrndx = is64 ? ehdr64->e_shstrndx : ehdr32->e_shstrndx;
-    unsigned shnum = is64 ? ehdr64->e_shnum : ehdr32->e_shnum;
-
-    if (shstrndx == SHN_UNDEF)
+    if (image.shstrndx == SHN_UNDEF)
     {
         fprintf(stderr, "no section name string table\n");
         goto error;
     }
-    const char *shstr = (const char *)(f + (is64 ? shdrs64[shstrndx].sh_offset : shdrs32[shstrndx].sh_offset));
+    const char *shstr = f + read_section(&image, image.shstrndx).offset;
     int symtab_i = -1;
     int strtab_i = -1;
-    for (int i = 0; i < shnum; i++)
+    for (unsigned i = 0; i < image.shnum; i++)
     {
-        const char *sh_name = shstr + (is64 ? shdrs64[i].sh_name : shdrs32[i].sh_name);
+        const char *sh_name = shstr + read_section(&image, i).name;
         if (strcmp(sh_name, ".symtab") == 0)
             symtab_i = i;
         else if (strcmp(sh_name, ".strtab") == 0)
@@ -97,40 +158,25 @@ int main(int argc, char *argv[])
         goto error;
     }
 
-    size_t symtab_offset = is64 ? shdrs64[symtab_i].sh_offset : shdrs32[symtab_i].sh_offset;
-    size_t symtab_size = is64 ? shdrs64[symtab_i].sh_size : shdrs32[symtab_i].sh_size;
-    size_t symtab_entsize = is64 ? shdrs64[symtab_i].sh_entsize : shdrs32[symtab_i].sh_entsize;
-    const Elf32_Sym *symtab32 = (Elf32_Sym *)(f + symtab_offset);
-    const Elf64_Sym *symtab64 = (Elf64_Sym *)(f + symtab_offset);
-    const char *strtab = (const char *)(f + (is64 ? shdrs64[strtab_i].sh_offset : shdrs32[strtab_i].sh_offset));
-    for (int i = 0; i < symtab_size / symtab_entsize; i++)
+    const struct ElfSection symtab = read_section(&image, symtab_i);
+    const char *strtab = f + read_section(&image, strtab_i).offset;
+    for (unsigned i = 0; i < symtab.size / symtab.entsize; i++)
     {
-        unsigned st_name = is64 ? symtab64[i].st_name : symtab32[i].st_name;
-        unsigned st_shndx = is64 ? symtab64[i].st_shndx : symtab32[i].st_shndx;
-        if (st_name == 0) continue;
-        if (st_shndx > shnum) continue;
-        const char *sym_name = strtab + st_name;
-        size_t sh_offset, sym_offset, st_size;
-        if (is64)
-        {
-            sh_offset = shdrs64[st_shndx].sh_offset;
-            sym_offset = symtab64[i].st_value - shdrs64[st_shndx].sh_addr;
-            st_size = symtab64[i].st_size;
-        }
-        else
-        {
-            sh_offset = shdrs32[st_shndx].sh_offset;
-            sym_offset = (uint32_t)(symtab32[i].st_value - shdrs32[st_shndx].sh_addr);
-            st_size = symtab32[i].st_size;
-        }
+        const struct ElfSymbol symbol = read_symbol(&image, &symtab, i);
+        if (symbol.name == 0) continue;
+        if (symbol.shndx > image.shnum) continue;
+        const char *sym_name = strtab + symbol.name;
+        const struct ElfSection section = read_section(&image, symbol.shndx);
+        // An ELF32 file's addresses wrap at 32 bits.
+        size_t sym_offset = image.is64 ? symbol.value - section.addr : (uint32_t)(symbol.value - section.addr);
         for (int j = 2; j < argc; j += 2)
         {
             const char *arg_name = argv[j + 0];
             const char *arg_value = argv[j + 1];
             if (strcmp(sym_name, arg_name) == 0)
             {
-                char *value = (char *)(f + sh_offset + sym_offset);
-                if (!try_patch_value(sym_name, value, arg_value, st_size))
+                char *value = f + section.offset + sym_offset;
+                if (!try_patch_value(sym_name, value, arg_value, symbol.size))
                     goto error;
             }
         }
