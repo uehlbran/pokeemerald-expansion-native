@@ -13,8 +13,8 @@ resumes by reading both and first posting what it believes is in flight.
 | 3 | Input-replay smoke test, save round-trip, root-cause fixes | done 2026-10-09 |
 | 4 | Native test-runner integration; suite matches the GBA baseline | done 2026-10-09 (per test the GBA baseline but for the 9 benchmarks; sanitized run clean) |
 | 5 | Debug-menu gate | done 2026-10-09 |
-| 6 | Unit tests under sanitizers, clang-tidy, cppcheck, `.clang-format` enforced in the gate, docs, the refactoring pass (below); 32-bit done | in progress |
-| 7 | 64-bit audit and build; every gate again, plus the cross-width save round-trip gate (h); the refactoring pass again; 64-bit done | not started |
+| 6 | Unit tests under sanitizers, clang-tidy, cppcheck, `.clang-format` enforced in the gate, docs, the refactoring pass (below); 32-bit done | done 2026-10-09 (every gate green on main at 61ae8181f7 and recorded in STATUS.md) |
+| 7 | 64-bit audit and build; every gate again, plus the cross-width save round-trip gate (h); the refactoring pass again; 64-bit done | in progress 2026-10-09 (inventory first, see "Milestone 7 plan") |
 | 8 | CI for both targets; Windows (MinGW) and macOS | later |
 
 ## Milestone 2 work breakdown
@@ -118,3 +118,37 @@ widths (clang-tidy with `.clang-tidy`, cppcheck; any finding fails) and
 the sanitized unit tests at both widths. It comes before the native
 build, the two replays, the sanitized replays and `make check` that the
 other gates run.
+
+## Milestone 7 plan: the 64-bit build (started 2026-10-09)
+
+Order of work. First an inventory, no code (an Opus worker, written to
+the session scratchpad and then summarised here): every place the 32-bit
+assumption is flagged ("flagged 64-bit" in the platform sources, the
+m4a layout contract's second group, the `.4byte` pointers the assembled
+data keeps, the two expansion layout asserts that stop the 64-bit link,
+expansion's own pointer-to-int casts the sanitized 32-bit run did not
+reach, `arm_division`'s i386-only decoder, `symbols.c`'s ELF class), and
+for each the fix that makes the native build do what the GBA ends up
+doing. Then the worker tasks, module-sized, reviewed like everything
+else, in this order:
+
+1. the link: the two layout asserts, guarded, with the GBA result kept
+   (a struct whose size the GBA code hard-codes keeps that meaning
+   through a native-only accessor, not a changed assert);
+2. the data: assembled data with 4-byte pointers (`.4byte` in data/*.s
+   and the songs) against 8-byte C pointers, and the m4a layout contract;
+3. the platform modules that convert between addresses and integers
+   (`gba_memmap`, `transfer_bounds`, `script_tag`, `dma`, `bios`,
+   `symbols`, `arm_division` on x86-64, the INTR_VECTOR write);
+4. the save container: gate (h), a save written by the 32-bit build
+   loads in the 64-bit build and back, through the versioned container
+   (`SAVE_FILE_LAYOUT_ID`) and a layout conversion where the host struct
+   layouts differ;
+5. every gate at 64 bits (a, b plain and sanitized, d, e plain and
+   sanitized, f, h), then the refactoring pass again, then "64-bit done"
+   in STATUS.md.
+
+What is known before the inventory: the 64-bit build compiles every
+object; the link fails on two expansion `_Static_assert`s about struct
+sizes; with those disabled as an experiment it links (not run). The
+platform's unit tests already pass at 64 bits.

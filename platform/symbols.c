@@ -19,11 +19,13 @@
 
 #if UINTPTR_MAX == UINT64_MAX
 #define SYMBOLS_ELF_CLASS ELFCLASS64
+#define SYMBOLS_ST_TYPE(info) ELF64_ST_TYPE(info)
 typedef Elf64_Ehdr elf_header;
 typedef Elf64_Shdr elf_section;
 typedef Elf64_Sym elf_symbol;
 #else
 #define SYMBOLS_ELF_CLASS ELFCLASS32
+#define SYMBOLS_ST_TYPE(info) ELF32_ST_TYPE(info)
 typedef Elf32_Ehdr elf_header;
 typedef Elf32_Shdr elf_section;
 typedef Elf32_Sym elf_symbol;
@@ -136,7 +138,7 @@ static bool load_symbols(FILE *file, uint64_t file_size, const elf_section *symt
     loaded.symbols = malloc((total > 0 ? total : 1u) * sizeof *loaded.symbols);
     bool ok = raw != NULL && loaded.symbols != NULL && read_at(file, symtab->sh_offset, raw, (size_t)symtab->sh_size);
     for (size_t i = 0; ok && i < total; i++) {
-        if (ELF32_ST_TYPE(raw[i].st_info) != STT_FUNC || raw[i].st_size == 0 || raw[i].st_name == 0
+        if (SYMBOLS_ST_TYPE(raw[i].st_info) != STT_FUNC || raw[i].st_size == 0 || raw[i].st_name == 0
             || raw[i].st_name >= loaded.names_size)
             continue;
         loaded.symbols[loaded.count++] = (struct symbol){.address = (uintptr_t)raw[i].st_value,

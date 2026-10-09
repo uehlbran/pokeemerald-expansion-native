@@ -452,7 +452,7 @@ int main(int argc, char **argv)
     if (frame_flush_save() != 0 && status == MAIN_EXIT_OK)
         status = MAIN_EXIT_FAILURE;
     if (!options.test_runner) /* stdout is the hydra's */
-        printf("main: %u frames\n", frame_count());
+        (void)printf("main: %u frames\n", frame_count());
     bool restart = false;
     if (options.replay_path != NULL)
         status = settle_replay(status, &restart);

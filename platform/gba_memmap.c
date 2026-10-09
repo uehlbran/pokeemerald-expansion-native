@@ -52,8 +52,8 @@
  * 256 KiB; the game's EWRAM variables land in EWRAM by linking with the same
  * fragment. GCC's ASan does not instrument globals in named sections, so they
  * keep their GBA layout without redzones. EWRAM_INIT (section .ewram,
- * initialised data) would need a loaded section ahead of .sbss; that is for
- * Makefile.native to add when it links the game.
+ * initialised data) is the loaded section gba_regions.ld places ahead of
+ * .sbss; crt0.c keeps the copy that a soft reset restores.
  */
 #include <inttypes.h>
 #include <stdio.h>

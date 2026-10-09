@@ -56,6 +56,8 @@ int debug_channel_init(FILE *out)
         (void)fprintf(stderr, "debug_channel: debug_channel_init: no output stream\n");
         return DEBUG_CHANNEL_ERR_NO_STREAM;
     }
+    /* main has already initialised the regions; this call is the layout check
+     * (gba_memmap_init verifies the linked layout and is safe to repeat). */
     if (gba_memmap_init() != GBA_MEMMAP_OK) {
         (void)fprintf(stderr, "debug_channel: debug_channel_init: the mGBA debug page is not mapped\n");
         return DEBUG_CHANNEL_ERR_LAYOUT;
