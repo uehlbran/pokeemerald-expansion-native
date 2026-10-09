@@ -7,6 +7,14 @@
 
 #define BATTLER_RECORD_SIZE 388
 
+#if PLATFORM_NATIVE
+#if __SIZEOF_POINTER__ == 8
+// A u64 that is 4-aligned, as in a 32-bit struct, so RecordedBattleSave has
+// the GBA layout (4092 bytes, the save sector's size) at 64 bits.
+typedef u64 __attribute__((aligned(4))) u64_align4;
+#endif
+#endif
+
 struct RecordedBattleSave
 {
     struct Pokemon parties[MAX_BATTLE_TRAINERS][PARTY_SIZE];
@@ -25,7 +33,15 @@ struct RecordedBattleSave
     u16 textSpeed:3;
     u16 playersGender:4; // 1 bit per player; please don't hate me
     u16 padding:1;
+#if PLATFORM_NATIVE
+#if __SIZEOF_POINTER__ == 8
+    u64_align4 AI_scripts[MAX_BATTLERS_COUNT];
+#else
     u64 AI_scripts[MAX_BATTLERS_COUNT];
+#endif
+#else
+    u64 AI_scripts[MAX_BATTLERS_COUNT];
+#endif
     u8 recordMixFriendName[PLAYER_NAME_LENGTH + 1];
     u8 recordMixFriendClass;
     u8 apprenticeId;

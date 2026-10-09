@@ -331,7 +331,16 @@ void InitIntrHandlers(void)
     for (i = 0; i < INTR_COUNT; i++)
         gIntrTable[i] = gIntrTableTemplate[i];
 
+#if PLATFORM_NATIVE
+#if __SIZEOF_POINTER__ == 8
+    INTR_VECTOR = (u32)(uintptr_t)IntrMain;
+#else
     INTR_VECTOR = IntrMain;
+#endif
+#else
+    INTR_VECTOR = IntrMain;
+#endif
+#line 321
 
     SetVBlankCallback(NULL);
     SetHBlankCallback(NULL);
