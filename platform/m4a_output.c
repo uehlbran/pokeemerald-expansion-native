@@ -1,7 +1,8 @@
 /*
  * m4a_output.c: the frame of the m4a engine's PCM ring the FIFO DMAs play.
  *
- * Stands in for the sound FIFO DMAs (m4a_output.h). Followed: the m4a
+ * Stands in for the sound FIFO DMAs (m4a_output.h; GBATEK
+ * https://problemkaputt.de/gbatek.htm#gbasoundchannelaandbdmasound). Followed: the m4a
  * engine's own bookkeeping, src/m4a_1.s m4aSoundVSync and SoundMain as
  * translated in platform/m4a/ (README.md "The PCM ring"): m4aSoundVSync
  * counts pcmDmaCounter down once a frame from pcmDmaPeriod to 1 and restarts

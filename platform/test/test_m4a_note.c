@@ -58,7 +58,7 @@ PTEST(ply_note_starts_a_direct_sound_channel)
 {
     static const uint8_t args[] = {60, 100, 5};
     struct SoundInfo *si = SetUpNote(args);
-    struct SoundChannel *chan;
+    const struct SoundChannel *chan;
 
     PT_ASSERT(si != NULL);
     chan = &si->chans[0];
@@ -110,7 +110,7 @@ PTEST(ply_note_takes_key_velocity_and_gate_only_while_bytes_are_data)
 {
     static const uint8_t noArgs[] = {0x80};
     static const uint8_t keyOnly[] = {62, 0x90};
-    struct SoundInfo *si = SetUpNote(noArgs);
+    const struct SoundInfo *si = SetUpNote(noArgs);
 
     PT_ASSERT(si != NULL);
     ply_note(24, &sPlayer, &sTracks[0]);
@@ -324,7 +324,7 @@ PTEST(ply_note_beyond_the_clock_table_plays_nothing)
 {
     /* MPlayMain passes 0..48; a larger value would index past gClockTable */
     static const uint8_t args[] = {60, CMD_FINE};
-    struct SoundInfo *si = SetUpNote(args);
+    const struct SoundInfo *si = SetUpNote(args);
 
     PT_ASSERT(si != NULL);
     sTracks[0].gateTime = 7;
@@ -340,7 +340,7 @@ PTEST(ply_note_beyond_the_clock_table_plays_nothing)
 PTEST(ply_note_starts_a_psg_channel)
 {
     static const uint8_t args[] = {60, 100, CMD_FINE};
-    struct SoundInfo *si = SetUpNote(args);
+    const struct SoundInfo *si = SetUpNote(args);
     struct CgbChannel *cgb;
 
     PT_ASSERT(si != NULL);
@@ -379,7 +379,7 @@ PTEST(ply_note_psg_sweep_defaults_to_8)
 
     for (size_t i = 0; i < sizeof(kPanSweep); i++)
     {
-        struct SoundInfo *si = SetUpNote(args);
+        const struct SoundInfo *si = SetUpNote(args);
 
         PT_ASSERT(si != NULL);
         sTracks[0].tone.type = 2;
@@ -392,7 +392,7 @@ PTEST(ply_note_psg_sweep_defaults_to_8)
 static int PlayPsgAgainst(uint8_t status, uint8_t priority, size_t ownerTrack, size_t noteTrack)
 {
     static const uint8_t args[] = {60, CMD_FINE};
-    struct SoundInfo *si = SetUpNote(args);
+    const struct SoundInfo *si = SetUpNote(args);
     struct CgbChannel *cgb;
 
     if (si == NULL)
@@ -440,7 +440,7 @@ PTEST(ply_note_psg_type_beyond_the_four_channels_plays_nothing)
     /* type & 7 = 5..7 would index past gCgbChans[4] on the GBA; the C engine
      * rejects it (README.md, "Departures from the assembly") */
     static const uint8_t args[] = {60, CMD_FINE};
-    struct SoundInfo *si = SetUpNote(args);
+    const struct SoundInfo *si = SetUpNote(args);
 
     PT_ASSERT(si != NULL);
     sTracks[0].tone.type = 5;
@@ -457,7 +457,7 @@ PTEST(ply_note_rhythm_voice_uses_the_drum_key_and_pan)
 {
     static const uint8_t args[] = {2, 100, CMD_FINE};
     struct SoundInfo *si = SetUpNote(args);
-    struct SoundChannel *chan;
+    const struct SoundChannel *chan;
 
     PT_ASSERT(si != NULL);
     chan = &si->chans[0];
@@ -489,7 +489,7 @@ PTEST(ply_note_rhythm_pan_extremes)
 {
     static const uint8_t args[] = {2, 100, CMD_FINE};
     struct SoundInfo *si = SetUpNote(args);
-    struct SoundChannel *chan;
+    const struct SoundChannel *chan;
 
     PT_ASSERT(si != NULL);
     chan = &si->chans[0];
@@ -518,7 +518,7 @@ PTEST(ply_note_volume_saturates_at_255)
 {
     /* (128 + 127) * 127 * 255 >> 14 = 504 -> 255 */
     static const uint8_t args[] = {2, 127, CMD_FINE};
-    struct SoundInfo *si = SetUpNote(args);
+    const struct SoundInfo *si = SetUpNote(args);
 
     PT_ASSERT(si != NULL);
     memset(sSubVoices, 0, sizeof(sSubVoices));
@@ -540,7 +540,7 @@ PTEST(ply_note_key_split_picks_the_voice_from_the_table)
 {
     static const uint8_t args[] = {60, 100, CMD_FINE};
     static uint8_t splitTable[128];
-    struct SoundInfo *si = SetUpNote(args);
+    const struct SoundInfo *si = SetUpNote(args);
 
     PT_ASSERT(si != NULL);
     memset(splitTable, 0, sizeof(splitTable));
@@ -564,7 +564,7 @@ PTEST(ply_note_key_split_picks_the_voice_from_the_table)
 PTEST(ply_note_nested_split_or_rhythm_plays_nothing)
 {
     static const uint8_t args[] = {1, 100, CMD_FINE};
-    struct SoundInfo *si = SetUpNote(args);
+    const struct SoundInfo *si = SetUpNote(args);
 
     PT_ASSERT(si != NULL);
     memset(sSubVoices, 0, sizeof(sSubVoices));
@@ -583,7 +583,7 @@ PTEST(ply_note_nested_split_or_rhythm_plays_nothing)
 PTEST(ply_note_restarts_the_lfo_delay)
 {
     static const uint8_t args[] = {60, CMD_FINE};
-    struct SoundInfo *si = SetUpNote(args);
+    const struct SoundInfo *si = SetUpNote(args);
 
     PT_ASSERT(si != NULL);
     sTracks[0].lfoDelay = 9;
@@ -602,7 +602,7 @@ PTEST(ply_note_restarts_the_lfo_delay)
 PTEST(ply_note_without_lfo_delay_keeps_the_modulation)
 {
     static const uint8_t args[] = {60, CMD_FINE};
-    struct SoundInfo *si = SetUpNote(args);
+    const struct SoundInfo *si = SetUpNote(args);
 
     PT_ASSERT(si != NULL);
     sTracks[0].modM = 33;

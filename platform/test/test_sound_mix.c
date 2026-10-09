@@ -162,6 +162,51 @@ PTEST(extremes_saturate)
     PT_ASSERT_EQ_INT(out[0], INT16_MIN);
 }
 
+PTEST(dc_filter_step_response_matches_the_pole_exactly)
+{
+    /* y[n] = x[n] - x[n-1] + trunc(y[n-1] * 32604 / 32768), constant x = 10000
+     * on the left from frame 0 (right stays 0). Worked by hand: y0 = 10000,
+     * y1 = trunc(326040000 / 32768) = 9949, y2 = 9949 + trunc(9949 * 32604 /
+     * 32768) = 9899 (a pole of 32603 gives 9898), y3 = 9849. Frames 100 and 199
+     * come from iterating the same recurrence. */
+    struct sound_mix_registers r = { .soundcnt_h = 0, .soundcnt_x = ENABLED };
+    enum { LONG = 200 };
+    static int16_t psg[2 * LONG], out[2 * LONG];
+    for (size_t i = 0; i < LONG; i++)
+        psg[2 * i] = 10000;
+    mix_once(&r, NULL, NULL, psg, out, LONG);
+    PT_ASSERT_EQ_INT(out[0], 10000);
+    PT_ASSERT_EQ_INT(out[2], 9949);
+    PT_ASSERT_EQ_INT(out[4], 9899);
+    PT_ASSERT_EQ_INT(out[6], 9849);
+    PT_ASSERT_EQ_INT(out[2 * 100], 6014);
+    PT_ASSERT_EQ_INT(out[2 * 199], 3620);
+    PT_ASSERT_EQ_INT(out[1], 0);
+}
+
+/* A filter state whose output is exactly `previous_input` below zero or
+ * above: with a silent input and no previous output, y = -previous_input. */
+static int16_t saturated_output(int32_t previous_input)
+{
+    struct sound_mix_registers r = { .soundcnt_h = 0, .soundcnt_x = ENABLED };
+    struct sound_mix_state state;
+    int16_t out[2];
+    memset(&state, 0, sizeof state);
+    state.previous_input[0] = previous_input;
+    sound_mix(&state, &r, NULL, NULL, NULL, out, 1);
+    return out[0];
+}
+
+PTEST(saturation_is_exact_at_the_int16_limits)
+{
+    PT_ASSERT_EQ_INT(saturated_output(32767), -32767);
+    PT_ASSERT_EQ_INT(saturated_output(32768), INT16_MIN);     /* exactly the limit */
+    PT_ASSERT_EQ_INT(saturated_output(32769), INT16_MIN);     /* one past it clamps */
+    PT_ASSERT_EQ_INT(saturated_output(-32766), 32766);
+    PT_ASSERT_EQ_INT(saturated_output(-32767), INT16_MAX);    /* exactly the limit */
+    PT_ASSERT_EQ_INT(saturated_output(-32768), INT16_MAX);    /* one past it clamps */
+}
+
 PTEST(zero_frames_writes_nothing)
 {
     struct sound_mix_registers r = { .soundcnt_h = 0, .soundcnt_x = ENABLED };

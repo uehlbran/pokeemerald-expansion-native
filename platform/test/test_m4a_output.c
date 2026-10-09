@@ -110,6 +110,33 @@ PTEST(the_last_frame_of_a_full_ring)
     SOUND_INFO_PTR = NULL;
 }
 
+PTEST(a_frame_one_sample_past_the_ring_is_refused)
+{
+    PT_ASSERT_EQ_INT(gba_memmap_init(), GBA_MEMMAP_OK);
+    struct m4a_output_frame frame;
+    configure(1);
+    info.pcmDmaPeriod = 1;
+    info.pcmSamplesPerVBlank = PCM_DMA_BUF_SIZE; /* exactly the ring: allowed */
+    PT_ASSERT(m4a_output_current_frame(&frame));
+    PT_ASSERT(frame.samples == PCM_DMA_BUF_SIZE);
+    info.pcmSamplesPerVBlank = PCM_DMA_BUF_SIZE + 1;
+    PT_ASSERT(!m4a_output_current_frame(&frame));
+    SOUND_INFO_PTR = NULL;
+}
+
+PTEST(a_zero_or_negative_sample_rate_means_no_rate)
+{
+    PT_ASSERT_EQ_INT(gba_memmap_init(), GBA_MEMMAP_OK);
+    configure(1);
+    info.pcmFreq = 1;
+    PT_ASSERT_EQ_U32(m4a_output_sample_rate(), 1);
+    info.pcmFreq = 0;
+    PT_ASSERT_EQ_U32(m4a_output_sample_rate(), 0);
+    info.pcmFreq = -13379;
+    PT_ASSERT_EQ_U32(m4a_output_sample_rate(), 0);
+    SOUND_INFO_PTR = NULL;
+}
+
 PTEST(the_sample_rate_is_the_engines)
 {
     PT_ASSERT_EQ_INT(gba_memmap_init(), GBA_MEMMAP_OK);

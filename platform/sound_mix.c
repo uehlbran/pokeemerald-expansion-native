@@ -1,8 +1,9 @@
 /*
  * sound_mix.c: the GBA's sound mixer and output capacitor (sound_mix.h).
  *
- * Written from GBATEK "GBA Sound Control Registers" (SOUNDCNT_H, SOUNDCNT_X,
- * "Max Output Levels"). The scale follows psg.c's "OUTPUT SCALE" so the two
+ * Written from GBATEK "GBA Sound Control Registers"
+ * (https://problemkaputt.de/gbatek.htm#gbasoundcontrolregisters: SOUNDCNT_H,
+ * SOUNDCNT_X, "Max Output Levels"). The scale follows psg.c's "OUTPUT SCALE" so the two
  * FIFOs and the PSG fit int16_t together.
  *
  * DC removal: y[n] = x[n] - x[n-1] + R * y[n-1], R = 32604 / 32768

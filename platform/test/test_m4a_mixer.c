@@ -94,7 +94,7 @@ PTEST(SoundMain_calls_MPlayMainHead_then_CgbSound_while_locked)
 
 PTEST(SoundMain_skips_a_null_MPlayMainHead_but_still_calls_CgbSound)
 {
-    struct SoundInfo *si = M4aTestSetUp();
+    const struct SoundInfo *si = M4aTestSetUp();
 
     PT_ASSERT(si != NULL);
     SoundMain();
@@ -152,7 +152,7 @@ PTEST(SoundMain_mixes_while_before_the_maxLines_deadline)
 {
     static union M4aTestWave w;
     /* line 14 -> 242 < 243 */
-    struct SoundInfo *si = SetUpDeadline(5, 10, 14, &w);
+    const struct SoundInfo *si = SetUpDeadline(5, 10, 14, &w);
 
     PT_ASSERT(si != NULL);
     SoundMain();
@@ -177,7 +177,7 @@ PTEST(SoundMain_deadline_reached_exactly_stops_mixing_in_vblank)
 PTEST(SoundMain_with_maxLines_zero_ignores_VCOUNT)
 {
     static union M4aTestWave w;
-    struct SoundInfo *si = SetUpDeadline(0, 10, 227, &w);
+    const struct SoundInfo *si = SetUpDeadline(0, 10, 227, &w);
 
     PT_ASSERT(si != NULL);
     SoundMain();
@@ -479,7 +479,7 @@ PTEST(Envelope_volume_is_scaled_by_master_and_channel_volume)
 PTEST(Envelope_attack_255_reaches_decay_in_the_first_frame)
 {
     static union M4aTestWave w;
-    struct SoundInfo *si = SetUpEnvelope(&w, 255, 255, 255, 0);
+    const struct SoundInfo *si = SetUpEnvelope(&w, 255, 255, 255, 0);
 
     PT_ASSERT(si != NULL);
     SoundMain();
@@ -490,7 +490,7 @@ PTEST(Envelope_attack_255_reaches_decay_in_the_first_frame)
 PTEST(Envelope_attack_254_stays_in_attack_until_the_next_frame)
 {
     static union M4aTestWave w;
-    struct SoundInfo *si = SetUpEnvelope(&w, 254, 255, 255, 0);
+    const struct SoundInfo *si = SetUpEnvelope(&w, 254, 255, 255, 0);
 
     PT_ASSERT(si != NULL);
     SoundMain();
@@ -504,7 +504,7 @@ PTEST(Envelope_attack_254_stays_in_attack_until_the_next_frame)
 PTEST(Envelope_attack_0_never_leaves_attack)
 {
     static union M4aTestWave w;
-    struct SoundInfo *si = SetUpEnvelope(&w, 0, 255, 255, 0);
+    const struct SoundInfo *si = SetUpEnvelope(&w, 0, 255, 255, 0);
 
     PT_ASSERT(si != NULL);
     for (int i = 0; i < 4; i++)
@@ -516,7 +516,7 @@ PTEST(Envelope_attack_0_never_leaves_attack)
 PTEST(Envelope_decay_to_sustain_0_without_echo_turns_the_channel_off)
 {
     static union M4aTestWave w;
-    struct SoundInfo *si = SetUpEnvelope(&w, 255, 0, 0, 0);
+    const struct SoundInfo *si = SetUpEnvelope(&w, 255, 0, 0, 0);
 
     PT_ASSERT(si != NULL);
     SoundMain(); /* 255, decay */

@@ -8,6 +8,10 @@
  * (dma.h: special timing is not emulated); once a frame the frame loop takes
  * the samples the DMAs would play from the ring itself. The ring's layout
  * and how the engine walks it: platform/m4a/README.md, "The PCM ring".
+ *
+ * GBATEK: https://problemkaputt.de/gbatek.htm#gbadmatransfers (DMA Sound FIFO
+ * start timing) and https://problemkaputt.de/gbatek.htm#gbasoundchannelaandbdmasound
+ * (Direct Sound FIFO A and B).
  */
 #ifndef M4A_OUTPUT_H
 #define M4A_OUTPUT_H

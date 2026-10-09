@@ -69,13 +69,13 @@ static uint32_t clock_period(uint8_t nr43)
 void psg_noise_update(struct psg_noise *noise, const struct psg_noise_registers *registers)
 {
     noise->nr43 = registers->nr43;
-    psg_channel_update(&noise->channel, registers->nr44, psg_dac_enabled(registers->nr42));
+    psg_channel_update(&noise->channel, registers->nr44, psg_dac_from_nrx2(registers->nr42));
 }
 
 void psg_noise_trigger(struct psg_noise *noise, const struct psg_noise_registers *registers)
 {
     const uint16_t length = (uint16_t)(NOISE_LENGTH_UNITS - (registers->nr41 & NR41_LENGTH_MASK));
-    if (!psg_channel_start(&noise->channel, psg_dac_enabled(registers->nr42), length))
+    if (!psg_channel_start(&noise->channel, psg_dac_from_nrx2(registers->nr42), length))
         return;
     noise->lfsr = psg_lfsr_seed(width_of(noise->nr43));
     noise->high = false;

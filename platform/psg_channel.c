@@ -18,19 +18,19 @@
  */
 #include "psg_internal.h"
 
-bool psg_channel_start(struct psg_channel *channel, bool dac_enabled, uint16_t length_ticks)
+bool psg_channel_start(struct psg_channel *channel, enum psg_dac dac, uint16_t length_ticks)
 {
-    if (!dac_enabled)
+    if (dac == PSG_DAC_OFF)
         return false;
     channel->on = true;
     channel->length.remaining = length_ticks;
     return true;
 }
 
-void psg_channel_update(struct psg_channel *channel, uint8_t nrx4, bool dac_enabled)
+void psg_channel_update(struct psg_channel *channel, uint8_t nrx4, enum psg_dac dac)
 {
     channel->length.enabled = (nrx4 & PSG_NRX4_LENGTH_ENABLE) != 0;
-    if (!dac_enabled)
+    if (dac == PSG_DAC_OFF)
         channel->on = false;
 }
 
@@ -66,9 +66,9 @@ void psg_envelope_clock(struct psg_envelope *envelope)
         envelope->volume--;
 }
 
-bool psg_dac_enabled(uint8_t nrx2)
+enum psg_dac psg_dac_from_nrx2(uint8_t nrx2)
 {
-    return (nrx2 & PSG_NRX2_DAC_MASK) != 0;
+    return (nrx2 & PSG_NRX2_DAC_MASK) != 0 ? PSG_DAC_ON : PSG_DAC_OFF;
 }
 
 uint32_t psg_timer_run(uint32_t *countdown, uint32_t period, uint32_t cycles)

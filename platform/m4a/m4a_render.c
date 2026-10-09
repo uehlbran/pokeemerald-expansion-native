@@ -402,6 +402,7 @@ static void PlaySpecial(struct SoundChannel *chan, const struct MixOutput *out, 
 
 void M4aRenderSetStart(struct SoundChannel *chan, u32 offset)
 {
+    // cppcheck-suppress constVariablePointer ; wav->data is stored in the non-const currentPointer
     struct WaveData *wav = chan->wav;
 
     /* The assembly stores wav->data + offset here, and SoundMainRAM_Unk1

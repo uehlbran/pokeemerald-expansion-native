@@ -116,7 +116,7 @@ static u32 TracksToRun(const struct MusicPlayerInfo *mplayInfo)
 
 /* _081DD892: a playing channel's gate time runs down to a release; an ended
  * channel leaves the chain. */
-static void CountDownGateTimes(struct MusicPlayerTrack *track)
+static void CountDownGateTimes(const struct MusicPlayerTrack *track)
 {
     for (void *chan = track->chan; chan != NULL; chan = ChanNext(chan))
     {
