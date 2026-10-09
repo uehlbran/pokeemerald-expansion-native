@@ -16,12 +16,14 @@
 // GF cast Task data to ListMenu in many places, which effectively puts
 // an upper bound on sizeof(struct ListMenu).
 #if PLATFORM_NATIVE
-#if __SIZEOF_POINTER__ == 8
-STATIC_ASSERT(sizeof(struct ListMenu) <= sizeof(((struct Task *)NULL)->data) + sizeof(((struct Task *)NULL)->nativeDataSpill), ListMenuTooLargeForTaskData);
-#else
+#if __SIZEOF_POINTER__ != 8
+#line 18
 STATIC_ASSERT(sizeof(struct ListMenu) <= sizeof(((struct Task *)NULL)->data), ListMenuTooLargeForTaskData);
+#else
+STATIC_ASSERT(sizeof(struct ListMenu) <= sizeof(((struct Task *)NULL)->data) + sizeof(((struct Task *)NULL)->nativeDataSpill), ListMenuTooLargeForTaskData);
 #endif
 #else
+#line 18
 STATIC_ASSERT(sizeof(struct ListMenu) <= sizeof(((struct Task *)NULL)->data), ListMenuTooLargeForTaskData);
 #endif
 #line 19
