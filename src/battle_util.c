@@ -7907,13 +7907,17 @@ static const u32 sGen2CriticalHitOdds[] = {17, 32, 64, 85, 128}; // X/256
 //   [-1] 0x0843F0B0 = 0x02000301 (bytes 01 03 00 02, the 4 bytes of
 //        another function's table, `targets.0`)
 //   [-2] 0x0843F0AC = 0x00623530
-// Neither is 1, so ShouldCalcCritDamage goes on, and BLOCKED (< RISKY stage
-// threshold as a signed value) never becomes "guaranteed crit". The other
-// callers test BLOCKED/ALWAYS before the read. Natively the read is 16 GiB
-// away at 64 bits; these constants reproduce the GBA's. The ROM holds only
-// the Gen7 table (the config is compile-time), so the others take the same
-// values; indices 5 to 255 (Gen 1 stages) read other ROM data on the GBA and
-// get the -1 value here.
+// Neither is 1, so ShouldCalcCritDamage goes on, and the signed -1 is below
+// RISKY_AI_CRIT_STAGE_THRESHOLD: BLOCKED never becomes "guaranteed crit". The
+// other callers test BLOCKED and ALWAYS before the read. Natively the read is
+// 16 GiB away at 64 bits; these constants reproduce the GBA's.
+// The -2 constant is unreachable today (ShouldCalcCritDamage tests ALWAYS
+// first); it is kept for a future caller.
+// Indices 5 and above (0x04030201 at 0x0843F0C8, 0x08070605, ...) are reached
+// only under B_CRIT_CHANCE == GEN_1, where CalcCritChanceStageGen1 returns
+// 0..255. The ROM is a Gen7 build, which keeps only the Gen7 table, so there
+// is no GBA evidence for a Gen1 build; natively they return the [-1] word. The
+// divergence is unknowable and not exercised by the default config.
 #define CRIT_ODDS_GBA_READ_BLOCKED 0x02000301
 #define CRIT_ODDS_GBA_READ_ALWAYS  0x00623530
 
