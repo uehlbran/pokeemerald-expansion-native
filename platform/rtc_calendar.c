@@ -49,7 +49,7 @@ int rtc_calendar_from_bcd(unsigned bcd)
 {
     unsigned tens = bcd >> BCD_NIBBLE_BITS;
     unsigned ones = bcd & BCD_NIBBLE_MASK;
-    if (tens > BCD_MAX_DIGIT || ones > BCD_MAX_DIGIT || bcd > 0xFFu)
+    if (tens > BCD_MAX_DIGIT || ones > BCD_MAX_DIGIT)
         return -1;
     return (int)(tens * BCD_BASE + ones);
 }

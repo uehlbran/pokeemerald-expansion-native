@@ -218,6 +218,7 @@ static void check_rejected_header_field(size_t offset, uint32_t value)
 
 PTEST(version_2_is_rejected) { check_rejected_header_field(VERSION_OFFSET, 2); }
 PTEST(version_0_is_rejected) { check_rejected_header_field(VERSION_OFFSET, 0); }
+PTEST(version_257_is_rejected) { check_rejected_header_field(VERSION_OFFSET, 257); } /* low byte is 1 */
 PTEST(a_big_endian_version_field_is_rejected)
 {
     check_rejected_header_field(VERSION_OFFSET, 0x01000000u); /* version 1 with the bytes reversed */

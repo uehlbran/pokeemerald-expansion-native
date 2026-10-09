@@ -582,6 +582,34 @@ PTEST(set_time_keeps_the_date)
     rtc_shutdown();
 }
 
+/* The date kept is the chip's, not UTC's: with a nonzero offset the two
+ * differ near midnight. */
+PTEST(set_time_keeps_the_chip_date_when_a_positive_offset_crosses_midnight)
+{
+    /* UTC 2024-03-15 23:30:00; the chip is set to 2024-03-16 00:30:00 (offset +3600). */
+    struct rtc_datetime date = { 0x24, 0x03, 0x16, 0, 0x00, 0x30, 0x00 }, out;
+    struct rtc_datetime time = { 0, 0, 0, 0, 0x01, 0x15, 0x00 };
+    start_at(EPOCH_2024_03_15_000000 + 23 * SECONDS_PER_HOUR + 1800);
+    PT_ASSERT_EQ_INT(rtc_set_datetime(&date), 0);
+    PT_ASSERT_EQ_INT(rtc_set_time(&time), 0);
+    PT_ASSERT_EQ_INT(rtc_get_datetime(&out), 0);
+    assert_dt(&out, 0x24, 0x03, 0x16, 0x06, 0x01, 0x15, 0x00);
+    rtc_shutdown();
+}
+
+PTEST(set_time_keeps_the_chip_date_when_a_negative_offset_crosses_midnight)
+{
+    /* UTC 2024-03-16 00:30:00; the chip is set to 2024-03-15 23:30:00 (offset -3600). */
+    struct rtc_datetime date = { 0x24, 0x03, 0x15, 0, 0x23, 0x30, 0x00 }, out;
+    struct rtc_datetime time = { 0, 0, 0, 0, 0x22, 0x10, 0x00 };
+    start_at(EPOCH_2024_03_15_000000 + 24 * SECONDS_PER_HOUR + 1800);
+    PT_ASSERT_EQ_INT(rtc_set_datetime(&date), 0);
+    PT_ASSERT_EQ_INT(rtc_set_time(&time), 0);
+    PT_ASSERT_EQ_INT(rtc_get_datetime(&out), 0);
+    assert_dt(&out, 0x24, 0x03, 0x15, 0x05, 0xA2, 0x10, 0x00); /* 22h with the PM flag */
+    rtc_shutdown();
+}
+
 PTEST(set_time_persists_the_offset)
 {
     struct rtc_datetime in = { 0, 0, 0, 0, 0x14, 0x45, 0x30 };
@@ -670,6 +698,21 @@ PTEST(alarm_is_validated_and_stored)
     PT_ASSERT_EQ_INT(rtc_get_alarm(&out), 0);
     PT_ASSERT_EQ_U32(out.hour_bcd, 0x97u); /* PM flag derived from the hour */
     PT_ASSERT_EQ_U32(out.minute_bcd, 0x30u);
+    /* The PM flag is set from hour 12 on, not from hour 13. */
+    in.hour_bcd = 0x11;
+    PT_ASSERT_EQ_INT(rtc_set_alarm(&in), 0);
+    PT_ASSERT_EQ_INT(rtc_get_alarm(&out), 0);
+    PT_ASSERT_EQ_U32(out.hour_bcd, 0x11u);
+    in.hour_bcd = 0x12;
+    PT_ASSERT_EQ_INT(rtc_set_alarm(&in), 0);
+    PT_ASSERT_EQ_INT(rtc_get_alarm(&out), 0);
+    PT_ASSERT_EQ_U32(out.hour_bcd, 0x92u);
+    in.hour_bcd = 0x00;
+    PT_ASSERT_EQ_INT(rtc_set_alarm(&in), 0);
+    PT_ASSERT_EQ_INT(rtc_get_alarm(&out), 0);
+    PT_ASSERT_EQ_U32(out.hour_bcd, 0x00u);
+    in.hour_bcd = 0x17;
+    PT_ASSERT_EQ_INT(rtc_set_alarm(&in), 0);
     in.hour_bcd = 0x24;
     PT_ASSERT_EQ_INT(rtc_set_alarm(&in), -1);
     in.hour_bcd = 0x05;
