@@ -15,11 +15,13 @@
  * UndefinedBehaviorSanitizer does not stop the C division first.
  */
 #include <setjmp.h>
+#include <poll.h>
 #include <signal.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
+#include <sys/resource.h>
 #include <sys/wait.h>
 #include <unistd.h>
 
@@ -168,6 +170,72 @@ static void sigfpe_from_raise(void)
     (void)raise(SIGFPE);
 }
 
+/* ---- the prefix limit's other side: four legal segment prefixes complete ---- */
+
+/* divl %ecx by zero (EAX 5) behind ES, CS, SS and DS prefixes, the most the
+ * decoder skips (MAX_PREFIXES): the processor divides as without them, and the
+ * decoder completes it with libgcc's result, 0xFFFFFFFF both. */
+static void four_segment_prefixes_division_by_zero(uint32_t *quotient, uint32_t *remainder)
+{
+    uint32_t eax = 5;
+    uint32_t edx = 0;
+    __asm__ volatile(".byte 0x26, 0x2E, 0x36, 0x3E, 0xF7, 0xF1" : "+a"(eax), "+d"(edx) : "c"(0u));
+    *quotient = eax;
+    *remainder = edx;
+}
+
+PTEST(four_segment_prefixes_before_a_division_by_zero_still_complete)
+{
+    uint32_t quotient = 0;
+    uint32_t remainder = 0;
+    PT_ASSERT_EQ_INT(arm_division_init(), ARM_DIVISION_OK);
+    four_segment_prefixes_division_by_zero(&quotient, &remainder);
+    arm_division_shutdown();
+    PT_ASSERT_EQ_U32(quotient, UINT32_MAX);
+    PT_ASSERT_EQ_U32(remainder, UINT32_MAX);
+}
+
+#if defined(__x86_64__)
+/* The same with a REX.W prefix after the four (3E 26 2E 36 48 F7 F1: divq
+ * %rcx): __udivdi3(5, 0) is 2^4 - 1 rem 5. */
+PTEST(four_segment_prefixes_and_rex_before_a_64_bit_division_by_zero_still_complete)
+{
+    uint64_t rax = 5;
+    uint64_t rdx = 0;
+    PT_ASSERT_EQ_INT(arm_division_init(), ARM_DIVISION_OK);
+    __asm__ volatile(".byte 0x3E, 0x26, 0x2E, 0x36, 0x48, 0xF7, 0xF1" : "+a"(rax), "+d"(rdx) : "c"((uint64_t)0));
+    arm_division_shutdown();
+    PT_ASSERT(rax == 15);
+    PT_ASSERT(rdx == 5);
+}
+#endif
+
+/* A SIGFPE that kill sends is not a divide error even if the program counter
+ * is at a division by zero when it arrives: the signal is delivered on return
+ * from the system call, and the divide that follows it is never reached
+ * (si_code is SI_USER, not FPE_INTDIV). The handler must pass it on. */
+static void kill_self_with_sigfpe_before_a_division_by_zero(void)
+{
+    static const uint32_t zero;
+    const long pid = (long)getpid();
+#if defined(__x86_64__)
+    __asm__ volatile("xorl %%edx, %%edx\n\tmovl $62, %%eax\n\tsyscall\n\tdivl (%[divisor])"
+                     :
+                     : "D"(pid), "S"((long)SIGFPE), [divisor] "r"(&zero)
+                     : "rax", "rcx", "rdx", "r11", "memory");
+#else
+    __asm__ volatile("xorl %%edx, %%edx\n\tmovl $37, %%eax\n\tint $0x80\n\tdivl (%[divisor])"
+                     :
+                     : "b"(pid), "c"((long)SIGFPE), [divisor] "r"(&zero)
+                     : "eax", "edx", "memory");
+#endif
+}
+
+PTEST(a_signal_sent_by_kill_is_not_completed_even_where_the_pc_is_at_a_division_by_zero)
+{
+    PT_ASSERT_EQ_INT(calls_after(kill_self_with_sigfpe_before_a_division_by_zero), 1);
+}
+
 PTEST(divide_errors_the_decoder_refuses_go_to_the_previous_handler)
 {
     PT_ASSERT_EQ_INT(calls_after(byte_division_by_zero), 1);
@@ -196,7 +264,13 @@ PTEST(a_previous_handler_without_siginfo_is_called_too)
 
 /* With the default action before it, a divide error nobody can complete
  * ends the process with SIGFPE, after one line on stderr naming the program
- * counter. Run in a child, its stderr read through a pipe. */
+ * counter. Run in a child, its stderr read through a pipe. The child has no
+ * core dump and an alarm, and the parent waits on the pipe for a limited time
+ * and kills the child whatever happened, so a failure cannot hang the run. */
+#define CHILD_TIMEOUT_SECONDS 10u
+#define PARENT_TIMEOUT_MS 5000
+#define POLL_STEP_MS 10u
+
 PTEST(without_a_previous_handler_an_undecodable_divide_error_reports_and_kills_the_process)
 {
     int fds[2];
@@ -205,22 +279,38 @@ PTEST(without_a_previous_handler_an_undecodable_divide_error_reports_and_kills_t
     const pid_t child = fork();
     PT_ASSERT(child >= 0);
     if (child == 0) {
+        const struct rlimit no_core = {0, 0};
         struct sigaction defaults;
         memset(&defaults, 0, sizeof defaults);
         defaults.sa_handler = SIG_DFL;
         sigemptyset(&defaults.sa_mask);
-        if (close(fds[0]) != 0 || dup2(fds[1], STDERR_FILENO) < 0 || sigaction(SIGFPE, &defaults, NULL) != 0
-            || arm_division_init() != ARM_DIVISION_OK)
+        if (close(fds[0]) != 0 || dup2(fds[1], STDERR_FILENO) < 0 || setrlimit(RLIMIT_CORE, &no_core) != 0
+            || sigaction(SIGFPE, &defaults, NULL) != 0 || arm_division_init() != ARM_DIVISION_OK)
             _exit(2);
+        (void)alarm(CHILD_TIMEOUT_SECONDS);
         byte_division_by_zero();
         _exit(3); /* not reached: the divide error repeats and kills the process */
     }
-    PT_ASSERT_EQ_INT(close(fds[1]), 0);
+    (void)close(fds[1]);
     char line[256] = {0};
-    const ssize_t got = read(fds[0], line, sizeof line - 1);
-    PT_ASSERT_EQ_INT(close(fds[0]), 0);
+    ssize_t got = -1;
+    struct pollfd waiting = {.fd = fds[0], .events = POLLIN};
+    if (poll(&waiting, 1, PARENT_TIMEOUT_MS) == 1)
+        got = read(fds[0], line, sizeof line - 1);
+    (void)close(fds[0]);
     int status = 0;
-    PT_ASSERT_EQ_INT(waitpid(child, &status, 0), child);
+    pid_t reaped = 0;
+    for (unsigned waited_ms = 0; reaped == 0 && waited_ms < PARENT_TIMEOUT_MS; waited_ms += POLL_STEP_MS) {
+        reaped = waitpid(child, &status, WNOHANG);
+        if (reaped == 0)
+            (void)usleep(POLL_STEP_MS * 1000u);
+    }
+    if (reaped == 0) { /* still alive: it did not die of the divide error */
+        (void)kill(child, SIGKILL);
+        reaped = waitpid(child, &status, 0);
+    }
+
+    PT_ASSERT_EQ_INT(reaped, child);
     PT_ASSERT(WIFSIGNALED(status));
     PT_ASSERT_EQ_INT(WTERMSIG(status), SIGFPE);
 

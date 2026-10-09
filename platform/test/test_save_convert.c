@@ -510,31 +510,58 @@ PTEST(valid_saveblock1_sectors_beyond_the_two_slots_are_not_read_or_changed)
     check_special_sectors_untouched();
 }
 
-PTEST(a_sector_id_just_outside_saveblock1_is_not_a_chunk)
+PTEST(sector_ids_at_the_edges_outside_saveblock1_are_not_chunks)
 {
-    /* id 9's sector says id 0xFFFF (signature and checksum as they were):
-     * not SaveBlock1's, so the slot still converts and that sector stays. */
+    /* id 9's sector says id 5 (one past the last chunk; checksum 0, which is
+     * right for the zero bytes of chunk 4), id 0 (one below the first: the
+     * unsigned wrap) or id 0xFFFF, each with the signature: not SaveBlock1's,
+     * so the slot still converts and that sector stays as it is. */
+    static const uint16_t ids[] = {SB1_FIRST_ID + SB1_CHUNKS, SB1_FIRST_ID - 1, UINT16_MAX};
     static uint8_t expected0[SB1_CAPACITY];
-    make_image_32();
-    expected_64(block0, expected0);
-    uint8_t *other = sector_of_id(0, ROTATION_0, 9);
-    put_u16(other + ID_AT, UINT16_MAX);
-    memcpy(original, image, sizeof image);
+    for (size_t i = 0; i < sizeof ids / sizeof ids[0]; i++) {
+        make_image_32();
+        expected_64(block0, expected0);
+        uint8_t *other = sector_of_id(0, ROTATION_0, 9);
+        put_u16(other + ID_AT, ids[i]);
+        put_u16(other + CHECKSUM_AT, 0);
+        memcpy(original, image, sizeof image);
 
-    PT_ASSERT_EQ_INT(save_convert_image(image, 32, 64), 2);
-    check_slot(0, ROTATION_0, expected0, SB1_64);
-    PT_ASSERT_EQ_U32(get_u16(other + ID_AT), UINT16_MAX);
+        PT_ASSERT_EQ_INT(save_convert_image(image, 32, 64), 2);
+        check_slot(0, ROTATION_0, expected0, SB1_64);
+        PT_ASSERT_EQ_U32(get_u16(other + ID_AT), ids[i]);
+    }
+}
+
+/* The 32-bit block the converter makes from block64 read as a 64-bit one:
+ * every byte the 64-bit table says came from a 32-bit offset goes back there;
+ * the template scripts are zero. */
+static void expected_32_from_64(const uint8_t *block64, uint8_t expected[SB1_CAPACITY])
+{
+    memset(expected, 0, SB1_CAPACITY);
+    for (uint32_t i = 0; i < SB1_64; i++) {
+        const uint32_t target = source_of_64(i);
+        if (target != MUST_BE_ZERO)
+            expected[target] = block64[i];
+    }
 }
 
 PTEST(the_checksums_cannot_tell_which_width_a_save_has_so_the_callers_width_decides)
 {
     /* save_convert.h: SaveBlock1's last sector is zero past its 32-bit data,
      * so a 32-bit image passes the 64-bit chunk sizes' checksums (the way
-     * back converts it); a 64-bit one fails the 32-bit sizes' (nothing is
-     * converted, the test above). The file header tells the caller. */
+     * back converts it, treating the 32-bit bytes as a 64-bit block); a
+     * 64-bit one fails the 32-bit sizes' (nothing is converted, the test
+     * above). The file header tells the caller. */
+    static uint8_t expected0[SB1_CAPACITY];
+    static uint8_t expected1[SB1_CAPACITY];
     make_image_32();
+    expected_32_from_64(block0, expected0);
+    expected_32_from_64(block1, expected1);
+
     PT_ASSERT_EQ_INT(save_convert_image(image, 64, 32), 2);
-    PT_ASSERT(memcmp(image, original, CHIP_BYTES) != 0);
+    check_slot(0, ROTATION_0, expected0, SB1_32);
+    check_slot(1, ROTATION_1, expected1, SB1_32);
+    check_special_sectors_untouched();
 }
 
 PTEST(bad_arguments_change_nothing)
