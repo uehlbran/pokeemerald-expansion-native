@@ -998,6 +998,13 @@ void CreateBoxMon(struct BoxPokemon *boxMon, enum Species species, u8 level, u32
     SetBoxMonData(boxMon, MON_DATA_CHECKSUM, &checksum);
     EncryptBoxMon(boxMon);
     SetBoxMonData(boxMon, MON_DATA_IS_SHINY, &isShiny);
+#if PLATFORM_NATIVE
+    // MON_DATA_NICKNAME stores all POKEMON_NAME_LENGTH bytes, those past the
+    // name's EOS too, which were uninitialised stack (saved, so the save file
+    // differed between runs). Padded with EOS, as MON_DATA_NICKNAME10 pads.
+    memset(speciesName, EOS, sizeof(speciesName));
+#endif
+#line 1001
     StringCopy(speciesName, GetSpeciesName(species));
     SetBoxMonData(boxMon, MON_DATA_NICKNAME, speciesName);
     SetBoxMonData(boxMon, MON_DATA_LANGUAGE, &gGameLanguage);
