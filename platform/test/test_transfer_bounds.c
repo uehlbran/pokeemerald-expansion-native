@@ -30,6 +30,7 @@ static int code_marker(void)
 
 static uintptr_t code_address(void)
 {
+    /* cppcheck-suppress constVariablePointer ; a function pointer has no const pointee to add, and volatile keeps the load */
     int (*volatile fn)(void) = code_marker;
     uintptr_t address = 0;
     memcpy(&address, (const void *)&fn, sizeof address);

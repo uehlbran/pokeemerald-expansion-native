@@ -614,6 +614,7 @@ PTEST(lz77_type_bits_are_not_checked)
 static const uint32_t rom_table[4] = { 1, 2, 3, 4 };
 static uint32_t writable_word = 5;
 
+/* cppcheck-suppress constParameterPointer ; a function pointer has no const pointee to add */
 static uintptr_t address_of_code(void (*function)(void))
 {
     uintptr_t address = 0;
