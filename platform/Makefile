@@ -253,6 +253,9 @@ lint-cppcheck:
 lint: lint-tidy lint-cppcheck
 
 # The platform gate: style, analysis, then the sanitized unit tests at both widths.
+# Not in it, because they need qemu-arm and the ARM toolchain: the records
+# against the GBA's own code, run by hand (docs/UPGRADING.md):
+# `make -C platform/m4a/difftest run` and `make -C platform/arm_division_libgcc run`.
 gate:
 	$(MAKE) format-check
 	$(MAKE) lint BITS=32

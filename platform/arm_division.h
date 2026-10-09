@@ -36,16 +36,15 @@
  * mode), or kill the process as without this module, after one line on
  * stderr with the program counter. The handler is async-signal-safe (it
  * only reads the instruction and its operand and edits the saved
- * registers). ARM_DIVISION_ERR_64_BIT is no longer returned; it stays so
- * that the 32-bit build is unchanged (milestone 7). Single-threaded.
+ * registers). i386 and x86-64 only (anything else does not compile).
+ * Single-threaded.
  */
 #ifndef ARM_DIVISION_H
 #define ARM_DIVISION_H
 
 enum arm_division_error {
     ARM_DIVISION_OK = 0,
-    ARM_DIVISION_ERR_SIGNAL = -1, /* sigaction failed */
-    ARM_DIVISION_ERR_64_BIT = -2  /* no longer returned (above) */
+    ARM_DIVISION_ERR_SIGNAL = -1 /* sigaction failed */
 };
 
 /* Installs the SIGFPE handler, keeping the one it replaces to pass other

@@ -212,7 +212,24 @@ ignores them.
   On i386 a 64-bit division is a call to the host libgcc's `__udivdi3` or
   `__divdi3`, whose own 32-bit `DIV` by zero the handler completes with the
   32-bit results, so a 64-bit division by zero does not give the GBA's
-  result there (u64 5 / 0 is 0 instead of 15); open.
+  result there (u64 5 / 0 is 0 instead of 15). No game site reaches it.
+  The 64-bit divisions in `src/` (all but MathUtil_Mul32's call
+  `__udivdi3` or `__divdi3` in the GBA ROM):
+  - `src/battle_script_commands.c:9312` (ApplyExperienceMultipliers):
+    `sExperienceScalingFactors[faintedLevel + expGetterLevel + 10]`, an
+    index of at least 10, where the table is 79 and up: never zero;
+  - `src/pokemon_size_record.c:95-96` (GetMonSize): `sBigMonSizeTable`'s
+    `unk2`, 1 to 150, and the constant 10;
+  - `src/pokedex.c:4386` (ConvertMonWeightToImperialString) and
+    `src/math_util.c:30` (MathUtil_Mul32, compiled to a shift): constant
+    divisors;
+  - `src/math_util.c:50` (MathUtil_Div32): returns 0 before it when y is 0.
+
+  `src/pokemon_summary_screen.c:3079` stores into an `s64` but divides
+  `u32`s (`__udivsi3`, the 32-bit results at both widths); its divisor is 0
+  only for corrupt data, since every growth rate's experience table rises
+  strictly from level 0 to 100. At 64 bits the decoder gives the GBA's
+  64-bit results anyway.
 - `src/libisagbprn.c` assertion paths emit `.hword 0xEFFF`, an ARM
   undefined instruction used as a breakpoint. On x86 those two bytes are
   an invalid instruction too, so a failed assertion still stops, with

@@ -628,22 +628,28 @@ static struct result divq_prefixed(uint64_t dividend, uint64_t divisor)
     return r;
 }
 
-/* Divisors for the memory-operand tests: every one non-zero and different
- * from the rest, in both halves, except the bytes aim() zeroes: the 4 a
- * 32-bit DIV reads, or the 8 of a 64-bit one. A decoder that finds the
- * divisor at the wrong address, even 4 bytes off, reads a non-zero value,
- * completes nothing and the divide error is passed on (the process dies),
- * instead of reading a zero by luck. 64 slots, so that a negative disp8
- * misread as positive (up to 255 bytes on) still lands on one. */
+/* Divisors for the memory-operand tests: every byte of every slot is
+ * non-zero (slot i is the byte 0x40 + i eight times) except the bytes aim()
+ * zeroes: the 4 a 32-bit DIV reads, or the 8 of a 64-bit one. A decoder that
+ * finds the divisor at the wrong address, even one byte off either way,
+ * reads a non-zero value, completes nothing and the divide error is passed
+ * on (the process dies), instead of reading a zero by luck. 64 slots, so
+ * that a negative disp8 misread as positive (up to 255 bytes on) still
+ * lands on one. */
 #define SLOT_COUNT 64u
-#define SLOT_SENTINEL_BASE 0x100u
-#define SLOT_BOTH_HALVES 0x100000001u /* the sentinel in each half */
+#define SLOT_SENTINEL_BASE 0x40u            /* + SLOT_COUNT - 1 stays a byte */
+#define SLOT_EVERY_BYTE 0x0101010101010101u /* the sentinel byte in each byte */
 static uint64_t slots[SLOT_COUNT];
+
+static uint64_t sentinel(unsigned slot)
+{
+    return (uint64_t)(SLOT_SENTINEL_BASE + slot) * SLOT_EVERY_BYTE;
+}
 
 static void aim(unsigned zero_slot, size_t operand_size)
 {
     for (unsigned i = 0; i < SLOT_COUNT; i++)
-        slots[i] = (uint64_t)(SLOT_SENTINEL_BASE + i) * SLOT_BOTH_HALVES;
+        slots[i] = sentinel(i);
     memset(&slots[zero_slot], 0, operand_size);
 }
 
@@ -1150,27 +1156,31 @@ PTEST(rsp_and_rbp_based_operands_are_decoded)
 PTEST(memory_operands_are_read_not_assumed_zero)
 {
     /* Non-zero divisors at the same addressing forms divide normally, so each
-     * form addresses the divisor the decoder looks for. Slot i holds 0x100 + i
-     * in each half: 0x10A0000010A in slot 10, 0x10800000108 in slot 8. */
+     * form addresses the divisor the decoder looks for: twice the divisor
+     * plus one divides into 2 rem 1, minus the divisor minus one into -1 rem
+     * -1. */
     aim(0, sizeof(uint64_t));
+    const uint32_t d3 = (uint32_t)sentinel(3), d5 = (uint32_t)sentinel(5), d6 = (uint32_t)sentinel(6);
+    const uint32_t d9 = (uint32_t)sentinel(9), d20 = (uint32_t)sentinel(20);
+    const uint64_t d8 = sentinel(8), d10 = sentinel(10);
     PT_ASSERT_EQ_INT(arm_division_init(), ARM_DIVISION_OK);
-    struct result base = divl_base(0x203, &slots[3]);
-    struct result r10_disp32 = divq_r10_disp32(0x21400000215u, &slots[10]);
-    struct result index_r12 = divl_index_r12(0x206, 6);
-    struct result no_base_rex_b = divl_no_base_rex_b(0x205);
-    struct result rip_rex_b = divl_rip_rex_b(0x209);
-    struct result rip_prefixed = idivq_rip_prefixed(-0x21000000211);
+    struct result base = divl_base(2u * d3 + 1u, &slots[3]);
+    struct result r10_disp32 = divq_r10_disp32(2u * d10 + 1u, &slots[10]);
+    struct result index_r12 = divl_index_r12(2u * d6 + 1u, 6);
+    struct result no_base_rex_b = divl_no_base_rex_b(2u * d5 + 1u);    /* SLOT_NO_BASE_REX_B */
+    struct result rip_rex_b = divl_rip_rex_b(2u * d9 + 1u);            /* SLOT_RIP_REX_B */
+    struct result rip_prefixed = idivq_rip_prefixed(-(int64_t)d8 - 1); /* SLOT_RIP_PREFIXED */
     struct result rsp_disp8 = divq_rsp_disp8(10, 4);
-    struct result rbp = idivl_rbp_negative_disp8(-0x228, &slots[20]); /* 0x114 */
+    struct result rbp = idivl_rbp_negative_disp8(-(int32_t)d20 - 1, &slots[20]);
     arm_division_shutdown();
-    expect(base, 1, 0x100);
+    expect(base, 2, 1);
     expect(r10_disp32, 2, 1);
-    expect(index_r12, 1, 0x100);
-    expect(no_base_rex_b, 1, 0x100);
-    expect(rip_rex_b, 1, 0x100);
-    expect(rip_prefixed, (uint64_t)-2, (uint64_t)-1);
+    expect(index_r12, 2, 1);
+    expect(no_base_rex_b, 2, 1);
+    expect(rip_rex_b, 2, 1);
+    expect(rip_prefixed, (uint64_t)-1, (uint64_t)-1);
     expect(rsp_disp8, 2, 2);
-    expect(rbp, (uint32_t)-2, 0);
+    expect(rbp, (uint32_t)-1, (uint32_t)-1);
 }
 
 static void byte_division_by_zero(void)
