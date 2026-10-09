@@ -10,6 +10,7 @@
 #define _GNU_SOURCE /* REG_EIP, REG_RIP: the interrupted program counter */
 #include "crash_reboot.h"
 
+#include <limits.h>
 #include <signal.h>
 #include <stdbool.h>
 #include <stddef.h>
@@ -66,6 +67,9 @@ static void report_add(struct report *report, const char *text)
         report->text[report->length++] = *text++;
 }
 
+#define HEX_DIGIT_BITS 4u
+#define HEX_DIGIT_MASK 0x0Fu
+
 /* "0x" and as many hex digits as a pointer has. */
 static void report_add_hex(struct report *report, uintptr_t value)
 {
@@ -73,8 +77,8 @@ static void report_add_hex(struct report *report, uintptr_t value)
     size_t length = 0;
     text[length++] = '0';
     text[length++] = 'x';
-    for (size_t shift = 8 * sizeof value; shift > 0; shift -= 4)
-        text[length++] = hex_digits[(value >> (shift - 4)) & 0x0Fu];
+    for (size_t shift = CHAR_BIT * sizeof value; shift > 0; shift -= HEX_DIGIT_BITS)
+        text[length++] = hex_digits[(value >> (shift - HEX_DIGIT_BITS)) & HEX_DIGIT_MASK];
     text[length] = '\0';
     report_add(report, text);
 }
@@ -146,8 +150,8 @@ static void encode_state(void)
 {
     const volatile uint8_t *bytes = persistent_bytes();
     for (size_t i = 0; i < CRASH_REBOOT_PERSISTENT_SIZE; i++) {
-        reboot.state_hex[2 * i] = hex_digits[bytes[i] >> 4];
-        reboot.state_hex[2 * i + 1] = hex_digits[bytes[i] & 0x0Fu];
+        reboot.state_hex[2 * i] = hex_digits[bytes[i] >> HEX_DIGIT_BITS];
+        reboot.state_hex[2 * i + 1] = hex_digits[bytes[i] & HEX_DIGIT_MASK];
     }
     reboot.state_hex[CRASH_REBOOT_STATE_HEX_LENGTH] = '\0';
 }
@@ -166,6 +170,8 @@ static void die_of(int signal_number)
     (void)raise(signal_number); /* pending until the handler returns; a fault would recur anyway */
 }
 
+/* sigaction's sa_sigaction type fixes these parameters as non-const. */
+// cppcheck-suppress constParameterCallback
 static void on_crash(int signal_number, siginfo_t *info, void *context)
 {
     struct report report = { .length = 0 };

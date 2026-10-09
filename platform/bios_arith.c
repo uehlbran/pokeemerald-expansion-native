@@ -51,8 +51,8 @@
 /* The final product t * b carries 16 more fractional bits than the angle. */
 #define ARCTAN_RESULT_SHIFT 16u
 
-/* The BIOS polynomial: b = (A9h * a) >> 14 + 390h, then b = (b * a) >> 14 +
- * c for each c below in turn. */
+/* The BIOS polynomial: starting from b = A9h, b = (b * a) >> 14 + c for each
+ * c below in turn (the first step is (A9h * a) >> 14 + 390h). */
 #define ARCTAN_LEADING_COEFFICIENT INT32_C(0xA9)
 static const int32_t arctan_coefficients[] = {
     0x0390, 0x091C, 0x0FB6, 0x16AA, 0x2081, 0x3651, 0xA2F9,
@@ -135,12 +135,9 @@ int16_t ArcTan(int16_t tan)
 {
     int32_t t = tan;
     int32_t a = -bios_asr(bios_mul(t, t), ARCTAN_FRACTION_BITS);
-    int32_t b = bios_asr(bios_mul(ARCTAN_LEADING_COEFFICIENT, a), ARCTAN_FRACTION_BITS);
+    int32_t b = ARCTAN_LEADING_COEFFICIENT;
     for (size_t i = 0; i < sizeof arctan_coefficients / sizeof arctan_coefficients[0]; i++) {
-        if (i > 0) {
-            b = bios_asr(bios_mul(b, a), ARCTAN_FRACTION_BITS);
-        }
-        b += arctan_coefficients[i];
+        b = bios_asr(bios_mul(b, a), ARCTAN_FRACTION_BITS) + arctan_coefficients[i];
     }
     /* An ASR by 16 of a 32-bit value always fits 16 bits. */
     return (int16_t)bios_asr(bios_mul(t, b), ARCTAN_RESULT_SHIFT);

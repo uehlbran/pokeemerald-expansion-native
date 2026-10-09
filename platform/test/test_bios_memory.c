@@ -191,8 +191,6 @@ PTEST(cpuset_source_outside_the_game_refused)
     setup();
     uint16_t *heap = malloc(4 * sizeof *heap); /* the game has no native heap */
     PT_ASSERT(heap != NULL);
-    if (heap == NULL)
-        return;
     memset(heap, 0x11, 4 * sizeof *heap);
     uint16_t dst[4];
     memset(dst, FILL_BYTE, sizeof dst);
@@ -201,7 +199,7 @@ PTEST(cpuset_source_outside_the_game_refused)
     PT_ASSERT_EQ_U32(dst[0], FILL_16);
 
     /* A range running off the end of IWRAM. */
-    uint8_t *iwram_end = (uint8_t *)(uintptr_t)(GBA_IWRAM_BASE + GBA_IWRAM_SIZE);
+    const uint8_t *iwram_end = (const uint8_t *)(uintptr_t)(GBA_IWRAM_BASE + GBA_IWRAM_SIZE);
     CpuSet(iwram_end - 4, dst, 4);
     PT_ASSERT_EQ_U32(dst[0], FILL_16);
     teardown();

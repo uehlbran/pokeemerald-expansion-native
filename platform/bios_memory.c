@@ -36,7 +36,7 @@
 #define FAST_BLOCK_SIZE (FAST_BLOCK_WORDS * WORD_SIZE)
 
 /* Validates the ranges a copy or fill of count units touches. */
-static bool ranges_ok(const char *function, const void *src, void *dest, size_t count, size_t unit, bool fill)
+static bool ranges_ok(const char *function, const void *src, const void *dest, size_t count, size_t unit, bool fill)
 {
     size_t bytes = count * unit; /* count <= 200000h, unit <= 4: fits */
     return bios_range_ok(function, "source", src, fill ? unit : bytes, TRANSFER_READ)

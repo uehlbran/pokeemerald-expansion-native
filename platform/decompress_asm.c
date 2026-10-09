@@ -34,6 +34,8 @@
 #define LZ77_DISTANCE_HIGH_MASK 0x0Fu
 #define LZ77_DISTANCE_HIGH_SHIFT 8u
 #define LZ77_MIN_DISTANCE 1u
+/* A back-reference block is two bytes. */
+#define LZ77_BLOCK_SIZE 2u
 
 void FastUnsafeCopy32(void *dest, const void *src, uint32_t size)
 {
@@ -65,7 +67,7 @@ void LZ77UnCompWRAMOptimized(const uint32_t *src, void *dest)
             size_t count = (size_t)(in[0] >> LZ77_COUNT_SHIFT) + LZ77_MIN_COUNT;
             size_t distance = ((size_t)(in[0] & LZ77_DISTANCE_HIGH_MASK) << LZ77_DISTANCE_HIGH_SHIFT | in[1])
                               + LZ77_MIN_DISTANCE;
-            in += 2;
+            in += LZ77_BLOCK_SIZE;
             if (distance > written) {
                 fprintf(stderr, "decompress_asm: LZ77UnCompWRAMOptimized: a back-reference %zu bytes back "
                         "at output byte %zu reaches before the output; stopping\n", distance, written);

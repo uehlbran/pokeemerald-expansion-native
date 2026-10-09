@@ -13,6 +13,7 @@
 #include <gba/defines.h>
 #include <gba/io_reg.h>
 
+#include <stddef.h>
 #include <stdint.h>
 
 #include "bios.h"
@@ -24,10 +25,16 @@
 struct WaveData {
     uint16_t type;
     uint16_t status;
+    /* Written here, read by MidiKey2Freq through the byte offset (checked below). */
+    // cppcheck-suppress unusedStructMember
     uint32_t freq;
     uint32_t loopStart;
     uint32_t size;
 };
+_Static_assert(offsetof(struct WaveData, type) == 0 && offsetof(struct WaveData, status) == 2
+                   && offsetof(struct WaveData, freq) == 4 && offsetof(struct WaveData, loopStart) == 8
+                   && offsetof(struct WaveData, size) == 12,
+               "expansion's WaveData head layout");
 
 /* m4a stores a sample's rate times 1024 (key 60 = 180 - 120: 2^-10). */
 #define RATE_13379 (13379u * 1024u)
@@ -45,7 +52,7 @@ static void teardown(void)
 
 static uint32_t rate(uint32_t freq, uint8_t mk, uint8_t fp)
 {
-    const struct WaveData wave = { 0, 0, freq, 0, 0 };
+    const struct WaveData wave = { .type = 0, .status = 0, .freq = freq, .loopStart = 0, .size = 0 };
     return MidiKey2Freq(&wave, mk, fp);
 }
 
