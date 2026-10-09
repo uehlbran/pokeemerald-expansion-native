@@ -14,13 +14,19 @@
 // The trainer's bytes, hashed without `party`. That field is the party table's
 // address: on the GBA a ROM address fixed by the ROM's link layout, natively an
 // address in the executable that moves with any change to the build, and with
-// it the party seed (each Pokemon's personality, so its gender) and a partner's
-// OT ID. A deliberate divergence: the address is not the trainer's data.
-//
+// it the party seed (each Pokemon's personality) and a partner's OT ID.
+#if UINTPTR_MAX <= UINT32_MAX
+static u32 TrainerDataCrc32(const struct Trainer *trainer)
+{
+    struct Trainer hashed;
+    memcpy(&hashed, trainer, sizeof(hashed));
+    hashed.party = NULL;
+    return Crc32B((const u8 *)&hashed, sizeof(hashed));
+}
+#else
 // At 64 bits `party` is 8 bytes, not 4, and the struct is 56 bytes, not 52. The
 // bytes hashed are those the 32-bit build hashes, so the seed is the same at
 // both widths: [0, party), four zero bytes, then everything after the pointer.
-#if UINTPTR_MAX > UINT32_MAX
 _Static_assert((sizeof(struct Trainer) - sizeof(void *) + 4) % 4 == 0,
                "TrainerDataCrc32: Crc32B hashes whole words");
 _Static_assert(offsetof(struct Trainer, items) == offsetof(struct Trainer, party) + sizeof(void *),
@@ -39,14 +45,6 @@ static u32 TrainerDataCrc32(const struct Trainer *trainer)
     memset(hashed + head, 0, 4);
     memcpy(hashed + head + 4, bytes + tail, sizeof(struct Trainer) - tail);
     return Crc32B(hashed, sizeof(hashed));
-}
-#else
-static u32 TrainerDataCrc32(const struct Trainer *trainer)
-{
-    struct Trainer hashed;
-    memcpy(&hashed, trainer, sizeof(hashed));
-    hashed.party = NULL;
-    return Crc32B((const u8 *)&hashed, sizeof(hashed));
 }
 #endif
 #endif
