@@ -351,3 +351,70 @@ PTEST(frame_after_restart_is_rejected)
 }
 
 PTEST_MAIN()
+
+/* The "\r" of a CRLF file is a blank at the end of every command's last word. */
+PTEST(crlf_line_endings_end_every_kind_of_command)
+{
+    const struct replay_command *c = only_command("press A\r\n");
+    PT_ASSERT(c != NULL);
+    PT_ASSERT_EQ_U32(c->keys, INPUT_KEY_A);
+    c = only_command("wait-until a=b max 5\r\n");
+    PT_ASSERT(c != NULL);
+    PT_ASSERT_EQ_STR(c->value, "b");
+    PT_ASSERT_EQ_INT(c->number, 5);
+    c = only_command("dump x\r\n");
+    PT_ASSERT(c != NULL);
+    PT_ASSERT_EQ_STR(c->name, "x");
+    c = only_command("restart\r\n");
+    PT_ASSERT(c != NULL);
+    PT_ASSERT_EQ_INT(c->kind, REPLAY_CMD_RESTART);
+}
+
+PTEST(the_largest_count_is_accepted_for_every_command_that_takes_one)
+{
+    const struct replay_command *c = only_command("wait 100000000");
+    PT_ASSERT(c != NULL);
+    PT_ASSERT_EQ_INT(c->number, REPLAY_MAX_FRAMES);
+    c = only_command("hold A for 100000000");
+    PT_ASSERT(c != NULL);
+    PT_ASSERT_EQ_INT(c->number, REPLAY_MAX_FRAMES);
+    c = only_command("press A times 10000");
+    PT_ASSERT(c != NULL);
+    PT_ASSERT_EQ_INT(c->number, REPLAY_MAX_PRESS_TIMES);
+    c = only_command("wait-until a=b max 100000000");
+    PT_ASSERT(c != NULL);
+    PT_ASSERT_EQ_INT(c->number, REPLAY_MAX_FRAMES);
+    c = only_command("mash A until a=b max 100000000");
+    PT_ASSERT(c != NULL);
+    PT_ASSERT_EQ_INT(c->number, REPLAY_MAX_FRAMES);
+}
+
+PTEST(a_count_past_the_largest_or_past_32_bits_is_rejected_for_for_times_and_max)
+{
+    assert_parse_error("hold A for 100000001", 1, "at least 1");
+    assert_parse_error("hold A for 99999999999999999999999", 1, "at least 1");
+    assert_parse_error("press A times 10001", 1, "at most");
+    assert_parse_error("press A times 99999999999999999999999", 1, "at most");
+    assert_parse_error("wait-until a=b max 100000001", 1, "'max' needs");
+    assert_parse_error("wait-until a=b max 99999999999999999999999", 1, "'max' needs");
+    assert_parse_error("mash A until a=b max 100000001", 1, "'max' needs");
+}
+
+/* A key named twice is one key: the elements are ORed together. */
+PTEST(a_key_named_twice_is_one_key)
+{
+    const struct replay_command *c = only_command("press A,A");
+    PT_ASSERT(c != NULL);
+    PT_ASSERT_EQ_U32(c->keys, INPUT_KEY_A);
+    c = only_command("hold b,B,a");
+    PT_ASSERT(c != NULL);
+    PT_ASSERT_EQ_U32(c->keys, INPUT_KEY_A | INPUT_KEY_B);
+}
+
+PTEST(release_names_its_keys_whether_or_not_they_were_held)
+{
+    const struct replay_command *c = only_command("release L,R");
+    PT_ASSERT(c != NULL);
+    PT_ASSERT_EQ_INT(c->kind, REPLAY_CMD_RELEASE);
+    PT_ASSERT_EQ_U32(c->keys, INPUT_KEY_L | INPUT_KEY_R);
+}

@@ -224,6 +224,16 @@ PTEST(hold_and_release_persist_across_waits)
     PT_ASSERT_EQ_U32(fake.keys_at[4], 0);
 }
 
+PTEST(release_of_a_key_that_was_never_held_changes_nothing)
+{
+    struct replay replay;
+    struct fake fake;
+    PT_ASSERT_EQ_INT(start(&replay, &fake, "hold UP\nrelease A,L\nwait 2\nrestart", 0), 0);
+    PT_ASSERT_EQ_INT(run(&replay, &fake, 100), REPLAY_RESTART);
+    PT_ASSERT_EQ_U32(fake.keys_at[0], INPUT_KEY_UP);
+    PT_ASSERT_EQ_U32(fake.keys_at[1], INPUT_KEY_UP);
+}
+
 PTEST(hold_for_releases_after_n_frames_and_keeps_other_holds)
 {
     struct replay replay;

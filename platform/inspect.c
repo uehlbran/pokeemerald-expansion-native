@@ -159,7 +159,7 @@ static void fact_tasks(char *out, size_t size)
 /* The save blocks do not exist before the game's boot has set them up (a script's first
  * frames). The facts that read them carry the value they give until then (struct inspect_fact),
  * and inspect_get does not call their reader before the blocks exist. */
-static bool save_blocks_ready(void)
+bool inspect_save_blocks_ready(void)
 {
     return gSaveBlock1Ptr != NULL && gSaveBlock2Ptr != NULL;
 }
@@ -168,7 +168,7 @@ static bool save_blocks_ready(void)
  * variables (SPECIAL_VARS_START and up) are not stored there. */
 static unsigned var_value(uint32_t var)
 {
-    if (var < SPECIAL_VARS_START && !save_blocks_ready())
+    if (var < SPECIAL_VARS_START && !inspect_save_blocks_ready())
         return 0;
     return (unsigned)VarGet((u16)var);
 }
@@ -331,7 +331,7 @@ static void fact_flash_dirty_writes(char *out, size_t size)
 
 static void arg_flag(const uint32_t arguments[INSPECT_MAX_ARGUMENTS], char *out, size_t size)
 {
-    snprintf(out, size, "%u", (save_blocks_ready() && FlagGet((u16)arguments[0])) ? 1u : 0u);
+    snprintf(out, size, "%u", (inspect_save_blocks_ready() && FlagGet((u16)arguments[0])) ? 1u : 0u);
 }
 
 static void arg_var(const uint32_t arguments[INSPECT_MAX_ARGUMENTS], char *out, size_t size)
@@ -416,7 +416,7 @@ static int read_argument_fact(const char *name, size_t name_length, const char *
 /* The fact's value, or its pre-boot value while the save blocks do not exist. */
 static void read_fact(const struct inspect_fact *fact, char *out, size_t size)
 {
-    if (fact->value_without_save_blocks != NULL && !save_blocks_ready())
+    if (fact->value_without_save_blocks != NULL && !inspect_save_blocks_ready())
         snprintf(out, size, "%s", fact->value_without_save_blocks);
     else
         fact->read(out, size);
@@ -426,8 +426,6 @@ int inspect_get(const char *name, char *out, size_t size)
 {
     const char *argument;
     const size_t name_length = inspect_split_name(name, &argument);
-    if (out == NULL || size == 0)
-        return -1;
     if (argument != NULL)
         return read_argument_fact(name, name_length, argument, out, size);
     for (size_t i = 0; i < STATE_FACT_COUNT; i++) {

@@ -6,6 +6,7 @@
 #ifndef PLATFORM_INSPECT_INTERNAL_H
 #define PLATFORM_INSPECT_INTERNAL_H
 
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 
@@ -35,5 +36,8 @@ extern const size_t inspect_menu_arg_reader_count;
 
 /* Game-state helpers both files use (inspect.c). */
 unsigned inspect_party_count(void);
+
+/* Whether the game's boot has set up the save blocks (until then, facts that read them must not). */
+bool inspect_save_blocks_ready(void);
 
 #endif /* PLATFORM_INSPECT_INTERNAL_H */

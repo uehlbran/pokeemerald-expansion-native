@@ -191,7 +191,7 @@ static enum include_kind include_target(const char *line, size_t length, char *n
     const size_t word = sizeof INCLUDE_WORD - 1u;
     while (start < length && (line[start] == ' ' || line[start] == '\t'))
         start++;
-    if (strncmp(line + start, INCLUDE_WORD, word) != 0 || start + word > length)
+    if (strncmp(line + start, INCLUDE_WORD, word) != 0)
         return INCLUDE_NOT;
     start += word;
     if (start < length && line[start] != ' ' && line[start] != '\t' && line[start] != '\r' && line[start] != '#')

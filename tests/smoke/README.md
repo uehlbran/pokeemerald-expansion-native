@@ -89,6 +89,13 @@ editing `opening.replay` (its first nine steps are `opening_start.replay`, inclu
   `--rtc-fixed` also makes the clock start at UTC with no host time zone
   (run.sh sets `TZ=UTC` too). Every `wait N` in the script has its reason in a comment.
 
+## Before the save blocks exist
+
+`opening_start.replay` begins with four `expect` lines at frame 1, before the game has set up its
+save blocks: `flag:2144=0`, `var:16384=0`, `player_name=none` and `map=none`. They fail if a fact
+that reads a save block dereferences NULL (`inspect.c`, `read_fact`) or gives a different pre-boot
+value. Both `run.sh` and `run_debug_menu.sh` run them, as the first lines of the script they include.
+
 ## The key sequence
 
 The player is the boy, `Ab`. The names are `opening.replay`'s dump names.

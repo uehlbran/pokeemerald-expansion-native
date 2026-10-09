@@ -6,6 +6,14 @@
 # opening.replay: every step waits for a fact, except the `wait N` lines with
 # their reasons.
 
+# ---- 0. Before the game has set up its save blocks (the first step runs at the end of frame 1)
+# The facts that read the save blocks give their pre-boot values instead of dereferencing NULL
+# (inspect.c, read_fact); a regression to the dereference fails the gate here.
+expect flag:2144=0
+expect var:16384=0
+expect player_name=none
+expect map=none
+
 # ---- 1. Boot: copyright screen, intro, title screen ------------------------
 wait-until callback2=MainCB2_Intro max 1000
 wait-until callback2=MainCB2 max 20000

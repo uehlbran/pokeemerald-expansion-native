@@ -183,7 +183,7 @@ static void arg_bag_item_count(const uint32_t arguments[INSPECT_MAX_ARGUMENTS], 
 {
     const uint32_t item = arguments[0];
     /* the bag's pockets point into the save block, which does not exist before the game starts */
-    unsigned count = gSaveBlock1Ptr != NULL ? CountTotalItemQuantityInBag((enum Item)item) : 0;
+    unsigned count = inspect_save_blocks_ready() ? CountTotalItemQuantityInBag((enum Item)item) : 0;
     snprintf(out, size, "%u", count);
 }
 
