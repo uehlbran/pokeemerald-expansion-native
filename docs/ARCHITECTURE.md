@@ -61,7 +61,7 @@ send) are routed through guarded calls.
 
 The game runs on the main thread, unmodified: `AgbMain()` loops over
 `MainLoop()` and calls `VBlankIntrWait()` once per frame. The platform's
-`VBlankIntrWait` (the `bios` module) is the frame boundary: until
+`VBlankIntrWait` (the `bios` module, `bios_control.c`) is the frame boundary: until
 `INTR_CHECK` shows the VBlank flag the handler sets, as the BIOS waits, it
 calls the frame hook, `frame_run` (`platform/frame.h`), which does, in this
 order:
@@ -82,11 +82,18 @@ order:
 4. Line 161 starts, with its V-Counter match, dispatch.
 5. Mix one frame of audio (the m4a ring frame the FIFO DMAs play, the PSG,
    `SOUNDCNT_H` routing, DC removal) and queue it.
-6. Present the frame; poll SDL events; write `REG_KEYINPUT`.
+6. Present the frame; poll SDL events; run the step hook if one is set
+   (`frame_set_step_hook`; the replay driver is its one user); write
+   `REG_KEYINPUT`.
 7. Store the save file if the game wrote the flash chip.
 8. Pace to the GBA frame period.
 9. Count the frame; a frame limit or a quit ends the game after it (main
-   unwinds to its exit target).
+   unwinds to its exit target), and the screenshot, if asked for, is
+   written at the end of the loop.
+
+A handler may leave the frame by a jump (the test runner's timeout calls
+`PlatformJumpToAgbMainLoop`): the rest of the frame is not run and the next
+`frame_run` starts at line 0.
 
 Interrupts are raised only when their `DISPSTAT` enable is set, as the LCD
 requests them. Lines 162 to 227 are not run one by one: their HBlank
@@ -113,41 +120,146 @@ returned to the caller (`main` decides what to do; modules never call
 | Module | Stands in for | GBATEK section | Unit-testable |
 |---|---|---|---|
 | `gba_memmap` | the address decoder | GBA Memory Map | yes (region bounds, containment, mapping) |
+| `transfer_bounds` | the bus decoder as DMA and the BIOS copy calls meet it: may this range be transferred | GBA Memory Map | yes |
 | `interrupt` | `IntrMain` and the IE/IF/IME logic | GBA Interrupt Control | yes |
 | `timer` | Timers 0 to 3 | GBA Timers | yes |
 | `rtc` | the S-3511A clock chip's registers and offset | GBA Cart Real-Time Clock | yes |
+| `rtc_offset_store` | the battery-backed RTC setting, as a one-integer text file (internal to `rtc`) | GBA Cart Real-Time Clock | yes (through `rtc`) |
+| `fixed_clock` | nothing: a deterministic clock for the replay, `--rtc-fixed` | n/a | yes |
 | `rtc_calendar` | the chip's calendar arithmetic (BCD, leap years, the 2000 to 2099 cycle) | GBA Cart Real-Time Clock | yes |
 | `dma` | DMA channels 0 to 3 | GBA DMA Transfers | yes |
-| `bios` | the BIOS SWI functions | BIOS Functions | yes |
+| `bios_arith`, `bios_affine`, `bios_control`, `bios_decompress`, `bios_memory`, `bios_sound`, `bios_stream`, `bios_unfilter`, `bios_internal` | the BIOS SWI functions, one file per family (arithmetic, affine, control, decompressors, memory copies, sound, the unfilters), with helpers shared through `bios_internal.h` and the decompressors' shared parts in `bios_stream`; `bios.h` is the interface (there is no `bios.c`), and `VBlankIntrWait`, the frame boundary, is in `bios_control.c` | BIOS Functions | yes (one test file per family) |
 | `input` | the keypad | GBA Keypad Input | yes (mapping, replay source) |
-| `ppu` | the LCD controller, drawing | LCD Video Controller | yes (synthetic scenes in the regions) |
-| `video` | the LCD panel, via SDL | n/a | no |
-| `psg` | the four Game Boy sound channels | GBA Sound Controller, Sound Channels 1 to 4 | yes |
-| `audio` | the speaker, via SDL | n/a | no |
-| `m4a/` | the ARM sound engine `src/m4a_1.s`, in C | n/a (game code) | partly |
+| `ppu`, `ppu_bg`, `ppu_obj`, `ppu_window`, `ppu_blend` | the LCD controller, drawing: backgrounds, objects, windows, blending and brightness (shared through `ppu_internal.h`) | LCD Video Controller | yes (synthetic scenes in the regions) |
+| `video` | the LCD panel, via SDL | n/a | yes (SDL dummy drivers; the pixel format and sizes, not the picture) |
+| `psg`, `psg_channel`, `psg_square`, `psg_wave`, `psg_noise` | the four Game Boy sound channels (shared through `psg_internal.h`) | GBA Sound Controller, Sound Channels 1 to 4 | yes |
+| `audio` | the speaker, via SDL | n/a | yes (SDL dummy drivers; the queue sizes, not the sound) |
+| `frame_pacer` | the LCD's frame period: holds the loop to 59.7275 Hz | LCD Dimensions and Timings | yes (`test_frame_pacer.c`) |
+| `m4a/` | the ARM sound engine `src/m4a_1.s`, in C | n/a (game code) | yes, and a differential test against the ARM original under qemu-arm, run by hand (`platform/m4a/README.md`) |
 | `flash` | the 1 Mbit flash chip's driver entry | GBA Cart Backup Flash ROM | yes |
 | `save_file` | the cartridge's persistence | n/a | yes |
 | `debug_channel` | mGBA's debug registers | mGBA `src/gba/io.c` | yes |
 | `crash_reboot` | the reboot after a crash, keeping IWRAM's last 0x200 bytes (test runner mode) | BIOS Reset Functions | yes (real crashes and re-execs) |
 | `arm_division` | the GBA's software division (libgcc), which returns instead of trapping on a zero divisor | (libgcc, the Intel SDM for decoding) | yes |
-| `lcd_status` | the LCD controller's timing registers, `VCOUNT` and `DISPSTAT` | LCD I/O Interrupts and Status | yes |
+| `lcd_status` | the LCD controller's timing registers, `VCOUNT` and `DISPSTAT` | LCD I/O Interrupts and Status | yes (through `test_frame`) |
 | `m4a_output` | the sound FIFO DMAs, reading the m4a engine's PCM ring | GBA Sound Channel A and B - DMA Sound | yes |
 | `sound_mix` | the sound mixer and output capacitor | GBA Sound Control Registers | yes |
 | `frame` | a frame of hardware time, in order (above) | LCD Dimensions and Timings | yes (headless, with the real modules) |
 | `game_hooks` | the game's control-flow assembly (test runner jumps, the battle runner's stack, delay loops) | n/a (game code) | yes |
 | `crt0`, `rom_header`, `gcn_multiboot`, `decompress_asm` | the `src/*.s` the native build does not assemble | n/a (game code) | yes |
 | `options` | the command line | n/a | yes |
+| `replay`, `replay_parse`, `replay_include`, `replay_session` | nothing: the input-replay script, its parser, its `include` expansion and the glue to the running game | n/a | yes (against a fake host), except `replay_session`, covered only by the replays |
+| `inspect`, `inspect_menu`, `inspect_args`, `inspect_decode`, `symbols` | nothing: the facts a replay reads from expansion's variables, the ranges of their arguments, and function names from the executable's ELF symbols | n/a | `inspect_args`, `inspect_decode`, `symbols` yes; `inspect`, `inspect_menu` only through the replays |
+| `restart` | a switch-off and switch-on: re-exec of the process for the replay's `restart` | n/a | yes |
 | `main` | power-on | n/a | no |
+
+Header-only: `gba_irq.h` (the fourteen interrupt sources), `gba_timing.h`
+(the clock and frame length), `dma_hooks.h` (the two functions expansion's
+`include/gba/macro.h` calls under `PLATFORM_NATIVE`), `script_tag.h` (see
+"Known divergences"), and `inspect_internal.h` (what `inspect.c` and
+`inspect_menu.c` share).
 
 Dependencies point one way: `main` depends on everything; `frame` on the
 modules a frame drives; `ppu`, `dma`, `timer`, `interrupt`, `psg`, `flash`
 depend on `gba_memmap` for addresses and bounds; `bios` depends on
-`gba_memmap` and `interrupt`; nothing but `frame` and `main` depends on
-`video` or `audio`, and nothing on `main`. The modules do not include
+`gba_memmap` and `interrupt`; nothing but `frame`, `main` and `replay_session` (which writes the
+screenshot) depends on `video` or `audio`, and nothing on `main`. The modules do not include
 expansion's headers; the exceptions are `gba_memmap.h`, which may include
 `gba/defines.h` and `gba/io_reg.h` as system headers to reuse their names
-and assert ours match, and `m4a_output.c`, which reads the m4a engine's
-`struct SoundInfo` (`gba/m4a_internal.h`) as the DMA did.
+and assert ours match, `m4a_output.c`, which reads the m4a engine's
+`struct SoundInfo` (`gba/m4a_internal.h`) as the DMA did, the `m4a/`
+engine, which is game code, and `inspect.c`, `inspect_menu.c` and
+`inspect_args.c`, which read the game's variables and are compiled with the
+game's defines (`platform/game_flags.mk`).
+
+## The test runner
+
+`make -f Makefile.native check` runs expansion's own hydra
+(`tools/mgba-rom-test-hydra`), unchanged, over the `TEST=1` executable;
+`platform/test_runner/native-rom-test` stands in for `mgba-rom-test`. The
+executable started with `--test-runner` talks the runner's protocol through
+`debug_channel` (mGBA's debug registers, plain memory in the 0x04FFF000
+page, whose send function prints to stdout), survives the runner's crashes
+through `crash_reboot` (a re-exec that carries IWRAM's persistent bytes,
+as the GBA's reboot kept them) and does not draw unless a replay or a
+screenshot needs the frames. The battle tests' functions run on the
+platform stack at 0x01800000 (`game_hooks`). The details are in
+`platform/README.md`, "The test runner", and the per-test comparison with
+the GBA baseline in `platform/test_runner/SUITE-LOG.md`.
+
+## The replay and its facts
+
+The gates that play the game are scripts (`tests/smoke/*.replay`) fed
+through `input`'s script source. `replay` parses and plays a script one
+step per frame (`frame_set_step_hook`); `inspect` reads named facts
+(`callback2`, `map_name`, `party_species:N`, ...) from expansion's
+variables, so a script can `expect` and `wait-until` on game state;
+`symbols` names the game's static callbacks from the executable's ELF
+symbols; `restart` re-executes the process, which is what a switch-off and
+switch-on does, so the save file is shown to carry the state. `--rtc-fixed`
+(`fixed_clock`) makes the clock deterministic. The facts with arguments are
+range-checked against expansion's constants (`inspect_args`). Scripts,
+expectations and how to update them: `tests/smoke/README.md`; the grammar:
+`platform/replay.h`; the facts: `platform/inspect.h`.
+
+## The asset pipeline and palette padding
+
+`Makefile.native` reuses expansion's rule fragments and tools (`gbagfx`,
+`preproc`, `scaninc`, `mapjson`) rather than calling its `Makefile`; the
+header comment of `Makefile.native` says what is mirrored and what must be
+kept in sync. The graphics converted from `INCGFX` go to
+`build/assets-native/`, not to the GBA build's `build/assets/`, because the
+palettes differ: `platform/build_glue/gbagfx_pad.sh` zero-pads every
+`.gbapal` it writes there to whole 32-byte banks, since the game copies
+whole banks (`LoadSpritePalette`) and the GBA read the next bytes of ROM.
+Palettes whose size the game takes (`sizeof`, `ARRAY_COUNT`, a sized
+initialiser) must not be padded: `platform/build_glue/unpadded_palettes.txt`
+lists them, and `check_palette_padding.py` verifies the list on every link.
+The GBA build and its ROM are untouched. `DECISIONS.md`, "Short palettes are
+padded at build time", has the reasoning.
+
+## The save container
+
+The cartridge's flash is the 128 KiB `SRAM` region; `flash` is the chip's
+driver entry in expansion's own table, and `save_file` persists the region
+as `pokeemerald.sav`: a 28-byte header (`PENSAVE\0`, format version, the
+writing build's pointer width and layout id, image size, CRC-32) and the
+image, written to a temporary file, synced and renamed. A file written by a
+build with another layout is refused, not overwritten. A bare 128 KiB image
+loads as legacy. The frame loop stores the file whenever the flash was
+written. The field table is in `platform/README.md`, "The flash chip and the
+save file"; the decisions are "Native structs follow the host ABI" and "The
+native save file is versioned" in `DECISIONS.md`.
+
+## Known divergences from the GBA
+
+Each is a decision in `DECISIONS.md`; none changes the GBA build.
+
+- Structs follow the host ABI, not `-mabi=apcs-gnu`: native save blocks have
+  other sizes, `test/save.c` checks the native ones, and GBA `.sav`
+  interchange is not supported ("Native structs follow the host ABI").
+- The executable is linked at 0x40000000, not in a ROM window; the two
+  places that assume ROM addresses are guarded, and tagged script pointers
+  use bit 25 (`script_tag.h`; "The link base stays at 0x40000000").
+- `VCOUNT` reads 161 between frames, and lines 162 to 227 are not run one by
+  one (see "The frame").
+- Game code takes no emulated time: busy waits on timers or `VCOUNT` are
+  replaced by `PlatformWaitCycles`, loops that wait for the V-Blank handler
+  yield a frame, and the nine `BENCHMARK` tests are assumption failures
+  ("Benchmarks are assumption failures natively", "Setup loops that spin on
+  the DMA3 queue yield a frame").
+- Where the GBA reads or writes memory that does not exist natively
+  (NULL, past a table), the guarded change does what the GBA ends up doing,
+  or what a correct program would where that is unknowable ("Native fixes do
+  what the GBA ends up doing"). The platform does not map page zero.
+- The trainer party seed does not hash the party table's address ("The
+  trainer party seed does not hash the party table's address").
+- Short palettes are padded in the native asset directory (above).
+- Expansion's sources are compiled with `-funsigned-char`; the sanitized
+  build disables UBSan's `shift-base` for expansion's objects only, and uses
+  outline AddressSanitizer checks for the `TEST=1` build.
+- Not simulated: time within a line, lines 162 to 227 one by one, and the
+  GameCube multiboot (the copyright screen takes its "no multiboot" path).
 
 ## Conventions that the tests enforce
 
@@ -166,9 +278,10 @@ and assert ours match, and `m4a_output.c`, which reads the m4a engine's
 
 `Makefile.native` builds the native executable from expansion's sources
 plus `platform/` (`make -f Makefile.native native`, with `TEST=1` for the
-test runner build and `SANITIZE=1` for the sanitized one), linked non-PIE
+test runner build and `SANITIZE=1` for the sanitized one; `check` runs
+expansion's suite on it), linked non-PIE
 at 0x40000000 with `platform/gba_regions.ld` and `platform/gba_game.ld`. `platform/Makefile` builds the modules and their tests
 standalone under AddressSanitizer and UndefinedBehaviorSanitizer with
 `-std=gnu17 -Wall -Wextra -Wshadow -Wstrict-prototypes -Wconversion
--Werror`; expansion's headers are included with `-isystem` so their
-warnings are not ours. See `BUILDING.md`.
+-Werror`; expansion's headers are included with `-isystem` (`-idirafter` where
+`-isystem` would shadow libc headers) so their warnings are not ours. See `BUILDING.md`.
