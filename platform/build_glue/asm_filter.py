@@ -26,7 +26,13 @@ Malformed input fails loudly rather than being corrupted: after an
 unterminated string nothing is stripped or renamed, so an '@' comment that
 follows reaches the assembler, which rejects it.
 
-Reads stdin, writes stdout. Run as 'python3 -I asm_filter.py'.
+With '--pointer-size 8', which Makefile.native passes for the 64-bit build
+only, the filter also lays the data out for C structs whose pointers are 8
+bytes (rules below, per kind of input). Without it, or with
+'--pointer-size 4', the output is the same as before the option existed.
+
+Reads stdin, writes stdout. Run as
+'python3 -I asm_filter.py [--pointer-size 4|8]'.
 'python3 -I asm_filter.py --self-test' checks the rules above and exits
 non-zero on a failure.
 """
@@ -162,14 +168,28 @@ def self_test():
     return 0
 
 
+POINTER_SIZES = ("4", "8")
+USAGE = "usage: asm_filter.py [--pointer-size 4|8] < input > output | --self-test\n"
+
+
+def filter_program(lines, pointer_size):
+    """Yield the filtered lines of a whole input."""
+    for line in lines:
+        yield filter_line(line)
+
+
 def main(argv):
-    if argv[1:] == ["--self-test"]:
+    args = argv[1:]
+    if args == ["--self-test"]:
         return self_test()
-    if len(argv) > 1:
-        sys.stderr.write("usage: asm_filter.py [--self-test] < input > output\n")
+    pointer_size = "4"
+    if len(args) == 2 and args[0] == "--pointer-size" and args[1] in POINTER_SIZES:
+        pointer_size = args[1]
+    elif args:
+        sys.stderr.write(USAGE)
         return 2
-    for line in sys.stdin:
-        sys.stdout.write(filter_line(line))
+    for line in filter_program(sys.stdin, int(pointer_size)):
+        sys.stdout.write(line)
     return 0
 
 
