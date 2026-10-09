@@ -29,12 +29,21 @@ make -j$(nproc) check      # expansion's test suite on mgba-rom-test
 
 Expected results for 1.17.1 are in `research/gba-baseline-1.17.1.md`.
 
-### Native target (32-bit)
+### Native target (32-bit and 64-bit)
 
 ```
 make -f Makefile.native -j$(nproc) native BITS=32        # build/native32/pokeemerald-native
 ./build/native32/pokeemerald-native                       # windowed, scale 3
 ./build/native32/pokeemerald-native --help                # options: --headless --silent --unthrottled --frames N --screenshot F --save PATH --rtc-offset PATH --scale N --replay SCRIPT --out DIR --rtc-fixed EPOCH
+```
+
+`BITS=64` is a first-class target, built the same way into `build/native64/`
+(`native64-san/`, `native64-test/`, `native64-test-san/`):
+
+```
+make -f Makefile.native -j$(nproc) native BITS=64        # build/native64/pokeemerald-native
+make -f Makefile.native -j$(nproc) native BITS=64 TEST=1 # build/native64-test/pokeemerald-native-test
+make -f Makefile.native -j32 check BITS=64                # expansion's suite
 ```
 
 Variants: `TEST=1` builds `build/native32-test/pokeemerald-native-test`
@@ -73,6 +82,42 @@ hydra (as `make check` runs it against mgba-rom-test; about 40 seconds on
 ```
 make -f Makefile.native -j32 check BITS=32
 ```
+
+#### What the 64-bit link adds
+
+Before it links, the 64-bit build runs three checks that the 32-bit one has no
+use for (`docs/ARCHITECTURE.md`, "The 64-bit build", says what each catches):
+
+- `platform/build_glue/check_relocations.py` classifies every address word of the
+  assembled data with `platform/build_glue/data_address_words.txt` (the classified
+  list) and compares it with the same objects assembled with 4-byte pointers, which
+  a second make builds into `build/native64/pointer4` for this purpose only (about
+  2 s);
+- `platform/build_glue/check_data_layout.py` compares the bytes of the structs the
+  data holds with that reference and with the C layout at each width, which
+  `data_layout_probe.c` prints compiled with the game's flags;
+- `platform/build_glue/check_battle_script_operands.py` compares the battle script
+  macros' operand widths with the C that reads them.
+
+Each runs its `--self-test` first. Together they add well under half a minute
+to a 64-bit build; a 64-bit build from nothing takes about as long as the
+32-bit one (about 2 minutes with `-j32` including asset conversion). A table that
+upstream adds to the data without a rule, or a macro whose operands change, stops
+the link with the symbol or macro named; `docs/UPGRADING.md` says what to do.
+
+The 64-bit replays are the 32-bit ones on the 64-bit executable (the same
+expectations, about 30 s each):
+
+```
+tests/smoke/run.sh build/native64/pokeemerald-native out/
+tests/smoke/run_debug_menu.sh build/native64/pokeemerald-native out/
+ASAN_OPTIONS=halt_on_error=0 tests/smoke/run.sh build/native64-san/pokeemerald-native out-san/
+ASAN_OPTIONS=halt_on_error=0 tests/smoke/run_debug_menu.sh build/native64-san/pokeemerald-native out-san/
+```
+
+(`native BITS=64 SANITIZE=1` builds the sanitized executable.) The suite's
+sanitized run compares widths with `ASAN_OPTIONS=suppress_equal_pcs=0`
+(`platform/test_runner/SUITE-LOG.md`).
 
 #### Assets of the native build
 
@@ -135,5 +180,8 @@ ASAN_OPTIONS=halt_on_error=0 tests/smoke/run_debug_menu.sh build/native32-san/po
 
 Save file: `pokeemerald.sav` in the working directory (a 28-byte header
 plus the 128 KiB flash image; see `platform/README.md`); RTC offset in
-`pokeemerald.rtc`. 64-bit (`BITS=64`) compiles but does not link yet
-(milestone 7).
+`pokeemerald.rtc`. A save is portable between the widths: a `pokeemerald.sav`
+written by the 32-bit build is converted in memory when the 64-bit build loads it
+and the file is rewritten with the 64-bit tag at the game's next save; a 64-bit
+save loads in the 32-bit build the same way (`platform/README.md`;
+`tests/smoke/run_cross_width.sh` plays it).

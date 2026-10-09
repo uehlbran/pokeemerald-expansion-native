@@ -53,15 +53,38 @@ Rules 1 to 4 below are from it; rule 5 is from the policy at the top of
    at the top of that file. Before changing an expansion file at all, ask
    whether a link-time substitution, a build-time filter or a shim in
    `platform/` can do it; the policy prefers those.
+6. Where the width of a pointer matters, test it inside the native guard:
+   `#if __SIZEOF_POINTER__ == 8` in C (a predefined macro, true in every
+   translation unit; not `UINTPTR_MAX`, which is undefined in a header included
+   before `<stdint.h>` and makes the test silently false) and
+   `.ifdef NATIVE_POINTER_SIZE_8` in assembly (defined for `BITS=64` only). The
+   block keeps the 32-bit text on its own lines, first, so that the sanitized
+   32-bit executable (which embeds line numbers) does not change:
+
+   ```
+   #if PLATFORM_NATIVE
+   #if __SIZEOF_POINTER__ != 8
+   #line 123
+   <the original text>
+   #else
+   <the 64-bit text>
+   #endif
+   #endif
+   #line 124
+   ```
+
+   Each such block has its row in `docs/UPSTREAM_MODIFICATIONS.md`, marked
+   64-bit.
 
 ## Gates
 
 A change is merged when all of these pass. `docs/STATUS.md`, "Gates and
 their state", is the list of gates (a to h); the commands are in
-`docs/BUILDING.md`, the numbers in `docs/STATUS.md`. Gates (a) and (h) are
-milestone-level: (a) is a native build from a clean clone with the
-documented prerequisites, run before a milestone is declared done, and (h),
-the cross-width save round trip, does not exist yet.
+`docs/BUILDING.md`, the numbers in `docs/STATUS.md`. Gate (a) is
+milestone-level: a native build from a clean clone with the documented
+prerequisites, run before a milestone is declared done. Gate (h), the
+cross-width save round trip (`tests/smoke/run_cross_width.sh`), is run by
+a change to the save format, `platform/save_*` or `SaveBlock1`.
 
 1. Platform unit tests, both widths: `make -C platform test BITS=32` and
    `BITS=64`; a change under `platform/` or `tools/patchelf` also passes
@@ -69,20 +92,43 @@ the cross-width save round trip, does not exist yet.
    an ELF32 and an ELF64 executable.
 2. The two replays, plain and sanitized: `tests/smoke/run.sh` and
    `tests/smoke/run_debug_menu.sh` on `build/native32/` and on
-   `build/native32-san/` (with `ASAN_OPTIONS=halt_on_error=0`). The plain
-   and sanitized runs must produce the same dumps and screenshots.
+   `build/native32-san/` (with `ASAN_OPTIONS=halt_on_error=0`), and the same on
+   `build/native64/` and `build/native64-san/`. The plain and sanitized runs,
+   and the two widths, must produce the same dumps and screenshots.
 3. Expansion's suite on the native build:
    `make -f Makefile.native -j32 check BITS=32`, and with `SANITIZE=1`.
    Per test it must equal the GBA baseline
    (`docs/research/gba-baseline-1.17.1.md`), except the nine benchmarks,
-   which are assumption failures natively by decision.
+   which are assumption failures natively by decision. The same at
+   `BITS=64`, with the same counts (a width-dependent result is a bug in a
+   guard, not a new baseline); a sanitized comparison of widths uses
+   `ASAN_OPTIONS=suppress_equal_pcs=0` (`platform/test_runner/SUITE-LOG.md`).
 4. Gate (c), the GBA target: the ROM is unchanged (`make -j"$(nproc)"`, then
    `sha1sum pokeemerald.gba` against the value for 1.17.1 in
    `docs/STATUS.md`; a change that moves it changes GBA behaviour and is a
    bug), and `TEST=1 make -j"$(nproc)" check` equals the baseline.
-5. Format and lint: see `docs/BUILDING.md`. `make -C platform gate` is
-   meant to run them together once the lint change is merged; it does not
-   exist in the tree at the time of writing.
+5. Format and lint: `make -C platform gate` runs them with the unit tests
+   at both widths (`docs/BUILDING.md`).
+6. Gate 32=: a change to an expansion file under the guard must leave the
+   four 32-bit executables (`native32`, `native32-san`, `native32-test`,
+   `native32-test-san`) byte-identical. They embed the worktree path, so
+   compare like with like: build the base commit and your branch in the same
+   worktree and compare those. A change under `platform/` or to the test
+   runner legitimately changes every executable that links it; then the
+   gate is that the symbol sets (`nm`) differ only by what you added, and
+   gates 1 to 3 are green at both widths.
+7. The 64-bit link's own checks (`check_relocations.py`, `check_data_layout.py`,
+   `check_battle_script_operands.py`) pass: a new assembled table, a new
+   battle script command or a new pointer in a saved struct stops the link
+   until it is classified, widened or given a converter row
+   (`docs/UPGRADING.md`).
+
+Run by hand, because they need tools most machines lack, and recorded in
+the repository: after a change to the m4a engine, `make -C platform/m4a/difftest run`
+(the C against the original assembly under qemu-arm, needs
+`arm-none-eabi-gcc` with newlib and `qemu-arm`); after a change to
+`platform/arm_division.c`, `make -C platform/arm_division_libgcc run`
+(rebuilds the record of the GBA libgcc's division results and compares it).
 
 Hygiene, not a gate: `git diff --check` is clean.
 
