@@ -6,6 +6,35 @@ This file is the honest ledger. A thing is listed as verified only with
 the gate that proved it. Anything without a gate is unverified, whatever
 we believe about it.
 
+## Summary for the owner
+
+Read this first; the sections below are the ledger behind it.
+
+**Finished.** Milestones 1 to 5: research; the 32-bit native build boots and
+plays the opening (gate d) and the debug menu (gate e), plain and sanitized;
+expansion's test suite runs natively and matches the GBA baseline (gate b);
+the GBA ROM is byte-identical (gate c). Seven upstream issues are filed
+(rh-hideout #10892 to #10898, approved text). Every commit is authored by
+uehlbran; the GitHub repository was recreated so no other identity remains.
+
+**In flight.** Milestone 6: the refactoring pass runs as seven worker
+branches (core, video, audio, bios, tools, store, modaudit), each reviewed
+before merge; after they merge, the clang-format and clang-tidy gate, then
+the docs (CONTRIBUTING, UPGRADING, ARCHITECTURE), then the orchestrator's
+end-to-end read, then "32-bit done" here. Milestone 7 (64-bit) follows.
+
+**Broke and fixed.** Nothing open. Past breakages and their fixes are in
+the milestone logs (`platform/build_glue/BOOT-LOG.md`,
+`platform/test_runner/SUITE-LOG.md`) and in `UPSTREAM_MODIFICATIONS.md`.
+
+**Needs the owner.** Nothing at the moment. Upstream replies, if any, appear
+under "Upstream issues" below with drafted answers awaiting approval.
+
+## Upstream issues
+
+No maintainer comments yet on #10892 to #10898 (checked every five
+minutes while the session runs).
+
 ## Verified by a gate
 
 | What | Gate | Result |
