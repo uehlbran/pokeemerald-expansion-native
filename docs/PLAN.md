@@ -204,3 +204,48 @@ Order of work:
    can run it); then macOS by the same method on a macOS runner, each
    gate recorded in STATUS.md as it passes. Neither is declared done
    without the replays and the suite passing on that platform.
+
+### The inventory's findings (2026-10-09, `research/m8-inventory.md`)
+
+Verdicts, each with its evidence in the file: Windows x86_64 can probably
+keep the memory model as one PE image based at 0x01800000 with the
+regions as sections and the code at 0x40000000 (GNU ld places it; whether
+the NT loader accepts a 1000 MiB image with gaps is probe W1); Windows
+i686 is not attempted (every C symbol gains an underscore, so the linker
+scripts and the data symbols would need a second spelling, and 32-bit is
+proven on Linux); macOS x86_64 can probably keep it (`-no_pie`,
+`-pagezero_size`, segments at fixed addresses; probe M0), and runs on
+Apple silicon through Rosetta; macOS arm64 cannot keep it (arm64
+executables are always slid at load, and the build holds 41,946 4-byte
+absolute address words, 190 sites that turn them into pointers, the
+bit-25 script tag, and no divide trap), so arm64 needs a "rebased" model
+where GBA addresses are offsets from a run-time base: its own milestone,
+and the owner's decision (STATUS.md "Needs the owner").
+
+Measured: 13 of the 59 platform modules touch the OS beyond stdio and
+SDL (16 `sigaction` lines in 5 files, register access by index in two,
+3 uses of `/proc/self/exe`, ucontext in `game_hooks`; no run-time
+`mmap`, no `clock_gettime`); the linker scripts do not work under the PE
+linker as they are (`.rodata` is `.rdata`) and ld64 takes no GNU script;
+the assembled data carries 28,982 ELF-only `.size` lines, 7 `%progbits`
+section lines and 8 16-bit relocations with no COFF counterpart, and
+macOS's assembler rejects the GNU macro syntax outright (20,134 errors
+on one file), so the data is assembled with GNU as on Linux and
+converted; MinGW GCC defaults to `-mms-bitfields` against 1,247 bitfield
+members in expansion's headers (`-mno-ms-bitfields` keeps the Linux
+layouts, saves included); `ptest.h`'s SIGALRM timeout and 16 POSIX-bound
+tests need Windows variants; 7 bash scripts (574 lines) with `stat -c`,
+`md5sum` and `/proc/$$/fd` as the blockers.
+
+Design: a thin `host` layer, one header per concern (memory, faults,
+process, image bounds, stack switch, files) and one source per OS,
+rather than `#ifdef` blocks in 13 modules and their tests; the replay's
+symbol names from an `nm` map written at link time instead of an ELF
+reader. Order: W1 (the Windows loader probe) and M0 (the macOS probes)
+on the runners; W2 the host layer on Linux as a pure refactor with every
+Linux gate; W3 the test timeout; W4 the cross-build glue (needs the
+owner's apt line); W5 to W8 the Windows host, faults, stack switch and
+test runner; W9 the Windows CI job; then M1 to M5 for macOS x86_64 by
+the same method. Not attempted: Windows i686, sanitizers under MinGW,
+building the game on Windows, the GBA ROM there, macOS arm64 before the
+owner decides.

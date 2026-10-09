@@ -814,3 +814,24 @@ proceeds with the Linux workflow without waiting (the standing orders:
 nothing short of an irreversible choice waits for the owner; a workflow
 file is reverted by deleting it, and the owner can disable Actions in
 the repository settings at any time).
+
+## 2026-10-09: The ports share a thin host layer; Windows is x86_64 only; macOS arm64 waits for a decision
+
+The milestone 8 inventory (`research/m8-inventory.md`) measured that 13
+of the 59 platform modules touch the OS, in six concerns. The port is
+built as one `host` layer with a header per concern and a source per
+OS, not as `#ifdef` blocks: three OS branches in 13 modules and their
+tests would break the rule that a module's header is its only interface
+and its logic is tested once. The layer is introduced on Linux first as
+a pure refactor under every Linux gate, so its correctness is proven
+before a second OS exists. Windows is built for x86_64 only: i686 would
+rename every C symbol (the underscore prefix) through the linker scripts
+and the data, for a target Windows 11 no longer ships. macOS arm64 is
+not attempted until the owner decides on a rebased memory model: the
+measured facts (every arm64 executable slid at load; 41,946 4-byte
+absolute address words in the data; the bit-25 script tag; no divide
+trap) mean the fixed-address model cannot hold there, and a rebased
+model is a milestone of its own that could reasonably be declined
+(x86_64 builds run on Apple silicon through Rosetta). Probes on the
+runners (W1, M0) settle the loader questions before any port code is
+written, because those facts cannot be measured here.

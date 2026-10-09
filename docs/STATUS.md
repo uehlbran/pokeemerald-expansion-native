@@ -41,8 +41,10 @@ sanitized. The "Milestone 7" section and the table below are the ledger.
 after the 64-bit declaration: a Linux workflow of this project's own
 (`.github/workflows/native.yml`, the gate as recorded below, on pushes to
 `main` and by hand; PLAN.md "Milestone 8 plan" and DECISIONS.md say why
-Linux only and why not every push) and an Opus inventory of the Windows
-and macOS ports, no code. Nothing else runs.
+Linux only and why not every push) and, from the Opus inventory of the Windows and macOS ports
+(`research/m8-inventory.md`; PLAN.md has its findings and the task
+order), the first tasks: the loader probes on the Windows and macOS
+runners (W1, M0) and the host layer on Linux as a pure refactor (W2).
 
 **Broke and fixed.** Milestone 7: the 64-bit plain debug-menu replay
 failed on main right after the alignment merge while the sanitized one
@@ -56,14 +58,33 @@ game flags (3249f05722). Milestone 6's screenshot flake (the trainer party
 seed hashing a pointer) is recorded in the milestone 6 section and in
 DECISIONS.md. Earlier breakages are in the milestone logs.
 
-**Needs the owner.** For milestone 8's Windows port a MinGW cross-compiler
-is needed and is not installed; nothing waits on it yet (the inventory
-runs first), but when convenient:
-`sudo apt-get install -y mingw-w64` (the SDL2 development files for
-MinGW are not in apt; the inventory will say where they come from).
-Also: the Linux CI workflow spends the private repository's Actions
-minutes (about an hour of a 4-core runner per push to main); disable
-Actions in the repository settings if that is not wanted.
+**Needs the owner.** Three things for milestone 8, none blocking the
+work that is running:
+
+1. The Windows cross-compiler (needed from task W4 on; PLAN.md):
+`sudo apt-get install -y gcc-mingw-w64-x86-64 binutils-mingw-w64-x86-64 mingw-w64-tools`
+and, optional, to run the Windows build here under Wine:
+`sudo apt-get install -y wine64`.
+The SDL2 development files for MinGW are not in apt; the build will
+fetch a pinned `SDL2-devel-2.30.x-mingw` release from libsdl-org (zlib
+licence) with a sha256 check, not committed.
+2. A decision that could reasonably go either way: **macOS on Apple
+silicon (arm64)**. The inventory (`research/m8-inventory.md`, section
+2.5) measured that the fixed-address memory model cannot hold there
+(arm64 executables are always slid at load; the data holds 41,946
+4-byte absolute address words; the bit-25 script tag; no divide trap),
+so an arm64 build needs a "rebased" model where GBA addresses are
+offsets from a run-time base, a milestone of its own touching the data
+layout, the script tag and the division handling. Recommendation: do not
+start it; build macOS for x86_64, which runs on Apple silicon through
+Rosetta (kept by Apple through macOS 27), and revisit arm64 only if a
+native arm64 build is wanted for its own sake. Work continues on the
+Windows and macOS x86_64 ports meanwhile.
+3. The CI workflows spend the private repository's Actions minutes (the
+Linux gate about an hour of a runner per push to main; the probes a few
+minutes each, Windows minutes counting double and macOS tenfold);
+disable Actions in the repository settings if that is not wanted.
+
 rh-hideout's maintainer replied to all seven upstream
 issues citing their LLM policy and said they will close them (details and a
 recommendation under "Upstream issues" below). Nothing was posted in reply.
