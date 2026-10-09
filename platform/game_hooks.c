@@ -8,36 +8,30 @@
  * sources (test/test_runner.c, test/test_runner_battle.c, src/main.c,
  * src/multiboot.c); no reference port does these.
  *
- * Stack switching uses POSIX ucontext (getcontext, makecontext,
- * swapcontext, setcontext), which glibc provides on both widths, with
- * AddressSanitizer's fiber annotations
- * (sanitizer/common_interface_defs.h) when built with it, so ASan knows which
- * stack is current and does not misreport the switch.
+ * The stack switch is host_stack's (with AddressSanitizer's fiber
+ * annotations), the stack host_memory's, and the executable's read-only
+ * segments host_image's.
  */
 #include "game_hooks.h"
 
 #include "debug_channel.h"
+#include "host_image.h"
+#include "host_memory.h"
+#include "host_stack.h"
 
-#include <link.h> /* ElfW */
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdio.h>
 #include <string.h>
-#include <sys/auxv.h>
-#include <ucontext.h>
-
-#ifdef __SANITIZE_ADDRESS__
-#include <sanitizer/common_interface_defs.h>
-#endif
 
 /* x86-64's ABI wants the stack 16-byte aligned (i386's GCC also keeps 16). */
 #define GAME_HOOKS_STACK_ALIGNMENT 16
 
-/* Stack between run_entry's frame and entry's. Before and after entry,
- * run_entry calls AddressSanitizer's fiber functions, whose frames go below
- * its own; entry's locals must stay untouched between calls, so entry runs
- * below this gap, which those calls stay within (they use well under a
- * KiB). */
+/* Stack between the frame host_stack starts the call stack with and entry's.
+ * Before and after entry, host_stack calls AddressSanitizer's fiber
+ * functions, whose frames go below its own; entry's locals must stay
+ * untouched between calls, so entry runs below this gap, which those calls
+ * stay within (they use well under a KiB). */
 #define GAME_HOOKS_CALL_STACK_GAP (64u * 1024u)
 
 static struct {
@@ -52,43 +46,10 @@ static struct {
     bool active;
     void (*entry)(void *context);
     void *context;
-    ucontext_t caller;
-    ucontext_t callee;
     /* A longjmp asked for from inside entry, done once back on the caller's stack. */
     jmp_buf *unwind_target;
     int unwind_value;
-    /* AddressSanitizer's view of the caller's stack, for switching back. */
-    void *caller_fake_stack;
-    const void *caller_stack_bottom;
-    size_t caller_stack_size;
 } call;
-
-/* gba_regions.ld's .platform_call_stack (game_hooks.h says why there). */
-extern unsigned char platform_call_stack_start[], platform_call_stack_end[];
-
-/* AddressSanitizer's fiber annotations, or nothing without it. */
-static void fiber_start_switch(void **fake_stack_save, const void *bottom, size_t size)
-{
-#ifdef __SANITIZE_ADDRESS__
-    __sanitizer_start_switch_fiber(fake_stack_save, bottom, size);
-#else
-    (void)fake_stack_save;
-    (void)bottom;
-    (void)size;
-#endif
-}
-
-// NOLINTNEXTLINE(readability-non-const-parameter): old_size is the ASan call's out-parameter
-static void fiber_finish_switch(void *fake_stack_save, const void **old_bottom, size_t *old_size)
-{
-#ifdef __SANITIZE_ADDRESS__
-    __sanitizer_finish_switch_fiber(fake_stack_save, old_bottom, old_size);
-#else
-    (void)fake_stack_save;
-    (void)old_bottom;
-    (void)old_size;
-#endif
-}
 
 int game_hooks_init(jmp_buf *exit_target)
 {
@@ -123,9 +84,7 @@ void game_hooks_unwind(jmp_buf *target, int value)
     if (call.active) {
         call.unwind_target = target;
         call.unwind_value = value;
-        fiber_start_switch(NULL, call.caller_stack_bottom, call.caller_stack_size);
-        setcontext(&call.caller); /* returns only on failure */
-        (void)fprintf(stderr, "game_hooks: setcontext back to the caller's stack failed\n");
+        host_stack_leave(); /* returns only on failure, reported */
     }
     longjmp(*target, value);
 }
@@ -172,36 +131,27 @@ void PlatformDebugSend(uint16_t flags)
     debug_channel_send(flags);
 }
 
-/* Calls entry below GAME_HOOKS_CALL_STACK_GAP bytes of its own frame. Not
- * instrumented, so that AddressSanitizer's use-after-return detection does
- * not move the gap off the stack. */
-__attribute__((noinline, no_sanitize("address"))) static void call_entry_below_gap(void)
+/* The function host_stack starts on the call stack: calls entry below
+ * GAME_HOOKS_CALL_STACK_GAP bytes of its own frame. Every call takes the same
+ * path from the same stack top, so entry's frame is at the same address each
+ * time. Not instrumented, so that AddressSanitizer's use-after-return
+ * detection does not move the gap off the stack. */
+__attribute__((noinline, no_sanitize("address"))) static void call_entry_below_gap(void *unused)
 {
+    (void)unused; /* the call is in `call` */
     unsigned char gap[GAME_HOOKS_CALL_STACK_GAP];
     /* An empty asm that takes the gap's address, so the compiler keeps it. */
     __asm__ volatile("" : : "r"(gap) : "memory");
     call.entry(call.context);
 }
 
-/* The first function on the call stack: makecontext passes no pointer
- * arguments portably, so it reads the call from `call`. Returning resumes
- * the caller through uc_link. Every call takes the same path from the same
- * stack top, so entry's frame is at the same address each time. */
-static void run_entry(void)
-{
-    fiber_finish_switch(NULL, &call.caller_stack_bottom, &call.caller_stack_size);
-    call_entry_below_gap();
-    fiber_start_switch(NULL, call.caller_stack_bottom, call.caller_stack_size);
-}
-
-/* The section's place and size are the linker script's; this checks they
- * are what the header says. The addresses are compared as uintptr_t at both widths. */
+/* The stack's place and size are the link's (host_memory); this checks they
+ * are what the header says. */
 static bool call_stack_is_linked(void)
 {
-    uintptr_t start = (uintptr_t)platform_call_stack_start;
-    uintptr_t end = (uintptr_t)platform_call_stack_end;
-    return start == GAME_HOOKS_CALL_STACK_ADDRESS && end - start == GAME_HOOKS_CALL_STACK_SIZE
-           && start % GAME_HOOKS_STACK_ALIGNMENT == 0;
+    const struct host_span stack = host_memory_call_stack();
+    return stack.start == GAME_HOOKS_CALL_STACK_ADDRESS && stack.end - stack.start == GAME_HOOKS_CALL_STACK_SIZE
+           && stack.start % GAME_HOOKS_STACK_ALIGNMENT == 0;
 }
 
 void PlatformCallWithStack(void (*entry)(void *context), void *context, void *stackTop)
@@ -221,27 +171,15 @@ void PlatformCallWithStack(void (*entry)(void *context), void *context, void *st
                       GAME_HOOKS_CALL_STACK_ADDRESS, GAME_HOOKS_CALL_STACK_SIZE);
         return;
     }
-    if (getcontext(&call.callee) != 0) {
-        perror("game_hooks: getcontext");
-        return;
-    }
-    call.callee.uc_stack.ss_sp = platform_call_stack_start;
-    call.callee.uc_stack.ss_size = GAME_HOOKS_CALL_STACK_SIZE;
-    call.callee.uc_link = &call.caller;
-    makecontext(&call.callee, run_entry, 0);
     call.entry = entry;
     call.context = context;
     call.unwind_target = NULL;
     call.active = true;
-
-    fiber_start_switch(&call.caller_fake_stack, platform_call_stack_start, GAME_HOOKS_CALL_STACK_SIZE);
-    int swapped = swapcontext(&call.caller, &call.callee);
-    fiber_finish_switch(call.caller_fake_stack, NULL, NULL);
+    const int ran = host_stack_run((void *)host_memory_call_stack().start, GAME_HOOKS_CALL_STACK_SIZE,
+                                   call_entry_below_gap, NULL);
     call.active = false;
-    if (swapped != 0) {
-        perror("game_hooks: swapcontext");
+    if (ran != 0) /* reported */
         return;
-    }
     if (call.unwind_target != NULL) {
         jmp_buf *target = call.unwind_target;
         call.unwind_target = NULL;
@@ -253,23 +191,5 @@ void PlatformCallWithStack(void (*entry)(void *context), void *context, void *st
 
 bool PlatformIsRomPointer(uintptr_t address)
 {
-    const ElfW(Phdr) *headers = (const ElfW(Phdr) *)(uintptr_t)getauxval(AT_PHDR);
-    size_t count = (size_t)getauxval(AT_PHNUM);
-    if (headers == NULL) /* getauxval gives 0 when the kernel passed no AT_PHDR: then nothing reads as ROM */
-        return false;
-    /* The executable is non-PIE (load bias 0); PT_PHDR gives the bias anyway. */
-    uintptr_t bias = 0;
-    for (size_t i = 0; i < count; i++) {
-        if (headers[i].p_type == PT_PHDR)
-            bias = (uintptr_t)headers - (uintptr_t)headers[i].p_vaddr;
-    }
-    for (size_t i = 0; i < count; i++) {
-        const ElfW(Phdr) *header = &headers[i];
-        if (header->p_type != PT_LOAD || (header->p_flags & PF_W) != 0)
-            continue;
-        uintptr_t start = bias + (uintptr_t)header->p_vaddr;
-        if (address >= start && address - start < (uintptr_t)header->p_memsz)
-            return true;
-    }
-    return false;
+    return host_image_is_read_only(address);
 }

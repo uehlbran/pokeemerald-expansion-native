@@ -2,11 +2,10 @@
  * Fixtures and src/m4a.c doubles for the m4a engine unit tests; see
  * test_m4a_support.h.
  */
-#include <errno.h>
 #include <stdio.h>
 #include <string.h>
-#include <sys/mman.h>
 
+#include "host_memory.h"
 #include "test_m4a_c_reference.h"
 #include "test_m4a_support.h"
 
@@ -64,47 +63,25 @@ uint8_t *M4aTestLowPage(void)
     return (uint8_t *)(uintptr_t)TEST_LOW_PAGE_ADDR;
 }
 
-/* gba_regions.ld places the GBA regions; its symbols mark where. */
-extern char gba_linked_iwram_start[];
-extern char gba_linked_io_start[];
-
+/* The regions the tests use are where the link put them (host_memory). */
 static bool GbaRegionsLinked(void)
 {
-    if ((uintptr_t)gba_linked_iwram_start != TEST_IWRAM_ADDR || (uintptr_t)gba_linked_io_start != TEST_IO_PAGE_ADDR) {
+    const struct host_span iwram = host_memory_region(GBA_REGION_IWRAM);
+    const struct host_span io = host_memory_region(GBA_REGION_IO);
+
+    if (iwram.start != TEST_IWRAM_ADDR || io.start != TEST_IO_PAGE_ADDR) {
         (void)fprintf(stderr, "test_m4a_support: GBA regions linked at %p and %p, not at their GBA addresses\n",
-                      (void *)gba_linked_iwram_start, (void *)gba_linked_io_start);
+                      (void *)iwram.start, (void *)io.start);
         return false;
     }
     return true;
-}
-
-static int MapLowPage(void)
-{
-    void *wanted = (void *)(uintptr_t)TEST_LOW_PAGE_ADDR;
-    void *got = mmap(wanted, TEST_PAGE_SIZE, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED_NOREPLACE,
-                     -1, 0);
-
-    if (got == MAP_FAILED) {
-        (void)fprintf(stderr, "test_m4a_support: mmap at 0x%08x failed: %s\n", (unsigned)TEST_LOW_PAGE_ADDR,
-                      strerror(errno));
-        return -1;
-    }
-    if (got != wanted) {
-        (void)fprintf(stderr, "test_m4a_support: mmap at 0x%08x returned %p\n", (unsigned)TEST_LOW_PAGE_ADDR, got);
-        if (munmap(got, TEST_PAGE_SIZE) != 0)
-            (void)fprintf(stderr, "test_m4a_support: munmap failed: %s\n", strerror(errno));
-        return -1;
-    }
-    return 0;
 }
 
 __attribute__((destructor)) static void UnmapLowPage(void)
 {
     if (!sLowPageMapped)
         return;
-    if (munmap((void *)(uintptr_t)TEST_LOW_PAGE_ADDR, TEST_PAGE_SIZE) != 0)
-        (void)fprintf(stderr, "test_m4a_support: munmap at 0x%08x failed: %s\n", (unsigned)TEST_LOW_PAGE_ADDR,
-                      strerror(errno));
+    (void)host_memory_unmap_fixed(TEST_LOW_PAGE_ADDR, TEST_PAGE_SIZE); /* reported */
     sLowPageMapped = 0;
 }
 
@@ -112,7 +89,7 @@ static int MapPages(void)
 {
     if (sLowPageMapped)
         return 0;
-    if (!GbaRegionsLinked() || MapLowPage() != 0)
+    if (!GbaRegionsLinked() || host_memory_map_fixed(TEST_LOW_PAGE_ADDR, TEST_PAGE_SIZE) != 0)
         return -1;
     sLowPageMapped = 1;
     return 0;

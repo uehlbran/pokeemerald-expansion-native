@@ -14,7 +14,7 @@
  * is a row of docs/UPSTREAM_MODIFICATIONS.md. Design: docs/RESEARCH.md, "The
  * test runner on the native build".
  *
- * Every jump here is a longjmp or a ucontext switch, never exit(): main owns
+ * Every jump here is a longjmp or a stack switch, never exit(): main owns
  * the process's exit (game_hooks_init's target). Single-threaded.
  *
  * This header is included by game code (src/main.c, under PLATFORM_NATIVE
@@ -125,8 +125,8 @@ void PlatformDebugSend(uint16_t flags);
  * executable's read-only data, linked at 0x40000000: true when address is
  * inside one of the executable's read-only loadable segments (code,
  * read-only data, string literals), as its program headers give them;
- * false for its writable data, the GBA regions, the stacks and the heap.
- * Linux (getauxval). */
+ * false for its writable data, the GBA regions, the stacks and the heap
+ * (host_image_is_read_only). */
 bool PlatformIsRomPointer(uintptr_t address);
 
 /* test/test_runner_battle.c: calls entry(context) on a separate stack and
@@ -141,7 +141,7 @@ bool PlatformIsRomPointer(uintptr_t address);
  * bytes at GAME_HOOKS_CALL_STACK_ADDRESS, which nothing else uses, so locals
  * survive between calls and land at the same addresses each time, which is
  * what the runner relies on (and their addresses fit its 27-bit fields). The
- * switch is a ucontext swap, annotated for AddressSanitizer's fiber support.
+ * switch is host_stack's, annotated for AddressSanitizer's fiber support.
  * A longjmp out of entry (PlatformJumpToAgbMainLoop, PlatformTestRunnerExit)
  * first switches back to the caller's stack. Not reentrant: a call from
  * inside entry runs entry on the current stack, with a report. */

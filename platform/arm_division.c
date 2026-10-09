@@ -10,46 +10,35 @@
  * Followed: the Intel SDM, volume 2, for the encoding of DIV and IDIV
  * (opcode F7h /6 and /7; prefixes, REX, ModRM, SIB and displacements in 32-
  * and 64-bit mode) and their #DE cases; signal-safety(7) for the handler.
+ * The fault and its saved registers come from host_fault.h: the accumulator
+ * holds the dividend's low half, then the quotient; the data register the
+ * dividend's high half, then the remainder.
  */
-#define _GNU_SOURCE /* REG_EAX, REG_RAX and friends */
 #include "arm_division.h"
 
-#include <signal.h>
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
-#include <ucontext.h>
 #include <unistd.h>
 
-/* The width section: the saved registers, by ModRM register number (Intel
- * SDM vol. 2, table 2-2, and 2.2.1.2 for R8 to R15), and what 64-bit mode
- * adds to the encoding. */
+#include "host_fault.h"
+
+/* The width section: what 64-bit mode adds to the encoding. */
 #if defined(__i386__)
 
-static const int register_slots[] = {REG_EAX, REG_ECX, REG_EDX, REG_EBX, REG_ESP, REG_EBP, REG_ESI, REG_EDI};
-#define PC_SLOT REG_EIP
-#define ACCUMULATOR_SLOT REG_EAX /* the dividend's low half, then the quotient */
-#define DATA_SLOT REG_EDX        /* the dividend's high half, then the remainder */
-#define HAS_REX_PREFIX false     /* 40h-4Fh are INC and DEC in 32-bit mode */
+#define HAS_REX_PREFIX false /* 40h-4Fh are INC and DEC in 32-bit mode */
 #define DISP32_IS_RIP_RELATIVE false
 
 #elif defined(__x86_64__)
 
-static const int register_slots[] = {REG_RAX, REG_RCX, REG_RDX, REG_RBX, REG_RSP, REG_RBP, REG_RSI, REG_RDI,
-                                     REG_R8,  REG_R9,  REG_R10, REG_R11, REG_R12, REG_R13, REG_R14, REG_R15};
-#define PC_SLOT REG_RIP
-#define ACCUMULATOR_SLOT REG_RAX
-#define DATA_SLOT REG_RDX
 #define HAS_REX_PREFIX true
 #define DISP32_IS_RIP_RELATIVE true /* ModRM mod 0 rm 101 (Intel SDM vol. 2, 2.2.1.6) */
 
 #else
 #error "arm_division decodes the divide error of i386 and x86-64 only"
 #endif
-
-#define REGISTER_COUNT (sizeof register_slots / sizeof register_slots[0])
 
 /* Intel SDM vol. 2: DIV r/m32 is F7 /6, IDIV r/m32 is F7 /7 (r/m64 with
  * REX.W). */
@@ -97,11 +86,6 @@ static const int register_slots[] = {REG_RAX, REG_RCX, REG_RDX, REG_RBX, REG_RSP
 #define REX_B 0x1u
 #define REX_REGISTER_EXTENSION 8u
 
-static struct {
-    bool installed;
-    struct sigaction previous;
-} division;
-
 static bool is_flat_segment_prefix(uint8_t byte)
 {
     return byte == PREFIX_SEGMENT_ES || byte == PREFIX_SEGMENT_CS || byte == PREFIX_SEGMENT_SS
@@ -120,9 +104,9 @@ static unsigned extended(unsigned field, uint8_t rex, unsigned rex_bit)
     return (rex & rex_bit) != 0 ? field + REX_REGISTER_EXTENSION : field;
 }
 
-static uintptr_t register_value(const greg_t *gregs, unsigned number)
+static uintptr_t register_value(const struct host_fault *fault, unsigned number)
 {
-    return (uintptr_t)gregs[register_slots[number % REGISTER_COUNT]];
+    return host_fault_general_register(fault, number);
 }
 
 /* The fields of a ModRM byte, or of the SIB byte that has the same layout
@@ -163,8 +147,8 @@ static uintptr_t read_disp32(const uint8_t *bytes)
  * base, all whatever REX.B says; SIB index 100 is no index only without
  * REX.X (with it, R12). Arithmetic wraps at the address width, as the
  * processor's does. */
-static uintptr_t operand_address(const uint8_t *code, const greg_t *gregs, struct modrm_fields modrm, uint8_t rex,
-                                 size_t *used)
+static uintptr_t operand_address(const uint8_t *code, const struct host_fault *fault, struct modrm_fields modrm,
+                                 uint8_t rex, size_t *used)
 {
     size_t i = 0;
     uintptr_t address = 0;
@@ -173,19 +157,19 @@ static uintptr_t operand_address(const uint8_t *code, const greg_t *gregs, struc
         struct modrm_fields sib = split_modrm(code[i++]); /* scale, index, base */
         unsigned index = extended(sib.middle, rex, REX_X);
         if (index != SIB_INDEX_NONE)
-            address += register_value(gregs, index) << sib.high;
+            address += register_value(fault, index) << sib.high;
         if (sib.low == SIB_BASE_DISP32 && modrm.high == MODRM_MOD_NO_DISP) {
             address += read_disp32(&code[i]);
             i += DISP32_SIZE;
         } else {
-            address += register_value(gregs, extended(sib.low, rex, REX_B));
+            address += register_value(fault, extended(sib.low, rex, REX_B));
         }
     } else if (modrm.low == MODRM_RM_DISP32 && modrm.high == MODRM_MOD_NO_DISP) {
         address = read_disp32(&code[i]);
         i += DISP32_SIZE;
         rip_relative = DISP32_IS_RIP_RELATIVE;
     } else {
-        address = register_value(gregs, extended(modrm.low, rex, REX_B));
+        address = register_value(fault, extended(modrm.low, rex, REX_B));
     }
     if (modrm.high == MODRM_MOD_DISP8) {
         address += read_disp8(&code[i]);
@@ -235,7 +219,7 @@ static uint64_t read_operand(uintptr_t address, bool is_64_bit)
  *   - ModRM reg other than 6 (DIV) or 7 (IDIV): NOT, NEG, MUL, IMUL, TEST.
  * The operand is readable: the CPU fetched it before raising the divide
  * error. */
-static bool decode(const uint8_t *code, const greg_t *gregs, struct division_instruction *out)
+static bool decode(const uint8_t *code, const struct host_fault *fault, struct division_instruction *out)
 {
     size_t i = 0;
     while (i < MAX_PREFIXES && is_flat_segment_prefix(code[i]))
@@ -251,11 +235,11 @@ static bool decode(const uint8_t *code, const greg_t *gregs, struct division_ins
     out->is_signed = modrm.middle == MODRM_REG_IDIV;
     out->is_64_bit = (rex & REX_W) != 0;
     if (modrm.high == MODRM_MOD_REGISTER) {
-        const uint64_t value = register_value(gregs, extended(modrm.low, rex, REX_B));
+        const uint64_t value = register_value(fault, extended(modrm.low, rex, REX_B));
         out->divisor = out->is_64_bit ? value : (uint32_t)value;
     } else {
         size_t used = 0;
-        out->divisor = read_operand(operand_address(&code[i], gregs, modrm, rex, &used), out->is_64_bit);
+        out->divisor = read_operand(operand_address(&code[i], fault, modrm, rex, &used), out->is_64_bit);
         i += used;
     }
     out->length = i;
@@ -366,22 +350,18 @@ static bool libgcc_result(const struct division_instruction *instruction, uint64
 
 /* Completes the instruction in the saved context. True if it did. A 64-bit
  * result only comes from REX.W, so it always fits the register. */
-static bool complete(ucontext_t *context)
+static bool complete(struct host_fault *fault)
 {
-    greg_t *gregs = context->uc_mcontext.gregs;
-    const uintptr_t pc = (uintptr_t)gregs[PC_SLOT];
+    const uintptr_t pc = host_fault_register(fault, HOST_FAULT_PC);
     struct division_instruction instruction;
     uint64_t quotient, remainder;
-    if (!decode((const uint8_t *)pc, gregs, &instruction)
-        || !libgcc_result(&instruction, (uintptr_t)gregs[ACCUMULATOR_SLOT], (uintptr_t)gregs[DATA_SLOT], &quotient,
-                          &remainder))
+    if (!decode((const uint8_t *)pc, fault, &instruction)
+        || !libgcc_result(&instruction, host_fault_register(fault, HOST_FAULT_ACCUMULATOR),
+                          host_fault_register(fault, HOST_FAULT_DATA), &quotient, &remainder))
         return false;
-    const uintptr_t quotient_register = (uintptr_t)quotient;
-    const uintptr_t remainder_register = (uintptr_t)remainder;
-    const uintptr_t next_instruction = pc + instruction.length;
-    gregs[ACCUMULATOR_SLOT] = (greg_t)quotient_register;
-    gregs[DATA_SLOT] = (greg_t)remainder_register;
-    gregs[PC_SLOT] = (greg_t)next_instruction;
+    host_fault_set_register(fault, HOST_FAULT_ACCUMULATOR, (uintptr_t)quotient);
+    host_fault_set_register(fault, HOST_FAULT_DATA, (uintptr_t)remainder);
+    host_fault_set_register(fault, HOST_FAULT_PC, pc + instruction.length);
     return true;
 }
 
@@ -392,13 +372,13 @@ static bool complete(ucontext_t *context)
 /* "arm_division: undecodable divide error at pc 0x12345678, passed on
  * (...)\n", 16 digits on x86-64, formatted without stdio (signal-safety(7):
  * write is async-signal-safe). */
-static void report_passed_on(const void *context)
+static void report_passed_on(const struct host_fault *fault)
 {
     static const char head[] = "arm_division: undecodable divide error at pc 0x";
     static const char tail[] = ", passed on (not a DIV or IDIV by zero, nor INT_MIN / -1)\n";
     static const char hex[] = "0123456789abcdef";
     char line[sizeof head - 1 + PC_HEX_DIGITS + sizeof tail - 1];
-    const uintptr_t pc = (uintptr_t)((const ucontext_t *)context)->uc_mcontext.gregs[PC_SLOT];
+    const uintptr_t pc = host_fault_register(fault, HOST_FAULT_PC);
     memcpy(line, head, sizeof head - 1);
     for (size_t i = 0; i < PC_HEX_DIGITS; i++) {
         size_t shift = (PC_HEX_DIGITS - 1u - i) * HEX_DIGIT_BITS; /* most significant digit first */
@@ -408,57 +388,27 @@ static void report_passed_on(const void *context)
     (void)!write(STDERR_FILENO, line, sizeof line); /* nothing to do if stderr is gone */
 }
 
-/* Reports the divide error it cannot complete (so that one fails loudly in
- * game mode too, where the default action ends the process with nothing
- * more than "Floating point exception"), then passes the signal to the
- * handler installed before (crash_reboot in test runner mode), or lets it
- * kill the process: with the default action restored, the instruction
- * faults again on return. */
-static void pass_on(int signal_number, siginfo_t *info, void *context)
+/* Completes a divide error, or reports the one it cannot complete (so that
+ * one fails loudly in game mode too, where the default action ends the
+ * process with nothing more than "Floating point exception") and passes it
+ * on: host_fault gives it to the handler installed before (crash_reboot in
+ * test runner mode), or lets it kill the process. */
+static bool on_divide_error(struct host_fault *fault)
 {
-    report_passed_on(context);
-    const struct sigaction *previous = &division.previous;
-    if ((previous->sa_flags & SA_SIGINFO) != 0 && previous->sa_sigaction != NULL) {
-        previous->sa_sigaction(signal_number, info, context);
-        return;
-    }
-    if (previous->sa_handler != SIG_DFL && previous->sa_handler != SIG_IGN) {
-        previous->sa_handler(signal_number);
-        return;
-    }
-    struct sigaction fallback;
-    memset(&fallback, 0, sizeof fallback);
-    fallback.sa_handler = SIG_DFL;
-    (void)sigemptyset(&fallback.sa_mask);
-    (void)sigaction(signal_number, &fallback, NULL);
-}
-
-static void on_divide_error(int signal_number, siginfo_t *info, void *context)
-{
-    if (info->si_code == FPE_INTDIV && complete(context))
-        return;
-    pass_on(signal_number, info, context);
+    if (host_fault_is_divide_error(fault) && complete(fault))
+        return true;
+    report_passed_on(fault);
+    return false;
 }
 
 int arm_division_init(void)
 {
-    arm_division_shutdown();
-    struct sigaction action;
-    memset(&action, 0, sizeof action);
-    action.sa_sigaction = on_divide_error;
-    action.sa_flags = SA_SIGINFO | SA_ONSTACK;
-    if (sigemptyset(&action.sa_mask) != 0 || sigaction(SIGFPE, &action, &division.previous) != 0) {
-        perror("arm_division: sigaction(SIGFPE)");
+    if (host_fault_install_divide_error(on_divide_error) != 0)
         return ARM_DIVISION_ERR_SIGNAL;
-    }
-    division.installed = true;
     return ARM_DIVISION_OK;
 }
 
 void arm_division_shutdown(void)
 {
-    if (!division.installed)
-        return;
-    (void)sigaction(SIGFPE, &division.previous, NULL); /* restoring what sigaction gave back cannot fail */
-    division.installed = false;
+    host_fault_uninstall_divide_error();
 }

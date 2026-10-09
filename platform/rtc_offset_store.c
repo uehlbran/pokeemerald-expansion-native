@@ -3,8 +3,9 @@
  *
  * Not hardware: the S-3511A kept its time in a battery-backed counter, and
  * this file is what stands in for that battery. It is written atomically (a
- * temporary file, fsync, rename) so a crash while saving cannot leave a
- * truncated or half-written offset, which would read back as corrupt.
+ * temporary file, synced to the disk, replacing the old one; host_file.h) so
+ * a crash while saving cannot leave a truncated or half-written offset,
+ * which would read back as corrupt.
  */
 #include "rtc_offset_store.h"
 
@@ -14,6 +15,8 @@
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
+
+#include "host_file.h"
 
 #define TEMP_SUFFIX ".tmp"
 #define FILE_MODE 0644
@@ -119,38 +122,6 @@ static void discard_temp(const char *temp_path)
         rtc_report_call_failure("unlink (temporary offset file)");
 }
 
-/* fsync of the directory holding path, so the rename itself is durable. */
-static int sync_directory(const char *path)
-{
-    char dir[PATH_MAX];
-    char *slash;
-    int fd;
-
-    (void)snprintf(dir, sizeof dir, "%s", path); /* path length already checked */
-    slash = strrchr(dir, '/');
-    if (slash == NULL)
-        (void)snprintf(dir, sizeof dir, "."); /* fits */
-    else if (slash == dir)
-        slash[1] = '\0';
-    else
-        *slash = '\0';
-    fd = open(dir, O_RDONLY | O_DIRECTORY | O_CLOEXEC);
-    if (fd < 0) {
-        rtc_report_call_failure("open (offset file directory)");
-        return -1;
-    }
-    if (fsync(fd) != 0) {
-        rtc_report_call_failure("fsync (offset file directory)");
-        (void)close(fd); /* already failing */
-        return -1;
-    }
-    if (close(fd) != 0) {
-        rtc_report_call_failure("close (offset file directory)");
-        return -1;
-    }
-    return 0;
-}
-
 int rtc_offset_store_save(const char *path, int64_t offset)
 {
     char temp_path[PATH_MAX + sizeof TEMP_SUFFIX];
@@ -179,7 +150,7 @@ int rtc_offset_store_save(const char *path, int64_t offset)
         discard_temp(temp_path);
         return -1;
     }
-    if (fsync(fd) != 0) {
+    if (host_file_sync(fd) != 0) {
         rtc_report_call_failure("fsync (temporary offset file)");
         (void)close(fd); /* already failing */
         discard_temp(temp_path);
@@ -190,10 +161,15 @@ int rtc_offset_store_save(const char *path, int64_t offset)
         discard_temp(temp_path);
         return -1;
     }
-    if (rename(temp_path, path) != 0) {
+    if (host_file_replace(temp_path, path) != 0) {
         rtc_report_call_failure("rename (offset file)");
         discard_temp(temp_path);
         return -1;
     }
-    return sync_directory(path);
+    /* The directory holding path, so the replacement itself is durable. */
+    if (host_file_sync_directory_of(path) != 0) {
+        rtc_report_call_failure("fsync (offset file directory)");
+        return -1;
+    }
+    return 0;
 }

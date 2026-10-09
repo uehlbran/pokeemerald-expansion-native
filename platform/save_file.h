@@ -57,9 +57,9 @@
  * SAVE_FILE_FOREIGN_LAYOUT, main must refuse to run the game or convert the
  * image first, or the next store labels a foreign image as native.
  *
- * POSIX only for now (fsync, rename over an existing file, fsync of a
- * directory), like the rest of the platform tests; Windows will need
- * MoveFileEx with MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH.
+ * The sync, the replacement and the directory sync are host_file's (POSIX:
+ * fsync, rename over an existing file, fsync of a directory; Windows will
+ * need MoveFileEx with MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH).
  */
 #ifndef SAVE_FILE_H
 #define SAVE_FILE_H

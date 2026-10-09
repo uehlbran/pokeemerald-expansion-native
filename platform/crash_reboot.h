@@ -18,9 +18,11 @@
  * arm_division cannot complete as the GBA would), SIGABRT (the C library's
  * stack-protector and fortify checks: memory corruption the GBA does not
  * notice). With
- * crash_reboot_init, each of them runs a handler, on an alternate stack, that
- * copies the 100h bytes at 03007F00h into the command line and execs
- * /proc/self/exe with the process's own arguments plus
+ * crash_reboot_init, each of them runs a handler (host_fault.h's crash
+ * handler, on an alternate stack) that copies the 100h bytes at 03007F00h
+ * into the command line and starts the executable again
+ * (host_process_restart; Linux: execve of /proc/self/exe) with the process's
+ * own arguments plus
  *     --persistent-state <512 hex digits>
  * (any earlier --persistent-state dropped), so the same process (same pid,
  * same stdout, same patched executable) starts again from main;
@@ -33,7 +35,7 @@
  * crash forever, as on the GBA; the handler does not reboot then: it reports
  * and lets the signal kill the process. The same happens if the exec fails.
  *
- * Linux only (/proc/self/exe). Single-threaded.
+ * Single-threaded.
  */
 #ifndef CRASH_REBOOT_H
 #define CRASH_REBOOT_H
@@ -53,25 +55,18 @@
 /* The most arguments the command line may have, the reboot's two included. */
 #define CRASH_REBOOT_MAX_ARGS 64u
 
-/* The alternate signal stack, which the handler runs on (a crash may be a
- * stack overflow). Far above glibc's MINSIGSTKSZ on both widths, and room for
- * the sanitizers' interceptors. */
-#define CRASH_REBOOT_SIGNAL_STACK_SIZE (64u * 1024u)
-
-/* The program the reboot runs: this one, as the kernel names it. */
-#define CRASH_REBOOT_EXECUTABLE "/proc/self/exe"
-
 enum crash_reboot_error {
     CRASH_REBOOT_OK = 0,
     CRASH_REBOOT_ERR_ARGS = -1,   /* no arguments, or more than CRASH_REBOOT_MAX_ARGS with the reboot's */
-    CRASH_REBOOT_ERR_SIGNAL = -2, /* sigaltstack, sigaction or sigprocmask failed */
+    CRASH_REBOOT_ERR_SIGNAL = -2, /* host_fault could not install the handler */
     CRASH_REBOOT_ERR_STATE = -3   /* crash_reboot_restore: not 512 hex digits */
 };
 
 /* Prepares the reboot's command line from argc/argv (main's; the strings
- * must outlive the module, as main's do), installs the alternate stack and
- * the handlers, and unblocks the crash signals (a handler's mask survives
- * execve, so a rebooted process starts with its signal blocked). Returns
+ * must outlive the module, as main's do) and installs the crash handler
+ * (host_fault_install_crash, which also unblocks the crash signals: a
+ * handler's mask survives execve, so a rebooted process starts with its
+ * signal blocked). Returns
  * CRASH_REBOOT_OK, or an error after a report on stderr with nothing
  * installed. */
 int crash_reboot_init(int argc, char *const argv[]);
@@ -82,8 +77,8 @@ int crash_reboot_init(int argc, char *const argv[]);
  * region untouched. */
 int crash_reboot_restore(const char *state_hex);
 
-/* Restores the signals' default actions and removes the alternate stack.
- * Safe at any time, and twice. */
+/* Restores the signals' default actions and removes the alternate stack
+ * (host_fault_uninstall_crash). Safe at any time, and twice. */
 void crash_reboot_shutdown(void);
 
 #endif /* CRASH_REBOOT_H */

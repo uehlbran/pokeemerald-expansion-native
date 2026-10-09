@@ -37,8 +37,10 @@ TEST_SRCS    := $(wildcard $(PLATFORM)/test/test_m4a_*.c)
 TEST_BINS    := $(TEST_SRCS:$(PLATFORM)/test/%.c=$(BUILD)/%)
 
 # test_m4a_output.c tests ../m4a_output.c, which reads the engine's SoundInfo
-# through ../gba_memmap.c's regions.
-PLATFORM_SRCS := m4a_output.c gba_memmap.c
+# through ../gba_memmap.c's regions; gba_memmap.c and the tests' support find
+# the regions, and map the low page, through the host layer (../host.mk).
+include $(PLATFORM)/host.mk
+PLATFORM_SRCS := m4a_output.c gba_memmap.c $(HOST_SRCS)
 
 COMMON_OBJS := $(ENGINE_SRCS:%.c=$(BUILD)/obj/%.o) $(SUPPORT_SRCS:%.c=$(BUILD)/obj/%.o) \
                $(PLATFORM_SRCS:%.c=$(BUILD)/obj/platform/%.o) $(BUILD)/obj/m4a_tables.o

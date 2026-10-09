@@ -22,10 +22,10 @@
 int rtc_offset_store_load(const char *path, int64_t *offset, int *found);
 
 /* Writes offset to path atomically: a temporary file next to it (path plus
- * ".tmp") is written, fsynced, then renamed over path, so a failure at any
- * step leaves the previous file intact. The directory is fsynced after the
- * rename; if that fails the new file is already in place but -1 is returned.
- * -1 on failure (reported on stderr). */
+ * ".tmp") is written, synced to the disk, then replaces path (host_file.h),
+ * so a failure at any step leaves the previous file intact. The directory is
+ * synced after the replacement; if that fails the new file is already in
+ * place but -1 is returned. -1 on failure (reported on stderr). */
 int rtc_offset_store_save(const char *path, int64_t offset);
 
 /* Prints "rtc: <call> failed: <strerror(errno)>" to stderr. */

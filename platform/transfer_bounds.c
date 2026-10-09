@@ -9,21 +9,19 @@
  *    writable here although the hardware ignores writes to some registers;
  *    that filtering belongs to the I/O code, not to this check.
  *  - the executable image, which holds what the GBA's ROM and IWRAM held.
- *    Read: __executable_start to _end (code, read-only data, .data, .bss),
- *    GNU ld symbols. Write: the writable globals, from __data_start
- *    (provided by glibc's crt1.o on -m32 and -m64) to _end, and the game's
- *    own initialised data, which gba_game.ld places just before .data
- *    (game_data_start, so that a soft reset can restore it); code and
- *    rodata are not.
- *  - the main thread's stack: read and write, the whole mapping glibc
- *    reports through pthread_getattr_np (not just the current depth), for
- *    the local buffers the game copies from and into. Chosen over parsing
- *    /proc/self/maps because it needs no text parsing. It must be called on
- *    the main thread: glibc then derives the bounds from the stack limit.
+ *    Read: the whole image (code, read-only data, .data, .bss;
+ *    host_image_whole). Write: the writable globals (host_image_writable),
+ *    and the game's own initialised data, which gba_game.ld places just
+ *    before .data (game_data_start, so that a soft reset can restore it);
+ *    code and rodata are not.
+ *  - the main thread's stack: read and write, the whole mapping
+ *    (host_image_main_stack, not just the current depth), for the local
+ *    buffers the game copies from and into. init must run on the main
+ *    thread.
  *
  *  - the stack the battle test runner's functions run on (game_hooks.h,
- *    PlatformCallWithStack; gba_regions.ld .platform_call_stack): read and
- *    write, like the main thread's.
+ *    PlatformCallWithStack; host_memory_call_stack): read and write, like
+ *    the main thread's.
  *
  *  - under AddressSanitizer, the fake stack: its use-after-return detection
  *    moves locals to a heap-allocated "fake stack" frame, and the game copies
@@ -38,10 +36,11 @@
  * of address + length is refused by each check (gba_memmap_contains and
  * range_holds compare length with the room left).
  */
-#define _GNU_SOURCE /* pthread_getattr_np */
 #include "transfer_bounds.h"
 
 #include "gba_memmap.h"
+#include "host_image.h"
+#include "host_memory.h"
 
 #if defined(__SANITIZE_ADDRESS__)
 #include <sanitizer/asan_interface.h>
@@ -53,7 +52,6 @@
 #endif
 #endif
 
-#include <pthread.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -64,9 +62,7 @@
 #define TRANSFER_FIRST_PAGE_SIZE ((uintptr_t)0x1000)
 #define TRANSFER_ERR_STACK (-1)
 
-extern char __executable_start[], __data_start[], _end[];           /* GNU ld / glibc crt1 */
-extern char game_data_start[], game_data_end[];                     /* gba_game.ld */
-extern char platform_call_stack_start[], platform_call_stack_end[]; /* gba_regions.ld */
+extern char game_data_start[], game_data_end[]; /* gba_game.ld */
 
 struct transfer_range {
     uintptr_t start;
@@ -140,56 +136,29 @@ bool transfer_bounds_ok(uintptr_t address, size_t length, enum transfer_access a
     return range_holds(&state.image, address, length);
 }
 
-static int record_stack(struct transfer_range *stack)
+static struct transfer_range range_of(struct host_span span)
 {
-    pthread_attr_t attributes;
-    void *low = NULL;
-    size_t size = 0;
-    int error = pthread_getattr_np(pthread_self(), &attributes);
-    if (error != 0) {
-        (void)fprintf(stderr, "transfer_bounds: pthread_getattr_np failed: %s\n", strerror(error));
-        return TRANSFER_ERR_STACK;
-    }
-    error = pthread_attr_getstack(&attributes, &low, &size);
-    if (error != 0) {
-        (void)fprintf(stderr, "transfer_bounds: pthread_attr_getstack failed: %s\n", strerror(error));
-    }
-    int destroy_error = pthread_attr_destroy(&attributes);
-    if (destroy_error != 0) {
-        (void)fprintf(stderr, "transfer_bounds: pthread_attr_destroy failed: %s\n", strerror(destroy_error));
-    }
-    if (error != 0 || destroy_error != 0) {
-        return TRANSFER_ERR_STACK;
-    }
-    if (size == 0 || size > UINTPTR_MAX - address_of(low)) {
-        (void)fprintf(stderr, "transfer_bounds: pthread_attr_getstack returned an unusable stack\n");
-        return TRANSFER_ERR_STACK;
-    }
-    stack->start = address_of(low);
-    stack->end = stack->start + size;
-    return 0;
+    return (struct transfer_range){.start = span.start, .end = span.end};
 }
 
 int transfer_bounds_init(void)
 {
-    struct transfer_range stack;
+    struct host_span stack;
     transfer_bounds_shutdown();
-    int error = record_stack(&stack);
-    if (error != 0) {
-        return error;
+    if (host_image_main_stack(&stack) != 0) { /* reported */
+        return TRANSFER_ERR_STACK;
     }
-    state.stack = stack;
-    state.call_stack.start = address_of(platform_call_stack_start);
-    state.call_stack.end = address_of(platform_call_stack_end);
-    state.image.start = address_of(__executable_start);
-    state.image.end = address_of(_end);
+    state.stack = range_of(stack);
+    state.call_stack = range_of(host_memory_call_stack());
+    state.image = range_of(host_image_whole());
     /* game_data, when the link has one (not in the unit tests), lies just
      * before .data; its symbols mean nothing when it is empty. */
-    uintptr_t data_start = address_of(__data_start);
+    const struct host_span writable = host_image_writable();
+    uintptr_t data_start = writable.start;
     uintptr_t game_data = address_of(game_data_start);
     bool has_game_data = address_of(game_data_end) > game_data;
     state.writable_image.start = has_game_data && game_data < data_start ? game_data : data_start;
-    state.writable_image.end = address_of(_end);
+    state.writable_image.end = writable.end;
     state.ready = true;
     return 0;
 }
