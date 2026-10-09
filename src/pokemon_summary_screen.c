@@ -1280,7 +1280,15 @@ static void VBlank(void)
 
 static void CB2_InitSummaryScreen(void)
 {
+#if PLATFORM_NATIVE
+    // On the GBA the VBlank interrupt drains the DMA3 queue while this loop spins on
+    // IsDma3ManagerBusyWithBgCopy; natively a frame passes only in VBlankIntrWait.
+    while (MenuHelpers_ShouldWaitForLinkRecv() != TRUE && LoadGraphics() != TRUE && MenuHelpers_IsLinkActive() != TRUE)
+        VBlankIntrWait();
+#else
     while (MenuHelpers_ShouldWaitForLinkRecv() != TRUE && LoadGraphics() != TRUE && MenuHelpers_IsLinkActive() != TRUE);
+#endif
+#line 1284
 }
 
 static bool8 LoadGraphics(void)
@@ -3355,7 +3363,13 @@ static void PutPageWindowTilemaps(u8 page)
     }
 
     for (i = 0; i < ARRAY_COUNT(sMonSummaryScreen->windowIds); i++)
+#if PLATFORM_NATIVE
+        // Windows not created yet are WINDOW_NONE (255): skipped, which is what a correct program does
+        // (the GBA indexed gWindows past its end and drew whatever EWRAM held there).
+        if (sMonSummaryScreen->windowIds[i] != WINDOW_NONE)
+#endif
         PutWindowTilemap(sMonSummaryScreen->windowIds[i]);
+#line 3359
 
     ScheduleBgCopyTilemapToVram(0);
 }

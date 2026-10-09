@@ -1023,6 +1023,15 @@ bool8 IsBattleTransitionDone(void)
     {
         DestroyTask(taskId);
         FREE_AND_SET_NULL(sTransitionData);
+#if PLATFORM_NATIVE
+        // The effects' own V-Blank callbacks (VBlankCB_Slice, ...) read sTransitionData, freed just
+        // above, until CB2_InitBattle replaces them: the GBA read the BIOS area, natively it is NULL.
+        // VBlankCB_BattleTransition is the common one (they call it first) and does not read it (the GBA ran
+        // it in that frame too); HBlankCB_Mugshots and HBlankCB_WhiteBarsFade read the data from the H-Blank side.
+        SetVBlankCallback(VBlankCB_BattleTransition);
+        SetHBlankCallback(NULL);
+#endif
+#line 1026
         return TRUE;
     }
     else

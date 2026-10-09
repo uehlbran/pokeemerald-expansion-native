@@ -9973,7 +9973,15 @@ bool32 AreMultiPartiesFullTeams(void)
     if (TRAINER_BATTLE_PARAM.opponentA == TRAINER_LINK_OPPONENT
      || gBattleTypeFlags & BATTLE_TYPE_TOWER_LINK_MULTI
      || (gTrainers[difficulty][TRAINER_BATTLE_PARAM.opponentA].multiTeamSize == MULTI_TEAM_SIZE_HALF)
+#if PLATFORM_NATIVE
+     // The debug menu's Try Battle sets opponentB to 0xFFFF (no second trainer); the GBA read
+     // gTrainers past its end here.
+     || (TRAINER_BATTLE_PARAM.opponentB < TRAINERS_COUNT
+      && gTrainers[difficulty][TRAINER_BATTLE_PARAM.opponentB].multiTeamSize == MULTI_TEAM_SIZE_HALF))
+#else
      || (gTrainers[difficulty][TRAINER_BATTLE_PARAM.opponentB].multiTeamSize == MULTI_TEAM_SIZE_HALF))
+#endif
+#line 9959
     {
         gSpecialVar_Result = FALSE;
         return FALSE;

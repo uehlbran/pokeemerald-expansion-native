@@ -46,4 +46,19 @@ const char *inspect_find_known_callback(const struct inspect_known_callback *tab
 /* Writes "unknown:0x<hex address>" to out (size bytes). */
 void inspect_format_unknown_callback(uintptr_t address, char *out, size_t size);
 
+/* A fact name with an argument is "NAME:ARGUMENT" (flag:2078, bag_item_count:293).
+ * The separator, and the most digits an argument may have (ids are 16-bit, so
+ * five decimal digits). */
+#define INSPECT_ARGUMENT_SEPARATOR ':'
+#define INSPECT_ARGUMENT_MAX_DIGITS 5u
+
+/* Splits "NAME:ARGUMENT". Returns the length of NAME and sets *argument to the
+ * text after the separator, or returns the length of the whole text and sets
+ * *argument to NULL when there is no separator. */
+size_t inspect_split_name(const char *text, const char **argument);
+
+/* Parses a plain decimal argument (digits only, 1 to INSPECT_ARGUMENT_MAX_DIGITS of them, value at most `maximum`).
+ * Returns 0 and the value in *out, or -1 (empty, a sign, a letter, too long, too large). */
+int inspect_parse_argument(const char *text, uint32_t maximum, uint32_t *out);
+
 #endif /* PLATFORM_INSPECT_DECODE_H */

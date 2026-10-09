@@ -618,7 +618,13 @@ static void CB2_InitPartyMenu(void)
     {
         if (MenuHelpers_ShouldWaitForLinkRecv() == TRUE || ShowPartyMenu() == TRUE || MenuHelpers_IsLinkActive() == TRUE)
             break;
+#if PLATFORM_NATIVE
+        // On the GBA the VBlank interrupt drains the DMA3 queue while this loop spins on
+        // IsDma3ManagerBusyWithBgCopy; natively a frame passes only in VBlankIntrWait.
+        VBlankIntrWait();
+#endif
     }
+#line 622
 }
 
 static void CB2_ReloadPartyMenu(void)
@@ -627,7 +633,13 @@ static void CB2_ReloadPartyMenu(void)
     {
         if (MenuHelpers_ShouldWaitForLinkRecv() == TRUE || ReloadPartyMenu() == TRUE || MenuHelpers_IsLinkActive() == TRUE)
             break;
+#if PLATFORM_NATIVE
+        // On the GBA the VBlank interrupt drains the DMA3 queue while this loop spins on
+        // IsDma3ManagerBusyWithBgCopy; natively a frame passes only in VBlankIntrWait.
+        VBlankIntrWait();
+#endif
     }
+#line 631
 }
 
 static bool8 ShowPartyMenu(void)

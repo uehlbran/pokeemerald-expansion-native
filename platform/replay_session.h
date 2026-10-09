@@ -14,14 +14,11 @@
 
 #include "replay.h"
 
-/* The largest script file read. */
-#define REPLAY_SESSION_MAX_FILE_SIZE (1024u * 1024u)
-
-/* Reads and parses the script at `script_path`, starts the inspection and the
+/* Reads (with its `include` lines expanded, replay_include.h) and parses the script at `script_path`, starts the inspection and the
  * driver (skipping the commands up to `resume_after_line`), makes sure
  * `out_dir` exists, and installs the frame hook. Call after frame_init and
  * input_init(INPUT_SOURCE_SCRIPT). Returns 0, or -1 after printing the
- * reason (an unreadable or oversized file, a parse error with its line). */
+ * reason (an unreadable or oversized file, a bad include, a parse error with its line). */
 int replay_session_start(const char *script_path, const char *out_dir, uint32_t resume_after_line);
 
 /* Removes the hook and releases the inspection. Safe before a start and twice. */

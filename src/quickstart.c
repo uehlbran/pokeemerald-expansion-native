@@ -19,17 +19,6 @@
 #define TAG_SKIP_INTRO 2000
 
 static const u32 gQuickstartHudGfx[] = INCGFX_U32("graphics/quickstart/quickstart_hud.png", ".4bpp.smol");
-#if PLATFORM_NATIVE
-// The palette files hold 6 colours (12 bytes) but LoadSpritePalette always
-// loads 16 colours (32 bytes); pad with zeros instead of reading past the array.
-#if FIRERED
-static const u16 gQuickstartHudPal[16] = INCGFX_U16("graphics/quickstart/firered.pal", ".gbapal");
-#elif LEAFGREEN
-static const u16 gQuickstartHudPal[16] = INCGFX_U16("graphics/quickstart/leafgreen.pal", ".gbapal");
-#else
-static const u16 gQuickstartHudPal[16] = INCGFX_U16("graphics/quickstart/emerald.pal", ".gbapal");
-#endif
-#else
 #if FIRERED
 static const u16 gQuickstartHudPal[] = INCGFX_U16("graphics/quickstart/firered.pal", ".gbapal");
 #elif LEAFGREEN
@@ -37,8 +26,6 @@ static const u16 gQuickstartHudPal[] = INCGFX_U16("graphics/quickstart/leafgreen
 #else
 static const u16 gQuickstartHudPal[] = INCGFX_U16("graphics/quickstart/emerald.pal", ".gbapal");
 #endif
-#endif
-#line 29
 
 static const struct OamData sQuickstartHudOam = {
     .y = DISPLAY_HEIGHT,

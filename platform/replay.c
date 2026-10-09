@@ -56,6 +56,11 @@ const char *replay_message(const struct replay *replay)
     return replay->status == REPLAY_FAILED ? replay->message : "";
 }
 
+uint32_t replay_failed_line(const struct replay *replay)
+{
+    return replay->status == REPLAY_FAILED ? replay->failed_line : 0;
+}
+
 uint32_t replay_restart_line(const struct replay *replay)
 {
     return replay->restart_line;
@@ -213,6 +218,12 @@ static void run_command(struct replay *replay, const struct replay_command *comm
         replay->transient = command->keys;
         replay->release_at = replay->tick + REPLAY_PRESS_FRAMES;
         begin_wait_frames(replay, replay->release_at + REPLAY_PRESS_RELEASE_FRAMES);
+        /* `times N`: run this command again after the release until N presses were made */
+        if (replay->presses_left == 0)
+            replay->presses_left = command->number;
+        replay->presses_left--;
+        if (replay->presses_left > 0)
+            replay->next--;
         break;
     case REPLAY_CMD_HOLD:
         replay->held = (uint16_t)(replay->held | command->keys);

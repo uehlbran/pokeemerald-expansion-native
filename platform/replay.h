@@ -10,6 +10,7 @@
  *   frame N                    advance to absolute frame N (replay_step call N)
  *   wait N                     advance N frames
  *   press KEYS                 hold KEYS for one frame, release them for one
+ *   press KEYS times N         N such presses in a row, N from 1 to REPLAY_MAX_PRESS_TIMES (the debug menu's numeric entry)
  *   hold KEYS                  hold KEYS until released
  *   release KEYS               stop holding KEYS
  *   hold KEYS for N            hold KEYS for N frames, then release them
@@ -30,6 +31,8 @@
  *                              the script after this line (replay_restart_line).
  *                              The frame count starts again in the new process, so
  *                              a `frame` command after a `restart` is a parse error.
+ *
+ *   include FILE               replaced, before parsing, by FILE's lines (replay_include.h)
  *
  * A value is the rest of the line (wait-until: up to " max"), trimmed. NAME
  * is letters, digits, '_' and '-'. The driver is a state machine stepped
@@ -61,6 +64,8 @@
 #define REPLAY_MAX_VALUE_LENGTH 255u
 #define REPLAY_MAX_NAME_LENGTH 47u
 #define REPLAY_MAX_FRAMES 100000000u
+/* `press KEYS times N`: the largest N (a typo of an extra digit would otherwise run for minutes). */
+#define REPLAY_MAX_PRESS_TIMES 10000u
 #define REPLAY_MESSAGE_SIZE 256u
 #define REPLAY_PATH_SIZE 512u
 #define REPLAY_FACT_BUFFER_SIZE (REPLAY_MAX_VALUE_LENGTH + 1u)
@@ -83,7 +88,7 @@ enum replay_command_kind {
 struct replay_command {
     enum replay_command_kind kind;
     uint32_t line;                              /* 1-based line in the script */
-    uint32_t number;                            /* frame: N; wait: N; hold for: N; wait-until, mash: max N */
+    uint32_t number;                            /* frame: N; wait: N; hold for: N; press: times N (at least 1); wait-until, mash: max N */
     uint16_t keys;                              /* INPUT_KEY_* bits, for press/hold/release/hold for */
     char fact[REPLAY_MAX_FACT_LENGTH + 1u];     /* expect, wait-until */
     char value[REPLAY_MAX_VALUE_LENGTH + 1u];   /* expect, wait-until */
@@ -147,6 +152,7 @@ struct replay {
     uint32_t wait_until;
     uint32_t wait_started; /* the tick a mash began */
     uint32_t release_at;
+    uint32_t presses_left; /* presses of a `press ... times N` still to come after the one in progress */
     uint16_t held;
     uint16_t transient;
     uint16_t pushed;
@@ -172,6 +178,9 @@ enum replay_status replay_step(struct replay *replay);
 
 /* The failure, as "line N: ..." (empty unless REPLAY_FAILED). */
 const char *replay_message(const struct replay *replay);
+
+/* The script line of the failed command (REPLAY_FAILED), 0 if none. */
+uint32_t replay_failed_line(const struct replay *replay);
 
 /* The line of the `restart` that ended the run (REPLAY_RESTART). */
 uint32_t replay_restart_line(const struct replay *replay);

@@ -57,7 +57,7 @@ build without `--update`: it must agree.
 ## The script
 
 The format is documented in `platform/replay.h`; a few things matter when
-editing `opening.replay`:
+editing `opening.replay` (its first nine steps are `opening_start.replay`, included):
 
 - `wait-until FACT=VALUE max N` waits for a fact of the game
   (`platform/inspect.h` lists them: `callback2`, `task_first`, `task_last`,
@@ -120,3 +120,57 @@ The player is the boy, `Ab`. The names are `opening.replay`'s dump names.
 skipping the speech, the naming screen and the truck, with a random gender and
 a default name. The gate goes through the normal menu path instead, so that
 those screens run, which is where the platform's bugs were.
+
+# Gate (e): the debug menu, driven natively
+
+`debug_menu.replay` plays the first steps of the opening (the shared
+`opening_start.replay`, included with `include`), stands in Littleroot Town and
+drives expansion's own debug menu (`DEBUG_OVERWORLD_MENU`, hold R and press
+Start) exactly as a player would: list menus with A and B, numeric entries with
+the D-pad (UP and DOWN change the digit under the cursor by its place value,
+LEFT and RIGHT move to the next digit). It uses no cheat of ours.
+
+```
+tests/smoke/run_debug_menu.sh build/native32/pokeemerald-native out/            # exit 0 if every dump and screenshot matches
+ASAN_OPTIONS=halt_on_error=0 tests/smoke/run_debug_menu.sh build/native32-san/pokeemerald-native-san out-san/
+tests/smoke/run_debug_menu.sh build/native32/pokeemerald-native out/ --update   # after a deliberate change
+```
+
+It shares `lib.sh` with `run.sh`: the expectations are in
+`expected_debug_menu/` (dumps compared minus `frame`, screenshot md5s), sanitizer
+reports in stderr fail it, and what was saved (`14_saved`) must be what Continue
+loads after the restart (`15_continued`: name, map, party, PC box; the replay also
+expects the lead's extras and moves before the save and after Continue). 28
+seconds plain (measured on 32 cores, 2026-10-08). Both builds must produce the same dumps and screenshots.
+
+What it does, in order:
+
+| Step | What | Checked by |
+|---|---|---|
+| Flags & Vars | sets flag 2144 (`FLAG_SYS_POKEMON_GET`, which puts POKeMON on the Start menu), sets var 16384 (`VAR_TEMP_0`) to 7, toggles all badges (so the level-100 lead obeys) | `flag:ID`, `var:ID` |
+| Give item | Charizardite X 293 (Mega Stone), Normalium Z 357 (Z-Crystal), Grass Tera Shard 783, Ability Capsule 79, Dynamax Candy 108 x3, Z-Power Ring 704 | `bag_item_count:ID`, the bag screenshots |
+| Give Pokemon, phase A | Treecko 252 L100 (generation 3), Bulbasaur 1 (1), Chikorita 152 (2), Vulpix-Alola 961, Meowth-Galar 974 (basic give), Tauros-Paldea-Combat 1402 (complex give: shiny, Dynamax level 10, Gigantamax factor, Tera Grass) | `party_count`, `party_species:N`, `party_name:N`, `party_level:N`, `party_extras:N` |
+| Party full | Venusaur 3 (complex give, Gigantamax factor) and Charizard-Mega-X 907 go to PC box 1 | `pc_box0_count`, `pc_box_species:0` |
+| Display | Start, POKeMON, the summary screen of each member (screenshot each), Start, BAG (items and key items pockets) | `summary_species`, `party_slot` |
+| Battle | Trainers > Trainer 1 = 10, Try Battle: a real trainer battle with the party as it is; A through the intro to the player's choice (`battle_main=HandleTurnActionSelectionState`, screenshot: `a_battle`, `b_battle` differ by the lead), then mashed to the end | `in_battle` transitions, no crash |
+| Phase B | Party > Clear Party, then Turtwig 387 (complex give: shiny, move 1 Tackle, Dynamax 10, Gmax factor, Tera Grass; `party_extras:0`, `party_move:0:M`), Snivy 495 (5), Chespin 650 (6), Rowlet 722 (7), Grookey 810 (8), Sprigatito 1289 (9); display and battle again | as above |
+| Save | Save, `restart`, Continue | the same party, PC box, bag, flag and var |
+
+The numeric entries are checked as they are made: `debug_input` is the number on
+the entry's screen, `debug_step` its step, so `expect debug_input=1289` proves
+the D-pad sequence and `wait-until debug_step=1.0` that the confirmed number was
+taken before the next key is sent.
+
+Two replay commands exist for this script: `include FILE` (the lines of FILE
+replace the line, before parsing; line numbers in messages and for `restart` are
+those of the expansion, which is written to `OUTDIR/work/expanded.replay`) and
+`press KEYS times N`. A failed command also leaves the screen in
+`OUTDIR/work/failed.ppm`.
+
+Limitation: a fact that does not exist (or an argument out of range) is found when the
+command runs, not when the script is parsed.
+
+The summary screen's own state is static in expansion's code, so
+`summary_species` is the party menu's slot at the time the summary was opened
+(moving to another Pokemon inside the summary screen is not followed; the script
+opens each member from the party menu).

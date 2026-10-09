@@ -1,0 +1,991 @@
+# The debug menu (src/debug.c, DEBUG_OVERWORLD_MENU), driven natively: gate (e).
+# R+Start in the overworld opens it; the list menus take A and B, the numeric entries
+# the D-pad (UP/DOWN change the digit under the cursor by its place value, LEFT/RIGHT move
+# the cursor to the next digit). Gives, a party and PC of every generation and expansion-only
+# forms and items, the party menu and summary screens, the bag, trainer battles, flags and vars.
+#
+# Facts used beyond opening.replay (platform/inspect.h): debug_menu_open, debug_step,
+# debug_input (the numeric entry's step and value), party_species:N, party_name:N,
+# party_level:N, party_extras:N, pc_box0_count, pc_box_species:N, bag_item_count:ID, flag:ID,
+# var:ID, party_move:N:M, party_slot, summary_species, battle_main.
+
+# The opening up to standing outside in Littleroot Town.
+include opening_start.replay
+# opening_start ends just as the door-exit scene locks the controls: wait for them again
+wait-until controls_locked=0 max 600
+wait 10  # settle
+expect party_count=0
+expect pc_box0_count=0
+expect debug_menu_open=0
+expect debug_step=none
+dump 10_littleroot
+screenshot 10_littleroot
+
+# ---- Open the debug menu: hold R and press START -----------------------------------
+hold R
+press START
+release R
+wait-until debug_menu_open=1 max 60
+wait 10  # the window is drawn
+dump 11_menu_open
+screenshot 11_menu_open
+
+# Flags & Vars > Set Flag XYZ: FLAG_SYS_POKEMON_GET (2144), which puts POKeMON on the Start menu
+press DOWN times 8
+press A
+wait-until task_last=DebugTask_HandleMenuInput_General max 60
+expect flag:2144=0
+press A
+wait-until debug_step=0.0 max 60
+press RIGHT
+press UP times 4
+press RIGHT
+press UP
+press RIGHT
+press UP times 2
+press LEFT
+press LEFT
+press LEFT
+press UP times 3
+expect debug_input=2144
+press A
+wait-until flag:2144=1 max 10 # toggled; the entry stays open
+press B
+wait-until task_last=DebugTask_HandleMenuInput_General max 60 # back to the Flags & Vars list
+
+# Flags & Vars > Set Var XYZ: VAR_TEMP_0 (16384, the first variable) to 7
+expect var:16384=0
+press DOWN
+press A
+wait-until debug_step=0.0 max 60
+expect debug_input=16384
+press A
+wait-until debug_step=1.0 max 60
+press UP times 7
+expect debug_input=7
+press A
+wait-until var:16384=7 max 10
+press B
+wait-until task_last=DebugTask_HandleMenuInput_General max 60
+
+# Flags & Vars > Toggle All badges: FLAG_BADGE08_GET (2158) set, so that the lead obeys at level 100
+expect flag:2158=0
+press DOWN times 10
+press A
+wait-until flag:2158=1 max 10
+
+press B
+wait-until task_last=DebugTask_HandleMenuInput_General max 60 # Flags & Vars -> the main menu
+press DOWN times 3 # Give X
+press A
+wait-until task_last=DebugTask_HandleMenuInput_General max 60
+
+# ---- Items: expansion-only ones --------------------------------------------------
+
+# Give X > Give item: Charizardite X, a Mega Stone (item 293) x1
+press A
+wait-until debug_step=0.0 max 60
+press RIGHT
+press UP times 9
+press RIGHT
+press UP times 2
+press LEFT
+press LEFT
+press UP times 2
+expect debug_input=293
+press A
+wait-until debug_step=1.0 max 60
+press A
+wait-until task_last=DebugTask_HandleMenuInput_General max 60
+expect bag_item_count:293=1
+
+# Give X > Give item: Normalium Z, a Z-Crystal (item 357) x1
+press A
+wait-until debug_step=0.0 max 60
+press RIGHT
+press UP times 5
+press RIGHT
+press UP times 3
+press LEFT
+press LEFT
+press UP times 6
+expect debug_input=357
+press A
+wait-until debug_step=1.0 max 60
+press A
+wait-until task_last=DebugTask_HandleMenuInput_General max 60
+expect bag_item_count:357=1
+
+# Give X > Give item: Grass Tera Shard (item 783) x1
+press A
+wait-until debug_step=0.0 max 60
+press RIGHT
+press UP times 8
+press RIGHT
+press UP times 7
+press LEFT
+press LEFT
+press UP times 2
+expect debug_input=783
+press A
+wait-until debug_step=1.0 max 60
+press A
+wait-until task_last=DebugTask_HandleMenuInput_General max 60
+expect bag_item_count:783=1
+
+# Give X > Give item: Ability Capsule (item 79) x1
+press A
+wait-until debug_step=0.0 max 60
+press RIGHT
+press UP times 7
+press LEFT
+press UP times 8
+expect debug_input=79
+press A
+wait-until debug_step=1.0 max 60
+press A
+wait-until task_last=DebugTask_HandleMenuInput_General max 60
+expect bag_item_count:79=1
+
+# Give X > Give item: Dynamax Candy (item 108) x3
+press A
+wait-until debug_step=0.0 max 60
+press RIGHT
+press RIGHT
+press UP
+press LEFT
+press LEFT
+press UP times 7
+expect debug_input=108
+press A
+wait-until debug_step=1.0 max 60
+press UP times 2
+expect debug_input=3
+press A
+wait-until task_last=DebugTask_HandleMenuInput_General max 60
+expect bag_item_count:108=3
+
+# Give X > Give item: Z-Power Ring, a key item (item 704) x1
+press A
+wait-until debug_step=0.0 max 60
+press RIGHT
+press RIGHT
+press UP times 7
+press LEFT
+press LEFT
+press UP times 3
+expect debug_input=704
+press A
+wait-until debug_step=1.0 max 60
+press A
+wait-until task_last=DebugTask_HandleMenuInput_General max 60
+expect bag_item_count:704=1
+
+# ---- Pokemon, generations 1 to 3 and regional forms, into the party -----------------
+
+# Give X > Pokemon (Basic): Treecko (species 252), level 100
+press DOWN
+press A
+wait-until debug_step=0.0 max 60
+press RIGHT
+press UP times 5
+press RIGHT
+press UP times 2
+press LEFT
+press LEFT
+press UP
+expect debug_input=252
+press A
+wait-until debug_step=1.0 max 60
+press RIGHT
+press RIGHT
+press UP # the hundreds digit, held at the maximum level
+expect debug_input=100
+press A
+wait-until task_last=DebugTask_HandleMenuInput_General max 60
+expect party_count=1
+expect party_species:0=252
+expect party_name:0=Treecko
+
+# Give X > Pokemon (Basic): Bulbasaur (species 1), level 50
+press DOWN
+press A
+wait-until debug_step=0.0 max 60
+expect debug_input=1
+press A
+wait-until debug_step=1.0 max 60
+press RIGHT
+press UP times 5
+press LEFT
+press DOWN
+expect debug_input=50
+press A
+wait-until task_last=DebugTask_HandleMenuInput_General max 60
+expect party_count=2
+expect party_species:1=1
+expect party_name:1=Bulbasaur
+
+# Give X > Pokemon (Basic): Chikorita (species 152), level 50
+press DOWN
+press A
+wait-until debug_step=0.0 max 60
+press RIGHT
+press UP times 5
+press RIGHT
+press UP
+press LEFT
+press LEFT
+press UP
+expect debug_input=152
+press A
+wait-until debug_step=1.0 max 60
+press RIGHT
+press UP times 5
+press LEFT
+press DOWN
+expect debug_input=50
+press A
+wait-until task_last=DebugTask_HandleMenuInput_General max 60
+expect party_count=3
+expect party_species:2=152
+expect party_name:2=Chikorita
+
+# Give X > Pokemon (Basic): Vulpix, Alolan form (species 961), level 30
+press DOWN
+press A
+wait-until debug_step=0.0 max 60
+press RIGHT
+press UP times 6
+press RIGHT
+press UP times 9
+press LEFT
+press LEFT
+expect debug_input=961
+press A
+wait-until debug_step=1.0 max 60
+press RIGHT
+press UP times 3
+press LEFT
+press DOWN
+expect debug_input=30
+press A
+wait-until task_last=DebugTask_HandleMenuInput_General max 60
+expect party_count=4
+expect party_species:3=961
+expect party_name:3=Vulpix
+
+# Give X > Pokemon (Basic): Meowth, Galarian form (species 974), level 30
+press DOWN
+press A
+wait-until debug_step=0.0 max 60
+press RIGHT
+press UP times 7
+press RIGHT
+press UP times 9
+press LEFT
+press LEFT
+press UP times 3
+expect debug_input=974
+press A
+wait-until debug_step=1.0 max 60
+press RIGHT
+press UP times 3
+press LEFT
+press DOWN
+expect debug_input=30
+press A
+wait-until task_last=DebugTask_HandleMenuInput_General max 60
+expect party_count=5
+expect party_species:4=974
+expect party_name:4=Meowth
+
+# Give X > Pokemon (Complex): Tauros, Paldean Combat Breed (species 1402): level 40, shiny,
+# Dynamax level 10, Gigantamax factor, Tera type Grass (13); the other steps keep their defaults
+press DOWN times 2
+press A
+wait-until debug_step=0.0 max 60
+press RIGHT
+press RIGHT
+press UP times 4
+press RIGHT
+press UP
+press LEFT
+press LEFT
+press LEFT
+press UP
+expect debug_input=1402
+press A
+wait-until debug_step=1.0 max 60
+press RIGHT
+press UP times 4
+press LEFT
+press DOWN
+expect debug_input=40
+press A
+wait-until debug_step=2.0 max 60 # gender: the default
+press A
+wait-until debug_step=3.0 max 60
+press UP
+expect debug_input=1 # shiny: TRUE
+press A
+wait-until debug_step=4.0 max 60 # ability
+press A
+wait-until debug_step=5.0 max 60 # nature
+press A
+wait-until debug_step=6.0 max 60 # moves: none chosen, so the initial set
+press A
+wait-until debug_step=7.0 max 60 # the six IVs, then the six EVs, all left at 0
+mash A until debug_step=9.0 max 900
+press RIGHT
+press UP
+expect debug_input=10 # Dynamax level
+press A
+wait-until debug_step=10.0 max 60
+press UP
+expect debug_input=1 # Gigantamax factor
+press A
+wait-until debug_step=11.0 max 60
+press UP times 11
+expect debug_input=13 # Tera type: Grass (the entry skips TYPE_MYSTERY)
+press A
+wait-until task_last=DebugTask_HandleMenuInput_General max 60
+expect party_count=6
+expect party_species:5=1402
+expect party_name:5=Tauros
+expect party_level:5=40
+expect party_extras:5=shiny=1 dynamax=10 gmax=1 tera=13
+
+# ---- The party is full: the next gives go to PC box 1 --------------------------------
+
+# Give X > Pokemon (Complex): Venusaur, level 50, Gigantamax factor (it goes to the PC: the party is full)
+press DOWN times 2
+press A
+wait-until debug_step=0.0 max 60
+press UP times 2
+expect debug_input=3
+press A
+wait-until debug_step=1.0 max 60
+press RIGHT
+press UP times 5
+press LEFT
+press DOWN
+expect debug_input=50
+press A
+wait-until debug_step=2.0 max 60
+mash A until debug_step=10.0 max 900 # gender .. EVs, Dynamax level: defaults
+press UP
+expect debug_input=1 # Gigantamax factor
+press A
+wait-until debug_step=11.0 max 60
+press A
+wait-until task_last=DebugTask_HandleMenuInput_General max 60
+expect party_count=6
+expect pc_box0_count=1
+expect pc_box_species:0=3
+
+# Give X > Pokemon (Basic): Charizard, Mega X form (a species of its own) (species 907), level 50
+press DOWN
+press A
+wait-until debug_step=0.0 max 60
+press RIGHT
+press RIGHT
+press UP times 9
+press LEFT
+press LEFT
+press UP times 6
+expect debug_input=907
+press A
+wait-until debug_step=1.0 max 60
+press RIGHT
+press UP times 5
+press LEFT
+press DOWN
+expect debug_input=50
+press A
+wait-until task_last=DebugTask_HandleMenuInput_General max 60
+expect party_count=6
+expect pc_box0_count=2
+expect pc_box_species:0=3,907
+
+press B times 2 # Give X -> main menu -> closed
+wait-until debug_menu_open=0 max 60
+wait-until controls_locked=0 max 60
+dump 12_phase_a
+screenshot 12_phase_a
+
+# The Start menu's POKeMON entry shows the party; each member's summary screen
+press START
+wait-until task_last=Task_ShowStartMenu max 60
+wait 10  # settle: a press in the frame the menu opens is lost
+press A
+wait-until task_last=Task_HandleChooseMonInput max 300
+wait-until fade_active=1 max 30
+wait-until fade_active=0 max 120
+expect party_slot=0
+press A
+wait-until task_last=Task_HandleSelectionMenuInput max 60
+press A # SUMMARY
+wait-until task_first=Task_HandleInput max 300
+wait-until fade_active=1 max 30
+wait-until fade_active=0 max 120
+expect summary_species=252
+screenshot summary_a0
+press B
+wait-until summary_species=0 max 300 # the summary is closed
+wait-until task_last=Task_HandleSelectionMenuInput max 300 # back in the party menu, at the mon's menu
+wait 30  # the party menu fades in
+press B
+wait-until task_last=Task_HandleChooseMonInput max 60
+press DOWN
+wait-until party_slot=1 max 20
+press A
+wait-until task_last=Task_HandleSelectionMenuInput max 60
+press A # SUMMARY
+wait-until task_first=Task_HandleInput max 300
+wait-until fade_active=1 max 30
+wait-until fade_active=0 max 120
+expect summary_species=1
+screenshot summary_a1
+press B
+wait-until summary_species=0 max 300 # the summary is closed
+wait-until task_last=Task_HandleSelectionMenuInput max 300 # back in the party menu, at the mon's menu
+wait 30  # the party menu fades in
+press B
+wait-until task_last=Task_HandleChooseMonInput max 60
+press DOWN
+wait-until party_slot=2 max 20
+press A
+wait-until task_last=Task_HandleSelectionMenuInput max 60
+press A # SUMMARY
+wait-until task_first=Task_HandleInput max 300
+wait-until fade_active=1 max 30
+wait-until fade_active=0 max 120
+expect summary_species=152
+screenshot summary_a2
+press B
+wait-until summary_species=0 max 300 # the summary is closed
+wait-until task_last=Task_HandleSelectionMenuInput max 300 # back in the party menu, at the mon's menu
+wait 30  # the party menu fades in
+press B
+wait-until task_last=Task_HandleChooseMonInput max 60
+press DOWN
+wait-until party_slot=3 max 20
+press A
+wait-until task_last=Task_HandleSelectionMenuInput max 60
+press A # SUMMARY
+wait-until task_first=Task_HandleInput max 300
+wait-until fade_active=1 max 30
+wait-until fade_active=0 max 120
+expect summary_species=961
+screenshot summary_a3
+press B
+wait-until summary_species=0 max 300 # the summary is closed
+wait-until task_last=Task_HandleSelectionMenuInput max 300 # back in the party menu, at the mon's menu
+wait 30  # the party menu fades in
+press B
+wait-until task_last=Task_HandleChooseMonInput max 60
+press DOWN
+wait-until party_slot=4 max 20
+press A
+wait-until task_last=Task_HandleSelectionMenuInput max 60
+press A # SUMMARY
+wait-until task_first=Task_HandleInput max 300
+wait-until fade_active=1 max 30
+wait-until fade_active=0 max 120
+expect summary_species=974
+screenshot summary_a4
+press B
+wait-until summary_species=0 max 300 # the summary is closed
+wait-until task_last=Task_HandleSelectionMenuInput max 300 # back in the party menu, at the mon's menu
+wait 30  # the party menu fades in
+press B
+wait-until task_last=Task_HandleChooseMonInput max 60
+press DOWN
+wait-until party_slot=5 max 20
+press A
+wait-until task_last=Task_HandleSelectionMenuInput max 60
+press A # SUMMARY
+wait-until task_first=Task_HandleInput max 300
+wait-until fade_active=1 max 30
+wait-until fade_active=0 max 120
+expect summary_species=1402
+screenshot summary_a5
+press B
+wait-until summary_species=0 max 300 # the summary is closed
+wait-until task_last=Task_HandleSelectionMenuInput max 300 # back in the party menu, at the mon's menu
+wait 30  # the party menu fades in
+press B
+wait-until task_last=Task_HandleChooseMonInput max 60
+press B
+wait-until task_last=Task_ShowStartMenu max 300 # B leaves the party menu for the Start menu
+wait 10  # settle
+
+# ---- The bag -------------------------------------------------------------------
+press DOWN # BAG
+press A
+wait-until callback2=CB2_BagMenuFromStartMenu max 300
+wait-until fade_active=1 max 30
+wait-until fade_active=0 max 120
+wait 20
+screenshot bag_items
+dump bag_items
+press LEFT
+wait 20  # the pocket switches to the last, the key items
+screenshot bag_key_items
+press B
+wait-until task_last=Task_ShowStartMenu max 300 # the bag closes into the Start menu
+wait 10  # settle
+press B
+wait-until controls_locked=0 max 300
+wait 10  # settle
+
+# ---- A trainer battle with the party as it is: Trainers > Trainer 1 = trainer 10 (an Aqua grunt), Try Battle
+hold R
+press START
+release R
+wait-until debug_menu_open=1 max 60
+press DOWN times 6 # Trainers
+press A
+wait-until task_last=DebugTask_HandleMenuInput_General max 60
+press DOWN # Trainer 1
+press A
+wait-until debug_step=0.0 max 60
+press RIGHT
+press UP # the grunt's id is 10
+expect debug_input=10
+press A
+wait-until task_last=DebugTask_HandleMenuInput_General max 60
+press DOWN times 7 # Try Battle
+press A
+wait-until in_battle=1 max 900
+wait-until callback2=BattleMainCB2 max 1500
+mash A until battle_main=HandleTurnActionSelectionState max 3000 # through the intro text to the player's choice
+wait 30  # the prompt is drawn
+dump a_battle
+screenshot a_battle
+mash A until in_battle=0 max 12000 # FIGHT with the first move, text and the next Pokemon, until the grunt is beaten
+wait-until callback2=CB2_Overworld max 1500
+wait-until controls_locked=0 max 1500
+wait 20  # settle
+dump a_battle_end
+screenshot a_battle_end
+expect in_battle=0
+expect party_species=252,1,152,961,974,1402
+expect pc_box_species:0=3,907
+
+# ---- Phase B: clear the party (Party > Clear Party), then generations 4 to 9 -----------------
+hold R
+press START
+release R
+wait-until debug_menu_open=1 max 60
+press DOWN times 2 # Party
+press A
+wait-until task_last=DebugTask_HandleMenuInput_General max 60
+press DOWN times 8 # Clear Party
+press A
+wait-until debug_menu_open=0 max 60
+wait-until controls_locked=0 max 60
+expect party_count=0
+expect party_species=none
+expect pc_box0_count=2
+
+hold R
+press START
+release R
+wait-until debug_menu_open=1 max 60
+press DOWN times 3 # Give X
+press A
+wait-until task_last=DebugTask_HandleMenuInput_General max 60
+
+# Give X > Pokemon (Complex): Turtwig, level 100, shiny, move 1 Tackle (33), Dynamax level 10, Gigantamax
+# factor, Tera type Grass (13): a damaging first move for the lead and every kind of extra for the save
+press DOWN times 2
+press A
+wait-until debug_step=0.0 max 60
+press RIGHT
+press UP times 8
+press RIGHT
+press UP times 3
+press LEFT
+press LEFT
+press UP times 6
+expect debug_input=387
+press A
+wait-until debug_step=1.0 max 60
+press RIGHT
+press RIGHT
+press UP
+expect debug_input=100
+press A
+wait-until debug_step=2.0 max 60 # gender: the default
+press A
+wait-until debug_step=3.0 max 60
+press UP
+expect debug_input=1 # shiny: TRUE
+press A
+wait-until debug_step=4.0 max 60 # ability
+press A
+wait-until debug_step=5.0 max 60 # nature
+press A
+wait-until debug_step=6.0 max 60 # moves
+press RIGHT
+press UP times 3
+press LEFT
+press UP times 3
+expect debug_input=33
+press A
+wait-until debug_step=6.1 max 60
+press A # the second move left empty: the rest stay empty
+wait-until debug_step=7.0 max 60
+mash A until debug_step=9.0 max 900 # IVs and EVs: defaults
+press RIGHT
+press UP
+expect debug_input=10 # Dynamax level
+press A
+wait-until debug_step=10.0 max 60
+press UP
+expect debug_input=1 # Gigantamax factor
+press A
+wait-until debug_step=11.0 max 60
+press UP times 11
+expect debug_input=13 # Tera type: Grass
+press A
+wait-until task_last=DebugTask_HandleMenuInput_General max 60
+expect party_count=1
+expect party_species:0=387
+expect party_name:0=Turtwig
+expect party_level:0=100
+expect party_extras:0=shiny=1 dynamax=10 gmax=1 tera=13
+expect party_move:0:0=33 # Tackle
+expect party_move:0:1=0
+expect party_move:0:3=0
+
+# Give X > Pokemon (Basic): Snivy (species 495), level 50
+press DOWN
+press A
+wait-until debug_step=0.0 max 60
+press RIGHT
+press UP times 9
+press RIGHT
+press UP times 4
+press LEFT
+press LEFT
+press UP times 4
+expect debug_input=495
+press A
+wait-until debug_step=1.0 max 60
+press RIGHT
+press UP times 5
+press LEFT
+press DOWN
+expect debug_input=50
+press A
+wait-until task_last=DebugTask_HandleMenuInput_General max 60
+expect party_count=2
+expect party_species:1=495
+expect party_name:1=Snivy
+
+# Give X > Pokemon (Basic): Chespin (species 650), level 50
+press DOWN
+press A
+wait-until debug_step=0.0 max 60
+press RIGHT
+press UP times 5
+press RIGHT
+press UP times 6
+press LEFT
+press LEFT
+press DOWN
+expect debug_input=650
+press A
+wait-until debug_step=1.0 max 60
+press RIGHT
+press UP times 5
+press LEFT
+press DOWN
+expect debug_input=50
+press A
+wait-until task_last=DebugTask_HandleMenuInput_General max 60
+expect party_count=3
+expect party_species:2=650
+expect party_name:2=Chespin
+
+# Give X > Pokemon (Basic): Rowlet (species 722), level 50
+press DOWN
+press A
+wait-until debug_step=0.0 max 60
+press RIGHT
+press UP times 2
+press RIGHT
+press UP times 7
+press LEFT
+press LEFT
+press UP
+expect debug_input=722
+press A
+wait-until debug_step=1.0 max 60
+press RIGHT
+press UP times 5
+press LEFT
+press DOWN
+expect debug_input=50
+press A
+wait-until task_last=DebugTask_HandleMenuInput_General max 60
+expect party_count=4
+expect party_species:3=722
+expect party_name:3=Rowlet
+
+# Give X > Pokemon (Basic): Grookey (species 810), level 50
+press DOWN
+press A
+wait-until debug_step=0.0 max 60
+press RIGHT
+press UP
+press RIGHT
+press UP times 8
+press LEFT
+press LEFT
+press DOWN
+expect debug_input=810
+press A
+wait-until debug_step=1.0 max 60
+press RIGHT
+press UP times 5
+press LEFT
+press DOWN
+expect debug_input=50
+press A
+wait-until task_last=DebugTask_HandleMenuInput_General max 60
+expect party_count=5
+expect party_species:4=810
+expect party_name:4=Grookey
+
+# Give X > Pokemon (Basic): Sprigatito (species 1289), level 50
+press DOWN
+press A
+wait-until debug_step=0.0 max 60
+press RIGHT
+press UP times 8
+press RIGHT
+press UP times 2
+press RIGHT
+press UP
+press LEFT
+press LEFT
+press LEFT
+press UP times 8
+expect debug_input=1289
+press A
+wait-until debug_step=1.0 max 60
+press RIGHT
+press UP times 5
+press LEFT
+press DOWN
+expect debug_input=50
+press A
+wait-until task_last=DebugTask_HandleMenuInput_General max 60
+expect party_count=6
+expect party_species:5=1289
+expect party_name:5=Sprigatito
+press B times 2 # Give X -> main menu -> closed
+wait-until debug_menu_open=0 max 60
+wait-until controls_locked=0 max 60
+expect party_species=387,495,650,722,810,1289
+expect pc_box_species:0=3,907
+expect party_level:0=100
+expect party_extras:0=shiny=1 dynamax=10 gmax=1 tera=13
+expect party_move:0:0=33 # Tackle
+expect party_move:0:1=0
+expect party_move:0:3=0
+dump 13_phase_b
+screenshot 13_phase_b
+
+# The Start menu's POKeMON entry shows the party; each member's summary screen
+press START
+wait-until task_last=Task_ShowStartMenu max 60
+wait 10  # settle: a press in the frame the menu opens is lost
+press UP # the Start menu remembers its last entry (BAG)
+press A
+wait-until task_last=Task_HandleChooseMonInput max 300
+wait-until fade_active=1 max 30
+wait-until fade_active=0 max 120
+expect party_slot=0
+press A
+wait-until task_last=Task_HandleSelectionMenuInput max 60
+press A # SUMMARY
+wait-until task_first=Task_HandleInput max 300
+wait-until fade_active=1 max 30
+wait-until fade_active=0 max 120
+expect summary_species=387
+screenshot summary_b0
+press B
+wait-until summary_species=0 max 300 # the summary is closed
+wait-until task_last=Task_HandleSelectionMenuInput max 300 # back in the party menu, at the mon's menu
+wait 30  # the party menu fades in
+press B
+wait-until task_last=Task_HandleChooseMonInput max 60
+press DOWN
+wait-until party_slot=1 max 20
+press A
+wait-until task_last=Task_HandleSelectionMenuInput max 60
+press A # SUMMARY
+wait-until task_first=Task_HandleInput max 300
+wait-until fade_active=1 max 30
+wait-until fade_active=0 max 120
+expect summary_species=495
+screenshot summary_b1
+press B
+wait-until summary_species=0 max 300 # the summary is closed
+wait-until task_last=Task_HandleSelectionMenuInput max 300 # back in the party menu, at the mon's menu
+wait 30  # the party menu fades in
+press B
+wait-until task_last=Task_HandleChooseMonInput max 60
+press DOWN
+wait-until party_slot=2 max 20
+press A
+wait-until task_last=Task_HandleSelectionMenuInput max 60
+press A # SUMMARY
+wait-until task_first=Task_HandleInput max 300
+wait-until fade_active=1 max 30
+wait-until fade_active=0 max 120
+expect summary_species=650
+screenshot summary_b2
+press B
+wait-until summary_species=0 max 300 # the summary is closed
+wait-until task_last=Task_HandleSelectionMenuInput max 300 # back in the party menu, at the mon's menu
+wait 30  # the party menu fades in
+press B
+wait-until task_last=Task_HandleChooseMonInput max 60
+press DOWN
+wait-until party_slot=3 max 20
+press A
+wait-until task_last=Task_HandleSelectionMenuInput max 60
+press A # SUMMARY
+wait-until task_first=Task_HandleInput max 300
+wait-until fade_active=1 max 30
+wait-until fade_active=0 max 120
+expect summary_species=722
+screenshot summary_b3
+press B
+wait-until summary_species=0 max 300 # the summary is closed
+wait-until task_last=Task_HandleSelectionMenuInput max 300 # back in the party menu, at the mon's menu
+wait 30  # the party menu fades in
+press B
+wait-until task_last=Task_HandleChooseMonInput max 60
+press DOWN
+wait-until party_slot=4 max 20
+press A
+wait-until task_last=Task_HandleSelectionMenuInput max 60
+press A # SUMMARY
+wait-until task_first=Task_HandleInput max 300
+wait-until fade_active=1 max 30
+wait-until fade_active=0 max 120
+expect summary_species=810
+screenshot summary_b4
+press B
+wait-until summary_species=0 max 300 # the summary is closed
+wait-until task_last=Task_HandleSelectionMenuInput max 300 # back in the party menu, at the mon's menu
+wait 30  # the party menu fades in
+press B
+wait-until task_last=Task_HandleChooseMonInput max 60
+press DOWN
+wait-until party_slot=5 max 20
+press A
+wait-until task_last=Task_HandleSelectionMenuInput max 60
+press A # SUMMARY
+wait-until task_first=Task_HandleInput max 300
+wait-until fade_active=1 max 30
+wait-until fade_active=0 max 120
+expect summary_species=1289
+screenshot summary_b5
+press B
+wait-until summary_species=0 max 300 # the summary is closed
+wait-until task_last=Task_HandleSelectionMenuInput max 300 # back in the party menu, at the mon's menu
+wait 30  # the party menu fades in
+press B
+wait-until task_last=Task_HandleChooseMonInput max 60
+press B
+wait-until task_last=Task_ShowStartMenu max 300 # B leaves the party menu for the Start menu
+wait 10  # settle
+press B
+wait-until controls_locked=0 max 300 # the Start menu closes
+wait 10  # settle
+
+# ---- A trainer battle with the party as it is: Trainers > Trainer 1 = trainer 10 (an Aqua grunt), Try Battle
+hold R
+press START
+release R
+wait-until debug_menu_open=1 max 60
+press DOWN times 6 # Trainers
+press A
+wait-until task_last=DebugTask_HandleMenuInput_General max 60
+press DOWN # Trainer 1
+press A
+wait-until debug_step=0.0 max 60
+press RIGHT
+press UP # the grunt's id is 10
+expect debug_input=10
+press A
+wait-until task_last=DebugTask_HandleMenuInput_General max 60
+press DOWN times 7 # Try Battle
+press A
+wait-until in_battle=1 max 900
+wait-until callback2=BattleMainCB2 max 1500
+mash A until battle_main=HandleTurnActionSelectionState max 3000 # through the intro text to the player's choice
+wait 30  # the prompt is drawn
+dump b_battle
+screenshot b_battle
+mash A until in_battle=0 max 12000 # FIGHT with the first move, text and the next Pokemon, until the grunt is beaten
+wait-until callback2=CB2_Overworld max 1500
+wait-until controls_locked=0 max 1500
+wait 20  # settle
+dump b_battle_end
+screenshot b_battle_end
+expect in_battle=0
+
+# ---- Save from the Start menu, restart the process, Continue ---------------------------------
+press START
+wait-until task_last=Task_ShowStartMenu max 60
+wait 10  # settle
+press DOWN times 3 # SAVE
+press A
+mash A until controls_locked=0 max 3000
+wait 20  # settle
+expect save_counter=1
+expect party_level:0=100
+expect party_extras:0=shiny=1 dynamax=10 gmax=1 tera=13
+expect party_move:0:0=33 # Tackle
+expect party_move:0:1=0
+expect party_move:0:3=0
+dump 14_saved
+screenshot 14_saved
+restart
+
+wait-until callback2=MainCB2_Intro max 1000
+wait-until callback2=MainCB2 max 20000
+wait-until task_first=Task_TitleScreenPhase3 max 600
+press START
+wait-until task_first=Task_HandleMainMenuInput max 600
+press A # CONTINUE
+wait-until callback2=CB2_Overworld max 1200
+wait 10  # settle
+wait-until controls_locked=0 max 600
+dump 15_continued
+screenshot 15_continued
+expect party_species=387,495,650,722,810,1289
+expect party_name:0=Turtwig
+expect party_level:0=100
+expect party_extras:0=shiny=1 dynamax=10 gmax=1 tera=13
+expect party_move:0:0=33 # Tackle
+expect party_move:0:1=0
+expect party_move:0:3=0
+expect pc_box_species:0=3,907
+expect bag_item_count:293=1
+expect bag_item_count:357=1
+expect bag_item_count:783=1
+expect bag_item_count:79=1
+expect bag_item_count:108=3
+expect bag_item_count:704=1
+expect flag:2144=1
+expect flag:2158=1
+expect var:16384=7

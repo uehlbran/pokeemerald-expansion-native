@@ -1,0 +1,13 @@
+# Palettes (by source file) that the native build must NOT zero-pad to a whole 32-byte
+# bank, one per line: "source-file  # reason". platform/build_glue/gbagfx_pad.sh skips
+# these and platform/build_glue/check_palette_padding.py verifies the list (every listed
+# file is short and sized in the code; no other short file is).
+#
+# Why a palette is listed: the game takes the array's size (sizeof, ARRAY_COUNT, or an
+# explicit size in the declaration), so the GBA loads exactly the colours of the file and
+# padding would change what is loaded or break an initializer.
+graphics/easy_chat/text.pal # loaded with sizeof: the GBA loads exactly its colours
+graphics/easy_chat/title_text.pal # loaded with sizeof: the GBA loads exactly its colours
+graphics/battle_frontier/factory_screen/text.pal # loaded with sizeof: the GBA loads exactly its colours
+graphics/crash_screen/assertf.pal # in a [MODE_COUNT][2] initializer: padding gives excess-initializer warnings
+graphics/crash_screen/fatalf.pal # in a [MODE_COUNT][2] initializer: padding gives excess-initializer warnings

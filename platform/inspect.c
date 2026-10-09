@@ -1,5 +1,7 @@
 /*
- * inspect.c: the facts (inspect.h), read from expansion's variables.
+ * inspect.c: the game-state facts (inspect.h), read from expansion's variables, the
+ * dispatch of all facts, and the flag and var facts. The facts of the menus are
+ * inspect_menu.c, the ranges of the arguments inspect_args.c.
  *
  * Followed: expansion's own headers for every layout (global.h, main.h,
  * task.h, pokemon.h, save.h); built with the game's defines (see
@@ -16,13 +18,17 @@
 #include "flash.h"
 #include "frame.h"
 #include "inspect_decode.h"
+#include "inspect_internal.h"
 #include "symbols.h"
 
 #include "global.h"
+#include "battle.h"
 #include "constants/battle.h"
 #include "constants/map_groups.h"
 #include "constants/species.h"
 #include "intro.h"
+#include "item.h"
+#include "load_save.h"
 #include "item_menu.h"
 #include "event_data.h"
 #include "constants/vars.h"
@@ -30,6 +36,8 @@
 #include "main_menu.h"
 #include "option_menu.h"
 #include "overworld.h"
+#include "party_menu.h"
+#include "pokemon_summary_screen.h"
 #include "palette.h"
 #include "pokemon.h"
 #include "save.h"
@@ -39,7 +47,8 @@
 #include "title_screen.h"
 #include "wallclock.h"
 
-static const char *const none_text = "none";
+const char inspect_none_text[] = "none";
+#define none_text inspect_none_text
 
 /* 64-bit flag: the (uintptr_t) casts of function pointers in this file (this
  * table and name_function's callers) compare code addresses as integers with
@@ -234,20 +243,20 @@ static void fact_pos(char *out, size_t size)
     snprintf(out, size, "%d,%d", gSaveBlock1Ptr->pos.x, gSaveBlock1Ptr->pos.y);
 }
 
-static unsigned player_party_count(void)
+unsigned inspect_party_count(void)
 {
     return gPartiesCount[B_TRAINER_PLAYER];
 }
 
 static void fact_party_count(char *out, size_t size)
 {
-    snprintf(out, size, "%u", player_party_count());
+    snprintf(out, size, "%u", inspect_party_count());
 }
 
 /* The first party Pokemon's species, 0 without one. */
 static unsigned party0_species(void)
 {
-    if (player_party_count() == 0)
+    if (inspect_party_count() == 0)
         return 0;
     return GetMonData(&gParties[B_TRAINER_PLAYER][0], MON_DATA_SPECIES);
 }
@@ -270,6 +279,13 @@ static void fact_party0_name(char *out, size_t size)
 static void fact_in_battle(char *out, size_t size)
 {
     snprintf(out, size, "%u", gMain.inBattle ? 1u : 0u);
+}
+
+/* gBattleMainFunc by name: the battle's own state machine (DoBattleIntro, ...,
+ * HandleTurnActionSelectionState while it waits for the player's choice, ...). */
+static void fact_battle_main(char *out, size_t size)
+{
+    name_function((uintptr_t)gBattleMainFunc, out, size);
 }
 
 static void fact_script_running(char *out, size_t size)
@@ -297,12 +313,26 @@ static void fact_flash_dirty_writes(char *out, size_t size)
     snprintf(out, size, "%u", (unsigned)flash_write_count());
 }
 
-struct fact {
-    const char *name;
-    void (*read)(char *out, size_t size);
+
+/* The save block does not exist before the game's boot has set it up (a script's first
+ * frames): a flag or variable stored in it reads 0 until then. */
+static void arg_flag(const uint32_t arguments[INSPECT_MAX_ARGUMENTS], char *out, size_t size)
+{
+    snprintf(out, size, "%u", (gSaveBlock1Ptr != NULL && FlagGet((u16)arguments[0])) ? 1u : 0u);
+}
+
+static void arg_var(const uint32_t arguments[INSPECT_MAX_ARGUMENTS], char *out, size_t size)
+{
+    const bool stored_in_save_block = arguments[0] < SPECIAL_VARS_START;
+    snprintf(out, size, "%u", (stored_in_save_block && gSaveBlock1Ptr == NULL) ? 0u : (unsigned)VarGet((u16)arguments[0]));
+}
+
+static const struct inspect_arg_reader state_arg_readers[] = {
+    { INSPECT_ARG_FLAG, arg_flag },
+    { INSPECT_ARG_VAR, arg_var },
 };
 
-static const struct fact facts[] = {
+static const struct inspect_fact facts[] = {
     { "frame", fact_frame },
     { "callback2", fact_callback2 },
     { "task_count", fact_task_count },
@@ -324,13 +354,14 @@ static const struct fact facts[] = {
     { "party0_species", fact_party0_species },
     { "party0_name", fact_party0_name },
     { "in_battle", fact_in_battle },
+    { "battle_main", fact_battle_main },
     { "script_running", fact_script_running },
     { "controls_locked", fact_controls_locked },
     { "save_counter", fact_save_counter },
     { "save_status", fact_save_status },
     { "flash_dirty_writes", fact_flash_dirty_writes },
 };
-#define FACT_COUNT (sizeof facts / sizeof facts[0])
+#define STATE_FACT_COUNT (sizeof facts / sizeof facts[0])
 
 int inspect_init(void)
 {
@@ -342,11 +373,48 @@ void inspect_shutdown(void)
     symbols_unload();
 }
 
+static const struct inspect_arg_reader *find_reader(const struct inspect_arg_reader *readers, size_t count,
+                                                    enum inspect_arg_fact fact)
+{
+    for (size_t i = 0; i < count; i++) {
+        if (readers[i].fact == fact)
+            return &readers[i];
+    }
+    return NULL;
+}
+
+/* "name:argument[:argument]": 0 and the value, or -1 (unknown fact, malformed or out-of-range argument). */
+static int read_argument_fact(const char *name, size_t name_length, const char *argument, char *out, size_t size)
+{
+    const struct inspect_arg_spec *spec = inspect_arg_find(name, name_length);
+    uint32_t values[INSPECT_MAX_ARGUMENTS] = { 0 };
+    if (spec == NULL || inspect_arg_parse(spec, argument, values) != 0)
+        return -1;
+    const enum inspect_arg_fact fact = inspect_arg_id(spec);
+    const struct inspect_arg_reader *reader = find_reader(state_arg_readers, sizeof state_arg_readers / sizeof state_arg_readers[0], fact);
+    if (reader == NULL)
+        reader = find_reader(inspect_menu_arg_readers, inspect_menu_arg_reader_count, fact);
+    if (reader == NULL)
+        return -1;
+    reader->read(values, out, size);
+    return 0;
+}
+
 int inspect_get(const char *name, char *out, size_t size)
 {
-    for (size_t i = 0; i < FACT_COUNT; i++) {
+    const char *argument;
+    const size_t name_length = inspect_split_name(name, &argument);
+    if (argument != NULL)
+        return read_argument_fact(name, name_length, argument, out, size);
+    for (size_t i = 0; i < STATE_FACT_COUNT; i++) {
         if (strcmp(facts[i].name, name) == 0) {
             facts[i].read(out, size);
+            return 0;
+        }
+    }
+    for (size_t i = 0; i < inspect_menu_fact_count; i++) {
+        if (strcmp(inspect_menu_facts[i].name, name) == 0) {
+            inspect_menu_facts[i].read(out, size);
             return 0;
         }
     }
@@ -355,5 +423,8 @@ int inspect_get(const char *name, char *out, size_t size)
 
 const char *inspect_fact_name(size_t index)
 {
-    return index < FACT_COUNT ? facts[index].name : NULL;
+    if (index < STATE_FACT_COUNT)
+        return facts[index].name;
+    index -= STATE_FACT_COUNT;
+    return index < inspect_menu_fact_count ? inspect_menu_facts[index].name : NULL;
 }

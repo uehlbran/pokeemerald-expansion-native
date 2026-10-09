@@ -2103,7 +2103,14 @@ void UpdateHealthboxAttribute(u8 healthboxSpriteId, struct Pokemon *mon, u8 elem
             exp = GetMonData(mon, MON_DATA_EXP);
             currLevelExp = gExperienceTables[gSpeciesInfo[species].growthRate][level];
             currExpBarValue = exp - currLevelExp;
+#if PLATFORM_NATIVE
+            // At MAX_LEVEL the [level + 1] entry is past the row: the GBA read the next row's first
+            // entry, 0 (and past the table for the last row); the bar is full then, and 0 stands for it.
+            maxExpBarValue = (level < MAX_LEVEL ? (s32)gExperienceTables[gSpeciesInfo[species].growthRate][level + 1] : 0) - currLevelExp;
+#else
             maxExpBarValue = gExperienceTables[gSpeciesInfo[species].growthRate][level + 1] - currLevelExp;
+#endif
+#line 2107
             SetBattleBarStruct(battler, healthboxSpriteId, maxExpBarValue, currExpBarValue, isDoubles);
             MoveBattleBar(battler, healthboxSpriteId, EXP_BAR, 0);
         }
