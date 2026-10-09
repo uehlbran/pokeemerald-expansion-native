@@ -648,7 +648,10 @@ endif
 
 # --------------------------------------------------------------------------
 # Data assembly: expansion's recipe, with $(AS) being the filter plus the
-# host assembler. map_data_rules.mk supplies maps.o and map_events.o.
+# host assembler. map_data_rules.mk supplies maps.o and map_events.o, which
+# are mapjson's output to the filter's 8-byte rules.
+
+$(DATA_ASM_BUILDDIR)/maps.o $(DATA_ASM_BUILDDIR)/map_events.o: private ASM_FILTER_INPUT := mapjson
 
 $(DATA_ASM_BUILDDIR)/%.o: $(DATA_ASM_SUBDIR)/%.s
 	$(PREPROC) -s $< charmap.txt | $(CPP) $(CPPFLAGS) $(INCLUDE_SCANINC_ARGS) - | $(PREPROC) -ie $< charmap.txt | $(AS) $(ASFLAGS) -o $@

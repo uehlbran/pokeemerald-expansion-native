@@ -2,10 +2,18 @@
 .if ALLOCATE_SPECIAL_TABLE
 	.global SPECIAL_\ptr
 	.set SPECIAL_\ptr, __special__
+	.ifdef NATIVE_POINTER_SIZE_8  @ PLATFORM_NATIVE, 64-bit: gSpecials holds 8-byte function pointers
+	.if \requests_effects == 0
+		.8byte \ptr
+	.else
+		.8byte \ptr + ROM_SIZE
+	.endif
+	.else
 	.if \requests_effects == 0
 		.4byte \ptr
 	.else
 		.4byte \ptr + ROM_SIZE
+	.endif
 	.endif
 .endif
 .set SPECIAL_WAITSTATE_\ptr, \waitstate
@@ -14,7 +22,11 @@
 
 .set __special__, 0
 .if ALLOCATE_SPECIAL_TABLE
+	.ifdef NATIVE_POINTER_SIZE_8  @ PLATFORM_NATIVE, 64-bit: gSpecials holds 8-byte function pointers
+		.align 3
+	.else
 		.align 2
+	.endif
 gSpecials::
 .endif
 	def_special HealPlayerParty

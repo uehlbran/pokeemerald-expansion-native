@@ -157,23 +157,48 @@ SELF_TEST_CASES = (
 # --------------------------------------------------------------------------
 # 8-byte pointers (--pointer-size 8)
 #
-# At 64 bits the C structs that read the data have 8-byte, 8-aligned
-# pointers. The macros that emit such structs have guarded 64-bit variants
-# (asm/macros/m4a.inc, music_voice.inc, ...); these rules lay out the words
-# no macro emits, per kind of input (--input). They act only on statements
-# outside macro definitions, and only on the '.4byte's the filter has
-# already produced; every other '.4byte' (script and song bytecode) stays.
+# At 64 bits the C structs and arrays that read the data have 8-byte,
+# 8-aligned pointers. The macros that emit such structs have guarded 64-bit
+# variants (asm/macros/m4a.inc, music_voice.inc, map.inc, data/specials.inc,
+# data/script_cmd_table.inc); these rules lay out the words no macro emits,
+# per kind of input (--input). They act only on statements outside macro
+# definitions and only on the '.4byte's the rules above have produced; every
+# other '.4byte' (script and song bytecode, read a byte at a time) stays.
 #
-#   song   a mid2agb song: after the song's last label comes its header,
-#          struct SongHeader: four bytes, then the voicegroup and one word
-#          per track. At 64 bits: aligned to 8, four bytes of padding after
-#          the four bytes, and 8-byte words.
+#   data     Hand-written tables of C pointers, named in WIDENED_TABLES:
+#            aligned to 8, and each '.4byte' up to the next label is
+#            '.8byte'.
+#   mapjson  mapjson's output (data/maps.s, data/map_events.s): every label
+#            is aligned to 8, which also gives struct MapHeader and struct
+#            MapLayout their tail padding, and at the end. Every '.4byte' is
+#            a pointer ('.8byte', NULL included) except the first two after
+#            a '*_Layout' label (width, height) and the first after a
+#            '*_MapConnections' label (count, then 4 bytes of padding).
+#   song     A mid2agb song: after the song's last label comes its header,
+#            struct SongHeader: four bytes, then the voicegroup and one word
+#            per track. Aligned to 8, four bytes of padding after the four
+#            bytes, and 8-byte words. Songs have no macros.
 
-INPUT_KINDS = ("data", "song")
+INPUT_KINDS = ("data", "mapjson", "song")
+WIDENED_TABLES = frozenset((
+    "gSpecialVars",                     # data/event_scripts.s
+    "gStdScripts",                      # data/event_scripts.s
+    "gBattlescriptsForUsingItem",       # data/battle_scripts_2.s
+    "gBattlescriptsForSafariActions",   # data/battle_scripts_2.s
+    "gContestAI_ScriptsTable",          # data/contest_ai_scripts.s
+    "gFieldEffectScriptPointers",       # data/field_effect_scripts.s
+    "gMysteryEventScriptCmdTable",      # data/mystery_event_script_cmd_table.s
+))
+# mapjson labels whose first words are not pointers: (label suffix, how
+# many 4-byte words, the padding before the first pointer).
+MAPJSON_SCALAR_WORDS = (
+    ("_Layout", 2, None),                   # struct MapLayout: s32 width, height
+    ("_MapConnections", 1, ".space 4"),     # struct MapConnections: s32 count
+)
 SONG_HEADER_BYTES = 4      # trackCount, blockCount, priority, reverb
 POINTER_ALIGN = ".balign 8"
 POINTER_WORD = ".8byte"
-HEADER_PADDING = ".space 4"
+SONG_HEADER_PADDING = ".space 4"
 
 LABEL = re.compile(r"\s*([A-Za-z_.$][\w.$]*)(::?)")
 DIRECTIVE_NAME = re.compile(r"\s*(\.[\w.]+)")
@@ -218,36 +243,92 @@ def with_prefix(statements, index, directive):
         statements[index] = "\t%s ;%s" % (directive, statements[index])
 
 
-def outside_macros(lines):
-    """Yield (line, its statements, whether they are outside any .macro)."""
+def rewrite_statements(lines, visit):
+    """Yield the lines, with visit(labels, directive, statement, start, end)
+    applied to each statement outside a macro definition; it returns the
+    statement, possibly rewritten, and a directive to put before it or None.
+    A line with no label, '.4byte' or macro boundary passes unparsed."""
     depth = 0
     for line in lines:
+        if ":" not in line and ".4byte" not in line and "macro" not in line and "endm" not in line:
+            yield line
+            continue
         statements = split_statements(line)
-        outside = []
-        for statement in statements:
-            directive = parse_statement(statement)[1]
+        prefixes = {}
+        for index, statement in enumerate(statements):
+            labels, directive, start, end = parse_statement(statement)
             if directive == ".macro":
                 depth += 1
-            outside.append(depth == 0)
-            if directive == ".endm":
+            elif directive == ".endm":
                 depth = max(depth - 1, 0)
-        yield line, statements, outside
+            elif depth == 0:
+                statements[index], prefix = visit(labels, directive, statement, start, end)
+                if prefix:
+                    prefixes[index] = prefix
+        for index, prefix in prefixes.items():
+            with_prefix(statements, index, prefix)
+        yield ";".join(statements)
+
+
+def widen_tables(lines):
+    """The 'data' rule."""
+    widening = False
+
+    def visit(labels, directive, statement, start, end):
+        nonlocal widening
+        prefix = None
+        if labels:
+            widening = labels[-1] in WIDENED_TABLES
+            prefix = POINTER_ALIGN if widening else None
+        if widening and directive == ".4byte":
+            statement = with_directive(statement, start, end, POINTER_WORD)
+        return statement, prefix
+
+    return rewrite_statements(lines, visit)
+
+
+def widen_mapjson(lines):
+    """The 'mapjson' rule."""
+    scalars = 0
+    padding = None
+
+    def visit(labels, directive, statement, start, end):
+        nonlocal scalars, padding
+        prefix = None
+        if labels:
+            prefix = POINTER_ALIGN
+            scalars, padding = 0, None
+            for suffix, count, pad in MAPJSON_SCALAR_WORDS:
+                if labels[-1].endswith(suffix):
+                    scalars, padding = count, pad
+        if directive == ".4byte" and scalars:
+            if operand_count(statement, end) != 1:
+                raise FilterError("mapjson: one word per statement expected, got %r" % statement.strip())
+            scalars -= 1
+        elif directive == ".4byte":
+            statement = with_directive(statement, start, end, POINTER_WORD)
+            if padding and prefix is None:
+                prefix, padding = padding, None
+        return statement, prefix
+
+    yield from rewrite_statements(lines, visit)
+    yield "\t%s\n" % POINTER_ALIGN
 
 
 def widen_song(lines):
     """The 'song' rule on a whole (filtered) song file."""
-    parsed = list(outside_macros(lines))
+    lines = [split_statements(line) for line in lines]
     header = None
-    for number, (_, statements, outside) in enumerate(parsed):
-        if any(free and parse_statement(statement)[0] for statement, free in zip(statements, outside)):
+    for number, statements in enumerate(lines):
+        if any(parse_statement(statement)[0] for statement in statements):
             header = number
     if header is None:
         raise FilterError("song: no label, so no header")
-    for line, _, _ in parsed[:header]:
-        yield line
+    for statements in lines[:header]:
+        yield ";".join(statements)
     header_bytes = 0
     widened = False
-    for number, (_, statements, _) in enumerate(parsed[header:]):
+    for number, statements in enumerate(lines[header:]):
         prefixes = {}
         for index, statement in enumerate(statements):
             labels, directive, start, end = parse_statement(statement)
@@ -263,7 +344,7 @@ def widen_song(lines):
                     if header_bytes != SONG_HEADER_BYTES:
                         raise FilterError("song header: %d bytes before the first word, not %d"
                                           % (header_bytes, SONG_HEADER_BYTES))
-                    prefixes[index] = HEADER_PADDING
+                    prefixes[index] = SONG_HEADER_PADDING
                     widened = True
             elif directive not in (None, ".end"):
                 raise FilterError("song header: unexpected %r" % statement.strip())
@@ -274,11 +355,14 @@ def widen_song(lines):
         raise FilterError("song header: no word after the song's last label")
 
 
+WIDEN = {"data": widen_tables, "mapjson": widen_mapjson, "song": widen_song}
+
+
 def filter_program(lines, pointer_size=4, input_kind="data"):
     """Yield the filtered lines of a whole input."""
     filtered = (filter_line(line) for line in lines)
-    if pointer_size == 8 and input_kind == "song":
-        return widen_song(filtered)
+    if pointer_size == 8:
+        return WIDEN[input_kind](filtered)
     return filtered
 
 
@@ -328,6 +412,104 @@ mus_x:
 \t.end
 """
 
+TABLES = """\
+	.macro def m
+gStdScripts:: .4byte \\m
+	.endm
+	.align 2
+gSpecialVars::
+	.4byte gSpecialVar_0x8000
+	.4byte gTrainerBattleParameter + 2 @ comment
+	.align 2
+gStdScripts::
+	.4byte Std_ObtainItem
+gStdScripts_End::
+	.4byte Script_Word
+Script:
+	.byte 1 ; .word Target
+"""
+
+TABLES_8 = """\
+	.macro def m
+gStdScripts:: .4byte \\m
+	.endm
+	.p2align 2
+	.balign 8
+gSpecialVars::
+	.8byte gSpecialVar_0x8000
+	.8byte gTrainerBattleParameter + 2
+	.p2align 2
+	.balign 8
+gStdScripts::
+	.8byte Std_ObtainItem
+gStdScripts_End::
+	.4byte Script_Word
+Script:
+	.byte 1 ; .4byte Target
+"""
+
+MAPS = """\
+	.macro connection direction, offset, map
+	.byte \\direction ; .4byte \\offset
+	.endm
+X_Layout_Border::
+	.incbin "border.bin"
+	.align 2
+X_Layout::
+	.4byte 30
+	.4byte 20
+	.4byte X_Layout_Border
+	.4byte NULL
+	.byte FALSE
+	.2byte 0
+	.byte 0
+X:
+	.4byte X_Layout
+	.byte 1
+X_MapConnectionsList:
+	connection up, 0, MAP_Y
+X_MapConnections:
+	.4byte 1
+	.4byte X_MapConnectionsList
+gMapGroups::
+	.4byte gMapGroup_A
+"""
+
+MAPS_8 = """\
+	.macro connection direction, offset, map
+	.byte \\direction ; .4byte \\offset
+	.endm
+	.balign 8
+X_Layout_Border::
+	.incbin "border.bin"
+	.p2align 2
+	.balign 8
+X_Layout::
+	.4byte 30
+	.4byte 20
+	.8byte X_Layout_Border
+	.8byte NULL
+	.byte FALSE
+	.2byte 0
+	.byte 0
+	.balign 8
+X:
+	.8byte X_Layout
+	.byte 1
+	.balign 8
+X_MapConnectionsList:
+	connection up, 0, MAP_Y
+	.balign 8
+X_MapConnections:
+	.4byte 1
+	.space 4
+	.8byte X_MapConnectionsList
+	.balign 8
+gMapGroups::
+	.8byte gMapGroup_A
+	.balign 8
+"""
+
 # (pointer size, input kind, input, expected output or the FilterError's text)
 SELF_TEST_PROGRAMS = (
     (4, "song", SONG, "".join(filter_line(line) for line in SONG.splitlines(True))),
@@ -339,8 +521,12 @@ SELF_TEST_PROGRAMS = (
     (8, "song", SONG.replace("\t.end\n", "\t.byte 1\n"), FilterError("unexpected '.byte 1'")),
     (8, "song", SONG.replace("\t.end\n", "other:\n"), FilterError("no word after the song's last label")),
     (8, "song", "\t.byte 1\n", FilterError("no label")),
-    # A label inside a macro definition is not the header.
-    (8, "song", SONG + "\t.macro m\nlate:\n\t.endm\n", FilterError("unexpected '.macro m'")),
+    (8, "data", TABLES, TABLES_8),
+    (4, "data", TABLES, "".join(filter_line(line) for line in TABLES.splitlines(True))),
+    (8, "mapjson", MAPS, MAPS_8),
+    (8, "mapjson", "Y_MapConnections: .4byte 2 ; .word L\n",
+     "\t.balign 8\nY_MapConnections: .4byte 2 ;\t.space 4 ; .8byte L\n\t.balign 8\n"),
+    (8, "mapjson", "X_Layout::\n\t.4byte 30, 20\n", FilterError("one word per statement expected")),
 )
 
 
