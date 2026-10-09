@@ -591,6 +591,15 @@ $(OVERWORLD_SCRIPT_X86_MACROS) $(OVERWORLD_SCRIPT_X86_PURGE): $(OVERWORLD_SCRIPT
 
 $(TEST_OBJS): $(OVERWORLD_SCRIPT_MACROS) $(OVERWORLD_SCRIPT_X86_MACROS) $(OVERWORLD_SCRIPT_X86_PURGE)
 $(TEST_OBJS): CFLAGS += -Wa,-I,$(TEST_BUILDDIR)
+# At 64 bits GCC raises the alignment of a global of 32 bytes or more to 32,
+# so the 40-byte struct Test entries of .tests (include/test/test.h) would sit
+# 64 bytes apart while test/test_runner.c walks __start_tests..__stop_tests as
+# an array. -malign-data=abi keeps the ABI's 8-byte alignment (40-byte
+# spacing). Only the objects that put data in .tests need it; crt0_init checks
+# the table (platform/crt0.c). BITS=32 is unchanged: the flag is not passed.
+ifeq ($(BITS),64)
+$(TEST_OBJS): CFLAGS += -malign-data=abi
+endif
 ifeq ($(SANITIZE),1)
 $(TEST_OBJS): CFLAGS += $(GAME_TEST_SANITIZER_FLAGS)
 endif

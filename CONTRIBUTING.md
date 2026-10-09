@@ -64,7 +64,9 @@ documented prerequisites, run before a milestone is declared done, and (h),
 the cross-width save round trip, does not exist yet.
 
 1. Platform unit tests, both widths: `make -C platform test BITS=32` and
-   `BITS=64`.
+   `BITS=64`; a change under `platform/` or `tools/patchelf` also passes
+   `make -C platform gate`, whose `tools-test` step runs tools/patchelf on
+   an ELF32 and an ELF64 executable.
 2. The two replays, plain and sanitized: `tests/smoke/run.sh` and
    `tests/smoke/run_debug_menu.sh` on `build/native32/` and on
    `build/native32-san/` (with `ASAN_OPTIONS=halt_on_error=0`). The plain

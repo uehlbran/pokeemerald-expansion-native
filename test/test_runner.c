@@ -50,6 +50,25 @@ static u32 PersistentTestId(const struct Test *test)
 {
     return (test - __start_tests) + 1;
 }
+// platform/crt0.c checks at start-up that the .tests table is a whole number
+// of entries of this size; the platform cannot include the test headers.
+const size_t gPlatformTestEntrySize = sizeof(struct Test);
+// Also checked at start-up: walking the table by sizeof(struct Test), no
+// entry may have a null name, filename or runner. Padding between the entries
+// (64-byte spacing for 40-byte entries) reads as zeros, so this catches it at
+// every table length, which the size check cannot. Returns -1 if the table is
+// sane, else the index of the first bad entry.
+int PlatformTestTableBadEntry(void)
+{
+    const struct Test *test;
+
+    for (test = __start_tests; test < __stop_tests; test++)
+    {
+        if (test->name == NULL || test->filename == NULL || test->runner == NULL)
+            return test - __start_tests;
+    }
+    return -1;
+}
 #endif
 #line 41
 

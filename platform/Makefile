@@ -10,7 +10,7 @@
 #   make -C platform format-check  fail, naming the files, if any would change
 #   make -C platform lint          clang-tidy (../.clang-tidy) and cppcheck over every .c file;
 #                                  any finding fails
-#   make -C platform gate          the platform gate: format-check, lint and test for both widths
+#   make -C platform gate          the platform gate: format-check, lint and test for both widths, tools-test
 #   make -C platform clean         remove build/
 #
 # Layout: every platform/*.c is a module and goes into libplatform.a, so a new
@@ -249,6 +249,13 @@ lint-cppcheck:
 
 lint: lint-tidy lint-cppcheck
 
+# tools/patchelf on ELF32 and ELF64 (builds the tool if needed).
+tools-test:
+	$(MAKE) -C .. -f make_tools.mk check-tools
+	test_runner/test_patchelf.sh
+
+.PHONY: tools-test
+
 # The platform gate: style, analysis, then the sanitized unit tests at both widths.
 gate:
 	$(MAKE) format-check
@@ -256,5 +263,6 @@ gate:
 	$(MAKE) lint BITS=64
 	$(MAKE) test BITS=32
 	$(MAKE) test BITS=64
+	$(MAKE) tools-test
 
 -include $(wildcard $(OBJ_DIR)/*.d $(OBJ_DIR)/test/*.d $(OBJ_DIR)/m4a/*.d)

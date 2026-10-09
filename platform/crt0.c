@@ -37,6 +37,14 @@ extern unsigned char game_bss_start[], game_bss_objects_end[], game_bss_end[];
  * --defsym), 0 elsewhere. */
 extern const unsigned char gba_game_objects_linked[];
 
+/* gba_game.ld: the .tests table. test/test_runner.c defines
+ * gPlatformTestEntrySize (sizeof(struct Test)) in the test runner build only,
+ * so the weak reference is null elsewhere. crt0.c cannot include the test
+ * headers: it is not compiled with the game's flags (platform/Makefile). */
+extern unsigned char __start_tests[], __stop_tests[];
+extern const size_t gPlatformTestEntrySize __attribute__((weak));
+extern int PlatformTestTableBadEntry(void) __attribute__((weak));
+
 const uint32_t IntrMain[CRT0_INTR_MAIN_SIZE / sizeof(uint32_t)];
 
 static struct {
@@ -89,6 +97,45 @@ size_t crt0_game_bss_size(void)
     return span(game_bss_start, game_bss_end);
 }
 
+int crt0_check_test_table(size_t table_bytes, size_t entry_size, size_t *count)
+{
+    if (count == NULL || entry_size == 0 || table_bytes % entry_size != 0) {
+        return CRT0_ERR_BAD_TEST_TABLE;
+    }
+    *count = table_bytes / entry_size;
+    return CRT0_OK;
+}
+
+/* The test runner build's table checks (crt0.h says what each catches),
+ * reported on stderr on failure only. */
+static int check_tests_table(void)
+{
+    // cppcheck-suppress knownConditionTrueFalse ; a weak reference, null unless the test runner defines it
+    if (&gPlatformTestEntrySize == NULL) {
+        return CRT0_OK; /* not the test runner build */
+    }
+    size_t bytes = span(__start_tests, __stop_tests);
+    size_t count = 0;
+    if (crt0_check_test_table(bytes, gPlatformTestEntrySize, &count) != CRT0_OK) {
+        (void)fprintf(stderr,
+                      "crt0: the .tests table is %zu bytes, not a whole number of %zu-byte struct Test entries: "
+                      "the entry size the table was built with differs from the runner's (at 64 bits the test "
+                      "objects need -malign-data=abi, Makefile.native)\n",
+                      bytes, gPlatformTestEntrySize);
+        return CRT0_ERR_BAD_TEST_TABLE;
+    }
+    // cppcheck-suppress knownConditionTrueFalse ; a weak reference, as above
+    int bad = &PlatformTestTableBadEntry != NULL ? PlatformTestTableBadEntry() : -1;
+    if (bad >= 0) {
+        (void)fprintf(stderr,
+                      "crt0: .tests entry %d (of %zu) has a null name, filename or runner: padding between the "
+                      "entries (at 64 bits the test objects need -malign-data=abi, Makefile.native)\n",
+                      bad, count);
+        return CRT0_ERR_BAD_TEST_TABLE;
+    }
+    return CRT0_OK;
+}
+
 int crt0_init(void)
 {
     crt0_shutdown(); /* a second init, or a failed one, never leaves an older copy in use */
@@ -98,6 +145,9 @@ int crt0_init(void)
                       "do not match Makefile.native's object directories, so a soft reset would leave the game's "
                       "variables stale\n");
         return CRT0_ERR_NO_GAME_OBJECTS;
+    }
+    if (check_tests_table() != CRT0_OK) {
+        return CRT0_ERR_BAD_TEST_TABLE;
     }
     size_t ewram_size = crt0_ewram_init_size();
     size_t data_size = crt0_game_data_size();

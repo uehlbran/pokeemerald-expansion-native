@@ -37,15 +37,39 @@ enum crt0_error {
     CRT0_OK = 0,
     CRT0_ERR_EWRAM_INIT_SIZE = -1, /* the EWRAM_INIT data is larger than CRT0_EWRAM_INIT_MAX_SIZE */
     CRT0_ERR_NO_MEMORY = -2,       /* no memory for the copy of the game's initialised data */
-    CRT0_ERR_NO_GAME_OBJECTS = -3  /* the game executable's game_bss has no part from the game's objects */
+    CRT0_ERR_NO_GAME_OBJECTS = -3, /* the game executable's game_bss has no part from the game's objects */
+    CRT0_ERR_BAD_TEST_TABLE = -4   /* the test runner build's .tests table is not a whole number of entries */
 };
+
+/* The .tests table check (test runner build only; no GBA counterpart: the
+ * GBA links the table the same way, but its struct Test has no padding to
+ * go wrong). The table is test/test_runner.c's array from __start_tests to
+ * __stop_tests (gba_game.ld); the test runner build exports sizeof(struct
+ * Test) as gPlatformTestEntrySize. GCC aligns a 40-byte global to 32 bytes
+ * at 64 bits, which puts padding between the entries, unless the test
+ * objects are compiled with -malign-data=abi (Makefile.native). Returns
+ * CRT0_OK and the number of entries in *count if table_bytes is a whole
+ * number of entry_size-byte entries; CRT0_ERR_BAD_TEST_TABLE if not (or if
+ * entry_size is 0 or count is NULL).
+ *
+ * crt0_init runs two checks on the table. This one catches a table whose
+ * length is not a multiple of the entry size: a different entry size from
+ * the runner's, or padding that happens to leave a remainder. It misses
+ * padded tables whose length is a multiple by chance (about one count in
+ * five at 64 bits). The second, the runner's PlatformTestTableBadEntry
+ * (test/test_runner.c), walks the table by sizeof(struct Test) and refuses a
+ * null name, filename or runner: padding reads as zeros, so it catches
+ * 64-byte spacing at every count. */
+int crt0_check_test_table(size_t table_bytes, size_t entry_size, size_t *count);
 
 /* Copies the EWRAM_INIT data and the game's initialised data as the loader
  * left them. Call once, before AgbMain first runs. CRT0_OK or an error
  * (reported). In the game executable (gba_game.ld: gba_game_objects_linked)
  * it fails with CRT0_ERR_NO_GAME_OBJECTS if gba_game.ld's object-path
  * patterns selected no .bss: a soft reset would then leave the game's
- * variables stale, so it says so at start-up instead. */
+ * variables stale, so it says so at start-up instead. In the test runner
+ * build it also checks the .tests table (crt0_check_test_table) and fails
+ * with CRT0_ERR_BAD_TEST_TABLE, so no test runs from a misread table. */
 int crt0_init(void);
 
 /* Frees the copies. Safe at any time and twice. */

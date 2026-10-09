@@ -3,6 +3,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <stdbool.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <string.h>
 #include <sys/mman.h>
@@ -49,54 +50,87 @@ int main(int argc, char *argv[])
         goto error;
     }
 
-    const Elf32_Ehdr *ehdr = (Elf32_Ehdr *)f;
-    const Elf32_Shdr *shdrs = (Elf32_Shdr *)(f + ehdr->e_shoff);
+    // The ELF class picks the structures: the GBA ROM's ELF and the 32-bit
+    // native executable are ELF32, the 64-bit native executable ELF64.
+    bool is64;
+    if (f[EI_CLASS] == ELFCLASS32)
+        is64 = false;
+    else if (f[EI_CLASS] == ELFCLASS64)
+        is64 = true;
+    else
+    {
+        fprintf(stderr, "unknown ELF class\n");
+        goto error;
+    }
 
-    if (ehdr->e_shstrndx == SHN_UNDEF)
+    const Elf32_Ehdr *ehdr32 = (Elf32_Ehdr *)f;
+    const Elf64_Ehdr *ehdr64 = (Elf64_Ehdr *)f;
+    const Elf32_Shdr *shdrs32 = (Elf32_Shdr *)(f + ehdr32->e_shoff);
+    const Elf64_Shdr *shdrs64 = (Elf64_Shdr *)(f + ehdr64->e_shoff);
+    unsigned shstrndx = is64 ? ehdr64->e_shstrndx : ehdr32->e_shstrndx;
+    unsigned shnum = is64 ? ehdr64->e_shnum : ehdr32->e_shnum;
+
+    if (shstrndx == SHN_UNDEF)
     {
         fprintf(stderr, "no section name string table\n");
         goto error;
     }
-    const Elf32_Shdr *shdr_shstr = &shdrs[ehdr->e_shstrndx];
-    const char *shstr = (const char *)(f + shdr_shstr->sh_offset);
-    const Elf32_Shdr *shdr_symtab = NULL;
-    const Elf32_Shdr *shdr_strtab = NULL;
-    for (int i = 0; i < ehdr->e_shnum; i++)
+    const char *shstr = (const char *)(f + (is64 ? shdrs64[shstrndx].sh_offset : shdrs32[shstrndx].sh_offset));
+    int symtab_i = -1;
+    int strtab_i = -1;
+    for (int i = 0; i < shnum; i++)
     {
-        const char *sh_name = shstr + shdrs[i].sh_name;
+        const char *sh_name = shstr + (is64 ? shdrs64[i].sh_name : shdrs32[i].sh_name);
         if (strcmp(sh_name, ".symtab") == 0)
-            shdr_symtab = &shdrs[i];
+            symtab_i = i;
         else if (strcmp(sh_name, ".strtab") == 0)
-            shdr_strtab = &shdrs[i];
+            strtab_i = i;
     }
-    if (!shdr_symtab)
+    if (symtab_i < 0)
     {
         fprintf(stderr, "no .symtab section\n");
         goto error;
     }
-    if (!shdr_strtab)
+    if (strtab_i < 0)
     {
         fprintf(stderr, "no .strtab section\n");
         goto error;
     }
 
-    const Elf32_Sym *symtab = (Elf32_Sym *)(f + shdr_symtab->sh_offset);
-    const char *strtab = (const char *)(f + shdr_strtab->sh_offset);
-    for (int i = 0; i < shdr_symtab->sh_size / shdr_symtab->sh_entsize; i++)
+    size_t symtab_offset = is64 ? shdrs64[symtab_i].sh_offset : shdrs32[symtab_i].sh_offset;
+    size_t symtab_size = is64 ? shdrs64[symtab_i].sh_size : shdrs32[symtab_i].sh_size;
+    size_t symtab_entsize = is64 ? shdrs64[symtab_i].sh_entsize : shdrs32[symtab_i].sh_entsize;
+    const Elf32_Sym *symtab32 = (Elf32_Sym *)(f + symtab_offset);
+    const Elf64_Sym *symtab64 = (Elf64_Sym *)(f + symtab_offset);
+    const char *strtab = (const char *)(f + (is64 ? shdrs64[strtab_i].sh_offset : shdrs32[strtab_i].sh_offset));
+    for (int i = 0; i < symtab_size / symtab_entsize; i++)
     {
-        if (symtab[i].st_name == 0) continue;
-        if (symtab[i].st_shndx > ehdr->e_shnum) continue;
-        const char *st_name = strtab + symtab[i].st_name;
-        const Elf32_Shdr *shdr = &shdrs[symtab[i].st_shndx];
-        uint32_t sym_offset = symtab[i].st_value - shdr->sh_addr;
+        unsigned st_name = is64 ? symtab64[i].st_name : symtab32[i].st_name;
+        unsigned st_shndx = is64 ? symtab64[i].st_shndx : symtab32[i].st_shndx;
+        if (st_name == 0) continue;
+        if (st_shndx > shnum) continue;
+        const char *sym_name = strtab + st_name;
+        size_t sh_offset, sym_offset, st_size;
+        if (is64)
+        {
+            sh_offset = shdrs64[st_shndx].sh_offset;
+            sym_offset = symtab64[i].st_value - shdrs64[st_shndx].sh_addr;
+            st_size = symtab64[i].st_size;
+        }
+        else
+        {
+            sh_offset = shdrs32[st_shndx].sh_offset;
+            sym_offset = (uint32_t)(symtab32[i].st_value - shdrs32[st_shndx].sh_addr);
+            st_size = symtab32[i].st_size;
+        }
         for (int j = 2; j < argc; j += 2)
         {
             const char *arg_name = argv[j + 0];
             const char *arg_value = argv[j + 1];
-            if (strcmp(st_name, arg_name) == 0)
+            if (strcmp(sym_name, arg_name) == 0)
             {
-                char *value = (char *)(f + shdr->sh_offset + sym_offset);
-                if (!try_patch_value(st_name, value, arg_value, symtab[i].st_size))
+                char *value = (char *)(f + sh_offset + sym_offset);
+                if (!try_patch_value(sym_name, value, arg_value, st_size))
                     goto error;
             }
         }
