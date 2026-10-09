@@ -388,6 +388,26 @@ PTEST(a_slot_with_two_sectors_for_one_saveblock1_chunk_is_left_alone)
     check_slot_untouched(1);
 }
 
+PTEST(a_stale_saveblock1_sector_with_a_bad_checksum_is_ignored)
+{
+    /* id 9's sector holds an older, torn copy of id 2: the signature, id 2,
+     * a checksum that does not match. The game counts only the valid id 2
+     * (GetSaveValidStatus, CopySaveSlotData); so does the converter, and the
+     * stale sector stays as it was. */
+    static uint8_t expected0[SB1_CAPACITY];
+    make_image_32();
+    expected_64(block0, expected0);
+    uint8_t *stale = sector_of_id(0, ROTATION_0, 9);
+    memcpy(stale, sector_of_id(0, ROTATION_0, 2), SECTOR_BYTES);
+    stale[200] ^= 0x10;
+    memcpy(original, image, sizeof image);
+
+    PT_ASSERT_EQ_INT(save_convert_image(image, 32, 64), 2);
+    check_slot(0, ROTATION_0, expected0, SB1_64); /* id 9's position compared whole with the original */
+    PT_ASSERT_EQ_U32(get_u16(stale + ID_AT), 2);
+    PT_ASSERT(get_u16(stale + CHECKSUM_AT) != calculate_checksum(stale, SECTOR_DATA));
+}
+
 PTEST(a_damaged_sector_outside_saveblock1_does_not_stop_the_slot)
 {
     /* Every sector keeps the validity it had: GetSaveValidStatus rejects the

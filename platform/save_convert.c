@@ -306,10 +306,12 @@ static size_t sector_offset(uint32_t sector)
 }
 
 /* What src/save.c GetSaveValidStatus accepts of SaveBlock1's sectors in a
- * slot written by the game: each chunk in one sector, with the signature and
- * a checksum that matches at the layout's chunk size. Fills sector_of_chunk
- * and returns true if so; a chunk in two sectors is not a slot the game
- * wrote, and returns false. */
+ * slot: each chunk in one sector with the signature and a checksum that
+ * matches at the layout's chunk size. A sector with the signature and a
+ * checksum that does not match counts for nothing, as in the game (it is
+ * left as it is). Fills sector_of_chunk and returns true if every chunk is
+ * found; a chunk in two valid sectors is not a slot the game wrote, and
+ * returns false. */
 static bool find_saveblock1(const uint8_t *image, uint32_t slot, const struct layout *layout,
                             uint32_t sector_of_chunk[SAVEBLOCK1_CHUNK_COUNT])
 {
@@ -323,8 +325,9 @@ static bool find_saveblock1(const uint8_t *image, uint32_t slot, const struct la
         const uint32_t chunk = (uint32_t)read_u16(bytes + SECTOR_ID_OFFSET) - SAVEBLOCK1_FIRST_SECTOR_ID;
         if (chunk >= SAVEBLOCK1_CHUNK_COUNT)
             continue;
-        if (found[chunk]
-            || read_u16(bytes + SECTOR_CHECKSUM_OFFSET) != sector_checksum(bytes, chunk_size(layout, chunk)))
+        if (read_u16(bytes + SECTOR_CHECKSUM_OFFSET) != sector_checksum(bytes, chunk_size(layout, chunk)))
+            continue;
+        if (found[chunk])
             return false;
         found[chunk] = true;
         sector_of_chunk[chunk] = sector;

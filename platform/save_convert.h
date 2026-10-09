@@ -14,8 +14,9 @@
  *
  * What changes, per save slot (sectors 0-13 and 14-27, rotated within the
  * slot as src/save.c writes them): SaveBlock1's four sectors (ids 1-4) are
- * found by their ids; if all four have the signature and a checksum that
- * matches at the source layout's chunk sizes, the block is reassembled,
+ * found by their ids, counting, as the game does, only sectors with the
+ * signature and a checksum that matches at the source layout's chunk sizes;
+ * if each of the four is found once, the block is reassembled,
  * moved member by member into the target layout, split at the target's chunk
  * sizes and written back into the same four sectors with new checksums
  * (src/save.c CalculateChecksum), keeping each sector's id, signature,
