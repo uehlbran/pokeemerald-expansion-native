@@ -663,3 +663,24 @@ game was listed and none can divide by zero (platform/build_glue/LINK-NEEDS.md),
 so that divergence is recorded as unreachable rather than fixed by
 wrapping the routines, which would change the 32-bit executables for no
 reachable case.
+
+## 2026-10-09: The sanitized 64-bit suite is compared with the suppression off; nothing is fixed for it
+
+The 64-bit sanitized suite run lists more AddressSanitizer reports than
+the 32-bit one (56 at 9 sites against 25 at 5), which looked like new
+64-bit bugs. It is an artefact: the 32-bit build's outlined checks
+report libasan's own address as the program counter, and ASan's default
+suppress_equal_pcs then keeps only the first report of each access size
+per runner. With that suppression off both widths report the same
+accesses test by test (56,930 and 56,921; the nine extra at 32 bits are
+a 7-byte copy that stays in bounds behind an 8-byte pointer). So the
+comparison of widths is made with ASAN_OPTIONS=suppress_equal_pcs=0 and
+the default `make check` keeps the suppression (57,000 lines per run
+otherwise). No report is new at 64 bits and no expansion code changes for
+this. Three upstream sites the 32-bit table had missed (Doom Desire's
+coordinate table, Extrasensory's and Zap Cannon's gSineTable[320], a
+non-affine animation loop) stay unfixed under SUITE-LOG's policy that a
+game-code read which changes no test result is documented, not patched;
+two of them (Doom Desire, Extrasensory) read a different value natively
+than the GBA for one animation frame, and a guarded fix returning the
+GBA's value is a candidate for the refactoring pass, recorded in STATUS.
