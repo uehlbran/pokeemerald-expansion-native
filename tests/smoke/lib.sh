@@ -27,6 +27,7 @@
 # the lines matched by tests/smoke/sanitizer-known.txt (if present).
 # Not `set -e`: the game's exit status, grep and diff results are tested on
 # purpose and every failure is counted and reported; `-u` catches typos.
+set -u
 export TZ=UTC # belt and braces: --rtc-fixed already makes the clock independent of the zone
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -36,15 +37,24 @@ volatile_facts='^frame='
 
 die() { echo "$SMOKE_NAME: $*" >&2; exit 2; }
 
+# grep's status 1 is "no match", which is an answer; anything above is an error that must not
+# pass for one. Runs grep with the arguments, prints the matches.
+grep_or_die() {
+    grep "$@"
+    local status=$?
+    [ "$status" -le 1 ] || die "grep failed with status $status"
+    return 0
+}
+
 smoke_main() {
-script="$SMOKE_SCRIPT"
-expected="$SMOKE_EXPECTED"
+local script="$SMOKE_SCRIPT"
+local expected="$SMOKE_EXPECTED"
 [ $# -ge 2 ] || die "usage: $SMOKE_USAGE"
-binary="$1"
-outdir="$2"
+local binary="$1"
+local outdir="$2"
 # an empty OUTDIR would make work="/work" and `rm -rf` it
 case "$outdir" in "" | "/") die "OUTDIR must be a directory of its own, not '$outdir'" ;; esac
-update=0
+local update=0
 case "${3:-}" in
 "") ;;
 --update) update=1 ;;
@@ -53,8 +63,8 @@ esac
 [ $# -le 3 ] || die "too many arguments (usage: $SMOKE_USAGE)"
 [ -x "$binary" ] || die "no executable $binary (build it first; see docs/BUILDING.md)"
 
-work="$outdir/work"
-rm -rf "$work"
+local work="$outdir/work"
+rm -rf "$work" || die "cannot remove $work"
 mkdir -p "$work" || die "cannot create $work"
 
 echo "== replaying $script with $binary"
@@ -62,9 +72,9 @@ echo "== replaying $script with $binary"
     --replay "$script" --out "$work" --rtc-fixed "$rtc_epoch" \
     --save "$work/pokeemerald.sav" --rtc-offset "$work/pokeemerald.rtc" \
     > "$work/stdout.log" 2> "$work/stderr.log"
-status=$?
+local status=$?
 echo "replay exit status $status; $(grep -c '^main: ' "$work/stdout.log") process(es)"
-failures=0
+local failures=0
 
 if [ "$status" -ne 0 ]; then
     echo "FAIL: the replay did not end with status 0:"
@@ -72,32 +82,37 @@ if [ "$status" -ne 0 ]; then
     failures=$((failures + 1))
 fi
 
-# Sanitizer findings, minus the known ones.
-sanitizer_lines() {
-    grep -E 'runtime error:|ERROR: AddressSanitizer|ERROR: LeakSanitizer|SUMMARY: (Address|Undefined|Leak)Sanitizer' "$work/stderr.log"
-}
-known="$here/sanitizer-known.txt"
+# Sanitizer findings, minus the known ones (files, not substitutions, so that a failing grep stops the run).
+local findings="$work/sanitizer-findings.log"
+local new_findings="$work/sanitizer-new.log"
+grep_or_die -E 'runtime error:|ERROR: AddressSanitizer|ERROR: LeakSanitizer|SUMMARY: (Address|Undefined|Leak)Sanitizer' \
+    "$work/stderr.log" > "$findings"
+local known="$here/sanitizer-known.txt"
 if [ -f "$known" ]; then
-    new_findings="$(sanitizer_lines | grep -v -F -f <(grep -v '^#' "$known" | grep -v '^$') || true)"
+    local patterns="$work/sanitizer-known-patterns.log"
+    grep_or_die -v -e '^#' -e '^$' "$known" > "$patterns"
+    grep_or_die -v -F -f "$patterns" "$findings" > "$new_findings"
 else
-    new_findings="$(sanitizer_lines || true)"
+    cp "$findings" "$new_findings" || die "cannot copy $findings"
 fi
-if [ -n "$new_findings" ]; then
+if [ -s "$new_findings" ]; then
     echo "FAIL: sanitizer reports in $work/stderr.log:"
-    echo "$new_findings" | sort | uniq -c | sort -rn | head -40
+    sort "$new_findings" | uniq -c | sort -rn | head -40
     failures=$((failures + 1))
 fi
 
-facts_of() { grep -v -E "$volatile_facts" "$1"; }
+facts_of() { grep_or_die -v -E "$volatile_facts" "$1"; }
 
 if [ "$update" -eq 1 ]; then
     [ "$failures" -eq 0 ] || die "not updating the expectations from a failing run"
-    rm -rf "$expected"
-    mkdir -p "$expected"
+    rm -rf "$expected" || die "cannot remove $expected"
+    mkdir -p "$expected" || die "cannot create $expected"
+    local dump
     for dump in "$work"/*.txt; do
-        facts_of "$dump" > "$expected/$(basename "$dump")"
+        [ -f "$dump" ] || die "the replay wrote no dump to $work"
+        facts_of "$dump" > "$expected/$(basename "$dump")" || die "cannot write the expectation of $dump"
     done
-    (cd "$work" && md5sum -- *.ppm) > "$expected/screenshots.md5"
+    (cd "$work" && md5sum -- *.ppm) > "$expected/screenshots.md5" || die "cannot write the screenshot checksums"
     echo "updated $expected: $(ls "$expected"/*.txt | wc -l) dumps, $(wc -l < "$expected/screenshots.md5") screenshots"
     exit 0
 fi
@@ -105,6 +120,7 @@ fi
 [ -d "$expected" ] || die "no $expected; run with --update once"
 
 # Dumps.
+local want got name
 for want in "$expected"/*.txt; do
     name="$(basename "$want")"
     got="$work/$name"
@@ -135,7 +151,8 @@ else
 fi
 
 # The save round trips: what the game saved is what Continue loaded.
-fact() { grep "^$2=" "$1" | cut -d= -f2-; }
+fact() { grep_or_die "^$2=" "$1" | cut -d= -f2-; }
+local trip before_dump after_dump keys key before after
 for trip in $SMOKE_ROUND_TRIP; do
     IFS=: read -r before_dump after_dump keys <<< "$trip"
     for key in ${keys//,/ }; do

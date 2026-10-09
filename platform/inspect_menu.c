@@ -26,8 +26,6 @@
 #include "pokemon.h"
 #include "task.h"
 
-#define none_text inspect_none_text
-
 /* ---- The debug menu (src/debug.c, DEBUG_OVERWORLD_MENU) ------------------ */
 
 /* Every task of the debug menu runs a static function named DebugTask_* (the
@@ -72,7 +70,7 @@ static void fact_debug_input(char *out, size_t size)
 {
     const struct Task *task = debug_entry_task();
     if (task == NULL)
-        snprintf(out, size, "%s", none_text);
+        snprintf(out, size, "%s", inspect_none_text);
     else
         snprintf(out, size, "%u", (unsigned)(uint16_t)task->data[DEBUG_ENTRY_INPUT_DATA]);
 }
@@ -85,7 +83,7 @@ static void fact_debug_step(char *out, size_t size)
 {
     const struct Task *task = debug_entry_task();
     if (task == NULL)
-        snprintf(out, size, "%s", none_text);
+        snprintf(out, size, "%s", inspect_none_text);
     else
         snprintf(out, size, "%d.%d", task->data[DEBUG_ENTRY_STEP_DATA], task->data[DEBUG_ENTRY_SUBSTEP_DATA]);
 }
@@ -102,7 +100,7 @@ static unsigned party_species_at(unsigned slot)
 static void write_species_name(unsigned species, char *out, size_t size)
 {
     if (species == SPECIES_NONE || species >= NUM_SPECIES) {
-        snprintf(out, size, "%s", none_text);
+        snprintf(out, size, "%s", inspect_none_text);
         return;
     }
     (void)inspect_decode_text(gSpeciesInfo[species].speciesName, sizeof gSpeciesInfo[species].speciesName, out, size);
@@ -120,7 +118,7 @@ static void fact_party_species(char *out, size_t size)
         used += (size_t)written;
     }
     if (used == 0)
-        snprintf(out, size, "%s", none_text);
+        snprintf(out, size, "%s", inspect_none_text);
 }
 
 /* Pokemon in PC box `box`; 0 before the storage is allocated (title screen). */
@@ -185,7 +183,7 @@ static void arg_bag_item_count(const uint32_t arguments[INSPECT_MAX_ARGUMENTS], 
 {
     const uint32_t item = arguments[0];
     /* the bag's pockets point into the save block, which does not exist before the game starts */
-    unsigned count = gSaveBlock1Ptr != NULL ? CountTotalItemQuantityInBag((enum Item)item) : 0;
+    unsigned count = inspect_save_blocks_ready() ? CountTotalItemQuantityInBag((enum Item)item) : 0;
     snprintf(out, size, "%u", count);
 }
 
@@ -214,7 +212,7 @@ static void arg_pc_box_species(const uint32_t arguments[INSPECT_MAX_ARGUMENTS], 
         }
     }
     if (used == 0)
-        snprintf(out, size, "%s", none_text);
+        snprintf(out, size, "%s", inspect_none_text);
 }
 
 /* The properties the debug menu's complex give sets, of a party Pokemon: "shiny=0 dynamax=0 gmax=0 tera=1". */
@@ -222,7 +220,7 @@ static void arg_party_extras(const uint32_t arguments[INSPECT_MAX_ARGUMENTS], ch
 {
     const uint32_t slot = arguments[0];
     if (slot >= inspect_party_count() || slot >= PARTY_SIZE) {
-        snprintf(out, size, "%s", none_text);
+        snprintf(out, size, "%s", inspect_none_text);
         return;
     }
     struct Pokemon *mon = &gParties[B_TRAINER_PLAYER][slot];
@@ -256,12 +254,12 @@ const size_t inspect_menu_arg_reader_count = sizeof inspect_menu_arg_readers / s
 
 /* In dump order, after the game-state facts. */
 const struct inspect_fact inspect_menu_facts[] = {
-    { "party_species", fact_party_species },
-    { "pc_box0_count", fact_pc_box0_count },
-    { "summary_species", fact_summary_species },
-    { "debug_menu_open", fact_debug_menu_open },
-    { "debug_input", fact_debug_input },
-    { "debug_step", fact_debug_step },
-    { "party_slot", fact_party_slot },
+    { "party_species", fact_party_species, NULL },
+    { "pc_box0_count", fact_pc_box0_count, NULL },
+    { "summary_species", fact_summary_species, NULL },
+    { "debug_menu_open", fact_debug_menu_open, NULL },
+    { "debug_input", fact_debug_input, NULL },
+    { "debug_step", fact_debug_step, NULL },
+    { "party_slot", fact_party_slot, NULL },
 };
 const size_t inspect_menu_fact_count = sizeof inspect_menu_facts / sizeof inspect_menu_facts[0];

@@ -158,7 +158,7 @@ static bool parse_condition(char *text, struct replay_command *command, struct r
     }
     *equals = '\0';
     char *fact = trim(text);
-    char *value = trim(equals + 1);
+    const char *value = trim(equals + 1);
     if (!valid_fact_name(fact)) {
         set_error(error, command->line, "bad fact name '%s' (lower-case letters, digits, '_')", fact);
         return false;
@@ -172,7 +172,7 @@ static bool parse_condition(char *text, struct replay_command *command, struct r
     return true;
 }
 
-static bool parse_count_command(struct replay_command *command, const char *word, char *rest,
+static bool parse_count_command(struct replay_command *command, const char *word, const char *rest,
                                 struct replay_parse_error *error)
 {
     uint32_t minimum = command->kind == REPLAY_CMD_FRAME ? 1u : 0u;

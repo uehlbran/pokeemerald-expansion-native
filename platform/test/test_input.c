@@ -225,7 +225,7 @@ PTEST(keyboard_table_binds_each_gba_key_once)
 
 PTEST(keyboard_state_with_nothing_down_is_no_keys)
 {
-    uint8_t state[SDL_NUM_SCANCODES] = { 0 };
+    const uint8_t state[SDL_NUM_SCANCODES] = { 0 };
     PT_ASSERT_EQ_U32(input_keyboard_to_keys(state, SDL_NUM_SCANCODES), 0u);
 }
 
@@ -259,9 +259,33 @@ PTEST(all_mapped_keys_down_gives_all_ten)
     PT_ASSERT_EQ_U32(input_keyboard_to_keys(state, SDL_NUM_SCANCODES), ALL_TEN_KEYS);
 }
 
+/* numkeys equal to a bound scancode: that scancode is one past the end and must not be read.
+ * The buffer is on the heap with exactly numkeys bytes, so AddressSanitizer reports an over-read. */
+PTEST(a_state_ending_exactly_at_a_bound_scancode_is_not_read_at_that_scancode)
+{
+    size_t count = 0;
+    const struct input_key_binding *table = input_keyboard_bindings(&count);
+    for (size_t i = 0; i < count; i++) {
+        const int numkeys = table[i].scancode;
+        uint8_t *state = malloc((size_t)numkeys);
+        PT_ASSERT(state != NULL);
+        for (int k = 0; k < numkeys; k++)
+            state[k] = 0;
+        PT_ASSERT_EQ_U32(input_keyboard_to_keys(state, numkeys), 0u);
+        free(state);
+        state = malloc((size_t)numkeys + 1u);
+        PT_ASSERT(state != NULL);
+        for (int k = 0; k <= numkeys; k++)
+            state[k] = 0;
+        state[numkeys] = 1;
+        PT_ASSERT_EQ_U32(input_keyboard_to_keys(state, numkeys + 1), table[i].key);
+        free(state);
+    }
+}
+
 PTEST(keyboard_state_shorter_than_a_scancode_is_not_read_past)
 {
-    uint8_t state[2] = { 1, 1 };
+    const uint8_t state[2] = { 1, 1 };
     PT_ASSERT_EQ_U32(input_keyboard_to_keys(state, 2), 0u);
     PT_ASSERT_EQ_U32(input_keyboard_to_keys(state, 0), 0u);
     PT_ASSERT_EQ_U32(input_keyboard_to_keys(state, -1), 0u);

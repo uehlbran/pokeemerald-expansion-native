@@ -40,7 +40,7 @@ struct fake {
 
 static int fake_get_fact(void *context, const char *name, char *out, size_t size)
 {
-    struct fake *fake = context;
+    const struct fake *fake = context;
     for (size_t i = 0; i < FAKE_FACTS; i++) {
         if (strcmp(fake->names[i], name) == 0) {
             snprintf(out, size, "%s", fake->values[i]);
@@ -222,6 +222,16 @@ PTEST(hold_and_release_persist_across_waits)
     PT_ASSERT_EQ_U32(fake.keys_at[2], INPUT_KEY_UP);
     PT_ASSERT_EQ_U32(fake.keys_at[3], INPUT_KEY_UP);
     PT_ASSERT_EQ_U32(fake.keys_at[4], 0);
+}
+
+PTEST(release_of_a_key_that_was_never_held_changes_nothing)
+{
+    struct replay replay;
+    struct fake fake;
+    PT_ASSERT_EQ_INT(start(&replay, &fake, "hold UP\nrelease A,L\nwait 2\nrestart", 0), 0);
+    PT_ASSERT_EQ_INT(run(&replay, &fake, 100), REPLAY_RESTART);
+    PT_ASSERT_EQ_U32(fake.keys_at[0], INPUT_KEY_UP);
+    PT_ASSERT_EQ_U32(fake.keys_at[1], INPUT_KEY_UP);
 }
 
 PTEST(hold_for_releases_after_n_frames_and_keeps_other_holds)
