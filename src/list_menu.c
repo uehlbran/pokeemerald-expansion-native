@@ -15,7 +15,16 @@
 
 // GF cast Task data to ListMenu in many places, which effectively puts
 // an upper bound on sizeof(struct ListMenu).
+#if PLATFORM_NATIVE
+#if UINTPTR_MAX > UINT32_MAX
+STATIC_ASSERT(sizeof(struct ListMenu) <= sizeof(((struct Task *)NULL)->data) + sizeof(((struct Task *)NULL)->nativeDataSpill), ListMenuTooLargeForTaskData);
+#else
 STATIC_ASSERT(sizeof(struct ListMenu) <= sizeof(((struct Task *)NULL)->data), ListMenuTooLargeForTaskData);
+#endif
+#else
+STATIC_ASSERT(sizeof(struct ListMenu) <= sizeof(((struct Task *)NULL)->data), ListMenuTooLargeForTaskData);
+#endif
+#line 19
 
 // Cursors after this point are created using a sprite with their own task.
 // This allows them to have idle animations. Cursors prior to this are simply printed text.

@@ -18,6 +18,11 @@ struct Task
     u8 next;
     u8 priority;
     s16 data[NUM_TASK_DATA];
+#if PLATFORM_NATIVE
+#if UINTPTR_MAX > UINT32_MAX
+    s16 nativeDataSpill[8]; // with data, room for the 48-byte struct ListMenu (list_menu.c)
+#endif
+#endif
 };
 
 extern struct Task gTasks[];
