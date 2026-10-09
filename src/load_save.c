@@ -22,7 +22,18 @@
 
 static void ApplyNewEncryptionKeyToAllEncryptedData(u32 encryptionKey);
 
+#if PLATFORM_NATIVE
+#if __SIZEOF_POINTER__ != 8
+#line 25
 #define SAVEBLOCK_MOVE_RANGE    128
+#else
+// Same value as include/load_save.h (256 at 64 bits); not redefined here.
+#endif
+#else
+#line 25
+#define SAVEBLOCK_MOVE_RANGE    128
+#endif
+#line 26
 
 struct LoadedSaveData
 {
@@ -81,7 +92,21 @@ void SetSaveBlocksPointers(u16 offset)
 {
     struct SaveBlock1 **sav1_LocalVar = &gSaveBlock1Ptr;
 
+#if PLATFORM_NATIVE
+#if __SIZEOF_POINTER__ != 8
+#line 84
     offset = (offset + Random()) & (SAVEBLOCK_MOVE_RANGE - 4);
+#else
+    // 8-byte steps: SaveBlock1 holds pointers and needs 8-byte alignment. With the range
+    // doubled to 256 the 32 positions of the GBA's 4-byte steps over 128 remain. The offset
+    // is not saved to the file; it is rebuilt from the trainer id and Random() at every load.
+    offset = (offset + Random()) & (SAVEBLOCK_MOVE_RANGE - 8);
+#endif
+#else
+#line 84
+    offset = (offset + Random()) & (SAVEBLOCK_MOVE_RANGE - 4);
+#endif
+#line 85
 
     gSaveBlock2Ptr = (void *)(&gSaveblock2) + offset;
     *sav1_LocalVar = (void *)(&gSaveblock1) + offset;

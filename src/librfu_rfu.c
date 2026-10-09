@@ -140,8 +140,22 @@ u16 rfu_initializeAPI(u32 *APIBuffer, u16 buffByteSize, IntrFunc *sioIntrTable_p
     if (((uintptr_t)APIBuffer & 0xF000000) == EWRAM_START && copyInterruptToRam)
         return ERR_RFU_API_BUFF_ADR;
     // is not 4-byte aligned?
+#if PLATFORM_NATIVE
+#if __SIZEOF_POINTER__ != 8
+#line 143
     if ((u32)APIBuffer & 3)
         return ERR_RFU_API_BUFF_ADR;
+#else
+    // 8 at 64 bits: the structs carved from the buffer hold pointers.
+    if ((uintptr_t)APIBuffer & 7)
+        return ERR_RFU_API_BUFF_ADR;
+#endif
+#else
+#line 143
+    if ((u32)APIBuffer & 3)
+        return ERR_RFU_API_BUFF_ADR;
+#endif
+#line 145
     if (copyInterruptToRam)
     {
         // An assert/debug print may have existed before, ie
@@ -157,6 +171,9 @@ u16 rfu_initializeAPI(u32 *APIBuffer, u16 buffByteSize, IntrFunc *sioIntrTable_p
         if (buffByteSize < buffByteSizeMax)
             return ERR_RFU_API_BUFF_SIZE;
     }
+#if PLATFORM_NATIVE
+#if __SIZEOF_POINTER__ != 8
+#line 160
     gRfuLinkStatus = (void *)APIBuffer + 0;
     gRfuStatic = (void *)APIBuffer + 0xb4; // + sizeof(*gRfuLinkStatus)
     gRfuFixed = (void *)APIBuffer + 0xdc; // + sizeof(*gRfuStatic)
@@ -170,6 +187,55 @@ u16 rfu_initializeAPI(u32 *APIBuffer, u16 buffByteSize, IntrFunc *sioIntrTable_p
     // remaining space in API buffer is used for `struct RfuIntrStruct`.
     gRfuFixed->STWIBuffer = (struct RfuIntrStruct *)&gRfuSlotStatusUNI[3][1];
     STWI_init_all((struct RfuIntrStruct *)&gRfuSlotStatusUNI[3][1], sioIntrTable_p, copyInterruptToRam);
+#else
+    // The 32-bit offsets below are the structs' sizes there; at 64 bits the structs holding
+    // pointers are larger, so each starts at the previous end rounded up to 8 (the SDK's
+    // buffer is the same carve with the GBA's sizes). RFU_API_BUFF_SIZE_* is sized to match.
+    // The carve's offsets (struct sizes at 64 bits, each rounded up to its alignment).
+    enum { CARVE_STATIC = 0xb8, CARVE_FIXED = 0xe0, CARVE_NI = 0x1d0, CARVE_UNI = 0x490, CARVE_INTR = 0x530 };
+    // The carve chains without overlap, each offset aligned for its struct, and fits the buffer.
+    _Static_assert(CARVE_STATIC >= sizeof(struct RfuLinkStatus), "carve: RfuLinkStatus overlaps RfuStatic");
+    _Static_assert(CARVE_FIXED >= CARVE_STATIC + sizeof(struct RfuStatic), "carve: RfuStatic overlaps RfuFixed");
+    _Static_assert(CARVE_NI >= CARVE_FIXED + sizeof(struct RfuFixed), "carve: RfuFixed overlaps the NI slots");
+    _Static_assert(CARVE_UNI == CARVE_NI + RFU_CHILD_MAX * sizeof(struct RfuSlotStatusNI), "carve: NI slots");
+    _Static_assert(CARVE_INTR == CARVE_UNI + RFU_CHILD_MAX * sizeof(struct RfuSlotStatusUNI), "carve: UNI slots");
+    _Static_assert(CARVE_INTR + sizeof(struct RfuIntrStruct) == RFU_API_BUFF_SIZE_RAM, "carve: buffer size");
+    _Static_assert(CARVE_STATIC % _Alignof(struct RfuStatic) == 0, "carve: RfuStatic alignment");
+    _Static_assert(CARVE_FIXED % _Alignof(struct RfuFixed) == 0, "carve: RfuFixed alignment");
+    _Static_assert(CARVE_NI % _Alignof(struct RfuSlotStatusNI) == 0, "carve: NI alignment");
+    _Static_assert(CARVE_UNI % _Alignof(struct RfuSlotStatusUNI) == 0, "carve: UNI alignment");
+    _Static_assert(CARVE_INTR % _Alignof(struct RfuIntrStruct) == 0, "carve: RfuIntrStruct alignment");
+    gRfuLinkStatus = (void *)APIBuffer + 0;
+    gRfuStatic = (void *)APIBuffer + CARVE_STATIC;
+    gRfuFixed = (void *)APIBuffer + CARVE_FIXED;
+    gRfuSlotStatusNI[0] = (void *)APIBuffer + CARVE_NI;
+    gRfuSlotStatusUNI[0] = (void *)APIBuffer + CARVE_UNI;
+    for (i = 1; i < RFU_CHILD_MAX; ++i)
+    {
+        gRfuSlotStatusNI[i] = &gRfuSlotStatusNI[i - 1][1];
+        gRfuSlotStatusUNI[i] = &gRfuSlotStatusUNI[i - 1][1];
+    }
+    // remaining space (from CARVE_INTR, 8-aligned) is used for `struct RfuIntrStruct`.
+    gRfuFixed->STWIBuffer = (struct RfuIntrStruct *)&gRfuSlotStatusUNI[3][1];
+    STWI_init_all((struct RfuIntrStruct *)&gRfuSlotStatusUNI[3][1], sioIntrTable_p, copyInterruptToRam);
+#endif
+#else
+#line 160
+    gRfuLinkStatus = (void *)APIBuffer + 0;
+    gRfuStatic = (void *)APIBuffer + 0xb4; // + sizeof(*gRfuLinkStatus)
+    gRfuFixed = (void *)APIBuffer + 0xdc; // + sizeof(*gRfuStatic)
+    gRfuSlotStatusNI[0] = (void *)APIBuffer + 0x1bc; // + sizeof(*gRfuFixed)
+    gRfuSlotStatusUNI[0] = (void *)APIBuffer + 0x37c; // + sizeof(*gRfuSlotStatusNI[0]) * RFU_CHILD_MAX
+    for (i = 1; i < RFU_CHILD_MAX; ++i)
+    {
+        gRfuSlotStatusNI[i] = &gRfuSlotStatusNI[i - 1][1];
+        gRfuSlotStatusUNI[i] = &gRfuSlotStatusUNI[i - 1][1];
+    }
+    // remaining space in API buffer is used for `struct RfuIntrStruct`.
+    gRfuFixed->STWIBuffer = (struct RfuIntrStruct *)&gRfuSlotStatusUNI[3][1];
+    STWI_init_all((struct RfuIntrStruct *)&gRfuSlotStatusUNI[3][1], sioIntrTable_p, copyInterruptToRam);
+#endif
+#line 173
     rfu_STC_clearAPIVariables();
     for (i = 0; i < RFU_CHILD_MAX; ++i)
     {

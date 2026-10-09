@@ -90,8 +90,22 @@
 
 #define RFU_MBOOT_DOWNLOADER_SERIAL_NO  0x0000             // The game serial number of the multi-boot downloader (programs that boot without a Game Pak)
 
+#if PLATFORM_NATIVE
+#if __SIZEOF_POINTER__ != 8
+#line 93
 #define RFU_API_BUFF_SIZE_RAM           0x0e64             // Necessary size for buffer specified by rfu_initializeAPI (fast communication version that operates the library SIO interrupt routines in RAM)
 #define RFU_API_BUFF_SIZE_ROM           0x0504             // Necessary size for buffer specified by rfu_initializeAPI (fast communication version that operates the library SIO interrupt routines in ROM)
+#else
+// The carve in rfu_initializeAPI (src/librfu_rfu.c) with the 64-bit sizes of the structs that hold pointers.
+#define RFU_API_BUFF_SIZE_RAM           0x0fc0             // Necessary size for buffer specified by rfu_initializeAPI (RAM interrupt routines)
+#define RFU_API_BUFF_SIZE_ROM           0x0660             // Necessary size for buffer specified by rfu_initializeAPI (ROM interrupt routines)
+#endif
+#else
+#line 93
+#define RFU_API_BUFF_SIZE_RAM           0x0e64             // Necessary size for buffer specified by rfu_initializeAPI (fast communication version that operates the library SIO interrupt routines in RAM)
+#define RFU_API_BUFF_SIZE_ROM           0x0504             // Necessary size for buffer specified by rfu_initializeAPI (fast communication version that operates the library SIO interrupt routines in ROM)
+#endif
+#line 95
 
 #define RFU_CHILD_MAX                   4                  // Maximum number of slaves that can be connected to one parent device
 
