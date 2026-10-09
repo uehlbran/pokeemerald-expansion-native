@@ -61,7 +61,7 @@ send) are routed through guarded calls.
 
 The game runs on the main thread, unmodified: `AgbMain()` loops over
 `MainLoop()` and calls `VBlankIntrWait()` once per frame. The platform's
-`VBlankIntrWait` (the `bios` module) is the frame boundary: until
+`VBlankIntrWait` (the `bios` module, `bios_control.c`) is the frame boundary: until
 `INTR_CHECK` shows the VBlank flag the handler sets, as the BIOS waits, it
 calls the frame hook, `frame_run` (`platform/frame.h`), which does, in this
 order:
@@ -128,26 +128,27 @@ returned to the caller (`main` decides what to do; modules never call
 | `fixed_clock` | nothing: a deterministic clock for the replay, `--rtc-fixed` | n/a | yes |
 | `rtc_calendar` | the chip's calendar arithmetic (BCD, leap years, the 2000 to 2099 cycle) | GBA Cart Real-Time Clock | yes |
 | `dma` | DMA channels 0 to 3 | GBA DMA Transfers | yes |
-| `bios`, `bios_arith`, `bios_affine`, `bios_control`, `bios_decompress`, `bios_memory`, `bios_sound`, `bios_stream`, `bios_unfilter`, `bios_internal` | the BIOS SWI functions, one file per family (arithmetic, affine, control, decompressors, memory copies, sound, the unfilters), with helpers shared through `bios_internal.h` | BIOS Functions | yes (one test file per family) |
+| `bios_arith`, `bios_affine`, `bios_control`, `bios_decompress`, `bios_memory`, `bios_sound`, `bios_stream`, `bios_unfilter`, `bios_internal` | the BIOS SWI functions, one file per family (arithmetic, affine, control, decompressors, memory copies, sound, the unfilters), with helpers shared through `bios_internal.h` and the decompressors' shared parts in `bios_stream`; `bios.h` is the interface (there is no `bios.c`), and `VBlankIntrWait`, the frame boundary, is in `bios_control.c` | BIOS Functions | yes (one test file per family) |
 | `input` | the keypad | GBA Keypad Input | yes (mapping, replay source) |
 | `ppu`, `ppu_bg`, `ppu_obj`, `ppu_window`, `ppu_blend` | the LCD controller, drawing: backgrounds, objects, windows, blending and brightness (shared through `ppu_internal.h`) | LCD Video Controller | yes (synthetic scenes in the regions) |
-| `video` | the LCD panel, via SDL | n/a | no |
+| `video` | the LCD panel, via SDL | n/a | yes (SDL dummy drivers; the pixel format and sizes, not the picture) |
 | `psg`, `psg_channel`, `psg_square`, `psg_wave`, `psg_noise` | the four Game Boy sound channels (shared through `psg_internal.h`) | GBA Sound Controller, Sound Channels 1 to 4 | yes |
-| `audio` | the speaker, via SDL | n/a | no |
+| `audio` | the speaker, via SDL | n/a | yes (SDL dummy drivers; the queue sizes, not the sound) |
+| `frame_pacer` | the LCD's frame period: holds the loop to 59.7275 Hz | LCD Dimensions and Timings | yes (`test_frame_pacer.c`) |
 | `m4a/` | the ARM sound engine `src/m4a_1.s`, in C | n/a (game code) | yes, and a differential test against the ARM original under qemu-arm, run by hand (`platform/m4a/README.md`) |
 | `flash` | the 1 Mbit flash chip's driver entry | GBA Cart Backup Flash ROM | yes |
 | `save_file` | the cartridge's persistence | n/a | yes |
 | `debug_channel` | mGBA's debug registers | mGBA `src/gba/io.c` | yes |
 | `crash_reboot` | the reboot after a crash, keeping IWRAM's last 0x200 bytes (test runner mode) | BIOS Reset Functions | yes (real crashes and re-execs) |
 | `arm_division` | the GBA's software division (libgcc), which returns instead of trapping on a zero divisor | (libgcc, the Intel SDM for decoding) | yes |
-| `lcd_status` | the LCD controller's timing registers, `VCOUNT` and `DISPSTAT` | LCD I/O Interrupts and Status | yes |
+| `lcd_status` | the LCD controller's timing registers, `VCOUNT` and `DISPSTAT` | LCD I/O Interrupts and Status | yes (through `test_frame`) |
 | `m4a_output` | the sound FIFO DMAs, reading the m4a engine's PCM ring | GBA Sound Channel A and B - DMA Sound | yes |
 | `sound_mix` | the sound mixer and output capacitor | GBA Sound Control Registers | yes |
 | `frame` | a frame of hardware time, in order (above) | LCD Dimensions and Timings | yes (headless, with the real modules) |
 | `game_hooks` | the game's control-flow assembly (test runner jumps, the battle runner's stack, delay loops) | n/a (game code) | yes |
 | `crt0`, `rom_header`, `gcn_multiboot`, `decompress_asm` | the `src/*.s` the native build does not assemble | n/a (game code) | yes |
 | `options` | the command line | n/a | yes |
-| `replay`, `replay_parse`, `replay_include`, `replay_session` | nothing: the input-replay script, its parser, its `include` expansion and the glue to the running game | n/a | yes (against a fake host) |
+| `replay`, `replay_parse`, `replay_include`, `replay_session` | nothing: the input-replay script, its parser, its `include` expansion and the glue to the running game | n/a | yes (against a fake host), except `replay_session`, covered only by the replays |
 | `inspect`, `inspect_menu`, `inspect_args`, `inspect_decode`, `symbols` | nothing: the facts a replay reads from expansion's variables, the ranges of their arguments, and function names from the executable's ELF symbols | n/a | `inspect_args`, `inspect_decode`, `symbols` yes; `inspect`, `inspect_menu` only through the replays |
 | `restart` | a switch-off and switch-on: re-exec of the process for the replay's `restart` | n/a | yes |
 | `main` | power-on | n/a | no |
@@ -155,13 +156,14 @@ returned to the caller (`main` decides what to do; modules never call
 Header-only: `gba_irq.h` (the fourteen interrupt sources), `gba_timing.h`
 (the clock and frame length), `dma_hooks.h` (the two functions expansion's
 `include/gba/macro.h` calls under `PLATFORM_NATIVE`), `script_tag.h` (see
-"Known divergences").
+"Known divergences"), and `inspect_internal.h` (what `inspect.c` and
+`inspect_menu.c` share).
 
 Dependencies point one way: `main` depends on everything; `frame` on the
 modules a frame drives; `ppu`, `dma`, `timer`, `interrupt`, `psg`, `flash`
 depend on `gba_memmap` for addresses and bounds; `bios` depends on
-`gba_memmap` and `interrupt`; nothing but `frame` and `main` depends on
-`video` or `audio`, and nothing on `main`. The modules do not include
+`gba_memmap` and `interrupt`; nothing but `frame`, `main` and `replay_session` (which writes the
+screenshot) depends on `video` or `audio`, and nothing on `main`. The modules do not include
 expansion's headers; the exceptions are `gba_memmap.h`, which may include
 `gba/defines.h` and `gba/io_reg.h` as system headers to reuse their names
 and assert ours match, `m4a_output.c`, which reads the m4a engine's

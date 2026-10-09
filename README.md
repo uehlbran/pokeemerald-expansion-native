@@ -1,8 +1,7 @@
 # pokeemerald-expansion-native
 
 A native PC build of [pokeemerald-expansion](https://github.com/rh-hideout/pokeemerald-expansion),
-the community engine that adds every Pokémon, move, ability, item, form
-and battle gimmick to the pret decompilation of Pokémon Emerald. The game
+the rh-hideout fork of the pret Emerald decompilation. The game
 logic is expansion's, pinned at `expansion/1.17.1`. This project adds a
 platform layer under `platform/` that stands in for the Game Boy
 Advance hardware (video, audio, input, timers and clock, DMA, BIOS calls,
@@ -11,11 +10,8 @@ desktop executable. No emulator, no ROM: everything builds from the
 source and assets in this repository, and nothing extracted from a
 cartridge is distributed.
 
-The point is not to play Emerald on a PC. It is to have the complete
-expansion engine, with every piece of content expansion contains, running
-natively and checked by the same test suite expansion runs on the GBA, so
-that the next phase can be adding new maps and story without an
-emulator in the loop.
+The aim is to run expansion's engine natively, checked by the same test
+suite expansion runs on the GBA.
 
 ## Status
 
@@ -43,8 +39,8 @@ Not working or not verified:
   not GBA `.sav` files.
 - Nothing past Birch's lab in play, the windowed path with a real display
   and audio device, and most menus that neither replay opens have no gate.
-  The renderer and the sound mixer are checked only through the replays'
-  screenshots and the intro's audio.
+  The renderer and the sound mixer are covered by unit tests and, beyond
+  those, only by the replays' screenshots and the intro's audio.
 
 ## Building
 
@@ -83,8 +79,8 @@ regression reference.
 
 ## Credits
 
-This project would not exist without the three earlier ports, which
-proved the approach and showed where the hard parts are:
+The three earlier ports were read for structure and pitfalls (no code was
+copied):
 
 - [pokeemerald-native](https://github.com/fuddlesworth/pokeemerald-native)
   by NTx86 and fuddlesworth.
@@ -94,9 +90,9 @@ proved the approach and showed where the hard parts are:
   by hirata-producoes, the first to merge a platform layer into
   expansion, with a technical report that shaped our 64-bit plan.
 
-And of course [pret](https://github.com/pret/pokeemerald) and
-[RH-Hideout](https://github.com/rh-hideout/pokeemerald-expansion), whose
-work this is. Full credits in [CREDITS.md](CREDITS.md).
+pret and RH-Hideout wrote the game code this project builds
+([pret](https://github.com/pret/pokeemerald),
+[RH-Hideout](https://github.com/rh-hideout/pokeemerald-expansion)). Full credits in [CREDITS.md](CREDITS.md).
 
 ## License
 

@@ -22,7 +22,8 @@ make -C platform test BITS=32
 ## The rules
 
 `docs/C-RULES.md` is the full text and applies to everything we write.
-The five that are broken most often:
+Rules 1 to 4 below are from it; rule 5 is from the policy at the top of
+`docs/UPSTREAM_MODIFICATIONS.md`.
 
 1. Warnings are errors for our files: `-std=gnu17 -Wall -Wextra -Wshadow
    -Wstrict-prototypes -Wconversion -Werror`. Expansion's headers are
@@ -37,8 +38,8 @@ The five that are broken most often:
    version: boundary addresses, zero and maximum lengths, wraparound,
    invalid input, error-path cleanup.
 4. Do not copy code from the reference ports (pokeemerald-native,
-   pokeemerald-multiplatform, pokemon-regionalidades). Some of it descends
-   from GPL and MPL emulators and cannot be relicensed under this
+   pokeemerald-multiplatform, pokemon-regionalidades). Two of them credit
+   GPL and MPL emulators as the source of their code, which cannot be relicensed under this
    project's MIT license. Read them for structure and pitfalls; write ours
    from GBATEK and from expansion's own sources.
 5. One guard macro, `PLATFORM_NATIVE`, for every change to an expansion
@@ -55,8 +56,12 @@ The five that are broken most often:
 
 ## Gates
 
-A change is merged when all of these pass. The commands are in
-`docs/BUILDING.md`; the numbers are in `docs/STATUS.md`.
+A change is merged when all of these pass. `docs/STATUS.md`, "Gates and
+their state", is the list of gates (a to h); the commands are in
+`docs/BUILDING.md`, the numbers in `docs/STATUS.md`. Gates (a) and (h) are
+milestone-level: (a) is a native build from a clean clone with the
+documented prerequisites, run before a milestone is declared done, and (h),
+the cross-width save round trip, does not exist yet.
 
 1. Platform unit tests, both widths: `make -C platform test BITS=32` and
    `BITS=64`.
@@ -69,14 +74,15 @@ A change is merged when all of these pass. The commands are in
    Per test it must equal the GBA baseline
    (`docs/research/gba-baseline-1.17.1.md`), except the nine benchmarks,
    which are assumption failures natively by decision.
-4. The GBA ROM is unchanged. Build it before and after (`make -j"$(nproc)"`)
-   and compare `sha1sum pokeemerald.gba`; the value for 1.17.1 is in
-   `docs/STATUS.md`. A change that moves it changes GBA behaviour and is a
-   bug.
+4. Gate (c), the GBA target: the ROM is unchanged (`make -j"$(nproc)"`, then
+   `sha1sum pokeemerald.gba` against the value for 1.17.1 in
+   `docs/STATUS.md`; a change that moves it changes GBA behaviour and is a
+   bug), and `TEST=1 make -j"$(nproc)" check` equals the baseline.
 5. Format and lint: see `docs/BUILDING.md`. `make -C platform gate` is
    meant to run them together once the lint change is merged; it does not
    exist in the tree at the time of writing.
-6. `git diff --check` is clean.
+
+Hygiene, not a gate: `git diff --check` is clean.
 
 If a gate result changes on purpose, say why in the commit message.
 `tests/smoke/run.sh ... --update` rewrites the expected files; read the
@@ -150,7 +156,9 @@ row links it.
   build produces.
 - A ROM, a save from a cartridge, or anything extracted from a cartridge.
   Everything builds from the source and assets in the repository.
-- Assets (graphics, audio, text) that are not already expansion's.
+- Assets (graphics, audio, text) that are not already expansion's. This
+  is the owner's rule from the project brief: no ROM and no assets are
+  distributed.
 - Code copied from emulators or from the reference ports, in whole or in
   part.
 - A test that is skipped, empty, always passes, or covers only the happy

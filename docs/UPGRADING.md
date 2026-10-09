@@ -1,6 +1,6 @@
 # Upgrading the expansion pin
 
-The runbook for moving from `expansion/1.17.1` to a newer rh-hideout tag.
+This is the runbook for moving from `expansion/1.17.1` to a newer rh-hideout tag.
 It was derived from how the tree is built and from the logs of the first
 port; it has not been run yet, so expect to correct it on the first
 upgrade and do so in the same change.
@@ -9,7 +9,9 @@ Last upgrade: none. The pin is `expansion/1.17.1`, the fork point
 (`DECISIONS.md`, "Fork point and remote").
 
 Throughout, `NEW` is the new tag, for example `expansion/1.18.0`, and `OLD`
-is the current one.
+is the current one. Where a name is used for a directory or a branch, use
+the tag without the `expansion/` prefix (`ref-1.18.0`, `upgrade/1.18.0`).
+Paths such as `../pen-worktrees` are relative to the main checkout.
 
 ## Principles
 
@@ -39,17 +41,18 @@ anything, so there is a ROM and a baseline that contain none of our
 changes:
 
 ```
-git worktree add ../pen-worktrees/ref-NEW NEW
-cd ../pen-worktrees/ref-NEW
+git worktree add ../pen-worktrees/ref-1.18.0 NEW
+cd ../pen-worktrees/ref-1.18.0
 make -j"$(nproc)" && sha1sum pokeemerald.gba          # the new reference sha1
-TEST=1 make -j"$(nproc)" check 2>&1 | tee check.log   # the new baseline
+make -j"$(nproc)" check 2>&1 | tee check.log          # the new baseline (check implies the test build)
+cd -                                                  # back to the main checkout
 ```
 
-`rom.sha1` in the repository root is upstream's own file (the
-`make compare` target reads it); the reference this project uses is the
-sha1 recorded in `STATUS.md` for 1.17.1 and, after the upgrade, the one
-built here. See "Findings" at the end of this file if `make compare`
-disagrees.
+`rom.sha1` in the repository root is pret's hash of the original Emerald
+ROM, inherited from pret (`f3ae0881...`). `make compare` sets `COMPARE` and
+checks against it, so it fails by design for expansion; do not use it. The
+reference is the sha1 recorded in `STATUS.md` (`e2d4600d...` for 1.17.1)
+and, per upgrade, the fresh build of the new tag made here.
 
 ## 2. Merge
 
@@ -78,8 +81,8 @@ For each row of "Source modifications", in table order:
 2. Did upstream fix the site? Where the row has a "Reported upstream" link
    (`grep -o 'issues/[0-9]*' docs/UPSTREAM_MODIFICATIONS.md`), look at the
    issue and at the tag's source for the fixed code. Seven issues were
-   filed (rh-hideout #10892 to #10898) and closed unfixed (`STATUS.md`,
-   "Upstream issues"); check again. A row without a link may be fixed
+   filed (rh-hideout #10892 to #10898) and closed by the maintainer (`STATUS.md`,
+   "Upstream issues"); check whether the code was fixed independently. A row without a link may be fixed
    too, so read the diff for every row, not just the linked ones.
 3. If the site is fixed: delete the guarded block, keep upstream's code,
    remove the row. Policy: a row leaves the table when its modification
@@ -111,10 +114,16 @@ git grep -n '^#line ' -- src include test
 For each, find the line after the block in the merged file, find the same
 line in `git show NEW:<file>`, and set N to its number. Where a block can
 instead replace a blank line on each side (`#if !PLATFORM_NATIVE` ...
-`#endif`), no `#line` is needed and that form is preferred. The ROM
-comparison in step 5 catches a wrong value, because the GBA ROM embeds
-`__LINE__` in assertion messages; the native build does not notice one,
-so a wrong value shows up only there.
+`#endif`), no `#line` is needed and that form is preferred. Two checks follow. The ROM comparison in step 5 catches a wrong value in
+`src/` and other files the plain build compiles, because the GBA ROM embeds
+`__LINE__` in assertion messages. It does not cover `test/*.c` or
+`include/test/*.h`, which only the `TEST=1` build compiles. So for every
+file, also do the second check from `UPSTREAM_MODIFICATIONS.md`: preprocess
+the file with and without `-DPLATFORM_NATIVE=1` and compare the line
+markers at the anchor lines after each block. For the test files this is
+the only check, unless you also compare the `TEST=1` ELF built from the tag
+with the one built from the merged tree. The native build itself does not
+notice a wrong value.
 
 ## 5. The GBA build and the ROM
 
@@ -145,9 +154,9 @@ Write `docs/research/gba-baseline-<tag>.md` in the form of
 (PASSED, KNOWN_FAILING, EXPECT_FAILING, TO_DO, TOTAL) and the exit code.
 It must agree with the reference build in the worktree from step 1;
 if it does not, the guards changed what the GBA tests do. Update the
-totals quoted in `BUILDING.md`, `STATUS.md`, `CONTRIBUTING.md`, and
-`platform/test_runner/SUITE-LOG.md`'s header when the new baseline is
-the one to compare against.
+totals quoted in `README.md`, `ARCHITECTURE.md`, `STATUS.md`, `BUILDING.md`,
+`platform/test_runner/SUITE-LOG.md`'s header and this file when the new
+baseline is the one to compare against (`git grep -n 5862` finds them).
 
 ## 7. Native build glue that mirrors upstream
 
@@ -293,7 +302,8 @@ first port; the logs are `platform/build_glue/BOOT-LOG.md` and
   `while (TRUE)` setup state machines hang. Fix: `VBlankIntrWait()` in
   the loop body (`DECISIONS.md`, "Setup loops that spin on the DMA3
   queue yield a frame"; `src/overworld.c`, `party_menu.c`, `item_menu.c`
-  and others). 60 `while (TRUE)` loops existed in 1.17.1.
+  and others; the DECISIONS entry counts the `while (TRUE)` loops that
+  existed in 1.17.1).
 - Polling `VCOUNT` or a timer in game code: natively `VCOUNT` reads 161
   during game logic and timers advance at frame boundaries only
   (`m4a.c` `SampleFreqSet`, `librfu_stwi.c`, `librfu_sio32id.c`). Fix:
@@ -331,11 +341,3 @@ first port; the logs are `platform/build_glue/BOOT-LOG.md` and
   to define; the sanitized runs report these.
 - Uninitialised bytes that reach the save file (`CreateBoxMon`'s
   nickname tail). The save file must be byte-identical between runs.
-
-## Findings
-
-- `rom.sha1` in the repository root holds `f3ae0881...`, upstream's file; `STATUS.md` records `e2d4600d...` as the sha1
-  of the GBA build here, built before and after our changes. This file
-  uses the sha1 of a fresh build of each tag, not `rom.sha1`, and has
-  not established why the two differ (not investigated);
-  settle it on the first upgrade and replace this note.
