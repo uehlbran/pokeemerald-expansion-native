@@ -205,6 +205,14 @@ _Static_assert(offsetof(struct SoundInfo, chans) == 0x50, "o_SoundInfo_chans");
 _Static_assert(offsetof(struct SoundInfo, pcmBuffer) == 0x350, "o_SoundInfo_pcmBuffer");
 _Static_assert(sizeof(struct SoundInfo) == 0xFB0, "SoundInfo_size");
 
+#else
+/* At 64 bits struct MusicPlayerInfo is 96 bytes and MPlayOpen's Clear64byte clears it only up to tone.
+ * That is enough: the players are zero at every MPlayOpen (m4aSoundInit runs over variables that the
+ * loader, and crt0_restart after SoftReset, have zeroed), MPlayOpen itself writes ident and the two
+ * list links, and MPlayStart writes tone before MPlayMain reads it (status stays PAUSE until then). The
+ * assertion pins the field order that reasoning relies on. */
+_Static_assert(offsetof(struct MusicPlayerInfo, tone) == M4A_CLEAR_SIZE,
+               "at 64 bits Clear64byte clears MusicPlayerInfo up to tone; what follows is written before it is read");
 #endif // UINTPTR_MAX == UINT32_MAX
 
 #endif // GUARD_PLATFORM_M4A_LAYOUT_H
