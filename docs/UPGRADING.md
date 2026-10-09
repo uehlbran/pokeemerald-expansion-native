@@ -187,6 +187,11 @@ git diff OLD NEW -- tools/mgba-rom-test-hydra tools/patchelf tools/scaninc tools
   `src/crt0.s`, `src/decompress_asm.s`, `src/libgcnmultiboot.s`,
   `src/rom_header.s`. A change in any of them is a change in a platform
   module.
+- The ARM toolchain's libgcc, or the `-mabi` expansion compiles with:
+  `platform/arm_division` gives x86's divide errors the results libgcc
+  returns on the GBA. `make -C platform/arm_division_libgcc run` (needs
+  qemu-arm) runs libgcc's division routines and compares them with the
+  record the module follows; a difference changes the module and its test.
 - `include/gba/*.h` (register names, `m4a_internal.h`'s `SoundInfo`,
   `flash_internal.h`'s `FlashSetupInfo`): `gba_memmap.h`, `m4a_output.c`,
   `flash.c` assert or depend on them.

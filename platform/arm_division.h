@@ -1,51 +1,50 @@
 /*
  * arm_division.h: integer division as the GBA's code does it, where it
- * differs from x86: by zero, and INT_MIN by -1.
+ * differs from x86: by zero, and the most negative value by -1.
  *
  * Stands in for libgcc's division routines in the GBA build. The ARM7TDMI
  * has no divide instruction (GBATEK "ARM Instruction Summary"), so GCC
- * compiles every / and % on the GBA to a call: __udivsi3, __umodsi3,
- * __divsi3 or __modsi3 (expansion builds with -mabi=apcs-gnu). Read from
- * the libgcc linked into expansion's test ELF (gcc-arm-none-eabi 13.2.1):
- * with a zero divisor each branches to __aeabi_idiv0, which returns, and
- * the call returns
- *   unsigned n / 0 and n % 0:  0xFFFFFFFF if n != 0, else 0;
- *   signed n / 0 and n % 0:    INT32_MAX if n > 0, INT32_MIN if n < 0, else 0;
- * and INT32_MIN / -1 is INT32_MIN, INT32_MIN % -1 is 0 (computed on the
- * magnitudes, no trap). Expansion divides by zero in places the GBA
- * survives (src/battle_script_commands.c ComputeBallShakeOdds for a ball
- * that cannot catch, src/battle_ai_util.c GetHealthPercentage for an empty
- * battler, src/battle_anim_electric.c AnimSparkElectricityFlashing_Step).
+ * compiles every / and % on the GBA to a call; expansion builds with
+ * -mabi=apcs-gnu, so the calls are to __udivsi3, __umodsi3, __divsi3 and
+ * __modsi3, and for 64-bit operands __udivdi3, __umoddi3, __divdi3 and
+ * __moddi3 (not the EABI's __aeabi_* routines, whose results differ).
+ * Measured with expansion's libgcc (gcc-arm-none-eabi 13.2.1) under
+ * qemu-arm, platform/arm_division_libgcc/libgcc_division.txt, by zero:
+ *   32-bit unsigned n / 0 and n % 0:  0xFFFFFFFF if n != 0, else 0;
+ *   32-bit signed n / 0 and n % 0:    INT32_MAX if n > 0, INT32_MIN if n < 0, else 0;
+ *   64-bit unsigned n / 0:  2^(k+1) - 1, all ones from k = 63, k being the
+ *                           bit length of n (so 0 / 0 is 1);
+ *   64-bit unsigned n % 0:  n mod 2^(64-k) (n itself while k <= 32);
+ *   64-bit signed:          the unsigned results for |n|, negated if n < 0;
+ * and INT_MIN / -1 is INT_MIN, INT_MIN % -1 is 0, at both widths (computed
+ * on the magnitudes, no trap). Expansion divides by zero where the GBA
+ * survives (src/battle_script_commands.c ComputeBallShakeOdds,
+ * src/battle_ai_util.c GetHealthPercentage, src/battle_anim_electric.c
+ * AnimSparkElectricityFlashing_Step).
  *
  * x86's div and idiv raise a divide error in both cases, which Linux
  * delivers as SIGFPE. arm_division_init installs a SIGFPE handler that
- * decodes the faulting instruction, and for a 32-bit div or idiv (opcode
- * F7h, ModRM reg field 6 or 7, any operand form, segment prefixes CS, DS, ES
- * or SS) by zero, or idiv of INT32_MIN by -1, writes the results above into
- * EAX (quotient) and EDX (remainder) and resumes after the instruction; the
- * compiler uses one or the other, and libgcc gives the same value for both.
- * Any other SIGFPE goes to the handler that was installed before (the crash
- * reboot in test-runner mode), or kills the process as without this module.
- * The handler is async-signal-safe (it only reads the instruction and its
- * operand and edits the saved registers).
- *
- * A divide error it cannot complete is reported on stderr (one line with
- * the program counter) before it is passed on.
- *
- * i386 only. 64-bit: the decoder has to be redone for x86-64 (REX
- * prefixes, 64-bit operands, RIP-relative operands, the 64-bit register
- * set). Until then arm_division_init refuses with ARM_DIVISION_ERR_64_BIT,
- * and main, which starts this module unconditionally, stops there: a
- * deliberate hard stop for the 64-bit build (platform/build_glue/
- * LINK-NEEDS.md, "Runtime hazards"). Single-threaded.
+ * decodes the faulting instruction (opcode F7h, ModRM reg 6 or 7, any
+ * operand form, segment prefixes CS, DS, ES or SS, and on x86-64 a REX
+ * prefix), writes libgcc's results into EAX or RAX (quotient) and EDX or
+ * RDX (remainder), and resumes after the instruction: a 32-bit operand gets
+ * the 32-bit results (zero-extended into RAX and RDX on x86-64), a 64-bit
+ * one (REX.W) the 64-bit ones. It refuses FS, GS, 66h, 67h, LOCK and REP
+ * prefixes, a REX prefix that is not the last, 8-bit forms (F6h) and a
+ * quotient too wide for its register. Those, and any other SIGFPE, go to
+ * the handler that was installed before (the crash reboot in test-runner
+ * mode), or kill the process as without this module, after one line on
+ * stderr with the program counter. The handler is async-signal-safe (it
+ * only reads the instruction and its operand and edits the saved
+ * registers). i386 and x86-64 only (anything else does not compile).
+ * Single-threaded.
  */
 #ifndef ARM_DIVISION_H
 #define ARM_DIVISION_H
 
 enum arm_division_error {
     ARM_DIVISION_OK = 0,
-    ARM_DIVISION_ERR_SIGNAL = -1, /* sigaction failed */
-    ARM_DIVISION_ERR_64_BIT = -2  /* a 64-bit build (above) */
+    ARM_DIVISION_ERR_SIGNAL = -1 /* sigaction failed */
 };
 
 /* Installs the SIGFPE handler, keeping the one it replaces to pass other
