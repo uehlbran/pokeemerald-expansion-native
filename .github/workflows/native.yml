@@ -71,20 +71,24 @@ jobs:
       - uses: actions/checkout@v4
 
       # docs/BUILDING.md installs libsdl2-dev:i386 for the 32-bit build. On the
-      # runner image that package cannot be installed: it pulls in
-      # libglib2.0-dev:i386, whose -dev-bin part cannot coexist with the
-      # image's amd64 one. The 32-bit link needs only the i386 runtime library
-      # and a libSDL2.so link to it (the headers are the amd64 package's, the
-      # same files; pkg-config's -lSDL2 then resolves in /usr/lib/i386-linux-gnu).
+      # runner image apt cannot install it: it pulls in libglib2.0-dev:i386,
+      # whose -dev-bin part cannot coexist with the image's amd64 one. The
+      # 32-bit build needs only the i386 runtime library and, from the -dev
+      # package, the i386 configuration header (SIZEOF_VOIDP 4) and the
+      # libSDL2.so links; those two are taken from the downloaded package
+      # without its dependencies.
       - name: Prerequisites (docs/BUILDING.md, the native lines; the i386 SDL2 as the comment says)
         run: |
           sudo dpkg --add-architecture i386
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends build-essential gcc-multilib g++-multilib clang clang-format clang-tidy cppcheck cmake ninja-build pkg-config git python3 libpng-dev
           sudo apt-get install -y --no-install-recommends libsdl2-dev libsdl2-2.0-0:i386 libc6-dev-i386
-          sudo ln -s libSDL2-2.0.so.0 /usr/lib/i386-linux-gnu/libSDL2.so
+          mkdir -p /tmp/sdl2-i386 && cd /tmp/sdl2-i386 && apt-get download libsdl2-dev:i386 && dpkg-deb -x libsdl2-dev_*_i386.deb unpacked
+          sudo cp -a unpacked/usr/include/i386-linux-gnu /usr/include/
+          sudo cp -a unpacked/usr/lib/i386-linux-gnu/libSDL2.so unpacked/usr/lib/i386-linux-gnu/libSDL2-2.0.so /usr/lib/i386-linux-gnu/
+          cd "$GITHUB_WORKSPACE"
           gcc --version | head -1; clang-format --version; clang-tidy --version | head -1; cppcheck --version
-          pkg-config --cflags --libs sdl2; ls -l /usr/lib/i386-linux-gnu/libSDL2.so
+          pkg-config --cflags --libs sdl2; ls -l /usr/lib/i386-linux-gnu/libSDL2.so /usr/include/i386-linux-gnu/SDL2/_real_SDL_config.h
 
       - name: Cache the build tools
         uses: actions/cache@v4
@@ -108,11 +112,13 @@ jobs:
             tools/mgba-rom-test-hydra/mgba-rom-test-hydra
           key: tools-native-${{ runner.os }}-${{ hashFiles('tools/*/Makefile', 'tools/**/*.c', 'tools/**/*.cpp', 'tools/**/*.h', 'make_tools.mk') }}
 
-      - name: The platform gate (format, lint, the sanitized unit tests at both widths, tools-test, glue-test)
-        run: make -C platform gate
-
       - name: Native build, 32-bit
         run: make -f Makefile.native -j"$(nproc)" native BITS=32
+
+      # After the 32-bit build: the gate lints the files that read the game's
+      # headers, some of which the build generates (include/constants/map_groups.h).
+      - name: The platform gate (format, lint, the sanitized unit tests at both widths, tools-test, glue-test)
+        run: make -C platform gate
 
       - name: Gates d and e, 32-bit
         run: |
