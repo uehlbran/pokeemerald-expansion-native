@@ -1,0 +1,27 @@
+# clang-format 18 style of the platform layer (platform/, build glue and tests).
+# Derived from what the code looked like before the one-time reformat: 4-space
+# indent, a function's brace on its own line and every other brace on the
+# line of its statement (Linux-kernel brace style, except struct/enum), a
+# 120-column limit (57 lines in the code were over 120, 177 over 110), the
+# pointer star on the name, && || ?: at the start of a continuation line,
+# comments never re-flowed, includes kept in the order written (groups are
+# sorted by hand). Each non-default option below lowered the size of the
+# reformat diff against LLVM style (4671 changed lines, 4376 with these).
+#
+# This file applies to whatever clang-format is run on; the files that are
+# formatted are the ones platform/Makefile's `format` and `format-check`
+# name, never expansion's.
+BasedOnStyle: LLVM
+IndentWidth: 4
+ColumnLimit: 120
+BreakBeforeBraces: Custom
+BraceWrapping:
+  AfterFunction: true
+AllowShortFunctionsOnASingleLine: None
+PointerAlignment: Right
+SortIncludes: Never
+BreakBeforeBinaryOperators: NonAssignment
+ReflowComments: false
+AlignEscapedNewlines: Left
+PenaltyBreakAssignment: 1000
+MaxEmptyLinesToKeep: 2
