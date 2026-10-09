@@ -136,9 +136,10 @@ $(OBJ_DIR)/%.o: %.c
 	$(CC) $(CFLAGS_ALL) -c $< -o $@
 
 # test_arm_division divides by a global through an absolute address with an
-# index and no base register (divl sym(,%ebx,4)), an operand form the game's
-# -fno-pie code (Makefile.native) uses for its tables and that the SIGFPE
-# decoder must handle; position-independent code cannot encode it.
+# index and no base register (divl sym(,%ebx,4); on x86-64 sym(,%rbx,4) and a
+# bare absolute sym), an operand form the game's -fno-pie code (Makefile.native)
+# uses for its tables and that the SIGFPE decoder must handle; position-
+# independent code cannot encode it.
 $(OBJ_DIR)/test/test_arm_division.o: CFLAGS_ALL += -fno-pie
 
 # inspect.c reads expansion's variables through its headers, so it is compiled
@@ -182,9 +183,11 @@ clean:
 # ---- style and static analysis (docs/C-RULES.md) ----------------------------
 
 # Every C file the platform layer owns: modules, the m4a engine and its
-# difftest, tests and their headers. The build's own output is not ours.
+# difftest, arm_division's libgcc record, tests and their headers. The build's
+# own output is not ours.
 FORMAT_FILES := $(shell find . -path ./build -prune -o \( -name '*.c' -o -name '*.h' \) -print | sort)
-LINT_SRCS    := $(wildcard *.c) $(wildcard m4a/*.c) $(wildcard m4a/difftest/*.c) $(wildcard test/*.c)
+LINT_SRCS    := $(wildcard *.c) $(wildcard m4a/*.c) $(wildcard m4a/difftest/*.c) $(wildcard arm_division_libgcc/*.c) \
+                $(wildcard test/*.c)
 
 # A missing tool must fail the target, not pass it silently.
 require_tool = @command -v $(1) >/dev/null 2>&1 || { echo "$(1) is not installed ($(2))"; exit 1; }

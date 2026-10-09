@@ -140,7 +140,7 @@ returned to the caller (`main` decides what to do; modules never call
 | `save_file` | the cartridge's persistence | n/a | yes |
 | `debug_channel` | mGBA's debug registers | mGBA `src/gba/io.c` | yes |
 | `crash_reboot` | the reboot after a crash, keeping IWRAM's last 0x200 bytes (test runner mode) | BIOS Reset Functions | yes (real crashes and re-execs) |
-| `arm_division` | the GBA's software division (libgcc), which returns instead of trapping on a zero divisor | (libgcc, the Intel SDM for decoding) | yes |
+| `arm_division` | the GBA's software division (libgcc), which returns instead of trapping on a zero divisor | (libgcc, measured under qemu-arm by `arm_division_libgcc/`; the Intel SDM for decoding) | yes |
 | `lcd_status` | the LCD controller's timing registers, `VCOUNT` and `DISPSTAT` | LCD I/O Interrupts and Status | yes (through `test_frame`) |
 | `m4a_output` | the sound FIFO DMAs, reading the m4a engine's PCM ring | GBA Sound Channel A and B - DMA Sound | yes |
 | `sound_mix` | the sound mixer and output capacitor | GBA Sound Control Registers | yes |

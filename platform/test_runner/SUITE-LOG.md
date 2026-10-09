@@ -196,8 +196,8 @@ run compared with it test by test.
   1 when it was saved (Timer 2 is taken only with IME set) and the handler
   leaves IE alone (commented at the jump site and in game_hooks.h).
 - `arm_division` reports every divide error it passes on (one line with
-  the program counter) and refuses 66h/67h-prefixed forms; 64-bit is a
-  deliberate hard stop until the decoder is redone (arm_division.h).
+  the program counter) and refuses 66h/67h-prefixed forms. Since
+  milestone 7 it decodes x86-64 too (arm_division.h).
 
 ## The timeout, end to end
 
