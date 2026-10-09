@@ -436,40 +436,62 @@ static void build_symbol_table(void *elf)
     if (symbol_table.symbols == NULL)
         goto error;
 
-    const Elf32_Ehdr *ehdr = (Elf32_Ehdr *)elf;
-    const Elf32_Shdr *shdrs = (Elf32_Shdr *)(elf + ehdr->e_shoff);
-
-    if (ehdr->e_shstrndx == SHN_UNDEF)
+    // The ELF class picks the structures: the GBA ROM's ELF and the 32-bit
+    // native executable are ELF32, the 64-bit native executable ELF64.
+    bool is64;
+    if (((unsigned char *)elf)[EI_CLASS] == ELFCLASS32)
+        is64 = false;
+    else if (((unsigned char *)elf)[EI_CLASS] == ELFCLASS64)
+        is64 = true;
+    else
         goto error;
-    const Elf32_Shdr *shdr_shstr = &shdrs[ehdr->e_shstrndx];
-    const char *shstr = (const char *)(elf + shdr_shstr->sh_offset);
-    const Elf32_Shdr *shdr_symtab = NULL;
-    const Elf32_Shdr *shdr_strtab = NULL;
-    for (int i = 0; i < ehdr->e_shnum; i++)
+
+    const Elf32_Ehdr *ehdr32 = (Elf32_Ehdr *)elf;
+    const Elf64_Ehdr *ehdr64 = (Elf64_Ehdr *)elf;
+    const Elf32_Shdr *shdrs32 = (Elf32_Shdr *)(elf + ehdr32->e_shoff);
+    const Elf64_Shdr *shdrs64 = (Elf64_Shdr *)(elf + ehdr64->e_shoff);
+    unsigned shstrndx = is64 ? ehdr64->e_shstrndx : ehdr32->e_shstrndx;
+    unsigned shnum = is64 ? ehdr64->e_shnum : ehdr32->e_shnum;
+
+    if (shstrndx == SHN_UNDEF)
+        goto error;
+    const char *shstr = (const char *)(elf + (is64 ? shdrs64[shstrndx].sh_offset : shdrs32[shstrndx].sh_offset));
+    int symtab_i = -1;
+    int strtab_i = -1;
+    for (int i = 0; i < shnum; i++)
     {
-        const char *sh_name = shstr + shdrs[i].sh_name;
+        const char *sh_name = shstr + (is64 ? shdrs64[i].sh_name : shdrs32[i].sh_name);
         if (strcmp(sh_name, ".symtab") == 0)
-            shdr_symtab = &shdrs[i];
+            symtab_i = i;
         else if (strcmp(sh_name, ".strtab") == 0)
-            shdr_strtab = &shdrs[i];
+            strtab_i = i;
     }
-    if (!shdr_symtab)
+    if (symtab_i < 0)
         goto error;
-    if (!shdr_strtab)
+    if (strtab_i < 0)
         goto error;
 
-    const Elf32_Sym *symtab = (Elf32_Sym *)(elf + shdr_symtab->sh_offset);
-    const char *strtab = (const char *)(elf + shdr_strtab->sh_offset);
-    for (int i = 0; i < shdr_symtab->sh_size / shdr_symtab->sh_entsize; i++)
+    size_t symtab_offset = is64 ? shdrs64[symtab_i].sh_offset : shdrs32[symtab_i].sh_offset;
+    size_t symtab_size = is64 ? shdrs64[symtab_i].sh_size : shdrs32[symtab_i].sh_size;
+    size_t symtab_entsize = is64 ? shdrs64[symtab_i].sh_entsize : shdrs32[symtab_i].sh_entsize;
+    const Elf32_Sym *symtab32 = (Elf32_Sym *)(elf + symtab_offset);
+    const Elf64_Sym *symtab64 = (Elf64_Sym *)(elf + symtab_offset);
+    const char *strtab = (const char *)(elf + (is64 ? shdrs64[strtab_i].sh_offset : shdrs32[strtab_i].sh_offset));
+    for (int i = 0; i < symtab_size / symtab_entsize; i++)
     {
-        if (symtab[i].st_name == 0) continue;
-        if (symtab[i].st_shndx > ehdr->e_shnum) continue;
-        if (symtab[i].st_value < 0x2000000 || symtab[i].st_size == 0) continue;
+        unsigned st_name = is64 ? symtab64[i].st_name : symtab32[i].st_name;
+        unsigned st_shndx = is64 ? symtab64[i].st_shndx : symtab32[i].st_shndx;
+        uint64_t st_value = is64 ? symtab64[i].st_value : symtab32[i].st_value;
+        uint64_t st_size = is64 ? symtab64[i].st_size : symtab32[i].st_size;
+        if (st_name == 0) continue;
+        if (st_shndx > shnum) continue;
+        // Addresses are 32 bits: the native 64-bit executable is linked below 4 GiB.
+        if (st_value < 0x2000000 || st_value > UINT32_MAX || st_size == 0) continue;
         struct Symbol symbol =
         {
-            .name = strtab + symtab[i].st_name,
-            .address = symtab[i].st_value,
-            .size = symtab[i].st_size,
+            .name = strtab + st_name,
+            .address = st_value,
+            .size = st_size,
         };
         if (symbol_table.symbols_n == symbol_table_symbols_c)
         {
