@@ -148,8 +148,7 @@ int replay_session_start(const char *script_path, const char *out_dir, uint32_t 
         char where[REPLAY_PATH_SIZE + 16u];
         replay_source_map_describe(&source_map, error.line, where, sizeof where);
         fprintf(stderr, "replay: %s: %s\n", where, error.message);
-        replay_source_map_free(&source_map);
-        return -1;
+        return -1; /* replay_session_stop releases the map */
     }
     if (!make_out_dir(out_dir))
         return -1;

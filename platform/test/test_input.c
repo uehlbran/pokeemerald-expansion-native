@@ -225,7 +225,7 @@ PTEST(keyboard_table_binds_each_gba_key_once)
 
 PTEST(keyboard_state_with_nothing_down_is_no_keys)
 {
-    uint8_t state[SDL_NUM_SCANCODES] = { 0 };
+    const uint8_t state[SDL_NUM_SCANCODES] = { 0 };
     PT_ASSERT_EQ_U32(input_keyboard_to_keys(state, SDL_NUM_SCANCODES), 0u);
 }
 
@@ -261,7 +261,7 @@ PTEST(all_mapped_keys_down_gives_all_ten)
 
 PTEST(keyboard_state_shorter_than_a_scancode_is_not_read_past)
 {
-    uint8_t state[2] = { 1, 1 };
+    const uint8_t state[2] = { 1, 1 };
     PT_ASSERT_EQ_U32(input_keyboard_to_keys(state, 2), 0u);
     PT_ASSERT_EQ_U32(input_keyboard_to_keys(state, 0), 0u);
     PT_ASSERT_EQ_U32(input_keyboard_to_keys(state, -1), 0u);

@@ -26,8 +26,6 @@
 #include "pokemon.h"
 #include "task.h"
 
-#define none_text inspect_none_text
-
 /* ---- The debug menu (src/debug.c, DEBUG_OVERWORLD_MENU) ------------------ */
 
 /* Every task of the debug menu runs a static function named DebugTask_* (the
@@ -72,7 +70,7 @@ static void fact_debug_input(char *out, size_t size)
 {
     const struct Task *task = debug_entry_task();
     if (task == NULL)
-        snprintf(out, size, "%s", none_text);
+        snprintf(out, size, "%s", inspect_none_text);
     else
         snprintf(out, size, "%u", (unsigned)(uint16_t)task->data[DEBUG_ENTRY_INPUT_DATA]);
 }
@@ -85,7 +83,7 @@ static void fact_debug_step(char *out, size_t size)
 {
     const struct Task *task = debug_entry_task();
     if (task == NULL)
-        snprintf(out, size, "%s", none_text);
+        snprintf(out, size, "%s", inspect_none_text);
     else
         snprintf(out, size, "%d.%d", task->data[DEBUG_ENTRY_STEP_DATA], task->data[DEBUG_ENTRY_SUBSTEP_DATA]);
 }
@@ -102,7 +100,7 @@ static unsigned party_species_at(unsigned slot)
 static void write_species_name(unsigned species, char *out, size_t size)
 {
     if (species == SPECIES_NONE || species >= NUM_SPECIES) {
-        snprintf(out, size, "%s", none_text);
+        snprintf(out, size, "%s", inspect_none_text);
         return;
     }
     (void)inspect_decode_text(gSpeciesInfo[species].speciesName, sizeof gSpeciesInfo[species].speciesName, out, size);
@@ -120,7 +118,7 @@ static void fact_party_species(char *out, size_t size)
         used += (size_t)written;
     }
     if (used == 0)
-        snprintf(out, size, "%s", none_text);
+        snprintf(out, size, "%s", inspect_none_text);
 }
 
 /* Pokemon in PC box `box`; 0 before the storage is allocated (title screen). */
@@ -214,7 +212,7 @@ static void arg_pc_box_species(const uint32_t arguments[INSPECT_MAX_ARGUMENTS], 
         }
     }
     if (used == 0)
-        snprintf(out, size, "%s", none_text);
+        snprintf(out, size, "%s", inspect_none_text);
 }
 
 /* The properties the debug menu's complex give sets, of a party Pokemon: "shiny=0 dynamax=0 gmax=0 tera=1". */
@@ -222,7 +220,7 @@ static void arg_party_extras(const uint32_t arguments[INSPECT_MAX_ARGUMENTS], ch
 {
     const uint32_t slot = arguments[0];
     if (slot >= inspect_party_count() || slot >= PARTY_SIZE) {
-        snprintf(out, size, "%s", none_text);
+        snprintf(out, size, "%s", inspect_none_text);
         return;
     }
     struct Pokemon *mon = &gParties[B_TRAINER_PLAYER][slot];

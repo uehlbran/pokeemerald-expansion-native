@@ -55,6 +55,10 @@
  *                     confirmed number was taken
  *   party_slot        gPartyMenu.slotId, the party menu's cursor
  *
+ * Before the game's boot has set up the save blocks, the facts that read them give their
+ * empty value: "none" for player_name, player_gender, map, map_name and pos, 0 for the
+ * variables and flags.
+ *
  * Facts with an argument, "name:argument" (the argument is plain decimal and in range, or the
  * fact does not exist). They are read by `expect` and `wait-until` and are not in `dump`:
  *   party_species:N   species of party slot N (0 to 5; 0 when the slot is empty)
@@ -84,7 +88,7 @@ int inspect_init(void);
 void inspect_shutdown(void);
 
 /* Writes the fact's value to out (size bytes, NUL-terminated, cut if too
- * long). 0, or -1 if there is no fact of that name. */
+ * long). 0, or -1 if there is no fact of that name or `out` cannot hold a NUL. */
 int inspect_get(const char *name, char *out, size_t size);
 
 /* The name of fact `index`, NULL past the last. */

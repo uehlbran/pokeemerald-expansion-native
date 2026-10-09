@@ -188,10 +188,10 @@ enum include_kind {
 static enum include_kind include_target(const char *line, size_t length, char *name)
 {
     size_t start = 0;
-    size_t word = strlen(INCLUDE_WORD);
+    const size_t word = sizeof INCLUDE_WORD - 1u;
     while (start < length && (line[start] == ' ' || line[start] == '\t'))
         start++;
-    if (length - start < word || strncmp(line + start, INCLUDE_WORD, word) != 0)
+    if (strncmp(line + start, INCLUDE_WORD, word) != 0 || start + word > length)
         return INCLUDE_NOT;
     start += word;
     if (start < length && line[start] != ' ' && line[start] != '\t' && line[start] != '\r' && line[start] != '#')
@@ -256,7 +256,6 @@ static int expand_text(struct expansion *expansion, const char *path, const char
         size_t line_length = strcspn(at, "\n");
         size_t full_length = line_length + (at[line_length] == '\n' ? 1u : 0u);
         char name[PATH_SIZE];
-        char target[PATH_SIZE];
         line_number++;
         switch (include_target(at, line_length, name)) {
         case INCLUDE_NOT:
@@ -271,6 +270,7 @@ static int expand_text(struct expansion *expansion, const char *path, const char
             return -1;
         case INCLUDE_NAMED: {
             struct includer here = { path, line_number };
+            char target[PATH_SIZE];
             if (!sibling_path(path, name, target, sizeof target)) {
                 report(expansion, path, line_number, "the include path is too long", includer);
                 return -1;

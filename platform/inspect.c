@@ -48,7 +48,6 @@
 #include "wallclock.h"
 
 const char inspect_none_text[] = "none";
-#define none_text inspect_none_text
 
 /* 64-bit flag: the (uintptr_t) casts of function pointers in this file (this
  * table and name_function's callers) compare code addresses as integers with
@@ -82,7 +81,7 @@ static const struct inspect_known_callback known_callbacks[] = {
 static void name_function(uintptr_t address, char *out, size_t size)
 {
     if (address == 0) {
-        snprintf(out, size, "%s", none_text);
+        snprintf(out, size, "%s", inspect_none_text);
         return;
     }
     const char *name = inspect_find_known_callback(known_callbacks, sizeof known_callbacks / sizeof known_callbacks[0],
@@ -121,7 +120,7 @@ static void fact_task_first(char *out, size_t size)
             return;
         }
     }
-    snprintf(out, size, "%s", none_text);
+    snprintf(out, size, "%s", inspect_none_text);
 }
 
 static void fact_task_last(char *out, size_t size)
@@ -132,7 +131,7 @@ static void fact_task_last(char *out, size_t size)
             return;
         }
     }
-    snprintf(out, size, "%s", none_text);
+    snprintf(out, size, "%s", inspect_none_text);
 }
 
 /* Every active task's function, by task id, comma separated; cut at the end
@@ -154,24 +153,40 @@ static void fact_tasks(char *out, size_t size)
         used += (size_t)written;
     }
     if (used == 0)
-        snprintf(out, size, "%s", none_text);
+        snprintf(out, size, "%s", inspect_none_text);
+}
+
+/* The save blocks do not exist before the game's boot has set them up (a script's first
+ * frames): every fact that reads one gives its "nothing yet" value until then. */
+static bool save_blocks_ready(void)
+{
+    return gSaveBlock1Ptr != NULL && gSaveBlock2Ptr != NULL;
+}
+
+/* A flag or variable stored in the save block reads 0 until the block exists; the special
+ * variables (SPECIAL_VARS_START and up) are not stored there. */
+static unsigned var_value(uint32_t var)
+{
+    if (var < SPECIAL_VARS_START && !save_blocks_ready())
+        return 0;
+    return (unsigned)VarGet((u16)var);
 }
 
 /* The story variables of the opening (data/maps/LittlerootTown/scripts.inc
  * describes their states). */
 static void fact_intro_state(char *out, size_t size)
 {
-    snprintf(out, size, "%u", (unsigned)VarGet(VAR_LITTLEROOT_INTRO_STATE));
+    snprintf(out, size, "%u", var_value(VAR_LITTLEROOT_INTRO_STATE));
 }
 
 static void fact_town_state(char *out, size_t size)
 {
-    snprintf(out, size, "%u", (unsigned)VarGet(VAR_LITTLEROOT_TOWN_STATE));
+    snprintf(out, size, "%u", var_value(VAR_LITTLEROOT_TOWN_STATE));
 }
 
 static void fact_rival_state(char *out, size_t size)
 {
-    snprintf(out, size, "%u", (unsigned)VarGet(VAR_LITTLEROOT_RIVAL_STATE));
+    snprintf(out, size, "%u", var_value(VAR_LITTLEROOT_RIVAL_STATE));
 }
 
 static void fact_keys_held(char *out, size_t size)
@@ -191,6 +206,10 @@ static void fact_fade_active(char *out, size_t size)
 
 static void fact_player_name(char *out, size_t size)
 {
+    if (!save_blocks_ready()) {
+        snprintf(out, size, "%s", inspect_none_text);
+        return;
+    }
     size_t length = inspect_decode_text(gSaveBlock2Ptr->playerName, sizeof gSaveBlock2Ptr->playerName, out, size);
     while (length > 0 && out[length - 1] == ' ')
         out[--length] = '\0'; /* a name is padded with spaces (byte 0) on a new game */
@@ -198,11 +217,19 @@ static void fact_player_name(char *out, size_t size)
 
 static void fact_player_gender(char *out, size_t size)
 {
+    if (!save_blocks_ready()) {
+        snprintf(out, size, "%s", inspect_none_text);
+        return;
+    }
     snprintf(out, size, "%s", gSaveBlock2Ptr->playerGender == MALE ? "MALE" : "FEMALE");
 }
 
 static void fact_map(char *out, size_t size)
 {
+    if (!save_blocks_ready()) {
+        snprintf(out, size, "%s", inspect_none_text);
+        return;
+    }
     snprintf(out, size, "%d.%d", gSaveBlock1Ptr->location.mapGroup, gSaveBlock1Ptr->location.mapNum);
 }
 
@@ -228,6 +255,10 @@ static const struct known_map known_maps[] = {
 
 static void fact_map_name(char *out, size_t size)
 {
+    if (!save_blocks_ready()) {
+        snprintf(out, size, "%s", inspect_none_text);
+        return;
+    }
     const unsigned id = ((unsigned)gSaveBlock1Ptr->location.mapGroup << 8) | (unsigned)gSaveBlock1Ptr->location.mapNum;
     for (size_t i = 0; i < sizeof known_maps / sizeof known_maps[0]; i++) {
         if (known_maps[i].id == id) {
@@ -240,6 +271,10 @@ static void fact_map_name(char *out, size_t size)
 
 static void fact_pos(char *out, size_t size)
 {
+    if (!save_blocks_ready()) {
+        snprintf(out, size, "%s", inspect_none_text);
+        return;
+    }
     snprintf(out, size, "%d,%d", gSaveBlock1Ptr->pos.x, gSaveBlock1Ptr->pos.y);
 }
 
@@ -270,7 +305,7 @@ static void fact_party0_name(char *out, size_t size)
 {
     unsigned species = party0_species();
     if (species == SPECIES_NONE || species >= NUM_SPECIES) {
-        snprintf(out, size, "%s", none_text);
+        snprintf(out, size, "%s", inspect_none_text);
         return;
     }
     (void)inspect_decode_text(gSpeciesInfo[species].speciesName, sizeof gSpeciesInfo[species].speciesName, out, size);
@@ -313,18 +348,14 @@ static void fact_flash_dirty_writes(char *out, size_t size)
     snprintf(out, size, "%u", (unsigned)flash_write_count());
 }
 
-
-/* The save block does not exist before the game's boot has set it up (a script's first
- * frames): a flag or variable stored in it reads 0 until then. */
 static void arg_flag(const uint32_t arguments[INSPECT_MAX_ARGUMENTS], char *out, size_t size)
 {
-    snprintf(out, size, "%u", (gSaveBlock1Ptr != NULL && FlagGet((u16)arguments[0])) ? 1u : 0u);
+    snprintf(out, size, "%u", (save_blocks_ready() && FlagGet((u16)arguments[0])) ? 1u : 0u);
 }
 
 static void arg_var(const uint32_t arguments[INSPECT_MAX_ARGUMENTS], char *out, size_t size)
 {
-    const bool stored_in_save_block = arguments[0] < SPECIAL_VARS_START;
-    snprintf(out, size, "%u", (stored_in_save_block && gSaveBlock1Ptr == NULL) ? 0u : (unsigned)VarGet((u16)arguments[0]));
+    snprintf(out, size, "%u", var_value(arguments[0]));
 }
 
 static const struct inspect_arg_reader state_arg_readers[] = {
@@ -391,7 +422,8 @@ static int read_argument_fact(const char *name, size_t name_length, const char *
     if (spec == NULL || inspect_arg_parse(spec, argument, values) != 0)
         return -1;
     const enum inspect_arg_fact fact = inspect_arg_id(spec);
-    const struct inspect_arg_reader *reader = find_reader(state_arg_readers, sizeof state_arg_readers / sizeof state_arg_readers[0], fact);
+    const struct inspect_arg_reader *reader =
+        find_reader(state_arg_readers, sizeof state_arg_readers / sizeof state_arg_readers[0], fact);
     if (reader == NULL)
         reader = find_reader(inspect_menu_arg_readers, inspect_menu_arg_reader_count, fact);
     if (reader == NULL)
@@ -404,6 +436,8 @@ int inspect_get(const char *name, char *out, size_t size)
 {
     const char *argument;
     const size_t name_length = inspect_split_name(name, &argument);
+    if (out == NULL || size == 0)
+        return -1;
     if (argument != NULL)
         return read_argument_fact(name, name_length, argument, out, size);
     for (size_t i = 0; i < STATE_FACT_COUNT; i++) {

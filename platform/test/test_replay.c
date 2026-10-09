@@ -40,7 +40,7 @@ struct fake {
 
 static int fake_get_fact(void *context, const char *name, char *out, size_t size)
 {
-    struct fake *fake = context;
+    const struct fake *fake = context;
     for (size_t i = 0; i < FAKE_FACTS; i++) {
         if (strcmp(fake->names[i], name) == 0) {
             snprintf(out, size, "%s", fake->values[i]);
