@@ -27,13 +27,34 @@ end-to-end read, then "32-bit done" here. Milestone 7 (64-bit) follows.
 the milestone logs (`platform/build_glue/BOOT-LOG.md`,
 `platform/test_runner/SUITE-LOG.md`) and in `UPSTREAM_MODIFICATIONS.md`.
 
-**Needs the owner.** Nothing at the moment. Upstream replies, if any, appear
-under "Upstream issues" below with drafted answers awaiting approval.
+**Needs the owner.** rh-hideout's maintainer replied to all seven upstream
+issues citing their LLM policy and said they will close them (details and a
+recommendation under "Upstream issues" below). Nothing was posted in reply.
+Decide whether to engage personally; no action is taken here without you.
 
 ## Upstream issues
 
-No maintainer comments yet on #10892 to #10898 (checked every five
-minutes while the session runs).
+2026-10-09 03:37 UTC: a maintainer (pkmnsnfrn) commented on all seven issues
+(#10892 carries the text, the others point to it). What they said, in
+substance: rh-hideout's LLM policy (from their pull-request template) says
+pull requests with code, comments or descriptions written by an LLM, or with
+commits co-authored by AI, are closed; they admit the issue templates do not
+state this yet and will add it in a few days, apologise for the
+inconvenience, say they believe very strongly that these reports were
+entirely LLM generated, and that they will close them; they invite questions
+on Discord (`pkmnsnfrn`). State when checked: 7 of 7 closed (details
+in the session's scratchpad; recheck with `gh issue view`).
+
+No reply is drafted: the comment asks no factual question, and under the
+approve-before-posting rule nothing is posted. Nothing was posted or opened
+after the comments. Recommendation for the owner: do not reopen or argue on
+GitHub; the seven reports remain the record of the bugs (each row in
+`UPSTREAM_MODIFICATIONS.md` keeps its link, and the bugs stay fixed under
+guards here); if the owner wants rh-hideout to take the fixes, that is a
+conversation for the owner to have personally, on Discord as invited, and
+any pull request would have to be the owner's own work under their policy.
+No further issues or pull requests will be filed upstream by this project
+without an explicit owner decision.
 
 ## Verified by a gate
 
