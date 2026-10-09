@@ -126,7 +126,12 @@ bool8 RunScriptCommand(struct ScriptContext *ctx)
                 return FALSE;
             }
 
+#if PLATFORM_NATIVE
+            if ((SCRIPT_UNTAG(*func))(ctx) == TRUE)
+#else
             if ((*func)(ctx) == TRUE)
+#endif
+#line 130
                 return TRUE;
         }
     }
@@ -613,8 +618,7 @@ static bool32 Script_IsEffectInstrumentedCommand(ScrCmdFunc func)
 {
     // In ROM mirror 1.
 #if PLATFORM_NATIVE
-    // The code is at 0x40000000 and up, its mirror (platform/rom_mirror.h) at +ROM_SIZE.
-    return (((uintptr_t)func) & 0xE000000) == 0x2000000;
+    return script_tag_is_set((uintptr_t)func);
 #else
     return (((uintptr_t)func) & 0xE000000) == 0xA000000;
 #endif
@@ -650,7 +654,12 @@ static bool32 RunScriptImmediatelyUntilEffect_InternalLoop(struct ScriptContext 
                 return TRUE;
 
             // Command which waits for a frame.
+#if PLATFORM_NATIVE
+            if ((SCRIPT_UNTAG(*func))(ctx))
+#else
             if ((*func)(ctx))
+#endif
+#line 648
             {
                 gScriptEffectContext->nextCmd = ctx->scriptPtr;
                 return TRUE;
@@ -723,7 +732,12 @@ bool32 Script_MatchesCallNative(const u8 *script, void *funcPtr, bool32 requestE
     u32 callnativeFunc = (((((script[4] << 8) + script[3]) << 8) + script[2]) << 8) + script[1];
     u32 targetFunc = (u32)funcPtr;
     if (requestEffects)
+#if PLATFORM_NATIVE
+        targetFunc |= SCRIPT_TAG;
+#else
         targetFunc |= 0xA000000;
+#endif
+#line 721
     if (callnativeFunc == targetFunc)
         return TRUE;
     return FALSE;

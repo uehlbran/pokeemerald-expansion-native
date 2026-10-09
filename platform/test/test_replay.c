@@ -256,7 +256,7 @@ PTEST(rejects_over_long_things)
 
 PTEST(accepts_the_longest_value_and_name)
 {
-    char line[256];
+    char line[REPLAY_MAX_LINE_LENGTH + 1];
     char value[REPLAY_MAX_VALUE_LENGTH + 1];
     struct replay_parse_error error;
     memset(value, 'v', sizeof value);

@@ -121,25 +121,3 @@ SECTIONS
     }
 }
 INSERT BEFORE .bss;
-
-/* rom_mirror.c maps the executable's code a second time at its address plus
- * 0x02000000 (the ROM's wait-state 1 window). The kernel starts the brk heap
- * at a random distance above the end of .bss, up to 32 MiB, so without this
- * the heap could begin inside or just below the mirror and the mirror's
- * address would be taken, once in a few runs. This empty section ends .bss
- * above the mirror's end (the end of .text plus the offset, and a page of
- * slack), so the heap always starts above it; it is zero-filled memory the
- * kernel maps with the data, never touched, and rom_mirror_init replaces the
- * part of it the mirror covers (it checks that the mirror lies inside
- * rom_mirror_guard_start .. rom_mirror_guard_end before it replaces
- * anything). */
-SECTIONS
-{
-    rom_mirror_guard (NOLOAD) :
-    {
-        rom_mirror_guard_start = .;
-        . = MAX(., ADDR(.text) + SIZEOF(.text) + 0x02000000 + 0x2000);
-        rom_mirror_guard_end = .;
-    }
-}
-INSERT AFTER .bss;

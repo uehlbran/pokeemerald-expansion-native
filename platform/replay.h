@@ -54,9 +54,9 @@
 
 /* Limits, each reported by the parser when exceeded. */
 #define REPLAY_MAX_COMMANDS 2048u
-#define REPLAY_MAX_LINE_LENGTH 255u
+#define REPLAY_MAX_LINE_LENGTH 511u
 #define REPLAY_MAX_FACT_LENGTH 31u
-#define REPLAY_MAX_VALUE_LENGTH 63u
+#define REPLAY_MAX_VALUE_LENGTH 255u
 #define REPLAY_MAX_NAME_LENGTH 47u
 #define REPLAY_MAX_FRAMES 100000000u
 #define REPLAY_MESSAGE_SIZE 256u

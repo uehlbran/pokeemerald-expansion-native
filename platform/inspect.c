@@ -20,9 +20,12 @@
 
 #include "global.h"
 #include "constants/battle.h"
+#include "constants/map_groups.h"
 #include "constants/species.h"
 #include "intro.h"
 #include "item_menu.h"
+#include "event_data.h"
+#include "constants/vars.h"
 #include "main.h"
 #include "main_menu.h"
 #include "option_menu.h"
@@ -107,6 +110,17 @@ static void fact_task_first(char *out, size_t size)
     snprintf(out, size, "%s", none_text);
 }
 
+static void fact_task_last(char *out, size_t size)
+{
+    for (size_t i = NUM_TASKS; i > 0; i--) {
+        if (gTasks[i - 1].isActive) {
+            name_function((uintptr_t)gTasks[i - 1].func, out, size);
+            return;
+        }
+    }
+    snprintf(out, size, "%s", none_text);
+}
+
 /* Every active task's function, by task id, comma separated; cut at the end
  * of the value ("..." marks a cut). */
 static void fact_tasks(char *out, size_t size)
@@ -127,6 +141,23 @@ static void fact_tasks(char *out, size_t size)
     }
     if (used == 0)
         snprintf(out, size, "%s", none_text);
+}
+
+/* The story variables of the opening (data/maps/LittlerootTown/scripts.inc
+ * describes their states). */
+static void fact_intro_state(char *out, size_t size)
+{
+    snprintf(out, size, "%u", (unsigned)VarGet(VAR_LITTLEROOT_INTRO_STATE));
+}
+
+static void fact_town_state(char *out, size_t size)
+{
+    snprintf(out, size, "%u", (unsigned)VarGet(VAR_LITTLEROOT_TOWN_STATE));
+}
+
+static void fact_rival_state(char *out, size_t size)
+{
+    snprintf(out, size, "%u", (unsigned)VarGet(VAR_LITTLEROOT_RIVAL_STATE));
 }
 
 static void fact_keys_held(char *out, size_t size)
@@ -159,6 +190,38 @@ static void fact_player_gender(char *out, size_t size)
 static void fact_map(char *out, size_t size)
 {
     snprintf(out, size, "%d.%d", gSaveBlock1Ptr->location.mapGroup, gSaveBlock1Ptr->location.mapNum);
+}
+
+/* The maps the replay passes through, by their constants (the game has no
+ * table of names); other maps read "unknown". */
+struct known_map {
+    uint16_t id; /* MAP_*: number | group << 8 */
+    const char *name;
+};
+
+static const struct known_map known_maps[] = {
+    { MAP_INSIDE_OF_TRUCK, "MAP_INSIDE_OF_TRUCK" },
+    { MAP_LITTLEROOT_TOWN, "MAP_LITTLEROOT_TOWN" },
+    { MAP_LITTLEROOT_TOWN_BRENDANS_HOUSE_1F, "MAP_LITTLEROOT_TOWN_BRENDANS_HOUSE_1F" },
+    { MAP_LITTLEROOT_TOWN_BRENDANS_HOUSE_2F, "MAP_LITTLEROOT_TOWN_BRENDANS_HOUSE_2F" },
+    { MAP_LITTLEROOT_TOWN_MAYS_HOUSE_1F, "MAP_LITTLEROOT_TOWN_MAYS_HOUSE_1F" },
+    { MAP_LITTLEROOT_TOWN_MAYS_HOUSE_2F, "MAP_LITTLEROOT_TOWN_MAYS_HOUSE_2F" },
+    { MAP_ROUTE101, "MAP_ROUTE101" },
+    { MAP_ROUTE102, "MAP_ROUTE102" },
+    { MAP_OLDALE_TOWN, "MAP_OLDALE_TOWN" },
+    { MAP_LITTLEROOT_TOWN_PROFESSOR_BIRCHS_LAB, "MAP_LITTLEROOT_TOWN_PROFESSOR_BIRCHS_LAB" },
+};
+
+static void fact_map_name(char *out, size_t size)
+{
+    const unsigned id = ((unsigned)gSaveBlock1Ptr->location.mapGroup << 8) | (unsigned)gSaveBlock1Ptr->location.mapNum;
+    for (size_t i = 0; i < sizeof known_maps / sizeof known_maps[0]; i++) {
+        if (known_maps[i].id == id) {
+            snprintf(out, size, "%s", known_maps[i].name);
+            return;
+        }
+    }
+    snprintf(out, size, "unknown");
 }
 
 static void fact_pos(char *out, size_t size)
@@ -239,13 +302,18 @@ static const struct fact facts[] = {
     { "callback2", fact_callback2 },
     { "task_count", fact_task_count },
     { "task_first", fact_task_first },
+    { "task_last", fact_task_last },
     { "tasks", fact_tasks },
     { "fade_active", fact_fade_active },
+    { "intro_state", fact_intro_state },
+    { "town_state", fact_town_state },
+    { "rival_state", fact_rival_state },
     { "keys_held", fact_keys_held },
     { "keys_new", fact_keys_new },
     { "player_name", fact_player_name },
     { "player_gender", fact_player_gender },
     { "map", fact_map },
+    { "map_name", fact_map_name },
     { "pos", fact_pos },
     { "party_count", fact_party_count },
     { "party0_species", fact_party0_species },

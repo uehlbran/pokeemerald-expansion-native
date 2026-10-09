@@ -15,6 +15,9 @@
 #include "inspect.h"
 #include "video.h"
 
+/* The driver reads facts into buffers of this size; inspect.h promises no fact is longer. */
+_Static_assert(REPLAY_FACT_BUFFER_SIZE >= INSPECT_VALUE_SIZE, "a fact must fit the replay's buffer");
+
 static struct replay_script script;
 static struct replay driver;
 

@@ -19,14 +19,20 @@
  *   task_count        active tasks (gTasks)
  *   task_first        the function of the active task with the lowest id,
  *                     named as callback2 is ("none" without one)
+ *   task_last         the function of the active task with the highest id (the most recently
+ *                     created menu or message task, usually)
  *   tasks             every active task's function, by id, comma separated
  *                     (cut with "..." at the value's size)
  *   fade_active       whether a palette fade is in progress, 0 or 1
+ *   intro_state, town_state, rival_state
+ *                     VAR_LITTLEROOT_INTRO_STATE, VAR_LITTLEROOT_TOWN_STATE and
+ *                     VAR_LITTLEROOT_RIVAL_STATE: the opening's progress
  *   keys_held         the keys the game's last ReadKeys saw held (gMain.heldKeysRaw), "0x%04X"
  *   keys_new          the keys it saw newly pressed that frame (gMain.newKeysRaw)
  *   player_name       gSaveBlock2Ptr->playerName as ASCII, trailing spaces cut
  *   player_gender     MALE or FEMALE
  *   map               gSaveBlock1Ptr->location as "group.number"
+ *   map_name          the MAP_* constant of map, for the maps the replay visits ("unknown" otherwise)
  *   pos               gSaveBlock1Ptr->pos as "x,y" (map tiles)
  *   party_count       gPartiesCount[B_TRAINER_PLAYER]
  *   party0_species    the species number of the first party Pokemon (0: none)
@@ -44,7 +50,7 @@
 #include <stddef.h>
 
 /* The longest value a fact has, including the NUL. */
-#define INSPECT_VALUE_SIZE 64u
+#define INSPECT_VALUE_SIZE 256u
 
 /* Loads the executable's symbols for naming callbacks. A failure is
  * reported and is not fatal: callbacks outside the table then read
