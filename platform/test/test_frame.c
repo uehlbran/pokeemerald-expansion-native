@@ -727,6 +727,47 @@ PTEST(a_flash_write_is_stored_at_the_frame_boundary)
     rmdir(dir);
 }
 
+PTEST(a_failed_save_store_is_retried_after_the_retry_wait_and_flush_reports_it)
+{
+    char dir[256], path[300], missing[320];
+    PT_ASSERT(temp_dir(dir, sizeof dir));
+    snprintf(missing, sizeof missing, "%s/later", dir);
+    snprintf(path, sizeof path, "%s/later/game.sav", dir);
+    PT_ASSERT(start(0, NULL, path));
+    struct stat info;
+    PT_ASSERT_EQ_U32(NativeFlash.eraseFlashSector(0), FLASH_STATUS_OK);
+    PT_ASSERT_EQ_INT(frame_run(), FRAME_CONTINUE); /* the store fails: no such directory */
+    PT_ASSERT(stat(path, &info) != 0);
+    PT_ASSERT_EQ_INT(frame_flush_save(), -1); /* still pending, still failing, reported to main */
+    PT_ASSERT_EQ_INT(mkdir(missing, 0700), 0);
+    for (uint32_t i = 0; i < FRAME_SAVE_RETRY_FRAMES; i++)
+        PT_ASSERT_EQ_INT(frame_run(), FRAME_CONTINUE);
+    PT_ASSERT(stat(path, &info) != 0); /* still waiting out the retry frames */
+    PT_ASSERT_EQ_INT(frame_run(), FRAME_CONTINUE);
+    PT_ASSERT_EQ_INT(stat(path, &info), 0); /* the retry stored it */
+    stop();
+    unlink(path);
+    rmdir(missing);
+    rmdir(dir);
+}
+
+PTEST(flush_stores_a_pending_write_without_running_a_frame)
+{
+    char dir[256], path[300];
+    PT_ASSERT(temp_dir(dir, sizeof dir));
+    snprintf(path, sizeof path, "%s/game.sav", dir);
+    PT_ASSERT(start(0, NULL, path));
+    struct stat info;
+    PT_ASSERT_EQ_INT(frame_flush_save(), 0); /* nothing written, nothing to store */
+    PT_ASSERT(stat(path, &info) != 0);
+    PT_ASSERT_EQ_U32(NativeFlash.eraseFlashSector(0), FLASH_STATUS_OK);
+    PT_ASSERT_EQ_INT(frame_flush_save(), 0);
+    PT_ASSERT_EQ_INT(stat(path, &info), 0);
+    stop();
+    unlink(path);
+    rmdir(dir);
+}
+
 PTEST(a_game_pak_interrupt_stops_the_loop_with_a_failure)
 {
     PT_ASSERT(start(0, NULL, NULL));

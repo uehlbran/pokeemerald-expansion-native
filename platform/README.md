@@ -319,7 +319,7 @@ not). The "Vram" decompressors write 16-bit units only. The tests' expected
 values are worked by hand from GBATEK; where GBATEK leaves a behaviour open,
 `bios.h` says what was chosen.
 
-## The game (`main`, `frame`)
+## The game (`main`, `options`, `frame`)
 
 ```sh
 make -f Makefile.native -j$(nproc) native               # build/native32/pokeemerald-native
@@ -339,7 +339,8 @@ Headless, the keypad reads no keys. A save file this build cannot use
 (corrupt, or written with another struct layout) stops `main` before the
 game starts, so it is never overwritten.
 
-`main.c` starts the modules in dependency order (`module_steps`), checks
+`options.c` (`options.h`, `test/test_options.c`) reads and validates the
+command line and prints the usage text; it starts nothing. `main.c` starts the modules in dependency order (`module_steps`), checks
 each, and stops the ones started, in reverse, on a failure or at the end. It
 then calls expansion's `AgbMain` with two `setjmp` targets: the exit target,
 where the frame hook (a frame limit, the window closed, a failure) and

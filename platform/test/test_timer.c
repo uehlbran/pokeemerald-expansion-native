@@ -70,6 +70,17 @@ PTEST(advance_before_init_changes_nothing)
     teardown();
 }
 
+PTEST(a_cell_written_before_init_is_the_first_reload)
+{
+    REG_TM2CNT_L = 0xFF00; /* written before timer_init */
+    REG_TM2CNT_H = 0;
+    timer_init(fake_raise);
+    REG_TM2CNT_H = TIMER_ENABLE | TIMER_1CLK;
+    timer_advance(0x40);
+    PT_ASSERT_EQ_INT(REG_TM2CNT_L, 0xFF40);
+    teardown();
+}
+
 PTEST(disabled_timer_never_changes)
 {
     setup();
