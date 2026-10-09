@@ -54,12 +54,6 @@ save_image_size=131072
 # --rtc-fixed by the seconds the run took.
 fixed_clock_frames_per_second=60
 
-failures=0
-fail() {
-    echo "FAIL: $*"
-    failures=$((failures + 1))
-}
-
 # "BITS LAYOUT" of a save file with a header, or "none".
 save_layout() {
     if [ "$(head -c ${#save_header_magic} "$1")" != "$save_header_magic" ]; then
@@ -67,26 +61,6 @@ save_layout() {
         return
     fi
     od -A n -t u4 -j 12 -N 8 "$1" | tr -s ' ' | sed 's/^ //'
-}
-
-# Runs binary $1 headless in directory $2 with replay $3 and the save and RTC files there, plus
-# arguments $4...; checks the exit status and the sanitizer reports.
-play() {
-    local binary="$1" dir="$2" script="$3"
-    shift 3
-    echo "== $(basename "$dir"): $binary, $(basename "$script") $*"
-    "$binary" --headless --silent --unthrottled --replay "$script" --out "$dir" \
-        --save "$dir/pokeemerald.sav" --rtc-offset "$dir/pokeemerald.rtc" "$@" \
-        > "$dir/stdout.log" 2> "$dir/stderr.log"
-    local status=$?
-    if [ "$status" -ne 0 ]; then
-        fail "$(basename "$dir"): the replay ended with status $status:"
-        grep -E '^(replay|main|restart|symbols|save_file):' "$dir/stderr.log" | head -20
-    fi
-    if new_sanitizer_reports "$dir/stderr.log" "$dir/sanitizer-new.log"; then
-        fail "$(basename "$dir"): sanitizer reports in $dir/stderr.log:"
-        sort "$dir/sanitizer-new.log" | uniq -c | sort -rn | head -40
-    fi
 }
 
 # Every dump and screenshot in directory $1 against expected/; the names it must have written
@@ -116,19 +90,6 @@ compare_with_expected() {
         want="$(grep_or_die " $name\$" "$expected/screenshots.md5" | cut -d' ' -f1)"
         [ -n "$want" ] || { fail "$(basename "$dir"): $name has no expected checksum"; continue; }
         [ "$(md5sum < "$shot" | cut -d' ' -f1)" = "$want" ] || fail "$(basename "$dir"): $name differs from expected/screenshots.md5"
-    done
-}
-
-# Facts $3... equal in dumps $1 and $2.
-same_facts() {
-    local before_dump="$1" after_dump="$2" key before after
-    shift 2
-    for key in "$@"; do
-        before="$(fact "$before_dump" "$key")"
-        after="$(fact "$after_dump" "$key")"
-        if [ -z "$before" ] || [ "$before" != "$after" ]; then
-            fail "$key was '$before' in $before_dump and '$after' in $after_dump"
-        fi
     done
 }
 
