@@ -450,3 +450,63 @@ A wall-clock limit would add a second, machine-dependent reason for a
 `TIMEOUT` and make the result depend on the host's load. The emulated
 timeout was exercised end to end with a throwaway probe (SUITE-LOG.md,
 "The timeout, end to end").
+
+## 2026-10-09: Short palettes are padded at build time, with an exclusion list
+
+152 generated `.gbapal` files have fewer than 16 colours, and the game
+loads most of them as whole 32-byte banks (`LoadSpritePalette`,
+`LoadPalette(..., PLTT_SIZE_4BPP)`): on the GBA the copy reads the bytes
+after the palette in ROM into colours the sprite never uses; natively it
+reads past the object and the sanitized gate stops. Milestones 3 and 4
+padded ten of them by hand with `[16]` declarations and rows; the debug
+menu reached the species palettes (about 80 files, declared in generated
+headers), where rows do not scale. Chosen: Makefile.native converts
+INCGFX assets into its own directory, `build/assets-native`, through a
+wrapper that zero-pads every `.gbapal` it writes there to a whole number
+of banks; the GBA build's `build/assets` and the ROM are untouched, and
+the wrapper never pads a file outside that directory (a short in-tree
+palette would otherwise change the ROM). Padding is wrong for a palette
+the game loads by `sizeof` or into a sized initialiser (the GBA loads
+exactly its colours; a padded one would black out the rest of the bank):
+those five are listed in `platform/build_glue/unpadded_palettes.txt` with
+the reason, and `check_palette_padding.py` verifies on every link that
+the list is exactly the set of short palettes used that way, so a new
+upstream palette cannot slip into either mistake. The hand-padded guards
+and their rows were removed. Cost: the first native build converts every
+graphic (34 s wall, 10.6 CPU-minutes on 32 cores); `seed-assets` copies a
+GBA build's conversion and regenerates only the palettes (15 s). A copy,
+not hard links: gbagfx truncates its output in place and would rewrite
+the GBA build's file through a link.
+
+## 2026-10-09: Setup loops that spin on the DMA3 queue yield a frame
+
+`CB2_InitPartyMenu`, `CB2_ReloadPartyMenu`, `CB2_InitSummaryScreen`,
+`CB2_Bag`, `CB2_LoadPyramidBagMenu` and `DexNav_RunSetup` run their
+setup state machines in a `while (TRUE)` loop whose steps wait on
+`IsDma3ManagerBusyWithBgCopy`; on the GBA the V-Blank interrupt drains the
+queue under the loop, natively a frame (and the DMA3 manager) runs only
+in `VBlankIntrWait`, so the loop never ended. Rejected: draining the DMA3
+queue inside the query (an expansion-wide behaviour change for one
+caller class) and a conditional `if (busy) VBlankIntrWait()` (a step that
+waits on anything else frame-driven would spin). Chosen: an unconditional
+`VBlankIntrWait()` in each loop body under the guard, as `DoMapLoadLoop`
+already does; a setup step per frame costs a few frames in a replay and
+nothing else. 60 `while (TRUE)` loops exist in expansion; the six above
+are the ones that spin on DMA3, the others are not on this pattern.
+
+## 2026-10-09: The debug-menu gate is a replay with facts, not a menu walker
+
+Gate (e) is `tests/smoke/debug_menu.replay` through the same engine as
+the opening (`lib.sh`): the opening's first steps are `include`d, then the
+debug menu gives items, Pokémon of every generation and form (complex
+gives with shiny, Dynamax, Gigantamax, Tera and a chosen move), fills the
+party into the PC, opens the party, summary and bag screens with a
+screenshot each, fights two trainer battles to the action prompt
+(`battle_main` fact), saves, restarts the process and continues, and
+checks species, extras, moves, bag counts, a flag and a var after
+Continue. Every numeric entry is checked as it is made (`debug_input`).
+Argument facts (`party_extras:N`, `bag_item_count:ID`, `flag:ID`,
+`var:ID`, `party_move:N:M`) are bounds-checked against expansion's
+constants in `platform/inspect_args.c` and are not dumped. Not covered:
+the debug menu's other paths (warps, encounters, sound, cheats, eggs,
+decorations) and movement inside the summary screen.

@@ -1,6 +1,6 @@
 # Status
 
-Last updated 2026-10-09 (milestone 4 done: expansion's test suite runs natively and matches the GBA baseline; milestone 5 in progress).
+Last updated 2026-10-09 (milestone 5 done: the debug-menu gate passes plain and sanitized; milestone 6 next).
 
 This file is the honest ledger. A thing is listed as verified only with
 the gate that proved it. Anything without a gate is unverified, whatever
@@ -20,6 +20,9 @@ we believe about it.
 | The same suite on the sanitized build gives the same per-test results; every sanitizer report has a root cause in expansion's code and is listed with it (SUITE-LOG.md, "The sanitized run") | `make -f Makefile.native -j32 check BITS=32 SANITIZE=1` | green 2026-10-09, 76 s |
 | The native runner's crash recovery (fatal signal, re-exec with the persistent state) works | the suite's own "Tests resume after CRASH" and "fatalf counts as CRASH" tests, in every suite run | green |
 | The native runner's 60-second (emulated) test timeout works for function and battle tests | a throwaway probe run by the test-runner worker (SUITE-LOG.md, "The timeout, end to end"); not part of the suite | observed once |
+| Gate (e): the debug-menu replay drives the 32-bit build headless through the opening, the debug menu (flags, vars, badges, six items, twelve Pokémon across nine generations with forms, shiny, Dynamax, Gigantamax, Tera and a chosen move; two complex gives into the PC), the party, summary and bag screens, two trainer battles to the action prompt, a save, a process restart and Continue, checking the state after each step (20 dumps, 32 screenshots, extras and moves equal across the restart) | `tests/smoke/run_debug_menu.sh build/native32/pokeemerald-native out/` | green 2026-10-09, 28 s |
+| The same replay on the sanitized build is clean (identical dumps and screenshots, no report) | `tests/smoke/run_debug_menu.sh build/native32-san/pokeemerald-native out/` with `ASAN_OPTIONS=halt_on_error=0` | green 2026-10-09, 75 s |
+| The first native build's asset conversion and the seeded one | `make -f Makefile.native -j32 native BITS=32` from nothing, and after `seed-assets` | 34 s wall (10.6 CPU-minutes) and 15 s, measured 2026-10-09 |
 | Soft reset (A+B+Start+Select) re-enters AgbMain and continues | held under gdb from frame 300, plain and sanitized, 1200 frames exit 0 (integration worker's run, not yet a scripted gate) | observed once |
 | Audio is mixed and non-silent in the intro | peak sample 1855 at frame 700 (integration worker's measurement) | observed once |
 | Every native object compiles from a clean clone with the host compiler, 32-bit, TEST=0 and TEST=1 | `make -f Makefile.native -j32 objects BITS=32` (and `TEST=1`) | 928 and 1895 objects, 0 warnings; no link yet |
@@ -33,8 +36,10 @@ The engine's logic is now covered by expansion's suite (gate b) and the
 opening by the replay (gate d); what no gate covers: the renderer and the
 sound mixer beyond the opening's screenshots and the intro's audio
 (expansion's suite runs headless and does not look at the frame buffer),
-everything past Birch's lab in play, every menu the replay does not open
-(the debug menu gate, milestone 5, covers the main ones), the windowed
+everything past Birch's lab in play, every menu neither replay opens
+(the debug menu gate covers the party, summary and bag screens and
+trainer battles; not the debug menu's warps, encounters, sound, cheats,
+eggs or decorations), the windowed
 path (a real SDL window and audio device ran only with SDL's dummy
 drivers), and 64-bit, which does not link yet (two expansion layout
 asserts; milestone 7). Interchange with GBA `.sav` files is not supported
@@ -59,7 +64,7 @@ Nothing yet; nothing exists to be broken.
 | (h) a save written by the 32-bit native build loads correctly in the 64-bit native build (cross-width round-trip; the save container is versioned so this stays true) | milestone 7, not started |
 | (c) GBA target builds and passes the suite | green (above) |
 | (d) deterministic input-replay smoke test through the opening | green on 32-bit, plain and sanitized |
-| (e) debug-menu gate | not started |
+| (e) debug-menu gate | green on 32-bit, plain and sanitized |
 | (f) unit tests and smoke boot clean under sanitizers | unit tests green under ASan+UBSan on 32 and 64-bit; the opening replay and the full suite are clean under ASan+UBSan on 32-bit |
 | (g) this file | current |
 
@@ -110,7 +115,8 @@ Nothing yet; nothing exists to be broken.
 | sanfix (three sanitizer findings in game code) | Sonnet | Sonnet |
 | replay (milestone 3: replay, inspect, restart, smoke test) | Sonnet | Sonnet (two passes) |
 | testrunner (milestone 4: debug channel, crash reboot, arm_division, hydra launcher, the suite's fixes) | Opus | Sonnet |
-| debugmenu (milestone 5: debug-menu gate) | Sonnet | pending |
+| debugmenu (milestone 5: debug-menu gate, replay include and facts, palette padding) | Sonnet | Sonnet |
+| upstream-report (seven issues drafted, triaged against upstream) | Sonnet | Fable (orchestrator) |
 | Research, synthesis, decisions, merges | Fable (orchestrator) | |
 
 ## Environment this was verified in

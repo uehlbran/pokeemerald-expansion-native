@@ -12,8 +12,8 @@ resumes by reading both and first posting what it believes is in flight.
 | 2 | Fork, build system, 32-bit build that boots to the title screen (plain and sanitized); playing the opening needs milestone 3's replay | done 2026-10-09 |
 | 3 | Input-replay smoke test, save round-trip, root-cause fixes | done 2026-10-09 |
 | 4 | Native test-runner integration; suite matches the GBA baseline | done 2026-10-09 (per test the GBA baseline but for the 9 benchmarks; sanitized run clean) |
-| 5 | Debug-menu gate | in progress (worktree debugmenu) |
-| 6 | Unit tests under sanitizers, clang-tidy, cppcheck, `.clang-format` enforced in the gate, docs, the refactoring pass (below); 32-bit done | not started |
+| 5 | Debug-menu gate | done 2026-10-09 |
+| 6 | Unit tests under sanitizers, clang-tidy, cppcheck, `.clang-format` enforced in the gate, docs, the refactoring pass (below); 32-bit done | in progress |
 | 7 | 64-bit audit and build; every gate again, plus the cross-width save round-trip gate (h); the refactoring pass again; 64-bit done | not started |
 | 8 | CI for both targets; Windows (MinGW) and macOS | later |
 
