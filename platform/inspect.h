@@ -88,7 +88,7 @@ int inspect_init(void);
 void inspect_shutdown(void);
 
 /* Writes the fact's value to out (size bytes, NUL-terminated, cut if too
- * long). 0, or -1 if there is no fact of that name or `out` cannot hold a NUL. */
+ * long). 0, or -1 if there is no fact of that name. */
 int inspect_get(const char *name, char *out, size_t size);
 
 /* The name of fact `index`, NULL past the last. */

@@ -157,7 +157,8 @@ static void fact_tasks(char *out, size_t size)
 }
 
 /* The save blocks do not exist before the game's boot has set them up (a script's first
- * frames): every fact that reads one gives its "nothing yet" value until then. */
+ * frames). The facts that read them carry the value they give until then (struct inspect_fact),
+ * and inspect_get does not call their reader before the blocks exist. */
 static bool save_blocks_ready(void)
 {
     return gSaveBlock1Ptr != NULL && gSaveBlock2Ptr != NULL;
@@ -176,17 +177,17 @@ static unsigned var_value(uint32_t var)
  * describes their states). */
 static void fact_intro_state(char *out, size_t size)
 {
-    snprintf(out, size, "%u", var_value(VAR_LITTLEROOT_INTRO_STATE));
+    snprintf(out, size, "%u", (unsigned)VarGet(VAR_LITTLEROOT_INTRO_STATE));
 }
 
 static void fact_town_state(char *out, size_t size)
 {
-    snprintf(out, size, "%u", var_value(VAR_LITTLEROOT_TOWN_STATE));
+    snprintf(out, size, "%u", (unsigned)VarGet(VAR_LITTLEROOT_TOWN_STATE));
 }
 
 static void fact_rival_state(char *out, size_t size)
 {
-    snprintf(out, size, "%u", var_value(VAR_LITTLEROOT_RIVAL_STATE));
+    snprintf(out, size, "%u", (unsigned)VarGet(VAR_LITTLEROOT_RIVAL_STATE));
 }
 
 static void fact_keys_held(char *out, size_t size)
@@ -206,10 +207,6 @@ static void fact_fade_active(char *out, size_t size)
 
 static void fact_player_name(char *out, size_t size)
 {
-    if (!save_blocks_ready()) {
-        snprintf(out, size, "%s", inspect_none_text);
-        return;
-    }
     size_t length = inspect_decode_text(gSaveBlock2Ptr->playerName, sizeof gSaveBlock2Ptr->playerName, out, size);
     while (length > 0 && out[length - 1] == ' ')
         out[--length] = '\0'; /* a name is padded with spaces (byte 0) on a new game */
@@ -217,19 +214,11 @@ static void fact_player_name(char *out, size_t size)
 
 static void fact_player_gender(char *out, size_t size)
 {
-    if (!save_blocks_ready()) {
-        snprintf(out, size, "%s", inspect_none_text);
-        return;
-    }
     snprintf(out, size, "%s", gSaveBlock2Ptr->playerGender == MALE ? "MALE" : "FEMALE");
 }
 
 static void fact_map(char *out, size_t size)
 {
-    if (!save_blocks_ready()) {
-        snprintf(out, size, "%s", inspect_none_text);
-        return;
-    }
     snprintf(out, size, "%d.%d", gSaveBlock1Ptr->location.mapGroup, gSaveBlock1Ptr->location.mapNum);
 }
 
@@ -255,10 +244,6 @@ static const struct known_map known_maps[] = {
 
 static void fact_map_name(char *out, size_t size)
 {
-    if (!save_blocks_ready()) {
-        snprintf(out, size, "%s", inspect_none_text);
-        return;
-    }
     const unsigned id = ((unsigned)gSaveBlock1Ptr->location.mapGroup << 8) | (unsigned)gSaveBlock1Ptr->location.mapNum;
     for (size_t i = 0; i < sizeof known_maps / sizeof known_maps[0]; i++) {
         if (known_maps[i].id == id) {
@@ -271,10 +256,6 @@ static void fact_map_name(char *out, size_t size)
 
 static void fact_pos(char *out, size_t size)
 {
-    if (!save_blocks_ready()) {
-        snprintf(out, size, "%s", inspect_none_text);
-        return;
-    }
     snprintf(out, size, "%d,%d", gSaveBlock1Ptr->pos.x, gSaveBlock1Ptr->pos.y);
 }
 
@@ -364,33 +345,33 @@ static const struct inspect_arg_reader state_arg_readers[] = {
 };
 
 static const struct inspect_fact facts[] = {
-    { "frame", fact_frame },
-    { "callback2", fact_callback2 },
-    { "task_count", fact_task_count },
-    { "task_first", fact_task_first },
-    { "task_last", fact_task_last },
-    { "tasks", fact_tasks },
-    { "fade_active", fact_fade_active },
-    { "intro_state", fact_intro_state },
-    { "town_state", fact_town_state },
-    { "rival_state", fact_rival_state },
-    { "keys_held", fact_keys_held },
-    { "keys_new", fact_keys_new },
-    { "player_name", fact_player_name },
-    { "player_gender", fact_player_gender },
-    { "map", fact_map },
-    { "map_name", fact_map_name },
-    { "pos", fact_pos },
-    { "party_count", fact_party_count },
-    { "party0_species", fact_party0_species },
-    { "party0_name", fact_party0_name },
-    { "in_battle", fact_in_battle },
-    { "battle_main", fact_battle_main },
-    { "script_running", fact_script_running },
-    { "controls_locked", fact_controls_locked },
-    { "save_counter", fact_save_counter },
-    { "save_status", fact_save_status },
-    { "flash_dirty_writes", fact_flash_dirty_writes },
+    { "frame", fact_frame, NULL },
+    { "callback2", fact_callback2, NULL },
+    { "task_count", fact_task_count, NULL },
+    { "task_first", fact_task_first, NULL },
+    { "task_last", fact_task_last, NULL },
+    { "tasks", fact_tasks, NULL },
+    { "fade_active", fact_fade_active, NULL },
+    { "intro_state", fact_intro_state, "0" },
+    { "town_state", fact_town_state, "0" },
+    { "rival_state", fact_rival_state, "0" },
+    { "keys_held", fact_keys_held, NULL },
+    { "keys_new", fact_keys_new, NULL },
+    { "player_name", fact_player_name, inspect_none_text },
+    { "player_gender", fact_player_gender, inspect_none_text },
+    { "map", fact_map, inspect_none_text },
+    { "map_name", fact_map_name, inspect_none_text },
+    { "pos", fact_pos, inspect_none_text },
+    { "party_count", fact_party_count, NULL },
+    { "party0_species", fact_party0_species, NULL },
+    { "party0_name", fact_party0_name, NULL },
+    { "in_battle", fact_in_battle, NULL },
+    { "battle_main", fact_battle_main, NULL },
+    { "script_running", fact_script_running, NULL },
+    { "controls_locked", fact_controls_locked, NULL },
+    { "save_counter", fact_save_counter, NULL },
+    { "save_status", fact_save_status, NULL },
+    { "flash_dirty_writes", fact_flash_dirty_writes, NULL },
 };
 #define STATE_FACT_COUNT (sizeof facts / sizeof facts[0])
 
@@ -432,6 +413,15 @@ static int read_argument_fact(const char *name, size_t name_length, const char *
     return 0;
 }
 
+/* The fact's value, or its pre-boot value while the save blocks do not exist. */
+static void read_fact(const struct inspect_fact *fact, char *out, size_t size)
+{
+    if (fact->value_without_save_blocks != NULL && !save_blocks_ready())
+        snprintf(out, size, "%s", fact->value_without_save_blocks);
+    else
+        fact->read(out, size);
+}
+
 int inspect_get(const char *name, char *out, size_t size)
 {
     const char *argument;
@@ -442,13 +432,13 @@ int inspect_get(const char *name, char *out, size_t size)
         return read_argument_fact(name, name_length, argument, out, size);
     for (size_t i = 0; i < STATE_FACT_COUNT; i++) {
         if (strcmp(facts[i].name, name) == 0) {
-            facts[i].read(out, size);
+            read_fact(&facts[i], out, size);
             return 0;
         }
     }
     for (size_t i = 0; i < inspect_menu_fact_count; i++) {
         if (strcmp(inspect_menu_facts[i].name, name) == 0) {
-            inspect_menu_facts[i].read(out, size);
+            read_fact(&inspect_menu_facts[i], out, size);
             return 0;
         }
     }

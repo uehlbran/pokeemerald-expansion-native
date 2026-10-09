@@ -254,12 +254,12 @@ const size_t inspect_menu_arg_reader_count = sizeof inspect_menu_arg_readers / s
 
 /* In dump order, after the game-state facts. */
 const struct inspect_fact inspect_menu_facts[] = {
-    { "party_species", fact_party_species },
-    { "pc_box0_count", fact_pc_box0_count },
-    { "summary_species", fact_summary_species },
-    { "debug_menu_open", fact_debug_menu_open },
-    { "debug_input", fact_debug_input },
-    { "debug_step", fact_debug_step },
-    { "party_slot", fact_party_slot },
+    { "party_species", fact_party_species, NULL },
+    { "pc_box0_count", fact_pc_box0_count, NULL },
+    { "summary_species", fact_summary_species, NULL },
+    { "debug_menu_open", fact_debug_menu_open, NULL },
+    { "debug_input", fact_debug_input, NULL },
+    { "debug_step", fact_debug_step, NULL },
+    { "party_slot", fact_party_slot, NULL },
 };
 const size_t inspect_menu_fact_count = sizeof inspect_menu_facts / sizeof inspect_menu_facts[0];
