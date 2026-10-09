@@ -3,7 +3,11 @@
 	.equiv MUSIC_PLAYER_SE2,2
 	.equiv MUSIC_PLAYER_SE3,3
 
+	.ifdef NATIVE_POINTER_SIZE_8  @ PLATFORM_NATIVE, 64-bit: struct Song has a pointer
+	.align 3
+	.else
 	.align 2
+	.endif
 
 gSongTable::
 	song mus_dummy, MUSIC_PLAYER_BGM, 0

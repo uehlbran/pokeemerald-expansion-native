@@ -39,7 +39,11 @@
 	.space 1  @ Padding
 	.2byte \trainer_type
 	.2byte \sight_radius_tree_etc
+	.ifdef NATIVE_POINTER_SIZE_8  @ PLATFORM_NATIVE, 64-bit: struct ObjectEventTemplate is 28 bytes
+	.8byte \script
+	.else
 	.4byte \script
+	.endif
 	.2byte \event_flag
 	.space 2  @ Padding
 	inc _num_npcs
@@ -55,7 +59,11 @@
 	.space 3  @ Padding
 	.2byte \target_map_id & 0xFF  @ map num
 	.2byte \target_map_id >> 8    @ map group
+	.ifdef NATIVE_POINTER_SIZE_8  @ PLATFORM_NATIVE, 64-bit: struct ObjectEventTemplate is 28 bytes
+	.space 12  @ Padding
+	.else
 	.space 8  @ Padding
+	.endif
 	inc _num_npcs
 	.endm
 
@@ -76,8 +84,13 @@
 	.space 1  @ Padding
 	.2byte \var
 	.2byte \varValue
+	.ifdef NATIVE_POINTER_SIZE_8  @ PLATFORM_NATIVE, 64-bit: struct CoordEvent is 24 bytes
+	.space 6  @ Padding
+	.8byte \script
+	.else
 	.space 2  @ Padding
 	.4byte \script
+	.endif
 	inc _num_traps
 	.endm
 
@@ -94,7 +107,11 @@
 	.byte \elevation
 	.byte \kind
 	.space 2  @ Padding
+	.ifdef NATIVE_POINTER_SIZE_8  @ PLATFORM_NATIVE, 64-bit: struct BgEvent is 16 bytes
+	.8byte \arg6
+	.else
 	.4byte \arg6
+	.endif
 	inc _num_signs
 	.endm
 
@@ -125,7 +142,12 @@
 	@ Defines the table of event data for a map. Mirrors the struct layout of MapEvents in include/global.fieldmap.h
 	.macro map_events npcs:req, warps:req, traps:req, signs:req
 	.byte _num_npcs, _num_warps, _num_traps, _num_signs
+	.ifdef NATIVE_POINTER_SIZE_8  @ PLATFORM_NATIVE, 64-bit: struct MapEvents is 40 bytes
+	.space 4  @ Padding
+	.8byte \npcs, \warps, \traps, \signs
+	.else
 	.4byte \npcs, \warps, \traps, \signs
+	.endif
 	reset_map_events
 	.endm
 

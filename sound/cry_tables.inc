@@ -1,4 +1,8 @@
+	.ifdef NATIVE_POINTER_SIZE_8  @ PLATFORM_NATIVE, 64-bit: struct ToneData has a pointer
+	.align 3
+	.else
 	.align 2
+	.endif
 gCryTable::
 .if P_CRIES_ENABLED == TRUE
 .if P_FAMILY_BULBASAUR == TRUE
@@ -2554,7 +2558,11 @@ gCryTable::
 .endif @ P_FAMILY_PECHARUNT
 .endif @ P_CRIES_ENABLED
 
+	.ifdef NATIVE_POINTER_SIZE_8  @ PLATFORM_NATIVE, 64-bit: struct ToneData has a pointer
+	.align 3
+	.else
 	.align 2
+	.endif
 gCryTable_Reverse::
 .if P_CRIES_ENABLED == TRUE
 .if P_FAMILY_BULBASAUR == TRUE

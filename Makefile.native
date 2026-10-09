@@ -96,8 +96,15 @@
 # that tests use from inline assembly are prepared the same way (see
 # OVERWORLD_SCRIPT_MACROS).
 #
-# 64-bit: the data keeps its 4-byte pointers (.4byte), which assembles but
-# does not match 8-byte C pointers; that is the 64-bit milestone's work.
+# 64-bit: the C structs that read the data have 8-byte pointers (struct
+# MapHeader, struct ToneData, the script command tables, ...), while the
+# script and song bytecode keeps 4-byte addresses. The 64-bit build assembles
+# with NATIVE_POINTER_SIZE_8 defined, which the guarded macros in asm/macros/
+# and the table files test (docs/UPSTREAM_MODIFICATIONS.md), and passes
+# --pointer-size 8 to the filter for the raw words no macro writes (mapjson's
+# output, mid2agb's song headers, a few hand-written tables). The 64-bit link
+# then checks every address word against platform/build_glue/
+# data_address_words.txt (DATA_RELOCATIONS_CHECKED, below).
 # --------------------------------------------------------------------------
 
 # 32 or 64. 32 is the first milestone; 64 must keep compiling.
@@ -230,9 +237,32 @@ ASM_FILTER := $(PYTHON) -I $(ASM_FILTER_SCRIPT)
 ASM_FILTER_CHECKED := $(OBJ_DIR)/asm_filter.checked
 # The assembler reads the filtered program on stdin, as every recipe that
 # uses $(AS) pipes into it (expansion's data rules and map_data_rules.mk).
-AS := $(ASM_FILTER) | $(HOST_AS)
+AS = $(ASM_FILTER) $(ASM_FILTER_POINTERS) | $(HOST_AS)
 # --noexecstack: the data needs no executable stack (ld warns otherwise).
 ASFLAGS := --$(BITS) --noexecstack --defsym MODERN=1 --defsym $(GAME_VERSION)=1 --defsym PLATFORM_NATIVE=1
+
+# The size of the pointers the data is laid out for: the C pointer size, 8
+# at BITS=64 (see the 64-bit note at the top). DATA_POINTER_SIZE=4 at
+# BITS=64 assembles the data with 4-byte pointers; only the relocation
+# check's reference objects are built that way, and the check fails a link
+# of them.
+ifeq ($(BITS),64)
+  DATA_POINTER_SIZE ?= 8
+else
+  DATA_POINTER_SIZE := 4
+endif
+ifeq (,$(filter 4 8,$(DATA_POINTER_SIZE)))
+  $(error DATA_POINTER_SIZE must be 4 or 8, not '$(DATA_POINTER_SIZE)')
+endif
+# Which of the filter's 8-byte rules apply (asm_filter.py, --input): the
+# songs and the map data say so where their recipes are.
+ASM_FILTER_INPUT := data
+ifeq ($(DATA_POINTER_SIZE),8)
+  ASFLAGS += --defsym NATIVE_POINTER_SIZE_8=1
+  ASM_FILTER_POINTERS = --pointer-size 8 --input $(ASM_FILTER_INPUT)
+  # Made by the relocation check (below); the link waits for it.
+  DATA_RELOCATIONS_CHECKED := $(OBJ_DIR)/data_relocations.checked
+endif
 
 # --------------------------------------------------------------------------
 # Tools (TOOLS_DIR, the `tools` target) come from expansion's make_tools.mk.
@@ -401,7 +431,7 @@ platform-lib:
 
 $(PLATFORM_LIB): platform-lib ;
 
-$(NATIVE_EXE): $(OBJS) $(PLATFORM_LIB) $(NATIVE_LINKER_SCRIPTS) | check-palette-padding
+$(NATIVE_EXE): $(OBJS) $(PLATFORM_LIB) $(NATIVE_LINKER_SCRIPTS) | check-palette-padding $(DATA_RELOCATIONS_CHECKED)
 	@echo "$(HOST_CC) <link> -o $@"
 	@$(HOST_CC) $(NATIVE_LDFLAGS) -o $@ $(OBJS) $(PLATFORM_LIB) $(NATIVE_LDLIBS)
 
@@ -618,7 +648,10 @@ endif
 
 # --------------------------------------------------------------------------
 # Data assembly: expansion's recipe, with $(AS) being the filter plus the
-# host assembler. map_data_rules.mk supplies maps.o and map_events.o.
+# host assembler. map_data_rules.mk supplies maps.o and map_events.o, which
+# are mapjson's output to the filter's 8-byte rules.
+
+$(DATA_ASM_BUILDDIR)/maps.o $(DATA_ASM_BUILDDIR)/map_events.o: private ASM_FILTER_INPUT := mapjson
 
 $(DATA_ASM_BUILDDIR)/%.o: $(DATA_ASM_SUBDIR)/%.s
 	$(PREPROC) -s $< charmap.txt | $(CPP) $(CPPFLAGS) $(INCLUDE_SCANINC_ARGS) - | $(PREPROC) -ie $< charmap.txt | $(AS) $(ASFLAGS) -o $@
@@ -637,9 +670,10 @@ endif
 MPLAYDEF_NATIVE := $(OBJ_DIR)/sound/MPlayDef.s
 
 $(MID_BUILDDIR)/%.o: $(MID_ASM_DIR)/%.s
-	$(ASM_FILTER) < $< | $(HOST_AS) $(ASFLAGS) -I $(dir $(MPLAYDEF_NATIVE)) -o $@
+	$(ASM_FILTER) $(ASM_FILTER_POINTERS) < $< | $(HOST_AS) $(ASFLAGS) -I $(dir $(MPLAYDEF_NATIVE)) -o $@
 
 $(MID_OBJS): $(MPLAYDEF_NATIVE)
+$(MID_OBJS): private ASM_FILTER_INPUT := song
 
 $(MPLAYDEF_NATIVE): sound/MPlayDef.s $(ASM_FILTER_CHECKED)
 	@mkdir -p $(@D)
@@ -653,3 +687,25 @@ $(ASM_FILTER_CHECKED): $(ASM_FILTER_SCRIPT)
 	@mkdir -p $(@D)
 	$(ASM_FILTER) --self-test
 	@touch $@
+
+# The 64-bit link checks the address words of every data object and song
+# (platform/build_glue/check_relocations.py, which explains the rules)
+# against data_address_words.txt, and their count against the same objects
+# assembled with 4-byte pointers, which a second make builds under
+# $(DATA_POINTER4_DIR) for that purpose only.
+ifeq ($(DATA_POINTER_SIZE),8)
+CHECK_RELOCATIONS_SCRIPT := platform/build_glue/check_relocations.py
+DATA_ADDRESS_WORDS := platform/build_glue/data_address_words.txt
+DATA_POINTER4_DIR := $(OBJ_DIR)/pointer4
+CHECKED_DATA_OBJS := $(patsubst $(OBJ_DIR)/%,%,$(DATA_ASM_OBJS) $(MID_OBJS))
+
+$(DATA_RELOCATIONS_CHECKED): $(DATA_ASM_OBJS) $(MID_OBJS) $(CHECK_RELOCATIONS_SCRIPT) $(DATA_ADDRESS_WORDS)
+	@echo "$(MAKE) -f Makefile.native BITS=$(BITS) TEST=$(TEST) DATA_POINTER_SIZE=4 OBJ_DIR=$(DATA_POINTER4_DIR) <data objects>"
+	@+$(MAKE) -f Makefile.native BITS=$(BITS) TEST=$(TEST) DATA_POINTER_SIZE=4 OBJ_DIR=$(DATA_POINTER4_DIR) \
+	    $(addprefix $(DATA_POINTER4_DIR)/,$(CHECKED_DATA_OBJS))
+	$(PYTHON) -I $(CHECK_RELOCATIONS_SCRIPT) --self-test
+	@echo "$(PYTHON) -I $(CHECK_RELOCATIONS_SCRIPT) --list $(DATA_ADDRESS_WORDS) --objdir $(OBJ_DIR) --reference $(DATA_POINTER4_DIR) <data objects>"
+	@$(PYTHON) -I $(CHECK_RELOCATIONS_SCRIPT) --list $(DATA_ADDRESS_WORDS) --objdir $(OBJ_DIR) \
+	    --reference $(DATA_POINTER4_DIR) $(CHECKED_DATA_OBJS)
+	@touch $@
+endif

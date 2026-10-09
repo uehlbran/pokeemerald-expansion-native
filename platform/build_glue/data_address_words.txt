@@ -1,0 +1,67 @@
+# The address words in the assembled data, for check_relocations.py, which
+# the 64-bit link runs (Makefile.native). One rule per line:
+#
+#     object  symbol  class
+#
+# object is an object's path under the build directory, symbol a label in
+# it (both may use * and ?; {stem} in a symbol is the object's file name
+# without .o). The first rule that matches a symbol gives its class. Every
+# address word belongs to the symbol at or before it; every such symbol
+# must match a rule, and every rule must match a symbol.
+#
+#   pointer   C reads these words as 8-byte pointers at 64 bits (struct or
+#             array members): each must be 8 bytes and 8-byte aligned.
+#   packed    8-byte pointers in a packed struct (ObjectEventTemplate is
+#             packed, aligned(4)); any alignment.
+#   tone      an array of struct ToneData (24 bytes at 64 bits): the wav
+#             pointer is 8 bytes at offset 8; voice_keysplit's key-split
+#             table address stays 4 bytes in attack..release (offset 16).
+#   bytecode  script, battle, animation, contest and song bytecode, read a
+#             byte at a time (T1_READ_PTR, ScriptReadWord, the m4a
+#             sequencer): every address stays 4 bytes.
+#   label     a symbol that owns no data: keysplit_* labels sit before
+#             their table (sound/keysplit_tables.inc), inside the
+#             voicegroup before it.
+#
+# Derived from the milestone 7 inventory (section 1.5, "address words in
+# the assembled data"). An upstream table or object that is not here fails
+# the 64-bit build until it is classified.
+
+# mapjson output: map layouts, headers, groups and connections
+data/maps.o                             *                               pointer
+# map events (asm/macros/map.inc)
+data/map_events.o                       *_ObjectEvents                  packed
+data/map_events.o                       *                               pointer
+
+# sound/: voicegroups, cries, the music player and song tables
+data/sound_data.o                       keysplit_*                      label
+data/sound_data.o                       voicegroup_*                    tone
+data/sound_data.o                       gCryTable                       tone
+data/sound_data.o                       gCryTable_Reverse               tone
+data/sound_data.o                       gMPlayTable                     pointer
+data/sound_data.o                       gSongTable                      pointer
+# mid2agb songs: the header (struct SongHeader) is the label named after
+# the file; the tracks are bytecode
+sound/songs/midi/*.o                    {stem}                          pointer
+sound/songs/midi/*.o                    *                               bytecode
+
+# hand-written tables of C pointers in the script objects
+data/event_scripts.o                    gScriptCmdTable                 pointer
+data/event_scripts.o                    gScriptCmdTableEnd              pointer
+data/event_scripts.o                    gSpecialVars                    pointer
+data/event_scripts.o                    gSpecials                       pointer
+data/event_scripts.o                    gStdScripts                     pointer
+data/event_scripts.o                    *                               bytecode
+data/battle_scripts_2.o                 gBattlescriptsForUsingItem      pointer
+data/battle_scripts_2.o                 gBattlescriptsForSafariActions  pointer
+data/battle_scripts_2.o                 *                               bytecode
+data/contest_ai_scripts.o               gContestAI_ScriptsTable         pointer
+data/contest_ai_scripts.o               *                               bytecode
+data/field_effect_scripts.o             gFieldEffectScriptPointers      pointer
+data/field_effect_scripts.o             *                               bytecode
+data/mystery_event_script_cmd_table.o   gMysteryEventScriptCmdTable     pointer
+
+# bytecode only
+data/battle_anim_scripts.o              *                               bytecode
+data/battle_scripts_1.o                 *                               bytecode
+data/mystery_gift.o                     *                               bytecode

@@ -180,6 +180,11 @@ git diff OLD NEW -- tools/mgba-rom-test-hydra tools/patchelf tools/scaninc tools
   undefined symbol shows up at link time and belongs in that table.
 - `platform/build_glue/asm_filter.py`, `c_filter.sed`,
   `overworld_macros.py`: new assembler constructs or `preproc` output.
+- `platform/build_glue/data_address_words.txt`: the address words of the
+  assembled data, per object and label. A new table or data object fails
+  the 64-bit link's relocation check (`check_relocations.py`) until it is
+  classified there, and laid out for 8-byte pointers if C reads it as
+  pointers.
 - The assembly translated or replaced in `platform/`: `src/m4a_1.s`
   (`platform/m4a/`; its differential test against the ARM original is run by
   hand: `make -C platform/m4a/difftest run`, needs qemu-arm, see

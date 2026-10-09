@@ -5,10 +5,18 @@
 	.set SCRIPT_CMD_TABLE_ENTRY_MACRO, 1
 	.macro script_cmd_table_entry constant:req, value:req, requests_effects=0
 	.if ALLOCATE_SCRIPT_CMD_TABLE
+	.ifdef NATIVE_POINTER_SIZE_8  @ PLATFORM_NATIVE, 64-bit: gScriptCmdTable holds 8-byte function pointers
+	.if \requests_effects == 0
+	.8byte \value
+	.else
+	.8byte \value + ROM_SIZE
+	.endif
+	.else
 	.if \requests_effects == 0
 	.4byte \value
 	.else
 	.4byte \value + ROM_SIZE
+	.endif
 	.endif
 	.else
 	enum \constant
@@ -19,7 +27,11 @@
 
 	enum_start
 	.if ALLOCATE_SCRIPT_CMD_TABLE
+	.ifdef NATIVE_POINTER_SIZE_8  @ PLATFORM_NATIVE, 64-bit: gScriptCmdTable holds 8-byte function pointers
+	.align 3
+	.else
 	.align 2
+	.endif
 gScriptCmdTable::
 	.endif
 	script_cmd_table_entry SCR_OP_NOP                           ScrCmd_nop,                         requests_effects=1  @ 0x00
@@ -256,5 +268,9 @@ gScriptCmdTable::
 
 	.if ALLOCATE_SCRIPT_CMD_TABLE
 gScriptCmdTableEnd::
+	.ifdef NATIVE_POINTER_SIZE_8  @ PLATFORM_NATIVE, 64-bit: gScriptCmdTableEnd is a ScrCmdFunc array too
+	.8byte ScrCmd_nop
+	.else
 	.4byte ScrCmd_nop
+	.endif
 	.endif
