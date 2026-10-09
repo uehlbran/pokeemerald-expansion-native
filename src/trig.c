@@ -520,6 +520,15 @@ s16 Sin(s16 index, s16 amplitude)
 // amplitude * cos(index*(π/128))
 s16 Cos(s16 index, s16 amplitude)
 {
+#if PLATFORM_NATIVE
+    // AnimZapCannonSpark_Step passes an unmasked angle, so index + 64 can be
+    // 320, the same one-past-the-end read as AnimTask_ExtrasensoryDistortion_Step;
+    // the GBA gets 0x041E there (include/trig.h). Other out-of-table indices
+    // (336 and on, and Sin's -64) have no ROM evidence collected and are left.
+    if (index + 64 == SINE_TABLE_LENGTH)
+        return (amplitude * SINE_TABLE_GBA_READ_END) >> 8;
+#endif
+#line 523
     return (amplitude * gSineTable[index + 64]) >> 8;
 }
 
