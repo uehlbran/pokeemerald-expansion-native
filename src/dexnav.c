@@ -2280,7 +2280,15 @@ static bool8 DexNav_DoGfxSetup(void)
 
 static void DexNav_RunSetup(void)
 {
+#if PLATFORM_NATIVE
+    // On the GBA the VBlank interrupt drains the DMA3 queue while this loop spins on
+    // IsDma3ManagerBusyWithBgCopy; natively a frame passes only in VBlankIntrWait.
+    while (!DexNav_DoGfxSetup())
+        VBlankIntrWait();
+#else
     while (!DexNav_DoGfxSetup()) {}
+#endif
+#line 2284
 }
 
 // Entry point for the dexnav GUI

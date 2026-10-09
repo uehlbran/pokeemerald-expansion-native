@@ -69,6 +69,12 @@ PTEST(parses_press_times_and_defaults_to_one_press)
     c = only_command("press B");
     PT_ASSERT(c != NULL);
     PT_ASSERT_EQ_INT(c->number, 1);
+    c = only_command("press A times    3");
+    PT_ASSERT(c != NULL);
+    PT_ASSERT_EQ_INT(c->number, 3);
+    c = only_command("press A times 10000");
+    PT_ASSERT(c != NULL);
+    PT_ASSERT_EQ_INT(c->number, 10000);
 }
 
 PTEST(parses_a_fact_name_with_an_argument)
@@ -207,6 +213,7 @@ PTEST(rejects_bad_press_times)
     assert_parse_error("press A times 0", 1, "at least 1");
     assert_parse_error("press A times x", 1, "at least 1");
     assert_parse_error("press A times -3", 1, "at least 1");
+    assert_parse_error("press A times 10001", 1, "at most 10000");
     assert_parse_error("press times 3", 1, "unknown key");
     assert_parse_error("press X times 3", 1, "unknown key 'X'");
 }

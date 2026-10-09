@@ -10,7 +10,7 @@
  *   frame N                    advance to absolute frame N (replay_step call N)
  *   wait N                     advance N frames
  *   press KEYS                 hold KEYS for one frame, release them for one
- *   press KEYS times N         N such presses in a row (the numeric entry of the debug menu)
+ *   press KEYS times N         N such presses in a row, N from 1 to REPLAY_MAX_PRESS_TIMES (the debug menu's numeric entry)
  *   hold KEYS                  hold KEYS until released
  *   release KEYS               stop holding KEYS
  *   hold KEYS for N            hold KEYS for N frames, then release them
@@ -64,6 +64,8 @@
 #define REPLAY_MAX_VALUE_LENGTH 255u
 #define REPLAY_MAX_NAME_LENGTH 47u
 #define REPLAY_MAX_FRAMES 100000000u
+/* `press KEYS times N`: the largest N (a typo of an extra digit would otherwise run for minutes). */
+#define REPLAY_MAX_PRESS_TIMES 10000u
 #define REPLAY_MESSAGE_SIZE 256u
 #define REPLAY_PATH_SIZE 512u
 #define REPLAY_FACT_BUFFER_SIZE (REPLAY_MAX_VALUE_LENGTH + 1u)
@@ -176,6 +178,9 @@ enum replay_status replay_step(struct replay *replay);
 
 /* The failure, as "line N: ..." (empty unless REPLAY_FAILED). */
 const char *replay_message(const struct replay *replay);
+
+/* The script line of the failed command (REPLAY_FAILED), 0 if none. */
+uint32_t replay_failed_line(const struct replay *replay);
 
 /* The line of the `restart` that ended the run (REPLAY_RESTART). */
 uint32_t replay_restart_line(const struct replay *replay);

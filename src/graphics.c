@@ -29,34 +29,13 @@ const u32 gBattleAnimSpriteGfx_EnergyBall[] = INCGFX_U32("graphics/battle_anims/
 const u16 gBattleAnimSpritePal_EnergyBall[] = INCGFX_U16("graphics/battle_anims/sprites/energy_ball.png", ".gbapal");
 
 const u32 gBattleAnimSpriteGfx_MegaStone[] = INCGFX_U32("graphics/battle_anims/sprites/mega_stone.png", ".4bpp.smol");
-#if PLATFORM_NATIVE
-// The palette has 8 colours (16 bytes) but LoadSpritePalette loads 16; pad it instead of reading past the array.
-const u16 gBattleAnimSpritePal_MegaStone[16] = INCGFX_U16("graphics/battle_anims/sprites/mega_stone.png", ".gbapal");
-#else
-#line 32
 const u16 gBattleAnimSpritePal_MegaStone[] = INCGFX_U16("graphics/battle_anims/sprites/mega_stone.png", ".gbapal");
-#endif
-#line 33
 
 const u32 gBattleAnimSpriteGfx_MegaParticles[] = INCGFX_U32("graphics/battle_anims/sprites/mega_particles.png", ".4bpp.smol");
-#if PLATFORM_NATIVE
-// The palette has 10 colours (20 bytes) but LoadSpritePalette loads 16; pad it instead of reading past the array.
-const u16 gBattleAnimSpritePal_MegaParticles[16] = INCGFX_U16("graphics/battle_anims/sprites/mega_particles.png", ".gbapal");
-#else
-#line 35
 const u16 gBattleAnimSpritePal_MegaParticles[] = INCGFX_U16("graphics/battle_anims/sprites/mega_particles.png", ".gbapal");
-#endif
-#line 36
 
 const u32 gBattleAnimSpriteGfx_MegaSymbol[] = INCGFX_U32("graphics/battle_anims/sprites/mega_symbol.png", ".4bpp.smol");
-#if PLATFORM_NATIVE
-// The palette has 10 colours (20 bytes) but LoadSpritePalette loads 16; pad it instead of reading past the array.
-const u16 gBattleAnimSpritePal_MegaSymbol[16] = INCGFX_U16("graphics/battle_anims/sprites/mega_symbol.png", ".gbapal");
-#else
-#line 38
 const u16 gBattleAnimSpritePal_MegaSymbol[] = INCGFX_U16("graphics/battle_anims/sprites/mega_symbol.png", ".gbapal");
-#endif
-#line 39
 
 const u32 gBattleAnimSpriteGfx_AlphaSymbol[] = INCGFX_U32("graphics/battle_anims/sprites/alpha_symbol.png", ".4bpp.smol");
 const u16 gBattleAnimSpritePal_AlphaSymbol[] = INCGFX_U16("graphics/battle_anims/sprites/alpha_symbol.png", ".gbapal");
@@ -404,47 +383,19 @@ const u16 gBattleAnimSpritePal_WavingHand[] = INCGFX_U16("graphics/battle_anims/
 const u32 gBattleAnimSpriteGfx_WavingHand[] = INCGFX_U32("graphics/battle_anims/sprites/waving_hand.png", ".4bpp.smol");
 
 const u32 gBattleAnimSpriteGfx_Feint[] = INCGFX_U32("graphics/battle_anims/sprites/feint_punch.png", ".4bpp.smol");
-#if PLATFORM_NATIVE
-// The palette has 5 colours (10 bytes) but LoadSpritePalette loads 16; pad it instead of reading past the array.
-const u16 gBattleAnimSpritePal_Feint[16] = INCGFX_U16("graphics/battle_anims/sprites/feint_punch.png", ".gbapal");
-#else
-#line 386
 const u16 gBattleAnimSpritePal_Feint[] = INCGFX_U16("graphics/battle_anims/sprites/feint_punch.png", ".gbapal");
-#endif
-#line 387
 
 const u32 gBattleAnimSpriteGfx_TrumpCard[] = INCGFX_U32("graphics/battle_anims/sprites/trump_cards.png", ".4bpp.smol");
-#if PLATFORM_NATIVE
-// The palette has 4 colours (8 bytes) but LoadSpritePalette loads 16; pad it instead of reading past the array.
-const u16 gBattleAnimSpritePal_TrumpCard[16] = INCGFX_U16("graphics/battle_anims/sprites/trump_cards.png", ".gbapal");
-#else
-#line 389
 const u16 gBattleAnimSpritePal_TrumpCard[] = INCGFX_U16("graphics/battle_anims/sprites/trump_cards.png", ".gbapal");
-#endif
-#line 390
 
 const u32 gBattleAnimSpriteGfx_TrumpCardParticles[] = INCGFX_U32("graphics/battle_anims/sprites/trump_card_particles.png", ".4bpp.smol");
-#if PLATFORM_NATIVE
-// The palette has 4 colours (8 bytes) but LoadSpritePalette loads 16; pad it instead of reading past the array.
-const u16 gBattleAnimSpritePal_TrumpCardParticles[16] = INCGFX_U16("graphics/battle_anims/sprites/trump_card_particles.png", ".gbapal");
-#else
-#line 392
 const u16 gBattleAnimSpritePal_TrumpCardParticles[] = INCGFX_U16("graphics/battle_anims/sprites/trump_card_particles.png", ".gbapal");
-#endif
-#line 393
 
 const u32 gBattleAnimSpriteGfx_Acupressure[] = INCGFX_U32("graphics/battle_anims/sprites/acupressure.png", ".4bpp.smol");
 const u16 gBattleAnimSpritePal_Acupressure[] = INCGFX_U16("graphics/battle_anims/sprites/acupressure.png", ".gbapal");
 
 const u32 gBattleAnimSpriteGfx_WringOut[] = INCGFX_U32("graphics/battle_anims/sprites/wring_out.png", ".4bpp.smol");
-#if PLATFORM_NATIVE
-// The palette has 7 colours (14 bytes) but LoadSpritePalette loads 16; pad it instead of reading past the array.
-const u16 gBattleAnimSpritePal_WringOut[16] = INCGFX_U16("graphics/battle_anims/sprites/wring_out.png", ".gbapal");
-#else
-#line 398
 const u16 gBattleAnimSpritePal_WringOut[] = INCGFX_U16("graphics/battle_anims/sprites/wring_out.png", ".gbapal");
-#endif
-#line 399
 
 const u32 gBattleAnimSpriteGfx_ClosingEye[] = INCGFX_U32("graphics/battle_anims/sprites/closing_eye.png", ".4bpp.smol");
 const u16 gBattleAnimSpritePal_ClosingEye[] = INCGFX_U16("graphics/battle_anims/sprites/closing_eye.png", ".gbapal");
@@ -488,14 +439,7 @@ const u32 gBattleAnimSpriteGfx_WorrySeed[] = INCGFX_U32("graphics/battle_anims/s
 const u16 gBattleAnimSpritePal_WorrySeed[] = INCGFX_U16("graphics/battle_anims/sprites/worry_seed.png", ".gbapal");
 
 const u32 gBattleAnimSpriteGfx_SmallCloud[] = INCGFX_U32("graphics/battle_anims/sprites/small_cloud.png", ".4bpp.smol");
-#if PLATFORM_NATIVE
-// The palette has 5 colours (10 bytes) but LoadSpritePalette loads 16; pad it instead of reading past the array.
-const u16 gBattleAnimSpritePal_SmallCloud[16] = INCGFX_U16("graphics/battle_anims/sprites/small_cloud.png", ".gbapal");
-#else
-#line 442
 const u16 gBattleAnimSpritePal_SmallCloud[] = INCGFX_U16("graphics/battle_anims/sprites/small_cloud.png", ".gbapal");
-#endif
-#line 443
 
 const u32 gBattleAnimSpriteGfx_AttackOrder[] = INCGFX_U32("graphics/battle_anims/sprites/attack_order.png", ".4bpp.smol");
 const u16 gBattleAnimSpritePal_AttackOrder[] = INCGFX_U16("graphics/battle_anims/sprites/attack_order.png", ".gbapal");

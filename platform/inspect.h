@@ -38,6 +38,8 @@
  *   party0_species    the species number of the first party Pokemon (0: none)
  *   party0_name       its species name ("none" without one)
  *   in_battle         gMain.inBattle, 0 or 1
+ *   battle_main       gBattleMainFunc by name, as callback2 is ("none" before any battle; the last one's afterwards): the battle's
+ *                     state machine, HandleTurnActionSelectionState while it waits for the player
  *   script_running    whether the global script context runs, 0 or 1
  *   controls_locked   whether the player's field controls are locked, 0 or 1
  *   save_counter      gSaveCounter, the save slot's counter

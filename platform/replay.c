@@ -56,6 +56,11 @@ const char *replay_message(const struct replay *replay)
     return replay->status == REPLAY_FAILED ? replay->message : "";
 }
 
+uint32_t replay_failed_line(const struct replay *replay)
+{
+    return replay->status == REPLAY_FAILED ? replay->failed_line : 0;
+}
+
 uint32_t replay_restart_line(const struct replay *replay)
 {
     return replay->restart_line;

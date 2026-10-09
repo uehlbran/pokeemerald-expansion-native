@@ -3364,7 +3364,8 @@ static void PutPageWindowTilemaps(u8 page)
 
     for (i = 0; i < ARRAY_COUNT(sMonSummaryScreen->windowIds); i++)
 #if PLATFORM_NATIVE
-        // Windows not created yet are WINDOW_NONE (255); the GBA indexed gWindows past its end.
+        // Windows not created yet are WINDOW_NONE (255): skipped, which is what a correct program does
+        // (the GBA indexed gWindows past its end and drew whatever EWRAM held there).
         if (sMonSummaryScreen->windowIds[i] != WINDOW_NONE)
 #endif
         PutWindowTilemap(sMonSummaryScreen->windowIds[i]);

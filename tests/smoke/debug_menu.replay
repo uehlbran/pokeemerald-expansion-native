@@ -7,7 +7,7 @@
 # Facts used beyond opening.replay (platform/inspect.h): debug_menu_open, debug_step,
 # debug_input (the numeric entry's step and value), party_species:N, party_name:N,
 # party_level:N, party_extras:N, pc_box0_count, pc_box_species:N, bag_item_count:ID, flag:ID,
-# var:ID, party_slot, summary_species.
+# var:ID, party_move:N:M, party_slot, summary_species, battle_main.
 
 # The opening up to standing outside in Littleroot Town.
 include opening_start.replay
@@ -438,7 +438,6 @@ press B
 wait-until task_last=Task_HandleChooseMonInput max 60
 press DOWN
 wait-until party_slot=1 max 20
-expect party_slot=1
 press A
 wait-until task_last=Task_HandleSelectionMenuInput max 60
 press A # SUMMARY
@@ -455,7 +454,6 @@ press B
 wait-until task_last=Task_HandleChooseMonInput max 60
 press DOWN
 wait-until party_slot=2 max 20
-expect party_slot=2
 press A
 wait-until task_last=Task_HandleSelectionMenuInput max 60
 press A # SUMMARY
@@ -472,7 +470,6 @@ press B
 wait-until task_last=Task_HandleChooseMonInput max 60
 press DOWN
 wait-until party_slot=3 max 20
-expect party_slot=3
 press A
 wait-until task_last=Task_HandleSelectionMenuInput max 60
 press A # SUMMARY
@@ -489,7 +486,6 @@ press B
 wait-until task_last=Task_HandleChooseMonInput max 60
 press DOWN
 wait-until party_slot=4 max 20
-expect party_slot=4
 press A
 wait-until task_last=Task_HandleSelectionMenuInput max 60
 press A # SUMMARY
@@ -506,7 +502,6 @@ press B
 wait-until task_last=Task_HandleChooseMonInput max 60
 press DOWN
 wait-until party_slot=5 max 20
-expect party_slot=5
 press A
 wait-until task_last=Task_HandleSelectionMenuInput max 60
 press A # SUMMARY
@@ -556,7 +551,7 @@ press DOWN # Trainer 1
 press A
 wait-until debug_step=0.0 max 60
 press RIGHT
-press UP
+press UP # the grunt's id is 10
 expect debug_input=10
 press A
 wait-until task_last=DebugTask_HandleMenuInput_General max 60
@@ -564,7 +559,8 @@ press DOWN times 7 # Try Battle
 press A
 wait-until in_battle=1 max 900
 wait-until callback2=BattleMainCB2 max 1500
-wait 200  # the intro: the grunt and the lead Pokemon slide in
+mash A until battle_main=HandleTurnActionSelectionState max 3000 # through the intro text to the player's choice
+wait 30  # the prompt is drawn
 dump a_battle
 screenshot a_battle
 mash A until in_battle=0 max 12000 # FIGHT with the first move, text and the next Pokemon, until the grunt is beaten
@@ -601,8 +597,8 @@ press DOWN times 3 # Give X
 press A
 wait-until task_last=DebugTask_HandleMenuInput_General max 60
 
-# Give X > Pokemon (Complex): Turtwig, level 100, with move 1 chosen: Tackle (33), so that the
-# lead has a damaging first move; the other moves stay empty and everything else is the default
+# Give X > Pokemon (Complex): Turtwig, level 100, shiny, move 1 Tackle (33), Dynamax level 10, Gigantamax
+# factor, Tera type Grass (13): a damaging first move for the lead and every kind of extra for the save
 press DOWN times 2
 press A
 wait-until debug_step=0.0 max 60
@@ -621,13 +617,15 @@ press RIGHT
 press UP
 expect debug_input=100
 press A
-wait-until debug_step=2.0 max 60 # gender, shiny, ability, nature: defaults
+wait-until debug_step=2.0 max 60 # gender: the default
 press A
 wait-until debug_step=3.0 max 60
+press UP
+expect debug_input=1 # shiny: TRUE
 press A
-wait-until debug_step=4.0 max 60
+wait-until debug_step=4.0 max 60 # ability
 press A
-wait-until debug_step=5.0 max 60
+wait-until debug_step=5.0 max 60 # nature
 press A
 wait-until debug_step=6.0 max 60 # moves
 press RIGHT
@@ -640,15 +638,27 @@ wait-until debug_step=6.1 max 60
 press A # the second move left empty: the rest stay empty
 wait-until debug_step=7.0 max 60
 mash A until debug_step=9.0 max 900 # IVs and EVs: defaults
+press RIGHT
+press UP
+expect debug_input=10 # Dynamax level
 press A
 wait-until debug_step=10.0 max 60
+press UP
+expect debug_input=1 # Gigantamax factor
 press A
 wait-until debug_step=11.0 max 60
+press UP times 11
+expect debug_input=13 # Tera type: Grass
 press A
 wait-until task_last=DebugTask_HandleMenuInput_General max 60
 expect party_count=1
 expect party_species:0=387
 expect party_name:0=Turtwig
+expect party_level:0=100
+expect party_extras:0=shiny=1 dynamax=10 gmax=1 tera=13
+expect party_move:0:0=33 # Tackle
+expect party_move:0:1=0
+expect party_move:0:3=0
 
 # Give X > Pokemon (Basic): Snivy (species 495), level 50
 press DOWN
@@ -782,6 +792,11 @@ wait-until debug_menu_open=0 max 60
 wait-until controls_locked=0 max 60
 expect party_species=387,495,650,722,810,1289
 expect pc_box_species:0=3,907
+expect party_level:0=100
+expect party_extras:0=shiny=1 dynamax=10 gmax=1 tera=13
+expect party_move:0:0=33 # Tackle
+expect party_move:0:1=0
+expect party_move:0:3=0
 dump 13_phase_b
 screenshot 13_phase_b
 
@@ -811,7 +826,6 @@ press B
 wait-until task_last=Task_HandleChooseMonInput max 60
 press DOWN
 wait-until party_slot=1 max 20
-expect party_slot=1
 press A
 wait-until task_last=Task_HandleSelectionMenuInput max 60
 press A # SUMMARY
@@ -828,7 +842,6 @@ press B
 wait-until task_last=Task_HandleChooseMonInput max 60
 press DOWN
 wait-until party_slot=2 max 20
-expect party_slot=2
 press A
 wait-until task_last=Task_HandleSelectionMenuInput max 60
 press A # SUMMARY
@@ -845,7 +858,6 @@ press B
 wait-until task_last=Task_HandleChooseMonInput max 60
 press DOWN
 wait-until party_slot=3 max 20
-expect party_slot=3
 press A
 wait-until task_last=Task_HandleSelectionMenuInput max 60
 press A # SUMMARY
@@ -862,7 +874,6 @@ press B
 wait-until task_last=Task_HandleChooseMonInput max 60
 press DOWN
 wait-until party_slot=4 max 20
-expect party_slot=4
 press A
 wait-until task_last=Task_HandleSelectionMenuInput max 60
 press A # SUMMARY
@@ -879,7 +890,6 @@ press B
 wait-until task_last=Task_HandleChooseMonInput max 60
 press DOWN
 wait-until party_slot=5 max 20
-expect party_slot=5
 press A
 wait-until task_last=Task_HandleSelectionMenuInput max 60
 press A # SUMMARY
@@ -913,7 +923,7 @@ press DOWN # Trainer 1
 press A
 wait-until debug_step=0.0 max 60
 press RIGHT
-press UP
+press UP # the grunt's id is 10
 expect debug_input=10
 press A
 wait-until task_last=DebugTask_HandleMenuInput_General max 60
@@ -921,7 +931,8 @@ press DOWN times 7 # Try Battle
 press A
 wait-until in_battle=1 max 900
 wait-until callback2=BattleMainCB2 max 1500
-wait 200  # the intro: the grunt and the lead Pokemon slide in
+mash A until battle_main=HandleTurnActionSelectionState max 3000 # through the intro text to the player's choice
+wait 30  # the prompt is drawn
 dump b_battle
 screenshot b_battle
 mash A until in_battle=0 max 12000 # FIGHT with the first move, text and the next Pokemon, until the grunt is beaten
@@ -941,6 +952,11 @@ press A
 mash A until controls_locked=0 max 3000
 wait 20  # settle
 expect save_counter=1
+expect party_level:0=100
+expect party_extras:0=shiny=1 dynamax=10 gmax=1 tera=13
+expect party_move:0:0=33 # Tackle
+expect party_move:0:1=0
+expect party_move:0:3=0
 dump 14_saved
 screenshot 14_saved
 restart
@@ -959,6 +975,10 @@ screenshot 15_continued
 expect party_species=387,495,650,722,810,1289
 expect party_name:0=Turtwig
 expect party_level:0=100
+expect party_extras:0=shiny=1 dynamax=10 gmax=1 tera=13
+expect party_move:0:0=33 # Tackle
+expect party_move:0:1=0
+expect party_move:0:3=0
 expect pc_box_species:0=3,907
 expect bag_item_count:293=1
 expect bag_item_count:357=1

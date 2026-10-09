@@ -18,6 +18,7 @@ party_count=1
 party0_species=252
 party0_name=Treecko
 in_battle=0
+battle_main=ReturnFromBattleToOverworld
 script_running=0
 controls_locked=0
 save_counter=1

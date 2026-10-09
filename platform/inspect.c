@@ -1,5 +1,7 @@
 /*
- * inspect.c: the facts (inspect.h), read from expansion's variables.
+ * inspect.c: the game-state facts (inspect.h), read from expansion's variables, the
+ * dispatch of all facts, and the flag and var facts. The facts of the menus are
+ * inspect_menu.c, the ranges of the arguments inspect_args.c.
  *
  * Followed: expansion's own headers for every layout (global.h, main.h,
  * task.h, pokemon.h, save.h); built with the game's defines (see
@@ -16,9 +18,11 @@
 #include "flash.h"
 #include "frame.h"
 #include "inspect_decode.h"
+#include "inspect_internal.h"
 #include "symbols.h"
 
 #include "global.h"
+#include "battle.h"
 #include "constants/battle.h"
 #include "constants/map_groups.h"
 #include "constants/species.h"
@@ -43,7 +47,8 @@
 #include "title_screen.h"
 #include "wallclock.h"
 
-static const char *const none_text = "none";
+const char inspect_none_text[] = "none";
+#define none_text inspect_none_text
 
 /* 64-bit flag: the (uintptr_t) casts of function pointers in this file (this
  * table and name_function's callers) compare code addresses as integers with
@@ -238,20 +243,20 @@ static void fact_pos(char *out, size_t size)
     snprintf(out, size, "%d,%d", gSaveBlock1Ptr->pos.x, gSaveBlock1Ptr->pos.y);
 }
 
-static unsigned player_party_count(void)
+unsigned inspect_party_count(void)
 {
     return gPartiesCount[B_TRAINER_PLAYER];
 }
 
 static void fact_party_count(char *out, size_t size)
 {
-    snprintf(out, size, "%u", player_party_count());
+    snprintf(out, size, "%u", inspect_party_count());
 }
 
 /* The first party Pokemon's species, 0 without one. */
 static unsigned party0_species(void)
 {
-    if (player_party_count() == 0)
+    if (inspect_party_count() == 0)
         return 0;
     return GetMonData(&gParties[B_TRAINER_PLAYER][0], MON_DATA_SPECIES);
 }
@@ -274,6 +279,13 @@ static void fact_party0_name(char *out, size_t size)
 static void fact_in_battle(char *out, size_t size)
 {
     snprintf(out, size, "%u", gMain.inBattle ? 1u : 0u);
+}
+
+/* gBattleMainFunc by name: the battle's own state machine (DoBattleIntro, ...,
+ * HandleTurnActionSelectionState while it waits for the player's choice, ...). */
+static void fact_battle_main(char *out, size_t size)
+{
+    name_function((uintptr_t)gBattleMainFunc, out, size);
 }
 
 static void fact_script_running(char *out, size_t size)
@@ -302,252 +314,25 @@ static void fact_flash_dirty_writes(char *out, size_t size)
 }
 
 
-/* ---- The debug menu (src/debug.c, DEBUG_OVERWORLD_MENU) ------------------ */
-
-/* Every task of the debug menu runs a static function named DebugTask_* (the
- * list menus) or DebugAction_* (numeric entry, the selection steps); the
- * symbol table names them. */
-#define DEBUG_MENU_TASK_PREFIX "Debug"
-#define DEBUG_ENTRY_FUNCTION "DebugAction_Selection_StepUpdate"
-/* src/debug.c: tInput is data[3] of the entry task (`#define tInput data[3]`). */
-#define DEBUG_ENTRY_INPUT_DATA 3u
-/* tSubstep is data[10], tStep data[11]. */
-#define DEBUG_ENTRY_SUBSTEP_DATA 10u
-#define DEBUG_ENTRY_STEP_DATA 11u
-
-static bool task_function_has_prefix(size_t task, const char *prefix)
+/* The save block does not exist before the game's boot has set it up (a script's first
+ * frames): a flag or variable stored in it reads 0 until then. */
+static void arg_flag(const uint32_t arguments[INSPECT_MAX_ARGUMENTS], char *out, size_t size)
 {
-    const char *name = symbols_name_at((uintptr_t)gTasks[task].func);
-    return name != NULL && strncmp(name, prefix, strlen(prefix)) == 0;
+    snprintf(out, size, "%u", (gSaveBlock1Ptr != NULL && FlagGet((u16)arguments[0])) ? 1u : 0u);
 }
 
-static void fact_debug_menu_open(char *out, size_t size)
+static void arg_var(const uint32_t arguments[INSPECT_MAX_ARGUMENTS], char *out, size_t size)
 {
-    unsigned open = 0;
-    for (size_t i = 0; i < NUM_TASKS; i++)
-        open |= (gTasks[i].isActive && task_function_has_prefix(i, DEBUG_MENU_TASK_PREFIX)) ? 1u : 0u;
-    snprintf(out, size, "%u", open);
+    const bool stored_in_save_block = arguments[0] < SPECIAL_VARS_START;
+    snprintf(out, size, "%u", (stored_in_save_block && gSaveBlock1Ptr == NULL) ? 0u : (unsigned)VarGet((u16)arguments[0]));
 }
 
-/* The active numeric-entry task (src/debug.c: DebugAction_Selection_StepUpdate), or NULL. */
-static const struct Task *debug_entry_task(void)
-{
-    for (size_t i = 0; i < NUM_TASKS; i++) {
-        const char *name = symbols_name_at((uintptr_t)gTasks[i].func);
-        if (gTasks[i].isActive && name != NULL && strcmp(name, DEBUG_ENTRY_FUNCTION) == 0)
-            return &gTasks[i];
-    }
-    return NULL;
-}
-
-/* The number being entered in the debug menu's numeric entry (species, level,
- * item id, flag id, ...), "none" when no entry is waiting for input. */
-static void fact_debug_input(char *out, size_t size)
-{
-    const struct Task *task = debug_entry_task();
-    if (task == NULL)
-        snprintf(out, size, "%s", none_text);
-    else
-        snprintf(out, size, "%u", (unsigned)(uint16_t)task->data[DEBUG_ENTRY_INPUT_DATA]);
-}
-
-/* Which step of the selection the entry is on, "STEP.SUBSTEP" (the complex Pokemon give
- * has twelve steps, the IVs and EVs six substeps each); "none" when no entry is
- * waiting for input. It tells a new step from the previous one that held the
- * same number. */
-static void fact_debug_step(char *out, size_t size)
-{
-    const struct Task *task = debug_entry_task();
-    if (task == NULL)
-        snprintf(out, size, "%s", none_text);
-    else
-        snprintf(out, size, "%d.%d", task->data[DEBUG_ENTRY_STEP_DATA], task->data[DEBUG_ENTRY_SUBSTEP_DATA]);
-}
-
-/* ---- Party, bag, storage -------------------------------------------------- */
-
-static unsigned party_species_at(unsigned slot)
-{
-    if (slot >= player_party_count() || slot >= PARTY_SIZE)
-        return 0;
-    return GetMonData(&gParties[B_TRAINER_PLAYER][slot], MON_DATA_SPECIES);
-}
-
-static void write_species_name(unsigned species, char *out, size_t size)
-{
-    if (species == SPECIES_NONE || species >= NUM_SPECIES) {
-        snprintf(out, size, "%s", none_text);
-        return;
-    }
-    (void)inspect_decode_text(gSpeciesInfo[species].speciesName, sizeof gSpeciesInfo[species].speciesName, out, size);
-}
-
-/* Every party slot's species, comma separated ("none" for an empty party). */
-static void fact_party_species(char *out, size_t size)
-{
-    size_t used = 0;
-    out[0] = '\0';
-    for (unsigned slot = 0; slot < player_party_count() && slot < PARTY_SIZE; slot++) {
-        int written = snprintf(out + used, size - used, "%s%u", used > 0 ? "," : "", party_species_at(slot));
-        if (written < 0 || (size_t)written >= size - used)
-            return;
-        used += (size_t)written;
-    }
-    if (used == 0)
-        snprintf(out, size, "%s", none_text);
-}
-
-/* Pokemon in PC box `box`; 0 before the storage is allocated (title screen). */
-static unsigned box_count(unsigned box)
-{
-    unsigned count = 0;
-    if (gPokemonStoragePtr == NULL)
-        return 0;
-    for (unsigned position = 0; position < IN_BOX_COUNT; position++)
-        count += GetBoxMonData(&gPokemonStoragePtr->boxes[box][position], MON_DATA_SANITY_HAS_SPECIES) ? 1u : 0u;
-    return count;
-}
-
-static void fact_pc_box0_count(char *out, size_t size)
-{
-    snprintf(out, size, "%u", box_count(0));
-}
-
-/* The species of the Pokemon the summary screen shows. The screen's own state is
- * static in pokemon_summary_screen.c; gInitialSummaryScreenCallback is set
- * while it is open from the party or PC menu, and the party menu's slot is the
- * Pokemon it was opened for (moving to another Pokemon inside the summary
- * screen is not followed). 0 when it is not open. */
-static void fact_summary_species(char *out, size_t size)
-{
-    unsigned species = 0;
-    if (gInitialSummaryScreenCallback != NULL)
-        species = party_species_at((unsigned)(uint8_t)gPartyMenu.slotId); /* -1 (none) becomes 255: no such slot */
-    snprintf(out, size, "%u", species);
-}
-
-/* The party menu's cursor slot (gPartyMenu.slotId), -1 when none. */
-static void fact_party_slot(char *out, size_t size)
-{
-    snprintf(out, size, "%d", gPartyMenu.slotId);
-}
-
-/* ---- Facts with an argument: "name:argument" -------------------------------- */
-
-#define ARGUMENT_MAX_ID UINT32_C(0xFFFF)
-
-static void arg_party_species(uint32_t slot, char *out, size_t size)
-{
-    snprintf(out, size, "%u", party_species_at(slot));
-}
-
-static void arg_party_name(uint32_t slot, char *out, size_t size)
-{
-    write_species_name(party_species_at(slot), out, size);
-}
-
-static void arg_party_level(uint32_t slot, char *out, size_t size)
-{
-    unsigned level = 0;
-    if (slot < player_party_count() && slot < PARTY_SIZE)
-        level = GetMonData(&gParties[B_TRAINER_PLAYER][slot], MON_DATA_LEVEL);
-    snprintf(out, size, "%u", level);
-}
-
-static void arg_bag_item_count(uint32_t item, char *out, size_t size)
-{
-    snprintf(out, size, "%u", (unsigned)CountTotalItemQuantityInBag((enum Item)item));
-}
-
-static void arg_pc_box_count(uint32_t box, char *out, size_t size)
-{
-    snprintf(out, size, "%u", box_count(box));
-}
-
-/* The species in PC box `box`, by position, comma separated ("none" for an empty box). */
-static void arg_pc_box_species(uint32_t box, char *out, size_t size)
-{
-    size_t used = 0;
-    out[0] = '\0';
-    if (gPokemonStoragePtr != NULL) {
-        for (unsigned position = 0; position < IN_BOX_COUNT; position++) {
-            struct BoxPokemon *mon = &gPokemonStoragePtr->boxes[box][position];
-            if (!GetBoxMonData(mon, MON_DATA_SANITY_HAS_SPECIES))
-                continue;
-            int written = snprintf(out + used, size - used, "%s%u", used > 0 ? "," : "",
-                                   (unsigned)GetBoxMonData(mon, MON_DATA_SPECIES));
-            if (written < 0 || (size_t)written >= size - used)
-                return;
-            used += (size_t)written;
-        }
-    }
-    if (used == 0)
-        snprintf(out, size, "%s", none_text);
-}
-
-/* The properties the debug menu's complex give sets, of a party Pokemon: "shiny=0 dynamax=0 gmax=0 tera=1". */
-static void arg_party_extras(uint32_t slot, char *out, size_t size)
-{
-    if (slot >= player_party_count() || slot >= PARTY_SIZE) {
-        snprintf(out, size, "%s", none_text);
-        return;
-    }
-    struct Pokemon *mon = &gParties[B_TRAINER_PLAYER][slot];
-    snprintf(out, size, "shiny=%u dynamax=%u gmax=%u tera=%u", (unsigned)GetMonData(mon, MON_DATA_IS_SHINY),
-             (unsigned)GetMonData(mon, MON_DATA_DYNAMAX_LEVEL), (unsigned)GetMonData(mon, MON_DATA_GIGANTAMAX_FACTOR),
-             (unsigned)GetMonData(mon, MON_DATA_TERA_TYPE));
-}
-
-static void arg_flag(uint32_t flag, char *out, size_t size)
-{
-    snprintf(out, size, "%u", FlagGet((u16)flag) ? 1u : 0u);
-}
-
-static void arg_var(uint32_t var, char *out, size_t size)
-{
-    snprintf(out, size, "%u", (unsigned)VarGet((u16)var));
-}
-
-struct argument_fact {
-    const char *name;
-    uint32_t minimum; /* the smallest argument; below it, or above the maximum, is "no such fact" */
-    uint32_t maximum;
-    void (*read)(uint32_t argument, char *out, size_t size);
+static const struct inspect_arg_reader state_arg_readers[] = {
+    { INSPECT_ARG_FLAG, arg_flag },
+    { INSPECT_ARG_VAR, arg_var },
 };
 
-static const struct argument_fact argument_facts[] = {
-    { "party_species", 0, PARTY_SIZE - 1, arg_party_species },
-    { "party_name", 0, PARTY_SIZE - 1, arg_party_name },
-    { "party_level", 0, PARTY_SIZE - 1, arg_party_level },
-    { "bag_item_count", 0, ITEMS_COUNT - 1, arg_bag_item_count },
-    { "pc_box_count", 0, TOTAL_BOXES_COUNT - 1, arg_pc_box_count },
-    { "pc_box_species", 0, TOTAL_BOXES_COUNT - 1, arg_pc_box_species },
-    { "party_extras", 0, PARTY_SIZE - 1, arg_party_extras },
-    { "flag", 0, FLAGS_COUNT - 1, arg_flag },
-    { "var", VARS_START, ARGUMENT_MAX_ID, arg_var },
-};
-
-/* 0 and the value, or -1 if `name` is not one of the argument facts. */
-static int read_argument_fact(const char *name, size_t name_length, const char *argument, char *out, size_t size)
-{
-    for (size_t i = 0; i < sizeof argument_facts / sizeof argument_facts[0]; i++) {
-        uint32_t value;
-        if (strlen(argument_facts[i].name) != name_length || strncmp(argument_facts[i].name, name, name_length) != 0)
-            continue;
-        if (inspect_parse_argument(argument, argument_facts[i].maximum, &value) != 0 || value < argument_facts[i].minimum)
-            return -1; /* var: below VARS_START VarGet would return the number itself */
-        argument_facts[i].read(value, out, size);
-        return 0;
-    }
-    return -1;
-}
-
-struct fact {
-    const char *name;
-    void (*read)(char *out, size_t size);
-};
-
-static const struct fact facts[] = {
+static const struct inspect_fact facts[] = {
     { "frame", fact_frame },
     { "callback2", fact_callback2 },
     { "task_count", fact_task_count },
@@ -569,20 +354,14 @@ static const struct fact facts[] = {
     { "party0_species", fact_party0_species },
     { "party0_name", fact_party0_name },
     { "in_battle", fact_in_battle },
+    { "battle_main", fact_battle_main },
     { "script_running", fact_script_running },
     { "controls_locked", fact_controls_locked },
     { "save_counter", fact_save_counter },
     { "save_status", fact_save_status },
     { "flash_dirty_writes", fact_flash_dirty_writes },
-    { "party_species", fact_party_species },
-    { "pc_box0_count", fact_pc_box0_count },
-    { "summary_species", fact_summary_species },
-    { "debug_menu_open", fact_debug_menu_open },
-    { "debug_input", fact_debug_input },
-    { "debug_step", fact_debug_step },
-    { "party_slot", fact_party_slot },
 };
-#define FACT_COUNT (sizeof facts / sizeof facts[0])
+#define STATE_FACT_COUNT (sizeof facts / sizeof facts[0])
 
 int inspect_init(void)
 {
@@ -594,15 +373,48 @@ void inspect_shutdown(void)
     symbols_unload();
 }
 
+static const struct inspect_arg_reader *find_reader(const struct inspect_arg_reader *readers, size_t count,
+                                                    enum inspect_arg_fact fact)
+{
+    for (size_t i = 0; i < count; i++) {
+        if (readers[i].fact == fact)
+            return &readers[i];
+    }
+    return NULL;
+}
+
+/* "name:argument[:argument]": 0 and the value, or -1 (unknown fact, malformed or out-of-range argument). */
+static int read_argument_fact(const char *name, size_t name_length, const char *argument, char *out, size_t size)
+{
+    const struct inspect_arg_spec *spec = inspect_arg_find(name, name_length);
+    uint32_t values[INSPECT_MAX_ARGUMENTS] = { 0 };
+    if (spec == NULL || inspect_arg_parse(spec, argument, values) != 0)
+        return -1;
+    const enum inspect_arg_fact fact = inspect_arg_id(spec);
+    const struct inspect_arg_reader *reader = find_reader(state_arg_readers, sizeof state_arg_readers / sizeof state_arg_readers[0], fact);
+    if (reader == NULL)
+        reader = find_reader(inspect_menu_arg_readers, inspect_menu_arg_reader_count, fact);
+    if (reader == NULL)
+        return -1;
+    reader->read(values, out, size);
+    return 0;
+}
+
 int inspect_get(const char *name, char *out, size_t size)
 {
     const char *argument;
     const size_t name_length = inspect_split_name(name, &argument);
     if (argument != NULL)
         return read_argument_fact(name, name_length, argument, out, size);
-    for (size_t i = 0; i < FACT_COUNT; i++) {
+    for (size_t i = 0; i < STATE_FACT_COUNT; i++) {
         if (strcmp(facts[i].name, name) == 0) {
             facts[i].read(out, size);
+            return 0;
+        }
+    }
+    for (size_t i = 0; i < inspect_menu_fact_count; i++) {
+        if (strcmp(inspect_menu_facts[i].name, name) == 0) {
+            inspect_menu_facts[i].read(out, size);
             return 0;
         }
     }
@@ -611,5 +423,8 @@ int inspect_get(const char *name, char *out, size_t size)
 
 const char *inspect_fact_name(size_t index)
 {
-    return index < FACT_COUNT ? facts[index].name : NULL;
+    if (index < STATE_FACT_COUNT)
+        return facts[index].name;
+    index -= STATE_FACT_COUNT;
+    return index < inspect_menu_fact_count ? inspect_menu_facts[index].name : NULL;
 }

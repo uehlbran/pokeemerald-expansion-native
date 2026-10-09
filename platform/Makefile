@@ -138,7 +138,7 @@ $(OBJ_DIR)/test/test_arm_division.o: CFLAGS_ALL += -fno-pie
 # inspect.c reads expansion's variables through its headers, so it is compiled
 # as the game is (Makefile.native CPPFLAGS and ARCH_FLAGS), or the structure
 # layouts could differ.
-$(OBJ_DIR)/inspect.o: CFLAGS_ALL += $(GAME_DEFINES) -DTESTING=0 -DEMERALD $(GAME_CHAR_FLAGS)
+$(OBJ_DIR)/inspect.o $(OBJ_DIR)/inspect_menu.o $(OBJ_DIR)/inspect_args.o $(OBJ_DIR)/test/test_inspect_args.o: CFLAGS_ALL += $(GAME_DEFINES) -DTESTING=0 -DEMERALD $(GAME_CHAR_FLAGS)
 
 # The files a test names on its "// deps:" line.
 test_deps = $(shell sed -n -E 's@^//[[:space:]]*\#?[[:space:]]*deps:@@p' test/$(1).c)

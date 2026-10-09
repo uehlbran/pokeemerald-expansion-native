@@ -28,6 +28,9 @@ _Static_assert(REPLAY_FACT_BUFFER_SIZE >= INSPECT_VALUE_SIZE, "a fact must fit t
 static char session_out_dir[REPLAY_PATH_SIZE];
 static struct replay_script script;
 static struct replay driver;
+/* Where each line of the (expanded) script came from, for messages. */
+static struct replay_source_map source_map;
+static char failure_text[REPLAY_PATH_SIZE + 16u + REPLAY_MESSAGE_SIZE];
 
 static int host_get_fact(void *context, const char *name, char *out, size_t size)
 {
@@ -62,6 +65,19 @@ static void write_failure_screenshot(void)
         fprintf(stderr, "replay: the screen at the failure is in %s\n", path);
 }
 
+/* The driver's "line N: what" with N, a line of the expansion, as the file and line it came from;
+ * made when the command fails, while the map exists (modules are shut down before main prints it). */
+static void make_failure_text(void)
+{
+    const char *message = replay_message(&driver);
+    const char *reason = strstr(message, ": ");
+    char where[REPLAY_PATH_SIZE + 16u];
+    if (reason == NULL)
+        return;
+    replay_source_map_describe(&source_map, replay_failed_line(&driver), where, sizeof where);
+    snprintf(failure_text, sizeof failure_text, "%s%s", where, reason);
+}
+
 /* The frame loop's hook: one driver step per frame. */
 static enum frame_step_result step(void *context)
 {
@@ -74,6 +90,7 @@ static enum frame_step_result step(void *context)
         return FRAME_STEP_STOP;
     case REPLAY_FAILED:
     default:
+        make_failure_text();
         write_failure_screenshot();
         return FRAME_STEP_FAIL;
     }
@@ -97,7 +114,7 @@ static char *read_text(const char *path, const char *out_dir, size_t *length_out
     char *text;
     bool expanded;
     char message[REPLAY_INCLUDE_MESSAGE_SIZE];
-    if (replay_include_expand(path, &text, length_out, &expanded, message, sizeof message) != 0) {
+    if (replay_include_expand(path, &text, length_out, &expanded, &source_map, message, sizeof message) != 0) {
         fprintf(stderr, "replay: %s\n", message);
         return NULL;
     }
@@ -128,7 +145,10 @@ int replay_session_start(const char *script_path, const char *out_dir, uint32_t 
     int parsed = replay_parse_buffer(text, length, &script, &error);
     free(text);
     if (parsed != 0) {
-        fprintf(stderr, "replay: %s:%u: %s\n", script_path, (unsigned)error.line, error.message);
+        char where[REPLAY_PATH_SIZE + 16u];
+        replay_source_map_describe(&source_map, error.line, where, sizeof where);
+        fprintf(stderr, "replay: %s: %s\n", where, error.message);
+        replay_source_map_free(&source_map);
         return -1;
     }
     if (!make_out_dir(out_dir))
@@ -154,6 +174,7 @@ int replay_session_start(const char *script_path, const char *out_dir, uint32_t 
 
 void replay_session_stop(void)
 {
+    replay_source_map_free(&source_map);
     frame_set_step_hook(NULL, NULL);
     inspect_shutdown();
 }
@@ -165,7 +186,7 @@ enum replay_status replay_session_status(void)
 
 const char *replay_session_message(void)
 {
-    return replay_message(&driver);
+    return failure_text[0] != '\0' ? failure_text : replay_message(&driver);
 }
 
 uint32_t replay_session_restart_line(void)

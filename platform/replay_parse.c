@@ -213,8 +213,10 @@ static bool parse_press(struct replay_command *command, char *rest, struct repla
     command->number = 1;
     if (times_at != NULL) {
         *times_at = '\0';
-        if (!parse_number(trim(times_at + strlen(" times ")), 1u, &command->number)) {
-            set_error(error, command->line, "'press ... times' needs a whole number of presses, at least 1");
+        if (!parse_number(trim(times_at + strlen(" times ")), 1u, &command->number)
+            || command->number > REPLAY_MAX_PRESS_TIMES) {
+            set_error(error, command->line, "'press ... times' needs a whole number of presses, at least 1 and at most %u",
+                      REPLAY_MAX_PRESS_TIMES);
             return false;
         }
     }

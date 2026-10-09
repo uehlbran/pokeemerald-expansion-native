@@ -42,6 +42,8 @@ expected="$SMOKE_EXPECTED"
 [ $# -ge 2 ] || die "usage: $SMOKE_USAGE"
 binary="$1"
 outdir="$2"
+# an empty OUTDIR would make work="/work" and `rm -rf` it
+case "$outdir" in "" | "/") die "OUTDIR must be a directory of its own, not '$outdir'" ;; esac
 update=0
 case "${3:-}" in
 "") ;;

@@ -57,7 +57,7 @@
 #
 # Assets are target-independent and land where the GBA build puts them:
 # next to their sources (graphics/**, sound/**, src/data/*.h, data/maps/**)
-# and, for INCGFX conversions, in build/native-assets/ (the GBA build uses build/assets/:
+# and, for INCGFX conversions, in build/assets-native/ (the GBA build uses build/assets/:
 # the palettes differ, see GFX). The sources-side assets are shared with the GBA
 # build, and `clean` here does not touch them. The one
 # asset made with the C preprocessor, the trainer headers (trainer_rules.mk,
@@ -134,7 +134,7 @@ ifeq ($(SANITIZE),1)
   OBJ_DIR := $(OBJ_DIR)-san
 endif
 # INCGFX outputs are not shared with the GBA build (see GFX: our palettes are padded).
-ASSETS_DIR_NAME := $(BUILD_DIR)/native-assets
+ASSETS_DIR_NAME := $(BUILD_DIR)/assets-native
 
 # Directory names as expansion's Makefile spells them; the fragments use them.
 C_SUBDIR = src
@@ -245,7 +245,7 @@ SMOLTM       := $(TOOLS_DIR)/compresSmol/compresSmolTilemap$(EXE)
 SMOL         := $(TOOLS_DIR)/compresSmol/compresSmol$(EXE)
 # gbagfx behind a wrapper that pads palettes to whole banks (platform/build_glue/gbagfx_pad.sh);
 # the GBA build does not use it and has its own build/assets.
-GFX          := platform/build_glue/gbagfx_pad.sh
+GFX          := PAD_UNDER=$(ASSETS_DIR_NAME) platform/build_glue/gbagfx_pad.sh
 WAV2AGB      := $(TOOLS_DIR)/wav2agb/wav2agb$(EXE)
 MID          := $(TOOLS_DIR)/mid2agb/mid2agb$(EXE)
 SCANINC      := $(TOOLS_DIR)/scaninc/scaninc$(EXE)
@@ -261,7 +261,7 @@ MAKEFLAGS += --no-print-directory
 .DELETE_ON_ERROR:
 
 RULES_NO_SCAN += clean generated
-.PHONY: objects native platform-lib check $(RULES_NO_SCAN)
+.PHONY: objects native platform-lib check check-palette-padding seed-assets $(RULES_NO_SCAN)
 
 .DEFAULT_GOAL := objects
 
@@ -374,6 +374,26 @@ NATIVE_LDLIBS := $(shell pkg-config --libs sdl2) -lm
 
 native: $(NATIVE_EXE)
 
+# Seeds $(ASSETS_DIR_NAME) from the GBA build's build/assets so that the first native build converts
+# only what differs: copies it (preserving times, so make sees the files as up to date) and deletes
+# every copied .gbapal that is not a whole number of 32-byte banks, which make then regenerates
+# padded (or, for platform/build_glue/unpadded_palettes.txt, as the GBA build has them).
+# Copies, not hard links: gbagfx rewrites a stale output in place, which would reach through a link
+# into the GBA build's file. Run it once, before the first `make ... native`; harmless to repeat.
+seed-assets:
+	@test -d $(BUILD_DIR)/assets || { echo "seed-assets: no $(BUILD_DIR)/assets: build the GBA target first (make)" >&2; exit 1; }
+	mkdir -p $(ASSETS_DIR_NAME)
+	cp -a --no-clobber $(BUILD_DIR)/assets/. $(ASSETS_DIR_NAME)/
+	find $(ASSETS_DIR_NAME) -name '*.gbapal' -type f -size +0 \
+	    | while read -r f; do [ $$(( $$(stat -c %s "$$f") % 32 )) -eq 0 ] || rm -f "$$f"; done
+	@echo "seeded $(ASSETS_DIR_NAME): $$(find $(ASSETS_DIR_NAME) -type f | wc -l) files"
+
+# The zero-padding of palettes (GFX) is right only where the game does not take a palette's
+# size; this fails the build if the list of exceptions and the code disagree (about 1 s).
+check-palette-padding:
+	$(PYTHON) -I platform/build_glue/check_palette_padding.py --self-test
+	$(PYTHON) -I platform/build_glue/check_palette_padding.py
+
 # Always asks platform/Makefile, which knows the library's own prerequisites
 # and leaves it untouched when it is up to date.
 platform-lib:
@@ -381,7 +401,7 @@ platform-lib:
 
 $(PLATFORM_LIB): platform-lib ;
 
-$(NATIVE_EXE): $(OBJS) $(PLATFORM_LIB) $(NATIVE_LINKER_SCRIPTS)
+$(NATIVE_EXE): $(OBJS) $(PLATFORM_LIB) $(NATIVE_LINKER_SCRIPTS) | check-palette-padding
 	@echo "$(HOST_CC) <link> -o $@"
 	@$(HOST_CC) $(NATIVE_LDFLAGS) -o $@ $(OBJS) $(PLATFORM_LIB) $(NATIVE_LDLIBS)
 
