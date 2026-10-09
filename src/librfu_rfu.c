@@ -140,8 +140,15 @@ u16 rfu_initializeAPI(u32 *APIBuffer, u16 buffByteSize, IntrFunc *sioIntrTable_p
     if (((uintptr_t)APIBuffer & 0xF000000) == EWRAM_START && copyInterruptToRam)
         return ERR_RFU_API_BUFF_ADR;
     // is not 4-byte aligned?
+#if PLATFORM_NATIVE && __SIZEOF_POINTER__ == 8
+    // 8 at 64 bits: the structs carved from the buffer hold pointers.
+    if ((uintptr_t)APIBuffer & 7)
+        return ERR_RFU_API_BUFF_ADR;
+#else
     if ((u32)APIBuffer & 3)
         return ERR_RFU_API_BUFF_ADR;
+#endif
+#line 145
     if (copyInterruptToRam)
     {
         // An assert/debug print may have existed before, ie
@@ -157,6 +164,24 @@ u16 rfu_initializeAPI(u32 *APIBuffer, u16 buffByteSize, IntrFunc *sioIntrTable_p
         if (buffByteSize < buffByteSizeMax)
             return ERR_RFU_API_BUFF_SIZE;
     }
+#if PLATFORM_NATIVE && __SIZEOF_POINTER__ == 8
+    // The 32-bit offsets below are the structs' sizes there; at 64 bits the structs holding
+    // pointers are larger, so each starts at the previous end rounded up to 8 (the SDK's
+    // buffer is the same carve with the GBA's sizes). RFU_API_BUFF_SIZE_* is sized to match.
+    gRfuLinkStatus = (void *)APIBuffer + 0;
+    gRfuStatic = (void *)APIBuffer + 0xb8;
+    gRfuFixed = (void *)APIBuffer + 0xe0;
+    gRfuSlotStatusNI[0] = (void *)APIBuffer + 0x1d0;
+    gRfuSlotStatusUNI[0] = (void *)APIBuffer + 0x490;
+    for (i = 1; i < RFU_CHILD_MAX; ++i)
+    {
+        gRfuSlotStatusNI[i] = &gRfuSlotStatusNI[i - 1][1];
+        gRfuSlotStatusUNI[i] = &gRfuSlotStatusUNI[i - 1][1];
+    }
+    // remaining space (from 0x530, 8-aligned) is used for `struct RfuIntrStruct`.
+    gRfuFixed->STWIBuffer = (struct RfuIntrStruct *)&gRfuSlotStatusUNI[3][1];
+    STWI_init_all((struct RfuIntrStruct *)&gRfuSlotStatusUNI[3][1], sioIntrTable_p, copyInterruptToRam);
+#else
     gRfuLinkStatus = (void *)APIBuffer + 0;
     gRfuStatic = (void *)APIBuffer + 0xb4; // + sizeof(*gRfuLinkStatus)
     gRfuFixed = (void *)APIBuffer + 0xdc; // + sizeof(*gRfuStatic)
@@ -170,6 +195,8 @@ u16 rfu_initializeAPI(u32 *APIBuffer, u16 buffByteSize, IntrFunc *sioIntrTable_p
     // remaining space in API buffer is used for `struct RfuIntrStruct`.
     gRfuFixed->STWIBuffer = (struct RfuIntrStruct *)&gRfuSlotStatusUNI[3][1];
     STWI_init_all((struct RfuIntrStruct *)&gRfuSlotStatusUNI[3][1], sioIntrTable_p, copyInterruptToRam);
+#endif
+#line 173
     rfu_STC_clearAPIVariables();
     for (i = 0; i < RFU_CHILD_MAX; ++i)
     {
