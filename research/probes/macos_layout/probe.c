@@ -2,13 +2,13 @@
  * probe.c: probe M0 of research/m8-inventory.md (sections 2.4, 5.3). Does ld64 build
  * and the macOS loader run an x86_64 executable that is a fixed-address image
  * (-no_pie, image at 0x40000000, small __PAGEZERO) with each GBA region as its own
- * zero-filled segment at its GBA address (regions.s, -Wl,-segaddr)? Plain C11 and
+ * zero-filled segment at its GBA address (regions.S, -Wl,-segaddr)? Plain C11 and
  * the Mach and dyld APIs, no SDL, no platform/ code.
  *
  * It prints the header's address, the slide, every LC_SEGMENT_64 of the image and
  * mach_vm_region for each GBA region, writes and reads back the first and last byte
  * of every region, and ends with one "SUMMARY" line. Exit status 0 only if no check
- * failed. Region addresses and sizes: GBATEK "GBA Memory Map"; regions.s.
+ * failed. Region addresses and sizes: GBATEK "GBA Memory Map"; regions.S.
  */
 #include <mach-o/dyld.h>
 #include <mach-o/loader.h>

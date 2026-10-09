@@ -50,18 +50,29 @@ build_variant() { # name, then the gcc command's remaining arguments
 build_variant as_linked -DLAYOUT_IMAGE probe.c out/regions.o $LDFLAGS -Wl,-T,layout_b.ld
 build_variant filled_gaps -DLAYOUT_IMAGE probe.c out/regions.o out/gaps.o $LDFLAGS -Wl,-T,layout_b_filled.ld
 build_variant virtualalloc -DLAYOUT_RUNTIME probe.c
+# The reference for the commit-charge figures: same CRT, no regions.
+run gcc $CFLAGS baseline.c -o out/baseline.exe -lpsapi
 
 echo "== run: each variant once in full, then $RUNS starts counted"
 for name in "${BUILT[@]}"; do
     echo "---- $name: first run"
     "./out/$name.exe"
     echo "exit status of the first run: $?"
+    if [ "$name" = as_linked ]; then
+        # Git Bash reports a refused image as "Exec format error"; ask Windows itself.
+        echo "---- $name: start status as Windows reports it"
+        cmd.exe //c "out\\$name.exe"
+        echo "cmd.exe exit status: $?"
+        powershell.exe -NoProfile -Command "try { & '.\\out\\$name.exe'; Write-Output ('exit ' + \$LASTEXITCODE) } catch { Write-Output ('exception: ' + \$_.Exception.Message + ' HResult=' + \$_.Exception.HResult) }"
+    fi
+    : > "out/$name.bases.txt"
     ok=0
     bad=0
     codes=""
     for ((i = 1; i <= RUNS; i++)); do
         "./out/$name.exe" > "out/$name.run.txt" 2>&1
         status=$?
+        grep '^image base:' "out/$name.run.txt" | sed 's/ (expected.*//' >> "out/$name.bases.txt"
         if [ "$status" -eq 0 ]; then
             ok=$((ok + 1))
         else
@@ -71,7 +82,12 @@ for name in "${BUILT[@]}"; do
         fi
     done
     echo "RESULT $name: $ok of $RUNS runs exited 0, $bad did not (statuses:$codes)"
+    echo "image base over the $RUNS runs (count, value):"
+    sort "out/$name.bases.txt" | uniq -c
 done
+
+echo "== commit charge of the reference process (same CRT, no regions)"
+run ./out/baseline.exe
 
 echo "== results"
 for name in as_linked filled_gaps virtualalloc; do

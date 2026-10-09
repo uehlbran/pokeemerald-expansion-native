@@ -36,6 +36,9 @@
 #define CODE_LIMIT UINT64_C(0x42000000)
 
 #define KIB UINT64_C(1024)
+/* Windows reserves at this granularity and rounds a reservation's base down to it
+ * (inventory 2.1 table; VirtualAlloc documentation, "dwSize"/"lpAddress"). */
+#define ALLOCATION_GRANULARITY UINT64_C(0x10000)
 #define MIB (KIB * KIB)
 
 struct Region {
@@ -78,9 +81,13 @@ static void check(bool ok, const char *what, const char *region)
 
 static unsigned long long ull(uint64_t value) { return (unsigned long long)value; }
 
+/* Writable image sections are mapped copy-on-write, so a queried page of the exe's own
+ * writable section reports PAGE_WRITECOPY (run 37922990222), VirtualAlloc'ed ones
+ * PAGE_READWRITE. */
 static bool is_writable_protect(DWORD protect)
 {
-    return protect == PAGE_READWRITE || protect == PAGE_EXECUTE_READWRITE;
+    return protect == PAGE_READWRITE || protect == PAGE_EXECUTE_READWRITE ||
+           protect == PAGE_WRITECOPY || protect == PAGE_EXECUTE_WRITECOPY;
 }
 
 static bool is_readable_protect(DWORD protect)
@@ -164,8 +171,10 @@ static void allocate_regions(void)
         printf("VirtualAlloc %s at 0x%llx size 0x%llx -> 0x%llx (GetLastError=%lu)\n", r->name,
                ull(r->base), ull(r->size), ull((uintptr_t)got),
                (unsigned long)(got ? 0 : GetLastError()));
-        check(got == (void *)(uintptr_t)r->base, "VirtualAlloc returned the requested address",
-              r->name);
+        /* The base may come back rounded down to the granule; the page at the requested
+         * address is checked by probe_region with VirtualQuery. */
+        check(got != NULL && (uintptr_t)got == (r->base & ~(ALLOCATION_GRANULARITY - 1)),
+              "VirtualAlloc returned the requested address (rounded to the granule)", r->name);
         if (got != NULL && !r->writable) {
             DWORD old;
             check(VirtualProtect(got, (SIZE_T)r->size, PAGE_READONLY, &old) != 0,
@@ -187,8 +196,10 @@ int main(void)
     allocate_regions();
 #else
     printf("variant: regions are PE sections\n");
+#endif
     uint64_t image_base = (uintptr_t)GetModuleHandle(NULL);
     printf("image base: 0x%llx (expected 0x%llx)\n", ull(image_base), ull(EXPECTED_IMAGE_BASE));
+#ifdef LAYOUT_IMAGE
     check(image_base == EXPECTED_IMAGE_BASE, "the exe is at its linked image base", "process");
     uint64_t code = (uintptr_t)&main;
     printf("main at 0x%llx\n", ull(code));
