@@ -24,7 +24,7 @@
 #include "interrupt.h"
 #include "ptest.h"
 
-extern char __executable_start[], _end[];
+
 extern const uint8_t RomHeaderGameCode[4];
 extern const uint8_t RomHeaderSoftwareVersion;
 void GameCubeMultiBoot_Init(void *mb);
@@ -46,9 +46,16 @@ static uintptr_t address_of(const volatile void *pointer)
     return address;
 }
 
-static bool in_image(uintptr_t address)
+/* On the platform's call stack, which gba_regions.ld puts below 2^27 so that
+ * the battle runner's 27-bit address fields hold its locals' addresses
+ * (include/test/battle.h, QueuedSubHitEvent). */
+#define BATTLE_RUNNER_ADDRESS_LIMIT (UINT32_C(1) << 27)
+
+static bool on_call_stack(uintptr_t address)
 {
-    return address >= address_of(__executable_start) && address < address_of(_end);
+    return address >= GAME_HOOKS_CALL_STACK_ADDRESS
+           && address < GAME_HOOKS_CALL_STACK_ADDRESS + GAME_HOOKS_CALL_STACK_SIZE
+           && address < BATTLE_RUNNER_ADDRESS_LIMIT;
 }
 
 /* --- PlatformCallWithStack ----------------------------------------------- */
@@ -84,10 +91,10 @@ PTEST(call_with_stack_runs_entry_on_the_platform_stack)
     volatile uint32_t here = 0;
     PlatformCallWithStack(record_local, &probe, NULL);
     PT_ASSERT_EQ_INT(probe.calls, 1);
-    /* The platform's stack is a static buffer in the image, not the
-     * caller's stack. */
-    PT_ASSERT(in_image(address_of(probe.local_address)));
-    PT_ASSERT(!in_image(address_of(&here)));
+    /* The platform's stack, not the caller's, and low enough for the
+     * runner's 27-bit address fields. */
+    PT_ASSERT(on_call_stack(address_of(probe.local_address)));
+    PT_ASSERT(!on_call_stack(address_of(&here)));
 }
 
 PTEST(locals_stay_put_between_calls)
@@ -207,7 +214,7 @@ PTEST(an_unwind_from_the_battle_stack_ends_the_call)
     /* The next call is a normal one: on the platform stack, not nested. */
     PlatformCallWithStack(record_local, &probe, NULL);
     PT_ASSERT_EQ_INT(probe.calls, 1);
-    PT_ASSERT(in_image(address_of(probe.local_address)));
+    PT_ASSERT(on_call_stack(address_of(probe.local_address)));
 }
 
 PTEST(an_unwind_outside_a_call_is_a_longjmp)
@@ -320,7 +327,7 @@ PTEST(a_jump_from_an_interrupt_handler_leaves_the_dispatch_and_the_battle_stack)
     PT_ASSERT_EQ_U32(ime, GBA_IME_ENABLE);
     PT_ASSERT_EQ_INT(handlers, 0);
     PT_ASSERT_EQ_INT(probe.calls, 1);
-    PT_ASSERT(in_image(address_of(probe.local_address)));
+    PT_ASSERT(on_call_stack(address_of(probe.local_address)));
 }
 
 /* --- PlatformDebugOpen, PlatformDebugSend -------------------------------- */

@@ -2754,6 +2754,19 @@ static void Cmd_jumpifarrayequal(void)
     u32 size = cmd->size;
     const u8 *jumpInstr = cmd->jumpInstr;
 
+#if PLATFORM_NATIVE
+    // BattleScript_DynamaxBegins_SwitchIn (data/battle_scripts_1.s) passes
+    // two constants as the arrays (jumpifbyteequal B_SHOW_DYNAMAX_MESSAGE,
+    // FALSE); with the default config both are NULL, which the GBA reads (its
+    // BIOS) and finds equal. An array is always equal to itself, so the same
+    // pointer twice jumps without reading.
+    if (array1 == array2)
+    {
+        gBattlescriptCurrInstr = jumpInstr;
+        return;
+    }
+#endif
+#line 2757
     u8 i;
     for (i = 0; i < size; i++)
     {
@@ -3046,6 +3059,16 @@ static void Cmd_endselectionscript(void)
 
 static void PlayAnimation(enum BattlerId battler, u8 animId, const u16 *argPtr, const u8 *nextInstr)
 {
+#if PLATFORM_NATIVE
+    // playanimation and playanimation_var leave argPtr NULL when the
+    // animation takes no argument (asm/macros/battle_script.inc), and the
+    // value read below then goes unused. The GBA reads its BIOS at NULL;
+    // natively NULL is unmapped, so a zero is read instead.
+    static const u16 sNoAnimationArgument = 0;
+    if (argPtr == NULL)
+        argPtr = &sNoAnimationArgument;
+#endif
+#line 3049
     if (B_TERRAIN_BG_CHANGE == FALSE && animId == B_ANIM_RESTORE_BG)
     {
         // workaround for .if not working

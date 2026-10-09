@@ -121,6 +121,21 @@ SECTIONS
         gba_linked_sram_end = .;
     }
 
+    /* Not a GBA region: the stack platform/game_hooks.c runs the battle test
+     * runner's functions on (PlatformCallWithStack). The runner keeps the
+     * addresses of those functions' locals in 27-bit fields
+     * (include/test/battle.h, QueuedSubHitEvent.address), which on the GBA
+     * hold EWRAM addresses, where its DATA.stack is; the executable's own
+     * .bss is above 08000000h and would not fit, so the stack sits in
+     * GBATEK's unused 00004000-01FFFFFF, clear of the page the m4a tests map
+     * at 01000000h (platform/m4a/test_m4a_support.h). 1 MiB (game_hooks.h). */
+    .platform_call_stack 0x01800000 (NOLOAD) :
+    {
+        platform_call_stack_start = .;
+        . += 0x100000;
+        platform_call_stack_end = .;
+    }
+
     /* Back to where the default script was, so _end and the sections after
      * .bss are unaffected. */
     . = gba_regions_saved_dot;

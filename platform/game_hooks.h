@@ -27,8 +27,11 @@
 #include <stdint.h>
 
 /* Bytes of the stack PlatformCallWithStack runs the battle tests' functions
- * on (see there). */
+ * on (see there), and where it is: gba_regions.ld's .platform_call_stack,
+ * below 2^27 so that the addresses of the functions' locals fit the 27-bit
+ * fields the battle runner keeps them in (include/test/battle.h). */
 #define GAME_HOOKS_CALL_STACK_SIZE (1024u * 1024u)
+#define GAME_HOOKS_CALL_STACK_ADDRESS UINT32_C(0x01800000)
 
 /* The value game_hooks longjmps to main's exit target with (non-zero, since
  * setjmp's first return is 0). */
@@ -119,8 +122,9 @@ void PlatformDebugSend(uint16_t flags);
  * larger again under AddressSanitizer), and overflowing it would overwrite
  * the runner state it lives in; so stackTop is not used: every call starts
  * at the top of one platform-owned stack of GAME_HOOKS_CALL_STACK_SIZE
- * bytes, which nothing else uses, so locals survive between calls and land
- * at the same addresses each time, which is what the runner relies on. The
+ * bytes at GAME_HOOKS_CALL_STACK_ADDRESS, which nothing else uses, so locals
+ * survive between calls and land at the same addresses each time, which is
+ * what the runner relies on (and their addresses fit its 27-bit fields). The
  * switch is a ucontext swap, annotated for AddressSanitizer's fiber support.
  * A longjmp out of entry (PlatformJumpToAgbMainLoop, PlatformTestRunnerExit)
  * first switches back to the caller's stack. Not reentrant: a call from

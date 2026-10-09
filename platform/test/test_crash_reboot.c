@@ -160,7 +160,7 @@ PTEST(a_null_call_reboots_with_the_persistent_state)
 
 PTEST(every_crash_signal_reboots)
 {
-    static const int signals[] = { SIGBUS, SIGILL, SIGFPE, SIGSEGV };
+    static const int signals[] = { SIGBUS, SIGILL, SIGFPE, SIGABRT, SIGSEGV };
     for (size_t i = 0; i < sizeof signals / sizeof signals[0]; i++) {
         int status = run_crashing_child(MODE_VERIFY, signals[i]);
         PT_ASSERT(status != -1);
@@ -259,7 +259,8 @@ PTEST(shutdown_restores_the_default_actions)
     crash_reboot_shutdown();
     crash_reboot_shutdown(); /* twice is safe */
     PT_ASSERT_EQ_INT(sigaction(SIGILL, NULL, &restored), 0);
-    PT_ASSERT(installed.sa_handler != SIG_DFL);
+    PT_ASSERT(installed.sa_flags & SA_SIGINFO);
+    PT_ASSERT(installed.sa_sigaction != NULL);
     PT_ASSERT(installed.sa_flags & SA_ONSTACK);
     PT_ASSERT(restored.sa_handler == SIG_DFL);
 }

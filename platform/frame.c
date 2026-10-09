@@ -135,7 +135,8 @@ static void run_visible_lines(void)
 {
     for (uint16_t line = 0; line < LCD_VISIBLE_LINES; line++) {
         raise_and_dispatch(lcd_status_begin_line(line));
-        draw_line(line);
+        if (!frame.config.skip_drawing)
+            draw_line(line);
         unsigned hblank = lcd_status_begin_hblank();
         (void)dma_run_timing(DMA_TIMING_HBLANK); /* the block count is informational */
         raise_and_dispatch(hblank);

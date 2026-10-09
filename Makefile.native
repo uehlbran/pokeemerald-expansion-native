@@ -322,7 +322,10 @@ clean:
 #
 # Every object plus the platform library (platform/: the hardware modules,
 # the BIOS, the m4a engine, main), linked as the platform's tests are:
-# non-PIE with the executable at 0x40000000, clear of the GBA regions;
+# non-PIE with the executable at 0x08000000, where the GBA has the cartridge
+# ROM, clear of the GBA regions (its code and read-only data are the ROM, and
+# platform/rom_mirror.h maps them again at the ROM's first mirror, which
+# expansion's script engine calls through);
 # platform/gba_regions.ld places the regions, EWRAM_INIT and EWRAM_DATA and
 # the test runner's .persistent state at their GBA addresses;
 # platform/gba_game.ld defines what expansion's linker scripts define for
@@ -356,7 +359,7 @@ else
 endif
 
 NATIVE_LINKER_SCRIPTS := platform/gba_regions.ld platform/gba_game.ld
-NATIVE_LDFLAGS := -m$(BITS) -no-pie -Wl,-Ttext-segment=0x40000000 \
+NATIVE_LDFLAGS := -m$(BITS) -no-pie -Wl,-Ttext-segment=0x08000000 \
                   $(NATIVE_LINKER_SCRIPTS:%=-Wl,-T,%) \
                   -Wl,--defsym,gInitialMainCB2=$(INITIAL_MAIN_CB2) \
                   -Wl,--defsym,gba_game_objects_linked=1 $(NATIVE_LINK_SANITIZERS)

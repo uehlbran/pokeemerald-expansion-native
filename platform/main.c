@@ -41,6 +41,7 @@
 
 #include <SDL.h>
 
+#include "arm_division.h"
 #include "audio.h"
 #include "bios.h"
 #include "crash_reboot.h"
@@ -56,6 +57,7 @@
 #include "interrupt.h"
 #include "ppu.h"
 #include "psg.h"
+#include "rom_mirror.h"
 #include "rtc.h"
 #include "save_file.h"
 #include "timer.h"
@@ -203,6 +205,7 @@ static int parse_options(int argc, char **argv, struct options *out)
 /* --- The modules, in dependency order ------------------------------------ */
 
 static int start_gba_memmap(const struct options *o) { (void)o; return gba_memmap_init(); }
+static int start_rom_mirror(const struct options *o) { (void)o; return rom_mirror_init(); }
 static int start_transfer_bounds(const struct options *o) { (void)o; return transfer_bounds_init(); }
 static int start_interrupt(const struct options *o) { (void)o; return interrupt_init(gIntrTable, INTERRUPT_TABLE_LENGTH); }
 static int start_timer(const struct options *o) { (void)o; return timer_init(interrupt_raise); }
@@ -232,6 +235,10 @@ static int start_crash_reboot(const struct options *o)
         return -1;
     return crash_reboot_init(o->argc, o->argv);
 }
+
+/* After crash_reboot, so that a SIGFPE it cannot complete goes to the
+ * crash reboot in test-runner mode. */
+static int start_arm_division(const struct options *o) { (void)o; return arm_division_init(); }
 static int start_ppu(const struct options *o) { (void)o; return ppu_init(); }
 static int start_psg(const struct options *o) { (void)o; return psg_init(FRAME_AUDIO_SAMPLE_RATE_HZ); }
 static int start_sdl(const struct options *o) { (void)o; return 0; }
@@ -298,7 +305,11 @@ static int start_save_file(const struct options *o)
 
 static int start_frame(const struct options *o)
 {
-    struct frame_config config = { .frame_limit = o->frame_limit, .screenshot_path = o->screenshot_path };
+    struct frame_config config = {
+        .frame_limit = o->frame_limit,
+        .screenshot_path = o->screenshot_path,
+        .skip_drawing = o->headless && o->screenshot_path == NULL, /* nobody sees the frames */
+    };
     return frame_init(&config);
 }
 
@@ -313,8 +324,10 @@ struct module_step {
  * subsystems) and ends SDL after all three are shut down. */
 static const struct module_step module_steps[] = {
     { "gba_memmap", start_gba_memmap, gba_memmap_shutdown },
+    { "rom_mirror", start_rom_mirror, rom_mirror_shutdown },
     { "debug_channel", start_debug_channel, debug_channel_shutdown },
     { "crash_reboot", start_crash_reboot, crash_reboot_shutdown },
+    { "arm_division", start_arm_division, arm_division_shutdown },
     { "transfer_bounds", start_transfer_bounds, transfer_bounds_shutdown },
     { "interrupt", start_interrupt, interrupt_shutdown },
     { "timer", start_timer, timer_shutdown },

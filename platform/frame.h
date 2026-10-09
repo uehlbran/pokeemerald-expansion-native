@@ -77,6 +77,11 @@ enum frame_result {
 struct frame_config {
     uint32_t frame_limit;        /* 0: no limit; otherwise end after this many frames */
     const char *screenshot_path; /* NULL: none; otherwise the last frame as a PPM, at the end */
+    /* true: the PPU draws nothing (step 1 leaves the frame buffer alone), for
+     * when nobody will see the frame (headless, no screenshot: the test
+     * runner). Everything the game can observe still happens: the lines'
+     * VCOUNT and DISPSTAT, H-Blank DMA, the interrupts. */
+    bool skip_drawing;
 };
 
 /* Keeps the configuration (the path is not copied: it must outlive the

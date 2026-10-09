@@ -7,6 +7,7 @@
  * keeps there and how it resumes), POSIX for what a signal handler may call
  * (signal-safety(7): execve, sigaction, raise, write).
  */
+#define _GNU_SOURCE /* REG_EIP, REG_RIP: the interrupted program counter */
 #include "crash_reboot.h"
 
 #include <signal.h>
@@ -14,6 +15,7 @@
 #include <stddef.h>
 #include <stdio.h>
 #include <string.h>
+#include <ucontext.h>
 #include <unistd.h>
 
 #include "gba_memmap.h"
@@ -25,7 +27,7 @@ _Static_assert(CRASH_REBOOT_PERSISTENT_ADDRESS >= GBA_IWRAM_BASE
 extern char **environ;
 
 /* The signals that mean the game crashed (crash_reboot.h). */
-static const int crash_signals[] = { SIGSEGV, SIGBUS, SIGILL, SIGFPE };
+static const int crash_signals[] = { SIGSEGV, SIGBUS, SIGILL, SIGFPE, SIGABRT };
 #define CRASH_SIGNAL_COUNT (sizeof crash_signals / sizeof crash_signals[0])
 
 static const char hex_digits[] = "0123456789abcdef";
@@ -48,18 +50,86 @@ static const volatile uint8_t *persistent_bytes(void)
     return (const volatile uint8_t *)(uintptr_t)CRASH_REBOOT_PERSISTENT_ADDRESS;
 }
 
-/* write(2) of a constant message; async-signal-safe. Best-effort: there is
- * nothing to do if stderr is gone. */
-static void say(const char *message)
+/* The report line the handler writes, built in place and written with one
+ * write(2) so that the lines of processes sharing stderr do not interleave
+ * (the hydra runs up to 32). Async-signal-safe: no allocation, no stdio. */
+#define REPORT_SIZE 256u
+
+struct report {
+    char text[REPORT_SIZE];
+    size_t length;
+};
+
+static void report_add(struct report *report, const char *text)
 {
-    size_t length = strlen(message);
+    while (*text != '\0' && report->length < REPORT_SIZE)
+        report->text[report->length++] = *text++;
+}
+
+/* "0x" and as many hex digits as a pointer has. */
+static void report_add_hex(struct report *report, uintptr_t value)
+{
+    char text[2 + 2 * sizeof value + 1];
+    size_t length = 0;
+    text[length++] = '0';
+    text[length++] = 'x';
+    for (size_t shift = 8 * sizeof value; shift > 0; shift -= 4)
+        text[length++] = hex_digits[(value >> (shift - 4)) & 0x0Fu];
+    text[length] = '\0';
+    report_add(report, text);
+}
+
+static void report_add_unsigned(struct report *report, unsigned value)
+{
+    char text[3 * sizeof value + 1];
+    size_t length = sizeof text - 1;
+    text[length] = '\0';
+    do {
+        text[--length] = (char)('0' + value % 10u);
+        value /= 10u;
+    } while (value > 0 && length > 0);
+    report_add(report, &text[length]);
+}
+
+/* Best-effort: there is nothing to do if stderr is gone. */
+static void report_write(const struct report *report)
+{
+    const char *text = report->text;
+    size_t length = report->length;
     while (length > 0) {
-        ssize_t written = write(STDERR_FILENO, message, length);
+        ssize_t written = write(STDERR_FILENO, text, length);
         if (written <= 0)
             return;
-        message += written;
+        text += written;
         length -= (size_t)written;
     }
+}
+
+/* The interrupted program counter. Flagged for 64-bit: a pointer-sized
+ * integer, as the kernel stores it. */
+static uintptr_t interrupted_pc(const void *context)
+{
+    const ucontext_t *interrupted = context;
+#if defined(__x86_64__)
+    return (uintptr_t)interrupted->uc_mcontext.gregs[REG_RIP];
+#elif defined(__i386__)
+    return (uintptr_t)interrupted->uc_mcontext.gregs[REG_EIP];
+#else
+    (void)interrupted;
+    return 0;
+#endif
+}
+
+/* "crash_reboot: signal 11 at 0x...; fault address 0x...: " */
+static void report_where(struct report *report, int signal_number, const siginfo_t *info, const void *context)
+{
+    report_add(report, "crash_reboot: signal ");
+    report_add_unsigned(report, (unsigned)signal_number);
+    report_add(report, " at ");
+    report_add_hex(report, interrupted_pc(context));
+    report_add(report, ", fault address ");
+    report_add_hex(report, (uintptr_t)info->si_addr);
+    report_add(report, ": ");
 }
 
 static bool state_changed_since_start(void)
@@ -93,18 +163,24 @@ static void die_of(int signal_number)
     (void)raise(signal_number); /* pending until the handler returns; a fault would recur anyway */
 }
 
-static void on_crash(int signal_number)
+static void on_crash(int signal_number, siginfo_t *info, void *context)
 {
+    struct report report = { .length = 0 };
+    report_where(&report, signal_number, info, context);
     if (!state_changed_since_start()) {
-        say("crash_reboot: the game crashed with the test runner's persistent state as it started; "
-            "a reboot would crash again, so the process ends here\n");
+        report_add(&report, "the test runner's persistent state is as the process started with; a reboot "
+                   "would crash again, so the process ends here\n");
+        report_write(&report);
         die_of(signal_number);
         return;
     }
     encode_state();
-    say("crash_reboot: the game crashed; rebooting with the test runner's persistent state\n");
+    report_add(&report, "rebooting with the test runner's persistent state\n");
+    report_write(&report);
     (void)execve(CRASH_REBOOT_EXECUTABLE, reboot.args, environ);
-    say("crash_reboot: execve of " CRASH_REBOOT_EXECUTABLE " failed; the process ends here\n");
+    report.length = 0;
+    report_add(&report, "crash_reboot: execve of " CRASH_REBOOT_EXECUTABLE " failed; the process ends here\n");
+    report_write(&report);
     die_of(signal_number);
 }
 
@@ -136,8 +212,8 @@ static bool install_handlers(void)
     }
     struct sigaction action;
     memset(&action, 0, sizeof action);
-    action.sa_handler = on_crash;
-    action.sa_flags = SA_ONSTACK;
+    action.sa_sigaction = on_crash;
+    action.sa_flags = SA_ONSTACK | SA_SIGINFO;
     sigset_t crashes;
     if (sigemptyset(&action.sa_mask) != 0 || sigemptyset(&crashes) != 0) {
         perror("crash_reboot: sigemptyset");

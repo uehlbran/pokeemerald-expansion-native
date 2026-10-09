@@ -142,6 +142,7 @@ static void InvokeOneVsTwoTestFunctionWithStack(void *results, u32 i, struct Bat
     InvokeDoubleTestFunctionWithStack(results, i, playerLeft, opponentLeft, playerRight, opponentRight, function, stack);
 }
 #else
+#line 78
 NAKED static void InvokeSingleTestFunctionWithStack(void *results, u32 i, struct BattlePokemon *player, struct BattlePokemon *opponent, SingleBattleTestFunction function, void *stack)
 {
     asm("push {r4-r6,lr}\n\
@@ -258,6 +259,7 @@ NAKED static void InvokeOneVsTwoTestFunctionWithStack(void *results, u32 i, stru
         .pool");
 }
 #endif
+#line 193
 
 // Calls test->function, but pointing its stack at DATA.stack so that
 // local variables are live after the function returns (and so can be
@@ -2528,6 +2530,16 @@ void ClosePokemon(u32 sourceLine)
 {
     s32 i;
     u32 data;
+#if PLATFORM_NATIVE
+    // A PLAYER(...) or OPPONENT(...) with neither a body nor a ';' takes the
+    // next one as its body (test/battle/ability/trace.c and others), so this
+    // runs again after the inner call has set currentMon to NULL. The GBA
+    // reads and writes its BIOS through NULL to no effect, and the checks
+    // below give what they gave the inner call; natively NULL is unmapped.
+    if (DATA.currentMon == NULL)
+        return;
+#endif
+#line 2463
     INVALID_IF(DATA.hasExplicitSpeeds && !(DATA.explicitSpeeds[DATA.battlerParty] & (1 << DATA.currentPartyIndex)), "Speed required");
     for (i = 0; i < STATE->battlersCount; i++)
     {

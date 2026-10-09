@@ -14,8 +14,10 @@
  * (test/test_runner.c, STATE_INIT; docs/research/test-runner-protocol.md).
  *
  * Natively a crash is a signal: SIGSEGV (a NULL call, a bad pointer), SIGBUS,
- * SIGILL (src/libisagbprn.c's 0xEFFF breakpoint), SIGFPE (an integer
- * division by zero, which the GBA's software division does not trap). With
+ * SIGILL (src/libisagbprn.c's 0xEFFF breakpoint), SIGFPE (a divide error
+ * arm_division cannot complete as the GBA would), SIGABRT (the C library's
+ * stack-protector and fortify checks: memory corruption the GBA does not
+ * notice). With
  * crash_reboot_init, each of them runs a handler, on an alternate stack, that
  * copies the 100h bytes at 03007F00h into the command line and execs
  * /proc/self/exe with the process's own arguments plus

@@ -61,7 +61,8 @@ static struct {
     size_t caller_stack_size;
 } call;
 
-static _Alignas(GAME_HOOKS_STACK_ALIGNMENT) unsigned char call_stack[GAME_HOOKS_CALL_STACK_SIZE];
+/* gba_regions.ld's .platform_call_stack (game_hooks.h says why there). */
+extern unsigned char platform_call_stack_start[], platform_call_stack_end[];
 
 /* AddressSanitizer's fiber annotations, or nothing without it. */
 static void fiber_start_switch(void **fake_stack_save, const void *bottom, size_t size)
@@ -190,6 +191,16 @@ static void run_entry(void)
     fiber_start_switch(NULL, call.caller_stack_bottom, call.caller_stack_size);
 }
 
+/* The section's place and size are the linker script's; this checks they
+ * are what the header says. Flagged 64-bit: addresses compared as integers. */
+static bool call_stack_is_linked(void)
+{
+    uintptr_t start = (uintptr_t)platform_call_stack_start;
+    uintptr_t end = (uintptr_t)platform_call_stack_end;
+    return start == GAME_HOOKS_CALL_STACK_ADDRESS && end - start == GAME_HOOKS_CALL_STACK_SIZE
+           && start % GAME_HOOKS_STACK_ALIGNMENT == 0;
+}
+
 void PlatformCallWithStack(void (*entry)(void *context), void *context, void *stackTop)
 {
     (void)stackTop; /* why: game_hooks.h */
@@ -202,12 +213,17 @@ void PlatformCallWithStack(void (*entry)(void *context), void *context, void *st
         entry(context);
         return;
     }
+    if (!call_stack_is_linked()) {
+        fprintf(stderr, "game_hooks: the call stack is not linked at %#x with %u bytes (gba_regions.ld)\n",
+                GAME_HOOKS_CALL_STACK_ADDRESS, GAME_HOOKS_CALL_STACK_SIZE);
+        return;
+    }
     if (getcontext(&call.callee) != 0) {
         perror("game_hooks: getcontext");
         return;
     }
-    call.callee.uc_stack.ss_sp = call_stack;
-    call.callee.uc_stack.ss_size = sizeof call_stack;
+    call.callee.uc_stack.ss_sp = platform_call_stack_start;
+    call.callee.uc_stack.ss_size = GAME_HOOKS_CALL_STACK_SIZE;
     call.callee.uc_link = &call.caller;
     makecontext(&call.callee, run_entry, 0);
     call.entry = entry;
@@ -215,7 +231,7 @@ void PlatformCallWithStack(void (*entry)(void *context), void *context, void *st
     call.unwind_target = NULL;
     call.active = true;
 
-    fiber_start_switch(&call.caller_fake_stack, call_stack, sizeof call_stack);
+    fiber_start_switch(&call.caller_fake_stack, platform_call_stack_start, GAME_HOOKS_CALL_STACK_SIZE);
     int swapped = swapcontext(&call.caller, &call.callee);
     fiber_finish_switch(call.caller_fake_stack, NULL, NULL);
     call.active = false;

@@ -256,6 +256,39 @@ PTEST(the_games_stores_to_the_status_bits_are_overwritten)
 
 /* --- frame_run: the lines ------------------------------------------------ */
 
+/* DISPCNT (GBATEK "LCD I/O Display Control"), and its bit 7, forced blank,
+ * which the PPU draws white. */
+#define FRAME_TEST_DISPCNT_OFFSET UINT32_C(0x000)
+#define FRAME_TEST_FORCED_BLANK UINT16_C(0x0080)
+
+PTEST(skip_drawing_leaves_the_frame_buffer_and_keeps_the_lines_events)
+{
+    /* A drawn frame in forced blank is white; then, not drawing, a frame that
+     * would be drawn black (backdrop colour 0) leaves the white alone. */
+    PT_ASSERT(start(0, NULL, NULL));
+    *io(FRAME_TEST_DISPCNT_OFFSET) = FRAME_TEST_FORCED_BLANK;
+    PT_ASSERT_EQ_INT(frame_run(), FRAME_CONTINUE);
+    bool drawn_white = frame_pixels()[0] == 0x7FFF && frame_pixels()[VIDEO_PIXEL_COUNT - 1] == 0x7FFF;
+    struct frame_config undrawn = { .skip_drawing = true };
+    frame_shutdown();
+    PT_ASSERT_EQ_INT(frame_init(&undrawn), 0);
+    *io(FRAME_TEST_DISPCNT_OFFSET) = 0;
+    event_count = 0;
+    PT_ASSERT_EQ_INT(frame_run(), FRAME_CONTINUE);
+    int hblanks = count_events(EVENT_HBLANK);
+    int vblanks = count_events(EVENT_VBLANK);
+    bool still_white = true;
+    for (size_t i = 0; i < VIDEO_PIXEL_COUNT; i++)
+        still_white = still_white && frame_pixels()[i] == 0x7FFF;
+    uint32_t frames = frame_count();
+    stop();
+    PT_ASSERT(drawn_white);
+    PT_ASSERT(still_white);
+    PT_ASSERT_EQ_INT(hblanks, LCD_VISIBLE_LINES);
+    PT_ASSERT_EQ_INT(vblanks, 1);
+    PT_ASSERT_EQ_U32(frames, 1);
+}
+
 PTEST(hblank_follows_each_drawn_line)
 {
     PT_ASSERT(start(0, NULL, NULL));

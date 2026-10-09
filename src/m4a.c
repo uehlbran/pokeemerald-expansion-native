@@ -617,6 +617,14 @@ void m4aMPlayStop(struct MusicPlayerInfo *mplayInfo)
     s32 i;
     struct MusicPlayerTrack *track;
 
+#if PLATFORM_NATIVE
+    // src/sound.c stops gMPlay_PokemonCry, NULL until a cry has played
+    // (headless tests play none). The GBA reads its BIOS at NULL, never
+    // ID_NUMBER, and returns below; natively NULL is unmapped.
+    if (mplayInfo == NULL)
+        return;
+#endif
+#line 620
     if (mplayInfo->ident != ID_NUMBER)
         return;
 
@@ -1609,6 +1617,14 @@ void SetPokemonCryProgress(u32 val)
 
 bool32 IsPokemonCryPlaying(struct MusicPlayerInfo *mplayInfo)
 {
+#if PLATFORM_NATIVE
+    // gMPlay_PokemonCry (src/sound.c) is NULL until a cry has played
+    // (headless tests play none). The GBA reads its BIOS at NULL and finds no
+    // cry playing; natively NULL is unmapped.
+    if (mplayInfo == NULL)
+        return FALSE;
+#endif
+#line 1612
     struct MusicPlayerTrack *track = mplayInfo->tracks;
 
     if (track->chan && track->chan->track == track)
