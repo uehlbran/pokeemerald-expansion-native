@@ -322,3 +322,25 @@ SoftReset longjmps to a target the frame loop registers; without one it
 prints and returns. Bounded decompressor variants exist for the tests
 only. CpuSet, CpuFastSet and the Vram writers do not enforce alignment
 (host-ABI decision above).
+
+## 2026-10-09: The link base stays at 0x40000000; no ROM-window mirror
+
+Expansion tags script-command, special and `callnative` pointers with
+`ROM_SIZE` (0x02000000) to mark "effect-instrumented" entries; on the
+GBA the tagged address is a valid ROM mirror. The test-runner worker
+tried linking the executable at 0x08000000 and mapping its read-only
+segments again at +0x02000000 (`platform/rom_mirror`), which also makes
+`ROM_START..ROM_END` checks and the 28-bit location encodings work
+unchanged. Rejected: it caps the native image at 32 MiB (the TEST=1
+image had 5.7 MiB left and the sanitized one only fitted with outline
+instrumentation and a relocated rodata), it cannot exist on 64-bit
+(data access is RIP-relative), and this project's next phase is adding
+content. Chosen: the base stays at 0x40000000, tagged pointers are
+untagged at their four call sites under guards (`platform/script_tag.h`;
+bit 25 is clear for every code address below 0x42000000, asserted at
+link time), and the two remaining ROM-address assumptions
+(`src/malloc.c`'s location encoding, `src/field_name_box.c`'s pointer
+test) get small guards. One mechanism for both bit widths and no size
+cliff. A 1 MiB `.platform_call_stack` region at 0x01800000 holds the
+battle runner's stack so that a 27-bit address field in the battle
+tests' queued events can hold a stack address.
