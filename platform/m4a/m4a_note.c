@@ -57,7 +57,7 @@ static uintptr_t TrackAddress(const struct MusicPlayerTrack *track)
  * address as .4byte in attack..release, little-endian; the assembly loads
  * it as one word. Flagged 64-bit: a 4-byte address, which on a 64-bit host
  * holds only for data linked below 4 GiB, as the native build links it
- * (non-PIE, image at 0x40000000).
+ * (non-PIE, image at 0x08000000).
  */
 static const u8 *KeySplitTable(const struct ToneData *tone)
 {

@@ -51,7 +51,7 @@
  *    each unit at the exact address given, any alignment, with memcpy.
  *  - Address masks. The hardware keeps the low 27 bits (DMA0 source, DMA0-2
  *    destination) or 28 bits of an address. Native addresses are not GBA
- *    bus addresses (the executable sits at 40000000h, the 64-bit stack far
+ *    bus addresses (the executable's data sits above 08000000h, the stacks far
  *    above), so no mask is applied; transfer_bounds_ok() decides instead
  *    what a transfer may read and write, and refuses the rest.
  *  - Start edge. GBATEK loads the internal registers when the enable bit

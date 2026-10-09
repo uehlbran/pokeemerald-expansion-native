@@ -201,7 +201,7 @@ the following.
 - **Song data.** It holds 4-byte addresses (`GOTO`, `PATT`, `REPT`).
   `JumpToAddressAt` converts the 32-bit value through `uintptr_t`
   (`m4a_commands.c`). On a 64-bit host both hold only for data linked
-  below 4 GiB, which the non-PIE build at 0x40000000 provides.
+  below 4 GiB, which the non-PIE build at 0x08000000 provides.
 - **Compressed samples.** `currentPointer` holds a sample index for them,
   stored as `uintptr_t` (`m4a_render.c`).
 - **Track tie-break.** Ties between equal priorities compare track

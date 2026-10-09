@@ -3,7 +3,7 @@
  * executable. A GNU ld fragment used with gba_regions.ld (which places the
  * GBA regions, EWRAM_INIT, EWRAM_DATA and the test runner's .persistent
  * state); Makefile.native links the game with
- *   -no-pie -Wl,-Ttext-segment=0x40000000 -Wl,-T,platform/gba_regions.ld -Wl,-T,platform/gba_game.ld
+ *   -no-pie -Wl,-Ttext-segment=0x08000000 -Wl,-T,platform/gba_regions.ld -Wl,-T,platform/gba_game.ld
  * and defines gInitialMainCB2 itself (--defsym), because its value depends
  * on TEST.
  *

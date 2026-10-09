@@ -33,22 +33,34 @@ the launcher, `platform/test_runner/native-rom-test`: `chmod u+x`, and its
 copies of that descriptor are closed before the exec. The hydra is
 unchanged.
 
-### 3. Reads and writes through NULL that the GBA serves from its BIOS
+### 3. Reads and writes the GBA serves from memory that is not there natively
 
-On the GBA, address 0 is the BIOS ROM: reads return BIOS bytes (or, outside
-the BIOS, the last BIOS opcode fetched) and writes are ignored, so a NULL
-pointer dereference goes unnoticed. Natively the first 64 KiB are unmapped
-(`vm.mmap_min_addr`), and `MMAP_PAGE_ZERO` needs privileges (checked:
-`setarch -Z` still faults), so each site gets a guarded fix that does what
-the GBA ends up doing.
+On the GBA every address reads something: address 0 is the BIOS ROM (reads
+outside the BIOS return its last fetched opcode, writes are ignored), unused
+bus space returns open-bus values, EWRAM mirrors every 256 KiB and the ROM
+answers far past any table. Code that dereferences NULL, indexes past a
+table or wraps a counter therefore goes unnoticed. Natively the first 64 KiB
+are unmapped (`vm.mmap_min_addr`; `MMAP_PAGE_ZERO` needs privileges,
+checked: `setarch -Z` still faults) and so is everything around the image.
+Each site gets the smallest guarded fix that does what the GBA ends up
+doing; where the GBA's value is unknowable (an IWRAM byte, open bus), what
+a correct program would do.
 
 | Site | Tests | What the GBA does | Native fix |
 |---|---|---|---|
-| `CB2_TestRunner` INIT: `MoveSaveBlocks_ResetHeap` copies `*gSaveBlock1Ptr`, NULL at boot | all | copies BIOS bytes, which `ClearSaveBlocks` wipes before every test | `test/test_runner.c`: point `gSaveBlock1Ptr` at `gSaveblock1` first if NULL |
-| `FunctionTest_SetUp`: `ClearRiggedRng` before `AllocZeroed` writes through the freed (NULL) `gFunctionTestRunnerState` | every `TEST` | writes ignored | `test/test_runner.c`: allocate first (the allocation is zeroed, which is what `ClearRiggedRng` writes) |
-| `CB2_InitBattleInternal` → `BattleSetup_GetEnvironmentId` reads `gMapHeader.mapLayout` (NULL, no map) | every battle test | garbage environment, overwritten by `BATTLE_ENVIRONMENT_BUILDING` for recorded battles | `src/battle_main.c`: not called for recorded battles |
-| `IsPokemonCryPlaying`, `m4aMPlayStop` with `gMPlay_PokemonCry` NULL (no cry played; headless) | ~3400 battle tests | `ident` is never `ID_NUMBER`, no cry is playing | `src/m4a.c`: NULL returns FALSE / returns |
-| `PlayAnimation`: `*argPtr` with the macros' default `argPtr=NULL` | most battle tests | reads BIOS, value unused | `src/battle_script_commands.c`: reads a zero |
+| `test/test_runner.c` INIT: `MoveSaveBlocks_ResetHeap` copies `*gSaveBlock1Ptr`, NULL at boot | all | copies BIOS bytes, which `ClearSaveBlocks` wipes before every test | point `gSaveBlock1Ptr` at `gSaveblock1` first if NULL |
+| `test/test_runner.c` `FunctionTest_SetUp`: `ClearRiggedRng` before `AllocZeroed` writes through the freed (NULL) `gFunctionTestRunnerState` | every `TEST` | writes ignored | allocate first (the allocation is zeroed, which is what `ClearRiggedRng` writes) |
+| `src/battle_main.c` `CB2_InitBattleInternal` → `BattleSetup_GetEnvironmentId` reads `gMapHeader.mapLayout` (NULL, no map) | every battle test | garbage environment, overwritten by `BATTLE_ENVIRONMENT_BUILDING` for recorded battles | not called for recorded battles |
+| `src/m4a.c` `IsPokemonCryPlaying`, `m4aMPlayStop` with `gMPlay_PokemonCry` NULL (headless tests play no cry) | ~3400 battle tests | `ident` is never `ID_NUMBER`; no cry playing | NULL returns FALSE / returns |
+| `src/battle_script_commands.c` `PlayAnimation`: `*argPtr` with the macros' default `argPtr=NULL` | most battle tests | reads BIOS, value unused | reads a zero |
+| `src/battle_script_commands.c` `Cmd_jumpifarrayequal`: `jumpifbyteequal B_SHOW_DYNAMAX_MESSAGE, FALSE` passes two constants (NULL, NULL) as arrays | 108 Dynamax tests | NULL equals NULL: jumps | the same pointer twice jumps without reading |
+| `test/test_runner_battle.c` `ClosePokemon`: a `PLAYER(...)` with no body and no `;` takes the next one as its body and closes twice, the second time with `currentMon` NULL | 36 battle tests (`trace.c` and others) | reads and writes BIOS, no effect | returns when `currentMon` is NULL |
+| `src/battle_util.c` Hex/Venoshock (`EFFECT_DOUBLE_POWER_ON_ARG_STATUS`): `GetMoveAdditionalEffectById(move, 0)` on a move with none | 4 | BIOS byte, never `MOVE_EFFECT_REMOVE_STATUS` | checks the count first |
+| `src/battle_util.c` `GetIllusionMonPtr` outside a battle (`gBattleStruct` NULL; `test/text.c` expands battle strings) | 1 | no illusion | NULL returns NULL |
+| `src/m4a.c` `m4aSongNumStart`: `PhantomForceAttack` plays song `SOUND_PAN_ATTACKER` (-64: 0xFFC0) | 2 animation tests | entry read from ROM far past `gSongTable`, no player there, nothing starts | song numbers past the table start nothing |
+| `src/battle_anim_ice.c` `InitIceBallAnim`: the fifth roll (`rolloutTimer` 4) takes affine animation 5 of 5 | 1 animation test | the word after the table, 0x01C001C0, as the animation's address: open bus | the last animation |
+| `src/recorded_battle.c` `RecordedBattle_ClearBattlerAction`: clearing more than was recorded wraps the size to 0xFFFF and writes 0xFF 64 KiB past the record | 1 AI doubles test | EWRAM's mirror folds the write onto another EWRAM variable | an empty record stays empty |
+| `test/text.c` "Map names fit in popup": `MAP_GROUP_COUNT` counts FireRed's groups, NULL in Emerald's `gMapGroups` | 1 | header addresses from BIOS, headers from IWRAM | NULL groups skipped |
 
 ### 4. ROM mirror tags on script function pointers (every script)
 
@@ -56,8 +68,9 @@ Expansion marks script commands, specials and callnatives that "request
 effects" by storing `function + ROM_SIZE` (0x2000000): on the GBA that is
 the same code in the ROM's first mirror (0x0A000000), and
 `(pointer & 0xE000000) == 0xA000000` recognises it. Natively those
-addresses were unmapped (crash in `RunScriptCommand`). Fixed in the
-platform: the executable is now linked at 0x08000000, the ROM's address
+addresses were unmapped (crash in `RunScriptCommand`; every
+`RUN_OVERWORLD_SCRIPT` and every overworld script). Fixed in the platform:
+the executable is now linked at 0x08000000, the ROM's address
 (Makefile.native and platform/Makefile, `-Ttext-segment`), and
 `platform/rom_mirror` maps its read-only segments again 0x2000000 higher.
 32-bit x86 non-PIC code runs unchanged from the copy (it addresses data
@@ -66,7 +79,7 @@ effects of the move: `MemBlockLocation`'s `ROM_START |` encoding,
 `SetSpeaker`'s ROM range check and the hydra's 7-digit `%p` symbolisation
 all work as on the GBA. Limits: 64-bit (RIP-relative data access) cannot run
 code from a mirror (`ROM_MIRROR_ERR_64_BIT`); the sanitized build's code
-(about 40 MB) does not fit the 32 MB ROM window.
+(about 40 MB) does not fit the 32 MB window (see the sanitizer run below).
 
 ### 5. The battle runner's 27-bit address fields
 
@@ -77,18 +90,68 @@ is in EWRAM. The native call stack was in the executable's `.bss`, above
 0x01800000 (GBATEK's unused 00004000-01FFFFFF), and transfer_bounds accepts
 it as a stack.
 
-### 6. Upstream bugs the GBA survives
+### 6. Upstream bugs the GBA survives that x86 does not
 
 | Site | Tests | GBA | Native fix |
 |---|---|---|---|
 | `src/daycare.c` `GiveParentSharedLevelUpMoves`: the inner loop increments `i`, not `j`, and scans past `sharedMoves` | daycare egg tests | scans memory (stack, IWRAM mirrors, at the latest the learnset in ROM) until a halfword equals `levelupLearnset[0].move`, then adds that move | does the same without the scan |
-| `src/party_menu.c` `BufferBattlePartyOrderBySide`: with one Pokémon on a two-battler side (2v1, 1v2) `j` reaches 6 and writes `partyIndexes[6]` | 2v1 and 1v2 battles | one byte of stack padding | bounded; `-fstack-protector` caught it natively |
+| `src/party_menu.c` `BufferBattlePartyOrderBySide`: with one Pokémon on a two-battler side (2v1, 1v2) `j` reaches 6 and writes `partyIndexes[6]` | 2v1 and 1v2 battles | one byte of stack padding | bounded (`-fstack-protector` aborted natively) |
+| `test/pokemon.c` "BoxPokemon encryption works": `u8 nickname[12]` receives 12 characters and an EOS | 1 | stack padding | `nickname[POKEMON_NAME_LENGTH + 1]` |
+| Integer division by zero: `ComputeBallShakeOdds` (a ball that cannot catch), `GetHealthPercentage` (empty battler), `AnimSparkElectricityFlashing_Step` (`% data[4]` with 0) | 9 | libgcc's `__udivsi3`/`__divsi3`/`__modsi3` return (0xFFFFFFFF or INT_MAX/INT_MIN or 0) instead of trapping | platform: `arm_division` completes x86's divide error with libgcc's results (no game change) |
+
+### 7. The game's own mGBA printf
+
+`src/libisagbprn.c` `MgbaPrintf` (expansion's `DebugPrintf`) writes the
+debug string and stores FLAGS itself; natively the store was plain memory,
+so the text was never printed and stayed in the buffer in front of the
+runner's next message (seen as a garbled test name). Guarded:
+`MgbaOpen`/`MgbaPrintf` call `PlatformDebugOpen`/`PlatformDebugSend`.
+
+### 8. Benchmarks (9 tests): documented divergence
+
+`BENCHMARK` (`include/test/test.h`) counts GBA cycles with Timer 3 around a
+block and `EXPECT_FASTER` compares two counts. Natively the game's code
+takes no emulated time (time advances at frame boundaries), so both counts
+were 0 and the tests failed; x86 timings of a few hundred nanoseconds would
+say nothing about the GBA's cycles and would be noise. Guarded:
+`BenchmarkStart` ends the test as an assumption failure natively, with the
+reason. The hydra lists them under ASSUMPTIONS_FAILED and exits 0
+(`gTestRunnerSkipIsFail` is 0, as in expansion outside rh-hideout's CI).
+Tests: "BuildOamBuffer faster ..." (5, `test/sprite.c`), "Optimised
+GetMonData", "Optimised SetMonData" (`test/pokemon.c`), "RandomUniform
+mul-based faster than mod-based" (2, `test/random.c`).
+
+### 9. Save struct sizes (3 tests)
+
+`test/save.c` checks `sizeof` of the save blocks against the GBA's numbers;
+natively structs follow the host ABI (docs/DECISIONS.md, "Native structs
+follow the host ABI"), which does not round every struct to 4 bytes as
+`-mabi=apcs-gnu` does: SaveBlock1 15496 (GBA 15568), SaveBlock2 3848
+(3884), SaveBlock3 1 (4); PokemonStorage is 34144 on both. The test's own
+comment says to update the values for a hack's layout; guarded, the native
+build checks its own 32-bit sizes, so the test guards the native save
+layout. Flagged for 64-bit.
+
+### 10. Speed: the PPU in a headless run
+
+The first full runs took 15 minutes, almost all of it drawing frames nobody
+sees. `frame` no longer draws when headless without a screenshot; the
+suite takes about 35 seconds on 32 cores (the GBA baseline about 2.5
+minutes under mGBA).
 
 ## Runs
+
+The GBA baseline was rerun for its per-test results (2 minutes 36 seconds,
+the same totals as `docs/research/gba-baseline-1.17.1.md`), and each native
+run compared with it test by test.
 
 | Run | Total | Passed | Known failing | Expected failing | To-do | Failed | Exit | Notes |
 |---|---|---|---|---|---|---|---|---|
 | GBA baseline | 5862 | 5414 | 18 | 9 | 421 | 0 | 0 | |
 | 1 | 298 | 89 | 0 | 3 | 2 | 204 | 0 | 31 of 32 processes died: crash loops (class 3, 4) |
 | 3 | 5635 | 302 | 0 | 3 | 404 | 4926 | 1 | ROM mirror in; battles crash (class 3) |
-| 4 | 4033 | 283 | 0 | 3 | 272 | 3475 | 1 | |
+| 4 | 4033 | 283 | 0 | 3 | 272 | 3475 | 1 | NULL music player (class 3) |
+| 5 | 5633 | 5032 | 14 | 9 | 404 | 174 | 1 | runner 19 died of SIGABRT (class 6); 15 minutes (class 10) |
+| 6 | 5862 | 5392 | 18 | 9 | 421 | 22 | 1 | |
+| 7 | 5862 | 5405 | 18 | 9 | 421 | 0 | 0 | 9 assumption failures (class 8); one garbled test name (class 7) |
+| 8 | 5862 | 5405 | 18 | 9 | 421 | 0 | 0 | 9 assumption failures; per test equal to the GBA baseline but for those 9 |

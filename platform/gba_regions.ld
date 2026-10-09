@@ -6,7 +6,7 @@
  * docs/research/test-runner-protocol.md. Why this and not runtime mmap:
  * platform/gba_memmap.c.
  *
- * Link with: -no-pie -Wl,-Ttext-segment=0x40000000 -Wl,-T,gba_regions.ld
+ * Link with: -no-pie -Wl,-Ttext-segment=0x08000000 -Wl,-T,gba_regions.ld
  * INSERT AFTER .bss makes this augment the default linker script rather than
  * replace it. platform/Makefile links every test this way; Makefile.native
  * must link the game the same way.
