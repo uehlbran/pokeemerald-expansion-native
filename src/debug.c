@@ -1654,7 +1654,16 @@ static void DebugTask_HandleMenuInput_General(u8 taskId)
 {
     const struct DebugMenuOption *options = Debug_GetCurrentCallbackMenu();
     u32 input = ListMenu_ProcessInput(gTasks[taskId].tMenuTaskId);
+#if PLATFORM_NATIVE
+    // No entry chosen yet is LIST_NOTHING_CHOSEN (-1), and options[-1] is before the table; the
+    // GBA copied whatever lay there and used it only when A selected a real entry.
+    struct DebugMenuOption option = { 0 };
+    if ((s32)input >= 0)
+        option = options[input];
+#else
     struct DebugMenuOption option = options[input];
+#endif
+#line 1658
 
     if (JOY_NEW(A_BUTTON))
     {

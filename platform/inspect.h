@@ -43,6 +43,27 @@
  *   save_counter      gSaveCounter, the save slot's counter
  *   save_status       gSaveFileStatus
  *   flash_dirty_writes flash_write_count: programs and erases the game has done
+ *   party_species     every party slot's species number, comma separated ("none" without a party)
+ *   pc_box0_count     Pokemon in PC box 1 (index 0)
+ *   summary_species   species shown by the summary screen while it is open from the party menu
+ *                     (the party menu's slot at the time it was opened), else 0
+ *   debug_menu_open   whether a task of the debug menu (src/debug.c) is active, 0 or 1
+ *   debug_input       the number in the debug menu's numeric entry ("none" when no entry waits for input)
+ *   debug_step        its step "STEP.SUBSTEP" ("none" likewise); a new step is how a script knows a
+ *                     confirmed number was taken
+ *   party_slot        gPartyMenu.slotId, the party menu's cursor
+ *
+ * Facts with an argument, "name:argument" (the argument is plain decimal and in range, or the
+ * fact does not exist). They are read by `expect` and `wait-until` and are not in `dump`:
+ *   party_species:N   species of party slot N (0 to 5; 0 when the slot is empty)
+ *   party_name:N      its species name ("none" when empty)
+ *   party_level:N     its level
+ *   party_extras:N    "shiny=S dynamax=D gmax=G tera=T": what the debug menu's complex give sets
+ *   bag_item_count:ID quantity of item ID in the bag (CountTotalItemQuantityInBag)
+ *   pc_box_count:N    Pokemon in PC box N (0 to 13)
+ *   pc_box_species:N  species in PC box N, by position, comma separated ("none" when empty)
+ *   flag:ID           FlagGet(ID), 0 or 1 (ID below FLAGS_COUNT)
+ *   var:ID            VarGet(ID) (ID from VARS_START to 65535)
  */
 #ifndef PLATFORM_INSPECT_H
 #define PLATFORM_INSPECT_H

@@ -414,8 +414,15 @@ generated: $(AUTO_GEN_TARGETS)
 %.1bpp:     %.png  ; $(GFX) $< $@
 %.4bpp:     %.png  ; $(GFX) $< $@
 %.8bpp:     %.png  ; $(GFX) $< $@
-%.gbapal:   %.pal  ; $(GFX) $< $@
-%.gbapal:   %.png  ; $(GFX) $< $@
+# A palette of fewer than 16 colours (many species have 11 to 15) is not a whole number of
+# 32-byte palette banks, yet LoadSpritePalette and LoadPaletteFast copy a whole bank, so the
+# GBA read the next bytes of ROM (harmless); natively that is a read past the object.
+# Padding the .gbapal with zero colours to a whole bank changes no colour that was ever used.
+define PAD_GBAPAL
+size=$$(stat -c %s $@); pad=$$(( (32 - size % 32) % 32 )); if [ $$pad -gt 0 ]; then head -c $$pad /dev/zero >> $@; fi
+endef
+%.gbapal:   %.pal  ; $(GFX) $< $@ && $(PAD_GBAPAL)
+%.gbapal:   %.png  ; $(GFX) $< $@ && $(PAD_GBAPAL)
 %.lz:       %      ; $(GFX) $< $@
 %.smolTM:   %      ; $(SMOLTM) $< $@
 %.fastSmol: %      ; $(SMOL) -w $< $@ false false false

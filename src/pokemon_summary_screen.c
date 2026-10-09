@@ -3363,7 +3363,12 @@ static void PutPageWindowTilemaps(u8 page)
     }
 
     for (i = 0; i < ARRAY_COUNT(sMonSummaryScreen->windowIds); i++)
+#if PLATFORM_NATIVE
+        // Windows not created yet are WINDOW_NONE (255); the GBA indexed gWindows past its end.
+        if (sMonSummaryScreen->windowIds[i] != WINDOW_NONE)
+#endif
         PutWindowTilemap(sMonSummaryScreen->windowIds[i]);
+#line 3367
 
     ScheduleBgCopyTilemapToVram(0);
 }

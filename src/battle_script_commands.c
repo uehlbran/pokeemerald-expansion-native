@@ -3046,6 +3046,14 @@ static void Cmd_endselectionscript(void)
 
 static void PlayAnimation(enum BattlerId battler, u8 animId, const u16 *argPtr, const u8 *nextInstr)
 {
+#if PLATFORM_NATIVE
+    // Scripts pass NULL when the animation takes no argument, and every branch below
+    // reads *argPtr; the GBA read the BIOS area there, which no animation uses.
+    static const u16 sNoAnimationArg = 0;
+    if (argPtr == NULL)
+        argPtr = &sNoAnimationArg;
+#endif
+#line 3049
     if (B_TERRAIN_BG_CHANGE == FALSE && animId == B_ANIM_RESTORE_BG)
     {
         // workaround for .if not working
