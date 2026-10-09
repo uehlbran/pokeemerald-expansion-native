@@ -149,7 +149,8 @@ layout. Flagged for 64-bit.
 ### 10. Speed: the PPU in a headless run
 
 The first full runs took 15 minutes, almost all of it drawing frames nobody
-sees. `frame` no longer draws when headless without a screenshot; the
+sees. `frame` no longer draws in `--test-runner` mode (never with a replay
+or a screenshot, whose images need every frame); the
 suite takes about 35 seconds on 32 cores (the GBA baseline about 2.5
 minutes under mGBA).
 
@@ -172,7 +173,8 @@ run compared with it test by test.
 | 9 | 5862 | 5405 | 18 | 9 | 421 | 0 | 0 | as run 8, after the GLYPH_COPY and mega-indicator palette fixes |
 | 10 | 5862 | 5310 | 18 | 9 | 421 | 95 | 1 | linked at 0x40000000 again, without the ROM mirror: class 4 reopened until work/replay's untagging is merged |
 | 11 | 5862 | 5405 | 18 | 9 | 421 | 0 | 0 | after merging main (work/replay's script-tag untagging): class 4 closed; per test equal to the GBA baseline but for the 9 benchmarks; 44 s |
-| SANITIZE=1 | 5862 | 5402 | 18 | 9 | 421 | 3 | 1 | the sanitized run below: 3 CRASH (fatal AddressSanitizer reports), 9 assumption failures; 78 s |
+| SANITIZE=1 | 5862 | 5402 | 18 | 9 | 421 | 3 | 1 | the sanitized run below, before the palettes were padded: 3 CRASH (fatal AddressSanitizer reports), 9 assumption failures; 78 s |
+| SANITIZE=1 | 5862 | 5405 | 18 | 9 | 421 | 0 | 0 | eight battle-animation palettes padded; per test the GBA baseline but for the 9 benchmarks; 76 s |
 
 ## The timeout, end to end
 
@@ -202,13 +204,16 @@ never ran). AddressSanitizer's checks are outline calls in this build
 0x42000000, which gba_regions.ld's ASSERT for platform/script_tag.h
 forbids; outline it ends at 0x41BB12F8.
 
-Result, against the GBA baseline: 5862 total, 5402 passed, 18 known
+Result, against the GBA baseline: 5862 total, 5405 passed, 18 known
 failing, 9 expected failing, 421 to-do, 9 assumption failures
-(benchmarks, class 8), 3 failed, exit 1. The three are CRASH from the
-palette over-reads in the first row below, which the platform's
-`CpuFastSet` reports fatally: "Gimmick Form Change animations work",
-"Move Animations work 2" (move 100 of 222), "Move Animations work 4"
-(move 96 of 222). Every other test has its baseline result.
+(benchmarks, class 8), 0 failed, exit 0: per test the GBA baseline but
+for the benchmarks. Before the eight battle-animation palettes in the
+first row were padded, the platform's `CpuFastSet` reported their
+over-reads fatally and three tests were CRASH ("Gimmick Form Change
+animations work", "Move Animations work 2" and "4"); padding the first
+three (MegaParticles, Feint, WringOut) uncovered the next two (MegaStone,
+TrumpCard) in the same tests, so every battle-animation palette shorter
+than 16 colours is padded.
 
 Every finding, by the site the sanitizer names (line numbers are
 upstream's, as `#line` keeps them), with its root cause. None comes from
@@ -216,11 +221,11 @@ the platform: the two `platform/bios_memory.c` sites are the BIOS copy
 reading what the game asked it to. "Same on GBA" means the GBA performs
 the same out-of-bounds access and survives it; where the bytes it reads or
 writes differ natively (another neighbour), it says so. Not fixed (game
-code); none changes a test result except the three crashes.
+code) except the fatal palette over-reads; none changes a test result.
 
 | Site | Sanitizer | Root cause | GBA, and native difference |
 |---|---|---|---|
-| `src/graphics.c:35`, `:386`, `:398` (`gBattleAnimSpritePal_MegaParticles`, `_Feint`, `_WringOut`, 10, 5 and 7 colours) via `src/sprite.c` `LoadSpritePalette` -> `src/palette.c:58` `LoadPaletteFast` -> `CpuFastSet` | ASan global-buffer-overflow (fatal: the 3 CRASH) | palettes with fewer than 16 colours, always loaded as 32 bytes | reads the next ROM bytes into colours the sprite does not use; natively the next rodata. main's `sMegaIndicatorPal[16]` guard is the same fix |
+| `src/graphics.c:32`, `:35`, `:38`, `:386`, `:389`, `:392`, `:398`, `:442` (`gBattleAnimSpritePal_MegaStone` 8 colours, `_MegaParticles` 10, `_MegaSymbol` 10, `_Feint` 5, `_TrumpCard` 4, `_TrumpCardParticles` 4, `_WringOut` 7, `_SmallCloud` 5) via `src/sprite.c` `LoadSpritePalette` -> `src/palette.c:58` `LoadPaletteFast` -> `CpuFastSet` | ASan global-buffer-overflow (fatal) | palettes with fewer than 16 colours, always loaded as 32 bytes | reads the next ROM bytes into colours the sprite does not use; natively the next rodata. Fixed: each is declared `[16]` (zero-padded) under the guard, as main's `sMegaIndicatorPal` |
 | `src/data/graphics/pokemon.h` `gMonPalette_TatsugiriCurly` (15 colours), `_Okidogi`, `_Meowscarada` (14), `_Nacli` (12) via `src/battle_gfx_sfx_util.c:667` `BattleLoadMonSpriteGfx` -> `src/palette.c:49` `LoadPalette` -> `CpuSet` | ASan global-buffer-overflow | as above, `PLTT_SIZE_4BPP` for every species | as above |
 | `src/battle_util.c:7895` `GetCriticalHitOdds`, from `src/battle_ai_util.c:821` `ShouldCalcCritDamage` | UBSan index 4294967295 of `u32[5]`; ASan | `CalcCritChanceStage` returns `CRITICAL_HIT_BLOCKED` (-1), which the AI passes as a table index (only `CRITICAL_HIT_ALWAYS` is checked) | reads the word before `sGen7CriticalHitOdds`; the AI computes crit damage if it is 1. Natively a different word |
 | `src/battle_util.c:1004`, `:1010`, `:1011`, `:1013` (`HandleAction_NothingIsFainted`, `HandleAction_ActionFinished`), `src/battle_main.c:5052` (`RunTurnActionsFunctions`) | UBSan index 4 of `[4]`, index 12 of `SpecialStatus[4]`; ASan | after the turn's last action `gCurrentTurnActionNumber` is `gBattlersCount`, and `gActionsByTurnOrder`, `gBattlerByTurnOrder` (and `[+1]` at 1010) are read one past the end; 1010 then indexes `gSpecialStatuses` with the byte read | reads the next EWRAM variable: on GBA `gBattleTurnCounter`/`gLastUsedBallMenuPresent`, natively `gBattlerPositions`/`gActionsByTurnOrder` (the native EWRAM order differs). `afterYouActive` then only gates an empty loop. If `RunTurnActionsFunctions` runs again at that index with no battle outcome set, the byte read from `gActionsByTurnOrder[4]` selects the action function, which would differ natively; no test result differs |

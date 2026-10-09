@@ -365,7 +365,10 @@ static int start_frame(const struct options *o)
     struct frame_config config = {
         .frame_limit = o->frame_limit,
         .screenshot_path = o->screenshot_path,
-        .skip_drawing = o->headless && o->screenshot_path == NULL, /* nobody sees the frames */
+        /* Only the test runner leaves frames undrawn: nobody sees them there.
+         * A replay's screenshot commands and a final screenshot need every
+         * frame drawn. */
+        .skip_drawing = o->test_runner && o->replay_path == NULL && o->screenshot_path == NULL,
     };
     return frame_init(&config);
 }

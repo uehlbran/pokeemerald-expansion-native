@@ -289,6 +289,40 @@ PTEST(skip_drawing_leaves_the_frame_buffer_and_keeps_the_lines_events)
     PT_ASSERT_EQ_U32(frames, 1);
 }
 
+/* BG palette entry 0, the backdrop (GBATEK "LCD Color Palettes"); a
+ * colour that is neither forced-blank white nor black. */
+#define FRAME_TEST_BACKDROP_RED UINT16_C(0x001F)
+
+PTEST(a_frame_drawn_after_undrawn_frames_shows_the_current_image)
+{
+    /* Drawn: forced blank, white. Then three undrawn frames while the game
+     * turns forced blank off and sets the backdrop red; then drawing again:
+     * the frame is red, not the stale white or an undrawn black. */
+    PT_ASSERT(start(0, NULL, NULL));
+    *io(FRAME_TEST_DISPCNT_OFFSET) = FRAME_TEST_FORCED_BLANK;
+    PT_ASSERT_EQ_INT(frame_run(), FRAME_CONTINUE);
+    bool drawn_white = frame_pixels()[0] == 0x7FFF;
+    struct frame_config undrawn = { .skip_drawing = true };
+    frame_shutdown();
+    PT_ASSERT_EQ_INT(frame_init(&undrawn), 0);
+    *io(FRAME_TEST_DISPCNT_OFFSET) = 0;
+    *(volatile uint16_t *)(uintptr_t)GBA_PALETTE_RAM_BASE = FRAME_TEST_BACKDROP_RED;
+    for (int i = 0; i < 3; i++)
+        PT_ASSERT_EQ_INT(frame_run(), FRAME_CONTINUE);
+    bool still_white = frame_pixels()[0] == 0x7FFF;
+    struct frame_config drawn = { .skip_drawing = false };
+    frame_shutdown();
+    PT_ASSERT_EQ_INT(frame_init(&drawn), 0);
+    PT_ASSERT_EQ_INT(frame_run(), FRAME_CONTINUE);
+    bool all_red = true;
+    for (size_t i = 0; i < VIDEO_PIXEL_COUNT; i++)
+        all_red = all_red && frame_pixels()[i] == FRAME_TEST_BACKDROP_RED;
+    stop();
+    PT_ASSERT(drawn_white);
+    PT_ASSERT(still_white);
+    PT_ASSERT(all_red);
+}
+
 PTEST(hblank_follows_each_drawn_line)
 {
     PT_ASSERT(start(0, NULL, NULL));

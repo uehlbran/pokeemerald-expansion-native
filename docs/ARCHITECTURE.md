@@ -69,8 +69,8 @@ order:
 1. Lines 0 to 159. Each line starts (`VCOUNT` = line, the H-Blank flag in
    `DISPSTAT` cleared, the V-Counter flag set and VCount raised when the
    line matches `DISPSTAT`'s setting), dispatch; the PPU renders the line
-   into the frame buffer (not when nobody will see it: headless without a
-   screenshot, as the test runner runs); H-Blank starts (flag set),
+   into the frame buffer (not in `--test-runner` mode without a replay or a
+   screenshot, where nobody sees it); H-Blank starts (flag set),
    HBLANK-timed DMA runs, HBlank is raised, dispatch.
 2. Advance the four timers by one frame of cycles; raise their overflow
    interrupts; dispatch.

@@ -92,10 +92,14 @@ enum frame_result {
 struct frame_config {
     uint32_t frame_limit;        /* 0: no limit; otherwise end after this many frames */
     const char *screenshot_path; /* NULL: none; otherwise the last frame as a PPM, at the end */
-    /* true: the PPU draws nothing (step 1 leaves the frame buffer alone), for
-     * when nobody will see the frame (headless, no screenshot: the test
-     * runner). Everything the game can observe still happens: the lines'
-     * VCOUNT and DISPSTAT, H-Blank DMA, the interrupts. */
+    /* true: the PPU draws nothing (step 1 leaves the frame buffer alone).
+     * main sets it only in --test-runner mode without a replay or a
+     * screenshot, where nobody sees the frames. Everything the game can
+     * observe still happens: the lines' VCOUNT and DISPSTAT, H-Blank DMA,
+     * the H-Blank, VCount and V-Blank interrupts, V-Blank DMA. A frame drawn
+     * after undrawn ones shows the current state: the only state drawing
+     * advances, the affine reference points, is reloaded at every V-Blank,
+     * drawn or not. */
     bool skip_drawing;
 };
 
