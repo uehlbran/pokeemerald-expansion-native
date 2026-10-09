@@ -2,8 +2,8 @@
  * rtc_offset_store.h: the persisted RTC offset, a small text file.
  *
  * Internal to the RTC model (rtc.c). The file holds one decimal integer and a
- * newline: the number of seconds to add to UTC
- * to get the time the game's clock shows. It stands in for the battery-backed
+ * newline: the number of seconds to add to UTC to get the time the game's
+ * clock shows. It stands in for the battery-backed
  * counter on the cartridge, which kept the player's setting across power-off.
  */
 #ifndef PLATFORM_RTC_OFFSET_STORE_H
@@ -24,7 +24,8 @@ int rtc_offset_store_load(const char *path, int64_t *offset, int *found);
 /* Writes offset to path atomically: a temporary file next to it (path plus
  * ".tmp") is written, fsynced, then renamed over path, so a failure at any
  * step leaves the previous file intact. The directory is fsynced after the
- * rename; if that fails the new file is already in place but -1 is returned. -1 on failure (reported on stderr). */
+ * rename; if that fails the new file is already in place but -1 is returned.
+ * -1 on failure (reported on stderr). */
 int rtc_offset_store_save(const char *path, int64_t offset);
 
 /* Prints "rtc: <call> failed: <strerror(errno)>" to stderr. */

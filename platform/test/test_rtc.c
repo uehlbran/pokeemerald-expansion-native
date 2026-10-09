@@ -1,4 +1,4 @@
-// deps: rtc_offset_store.c
+// deps: rtc_offset_store.c rtc_calendar.c
 /*
  * test_rtc.c: the S-3511A model (rtc.c), written from GBATEK "GBA Cart
  * Real-Time Clock (RTC)" and expansion's use of it (src/siirtc.c, src/rtc.c).

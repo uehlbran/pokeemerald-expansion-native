@@ -29,19 +29,8 @@
  *    (localtime_r, used only for this) so the in-game clock reads local wall
  *    time, and it is persisted. After that a host zone or DST change does not
  *    move the clock; the player's set operations adjust the offset.
- *  - Year range and the 2099 -> 2000 wrap. The chip's year is two BCD digits
- *    (00h..99h = 2000..2099) with no century, and its leap year rule is
- *    "year divisible by 4", so year 00 is leap. The model's calendar is a
- *    36525-day cycle (25 leap years) from 2000-01-01: 2099-12-31 23:59:59 is
- *    followed by 2000-01-01 00:00:00, and a time before 2000 shows as
- *    2099-style years. Real 2100 (not leap) therefore differs from the chip,
- *    which has a 2100-02-29 (shown as year 00).
- *  - Day of week: 0 = Sunday (expansion's enum Weekday), computed from a
- *    continuously counting day number as the chip's septenary counter does,
- *    so it does not notice the century wrap (2099-12-31 Thursday is followed
- *    by 2000-01-01 Friday). 2000-01-01 itself is a Saturday. The chip lets
- *    software assign any sequence ("custom assignment") and expansion never
- *    sets it.
+ *  - Calendar and BCD: rtc_calendar.c (year range and the 2099 -> 2000 wrap,
+ *    leap years, the computed day of week).
  *  - Hour register: see rtc.h (PM flag in bit 7, derived).
  *  - Status after init is 24-hour, power-off flag clear: the offset file
  *    stands in for the battery, so the model never loses power (expansion's
@@ -61,51 +50,28 @@
 
 #include "rtc.h"
 
-#include <errno.h>
 #include <limits.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <string.h>
 #include <time.h>
 
+#include "rtc_calendar.h"
 #include "rtc_offset_store.h"
 
 _Static_assert(sizeof(time_t) >= 8, "rtc.c needs a 64-bit time_t (_TIME_BITS=64)");
 
-/* Calendar constants. */
-#define SECONDS_PER_MINUTE 60
-#define MINUTES_PER_HOUR   60
-#define HOURS_PER_DAY      24
-#define SECONDS_PER_DAY    ((int64_t)86400)
-#define MONTHS_PER_YEAR    12
-#define DAYS_PER_YEAR      365
-#define DAYS_PER_WEEK      7
-#define CHIP_YEARS         100                /* year register 00h..99h */
-#define CHIP_LEAP_PERIOD   4                  /* leap if year divisible by 4 */
-#define CHIP_CYCLE_DAYS    36525              /* 100 * 365 + 25 leap days */
-#define CHIP_WEEKDAY_OF_DAY_ZERO 6            /* 2000-01-01 is a Saturday */
-#define UNIX_DAYS_TO_2000  10957              /* 1970-01-01 to 2000-01-01 */
 #define TM_YEAR_BASE       1900
-#define NOON_HOUR          12
-#define CHIP_MAX_WEEKDAY   6
-#define BCD_BASE           10
-#define BCD_NIBBLE_BITS    4
-#define BCD_NIBBLE_MASK    0x0Fu
-#define BCD_MAX_DIGIT      9
 
 /* Status bits the game may write: everything but the read-only power flag. */
 #define STATUS_WRITABLE (RTC_STATUS_INTFE | RTC_STATUS_INTME | RTC_STATUS_INTAE | RTC_STATUS_24HOUR)
 #define STATUS_DEFAULT  RTC_STATUS_24HOUR
 #define STATUS_AFTER_RESET 0u
 
-static const uint8_t days_in_month_common[MONTHS_PER_YEAR] = {
-    31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31
-};
-
 struct rtc_state {
     bool initialised;
     rtc_time_source source;
-    int64_t offset;                  /* seconds added to host local time */
+    int64_t offset;                  /* seconds added to the time source's UTC */
     char offset_path[PATH_MAX];      /* empty: no persistence */
     uint8_t status;                  /* RTC_STATUS_* */
     uint8_t alarm_hour_bcd;          /* with the PM flag */
@@ -113,129 +79,6 @@ struct rtc_state {
 };
 
 static struct rtc_state chip;
-
-/* Broken-down chip time. */
-struct chip_time {
-    int year;   /* 0..99 */
-    int month;  /* 1..12 */
-    int day;    /* 1..31 */
-    int weekday;/* 0..6 */
-    int hour;   /* 0..23 */
-    int minute;
-    int second;
-};
-
-/* ---- BCD ------------------------------------------------------------------ */
-
-static uint8_t to_bcd(int value)
-{
-    return (uint8_t)(((value / BCD_BASE) << BCD_NIBBLE_BITS) | (value % BCD_BASE));
-}
-
-/* -1 if either nibble is not a decimal digit. */
-static int from_bcd(unsigned bcd)
-{
-    unsigned tens = bcd >> BCD_NIBBLE_BITS;
-    unsigned ones = bcd & BCD_NIBBLE_MASK;
-    if (tens > BCD_MAX_DIGIT || ones > BCD_MAX_DIGIT || bcd > 0xFFu)
-        return -1;
-    return (int)(tens * BCD_BASE + ones);
-}
-
-/* ---- calendar ------------------------------------------------------------- */
-
-static bool is_chip_leap_year(int year)
-{
-    return year % CHIP_LEAP_PERIOD == 0;
-}
-
-static int days_in_month(int year, int month)
-{
-    if (month == 2 && is_chip_leap_year(year))
-        return days_in_month_common[1] + 1;
-    return days_in_month_common[month - 1];
-}
-
-static int64_t floor_div(int64_t a, int64_t b)
-{
-    int64_t q = a / b;
-    return (a % b != 0 && (a < 0) != (b < 0)) ? q - 1 : q;
-}
-
-static int64_t floor_mod(int64_t a, int64_t b)
-{
-    return a - floor_div(a, b) * b;
-}
-
-/* Days since 2000-01-01 of a date in the chip's 2000..2099 window. */
-static int days_from_chip_date(int year, int month, int day)
-{
-    int days = year * DAYS_PER_YEAR + (year + CHIP_LEAP_PERIOD - 1) / CHIP_LEAP_PERIOD;
-    int m;
-    for (m = 1; m < month; m++)
-        days += days_in_month(year, m);
-    return days + day - 1;
-}
-
-/* Days since 1970-01-01 of a proleptic Gregorian date: the public-domain
- * days_from_civil algorithm (H. Hinnant, "chrono-Compatible Low-Level Date
- * Algorithms", https://howardhinnant.github.io/date_algorithms.html). Years
- * run from 1 March so the leap day is the last day of the year; an era is 400
- * years, 146097 days. */
-#define GREGORIAN_ERA_YEARS       400
-#define GREGORIAN_ERA_DAYS        146097
-#define DAYS_0000_03_01_TO_1970   719468  /* days from 0000-03-01 to 1970-01-01 */
-#define MARCH_BASED_MONTH_MAR     3       /* months counted from March: Mar = 0 */
-#define MARCH_BASED_MONTH_WRAP    9       /* Jan -> 10, Feb -> 11 */
-#define MONTH_DAYS_NUMERATOR      153     /* (153 * m + 2) / 5 = days before month m, March based */
-#define MONTH_DAYS_BIAS           2
-#define MONTH_DAYS_DENOMINATOR    5
-#define LAST_MONTH_OF_OLD_YEAR    2       /* Jan and Feb belong to the previous March-based year */
-#define CENTURY_YEARS             100
-
-static int64_t unix_days_from_civil(int64_t year, int month, int day)
-{
-    int64_t y = month <= LAST_MONTH_OF_OLD_YEAR ? year - 1 : year;
-    int64_t era = floor_div(y, GREGORIAN_ERA_YEARS);
-    int64_t year_of_era = y - era * GREGORIAN_ERA_YEARS;
-    int64_t march_month = month > LAST_MONTH_OF_OLD_YEAR ? month - MARCH_BASED_MONTH_MAR : month + MARCH_BASED_MONTH_WRAP;
-    int64_t day_of_year = (MONTH_DAYS_NUMERATOR * march_month + MONTH_DAYS_BIAS) / MONTH_DAYS_DENOMINATOR + day - 1;
-    int64_t day_of_era = year_of_era * DAYS_PER_YEAR + year_of_era / CHIP_LEAP_PERIOD
-                       - year_of_era / CENTURY_YEARS + day_of_year;
-    return era * GREGORIAN_ERA_DAYS + day_of_era - DAYS_0000_03_01_TO_1970;
-}
-
-/* Seconds counter value for a chip date and time of day. */
-static int64_t chip_seconds_from(int year, int month, int day, int hour, int minute, int second)
-{
-    int64_t days = UNIX_DAYS_TO_2000 + days_from_chip_date(year, month, day);
-    return days * SECONDS_PER_DAY + ((int64_t)hour * MINUTES_PER_HOUR + minute) * SECONDS_PER_MINUTE + second;
-}
-
-static struct chip_time chip_time_from_seconds(int64_t chip_seconds)
-{
-    struct chip_time t;
-    int64_t day_count = floor_div(chip_seconds, SECONDS_PER_DAY) - UNIX_DAYS_TO_2000; /* the chip's continuous day counter */
-    int64_t day_index = floor_mod(day_count, CHIP_CYCLE_DAYS);
-    int64_t second_of_day = floor_mod(chip_seconds, SECONDS_PER_DAY);
-    int remaining = (int)day_index;
-
-    /* The weekday counter never sees the century wrap, so it runs on day_count. */
-    t.weekday = (int)floor_mod(day_count + CHIP_WEEKDAY_OF_DAY_ZERO, DAYS_PER_WEEK);
-    for (t.year = 0; ; t.year++) {
-        int year_days = DAYS_PER_YEAR + (is_chip_leap_year(t.year) ? 1 : 0);
-        if (remaining < year_days)
-            break;
-        remaining -= year_days;
-    }
-    for (t.month = 1; remaining >= days_in_month(t.year, t.month); t.month++)
-        remaining -= days_in_month(t.year, t.month);
-    t.day = remaining + 1;
-    t.hour = (int)(second_of_day / (MINUTES_PER_HOUR * SECONDS_PER_MINUTE));
-    t.minute = (int)(second_of_day / SECONDS_PER_MINUTE % MINUTES_PER_HOUR);
-    t.second = (int)(second_of_day % SECONDS_PER_MINUTE);
-    return t;
-}
 
 /* ---- the host clock --------------------------------------------------------- */
 
@@ -273,8 +116,9 @@ static int local_minus_utc(int64_t utc, int64_t *out)
         rtc_report_call_failure("localtime_r");
         return -1;
     }
-    *out = unix_days_from_civil((int64_t)local.tm_year + TM_YEAR_BASE, local.tm_mon + 1, local.tm_mday) * SECONDS_PER_DAY
-         + ((int64_t)local.tm_hour * MINUTES_PER_HOUR + local.tm_min) * SECONDS_PER_MINUTE + local.tm_sec - utc;
+    *out = rtc_calendar_unix_days_from_civil((int64_t)local.tm_year + TM_YEAR_BASE, local.tm_mon + 1, local.tm_mday)
+               * RTC_SECONDS_PER_DAY
+         + rtc_calendar_seconds_of_day(local.tm_hour, local.tm_min, local.tm_sec) - utc;
     return 0;
 }
 
@@ -321,8 +165,8 @@ static bool is_24_hour_mode(void)
 
 static uint8_t encode_hour(int hour24)
 {
-    uint8_t pm = hour24 >= NOON_HOUR ? RTC_HOUR_PM : 0;
-    return (uint8_t)(to_bcd(is_24_hour_mode() ? hour24 : hour24 % NOON_HOUR) | pm);
+    uint8_t pm = hour24 >= RTC_NOON_HOUR ? RTC_HOUR_PM : 0;
+    return (uint8_t)(rtc_calendar_to_bcd(is_24_hour_mode() ? hour24 : hour24 % RTC_NOON_HOUR) | pm);
 }
 
 /* The hour register as written by the game, to a 24-hour value; -1 if invalid. */
@@ -331,12 +175,12 @@ static int decode_hour(uint8_t hour_bcd)
     int hour;
     if (hour_bcd & ~(RTC_HOUR_PM | RTC_HOUR_MASK))
         return -1;
-    hour = from_bcd(hour_bcd & RTC_HOUR_MASK);
+    hour = rtc_calendar_from_bcd(hour_bcd & RTC_HOUR_MASK);
     if (is_24_hour_mode())
-        return hour < HOURS_PER_DAY ? hour : -1;  /* the PM flag is read only here */
-    if (hour < 0 || hour >= NOON_HOUR)
+        return hour < RTC_HOURS_PER_DAY ? hour : -1;  /* the PM flag is read only here */
+    if (hour < 0 || hour >= RTC_NOON_HOUR)
         return -1;
-    return hour + ((hour_bcd & RTC_HOUR_PM) ? NOON_HOUR : 0);
+    return hour + ((hour_bcd & RTC_HOUR_PM) ? RTC_NOON_HOUR : 0);
 }
 
 /* ---- validation of what the game writes ------------------------------------------ */
@@ -350,23 +194,23 @@ static int in_range(int value, int low, int high)
 static int decode_time_fields(const struct rtc_datetime *in, int *hour24, int *minute, int *second)
 {
     *hour24 = decode_hour(in->hour_bcd);
-    *minute = from_bcd(in->minute_bcd);
-    *second = from_bcd(in->second_bcd);
-    if (*hour24 < 0 || !in_range(*minute, 0, MINUTES_PER_HOUR - 1) || !in_range(*second, 0, SECONDS_PER_MINUTE - 1))
+    *minute = rtc_calendar_from_bcd(in->minute_bcd);
+    *second = rtc_calendar_from_bcd(in->second_bcd);
+    if (*hour24 < 0 || !in_range(*minute, 0, RTC_MINUTES_PER_HOUR - 1) || !in_range(*second, 0, RTC_SECONDS_PER_MINUTE - 1))
         return -1;
     return 0;
 }
 
 static int decode_date_fields(const struct rtc_datetime *in, int *year, int *month, int *day)
 {
-    int weekday = from_bcd(in->day_of_week_bcd);
-    *year = from_bcd(in->year_bcd);
-    *month = from_bcd(in->month_bcd);
-    *day = from_bcd(in->day_bcd);
-    if (!in_range(*year, 0, CHIP_YEARS - 1) || !in_range(*month, 1, MONTHS_PER_YEAR)
-        || !in_range(weekday, 0, CHIP_MAX_WEEKDAY))
+    int weekday = rtc_calendar_from_bcd(in->day_of_week_bcd);
+    *year = rtc_calendar_from_bcd(in->year_bcd);
+    *month = rtc_calendar_from_bcd(in->month_bcd);
+    *day = rtc_calendar_from_bcd(in->day_bcd);
+    if (!in_range(*year, 0, RTC_CHIP_YEARS - 1) || !in_range(*month, 1, RTC_MONTHS_PER_YEAR)
+        || !in_range(weekday, 0, RTC_CHIP_MAX_WEEKDAY))
         return -1;
-    return in_range(*day, 1, days_in_month(*year, *month)) ? 0 : -1;
+    return in_range(*day, 1, rtc_calendar_days_in_month(*year, *month)) ? 0 : -1;
 }
 
 /* ---- public interface ----------------------------------------------------------------- */
@@ -437,18 +281,18 @@ int rtc_set_status(uint8_t status)
 int rtc_get_datetime(struct rtc_datetime *out)
 {
     int64_t seconds;
-    struct chip_time t;
+    struct rtc_calendar_time t;
 
     if (!chip.initialised || out == NULL || chip_seconds_now(&seconds) != 0)
         return -1;
-    t = chip_time_from_seconds(seconds);
-    out->year_bcd = to_bcd(t.year);
-    out->month_bcd = to_bcd(t.month);
-    out->day_bcd = to_bcd(t.day);
-    out->day_of_week_bcd = to_bcd(t.weekday);
+    t = rtc_calendar_time_from_seconds(seconds);
+    out->year_bcd = rtc_calendar_to_bcd(t.year);
+    out->month_bcd = rtc_calendar_to_bcd(t.month);
+    out->day_bcd = rtc_calendar_to_bcd(t.day);
+    out->day_of_week_bcd = rtc_calendar_to_bcd(t.weekday);
     out->hour_bcd = encode_hour(t.hour);
-    out->minute_bcd = to_bcd(t.minute);
-    out->second_bcd = to_bcd(t.second);
+    out->minute_bcd = rtc_calendar_to_bcd(t.minute);
+    out->second_bcd = rtc_calendar_to_bcd(t.second);
     return 0;
 }
 
@@ -459,7 +303,8 @@ int rtc_set_datetime(const struct rtc_datetime *in)
     if (!chip.initialised || in == NULL || decode_date_fields(in, &year, &month, &day) != 0
         || decode_time_fields(in, &hour, &minute, &second) != 0)
         return -1;
-    return set_chip_seconds(chip_seconds_from(year, month, day, hour, minute, second));
+    return set_chip_seconds(rtc_calendar_seconds_from(&(struct rtc_calendar_time){
+        .year = year, .month = month, .day = day, .hour = hour, .minute = minute, .second = second }));
 }
 
 int rtc_get_time(struct rtc_datetime *out)
@@ -483,15 +328,15 @@ int rtc_set_time(const struct rtc_datetime *in)
         || host_utc_seconds(&utc) != 0)
         return -1;
     /* One time-source sample for both the current date and the new offset. */
-    return set_chip_seconds_at(floor_div(utc + chip.offset, SECONDS_PER_DAY) * SECONDS_PER_DAY
-                               + ((int64_t)hour * MINUTES_PER_HOUR + minute) * SECONDS_PER_MINUTE + second, utc);
+    return set_chip_seconds_at(rtc_calendar_midnight_before(utc + chip.offset)
+                               + rtc_calendar_seconds_of_day(hour, minute, second), utc);
 }
 
 int rtc_reset(void)
 {
     if (!chip.initialised)
         return -1;
-    if (set_chip_seconds(chip_seconds_from(0, 1, 1, 0, 0, 0)) != 0)
+    if (set_chip_seconds(rtc_calendar_seconds_from(&(struct rtc_calendar_time){ .year = 0, .month = 1, .day = 1 })) != 0)
         return -1;
     chip.status = STATUS_AFTER_RESET;
     chip.alarm_hour_bcd = 0;
@@ -507,12 +352,12 @@ int rtc_set_alarm(const struct rtc_datetime *in)
         return -1;
     if (in->hour_bcd & ~(RTC_HOUR_PM | RTC_HOUR_MASK))
         return -1;
-    hour = from_bcd(in->hour_bcd & RTC_HOUR_MASK);
-    minute = from_bcd(in->minute_bcd);
-    if (!in_range(hour, 0, HOURS_PER_DAY - 1) || !in_range(minute, 0, MINUTES_PER_HOUR - 1))
+    hour = rtc_calendar_from_bcd(in->hour_bcd & RTC_HOUR_MASK);
+    minute = rtc_calendar_from_bcd(in->minute_bcd);
+    if (!in_range(hour, 0, RTC_HOURS_PER_DAY - 1) || !in_range(minute, 0, RTC_MINUTES_PER_HOUR - 1))
         return -1;
-    chip.alarm_hour_bcd = (uint8_t)(to_bcd(hour) | (hour >= NOON_HOUR ? RTC_HOUR_PM : 0));
-    chip.alarm_minute_bcd = to_bcd(minute);
+    chip.alarm_hour_bcd = (uint8_t)(rtc_calendar_to_bcd(hour) | (hour >= RTC_NOON_HOUR ? RTC_HOUR_PM : 0));
+    chip.alarm_minute_bcd = rtc_calendar_to_bcd(minute);
     return 0;
 }
 
