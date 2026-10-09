@@ -84,8 +84,8 @@ enum obj_mode { MODE_NORMAL = 0, MODE_SEMI_TRANSPARENT = 1, MODE_OBJ_WINDOW = 2,
 #define GROUP_BYTES 32u
 #define GROUP_PA_OFFSET 6u
 #define GROUP_PB_OFFSET 8u  /* from PA */
-#define GROUP_PC_OFFSET 16u
-#define GROUP_PD_OFFSET 24u
+#define GROUP_PC_OFFSET 16u /* from PA */
+#define GROUP_PD_OFFSET 24u /* from PA */
 
 /* GBATEK "LCD OBJ - VRAM Character (Tile) Mapping": tile numbers count 32
  * bytes; in 2D mapping a row of the 32x32 tile matrix is 32 tiles. 8bpp tiles
@@ -108,8 +108,9 @@ enum obj_mode { MODE_NORMAL = 0, MODE_SEMI_TRANSPARENT = 1, MODE_OBJ_WINDOW = 2,
 #define OBJ_SHAPES 3 /* shape 3 is prohibited */
 #define OBJ_SIZES 4
 #define DIMENSION_WIDTH 0
+#define DIMENSION_COUNT 2 /* width, height */
 #define DIMENSION_HEIGHT 1
-static const uint8_t obj_dimensions[OBJ_SHAPES][OBJ_SIZES][2] = {
+static const uint8_t obj_dimensions[OBJ_SHAPES][OBJ_SIZES][DIMENSION_COUNT] = {
     { { 8, 8 }, { 16, 16 }, { 32, 32 }, { 64, 64 } }, /* square */
     { { 16, 8 }, { 32, 8 }, { 32, 16 }, { 64, 32 } }, /* horizontal */
     { { 8, 16 }, { 8, 32 }, { 16, 32 }, { 32, 64 } }, /* vertical */
@@ -270,9 +271,10 @@ static uint16_t obj_colour(const struct obj *obj, uint32_t index)
     return ppu_palette_colour_4bpp(PPU_OBJ_PALETTE_FIRST, bank, index);
 }
 
+/* The mosaic block size along one axis for obj: 1 unless it has mosaic on. */
 static int32_t mosaic_size(const struct obj *obj, uint16_t mosaic, unsigned shift)
 {
-    return (int32_t)ppu_mosaic_size((obj->attr0 & ATTR0_MOSAIC) != 0, mosaic, shift);
+    return (obj->attr0 & ATTR0_MOSAIC) ? (int32_t)ppu_mosaic_block(mosaic, shift) : 1;
 }
 
 /* Writes one dot of obj at screen x, if it wins against what is there. */

@@ -224,12 +224,11 @@ static inline uint16_t ppu_io_halfword(uint32_t offset)
     return ppu_read_halfword_at(GBA_IO_BASE + offset);
 }
 
-/* The mosaic block size (1-16) along one axis for a BG or OBJ: the MOSAIC
- * field at shift (the register holds size minus 1) if the BG's BGxCNT bit or
- * the OBJ's attribute 0 bit enables mosaic, else 1. */
-static inline uint32_t ppu_mosaic_size(bool enabled, uint16_t mosaic, unsigned shift)
+/* The block size (1-16) a mosaic field gives, the register holding size
+ * minus 1. The caller checks the layer's own mosaic enable. */
+static inline uint32_t ppu_mosaic_block(uint16_t mosaic, unsigned shift)
 {
-    return enabled ? (((uint32_t)mosaic >> shift) & PPU_MOSAIC_SIZE_MASK) + 1u : 1u;
+    return (((uint32_t)mosaic >> shift) & PPU_MOSAIC_SIZE_MASK) + 1u;
 }
 
 /* Dot dot_x (even = left) of a 4bpp tile row's byte: the left dot is the low

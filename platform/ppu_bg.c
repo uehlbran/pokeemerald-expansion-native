@@ -107,9 +107,10 @@ void ppu_affine_reference_step(struct ppu_affine_reference *ref, const struct pp
 
 /* ---- shared ---- */
 
+/* The mosaic block size along one axis for a BG: 1 unless BGxCNT enables it. */
 static uint32_t mosaic_size(uint16_t bgcnt, uint16_t mosaic, unsigned shift)
 {
-    return ppu_mosaic_size((bgcnt & BGCNT_MOSAIC) != 0, mosaic, shift);
+    return (bgcnt & BGCNT_MOSAIC) ? ppu_mosaic_block(mosaic, shift) : 1u;
 }
 
 static uint32_t char_base(uint16_t bgcnt)

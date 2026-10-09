@@ -374,14 +374,16 @@ static void mosaic_scene(uint16_t mosaic)
     io_write16(IO_DISPCNT, DISP_MODE_0 | DISP_BG0);
 }
 
-PTEST(bg_mosaic_size_16_repeats_the_first_dot_of_blocks_of_16)
+PTEST(bg_mosaic_size_12_repeats_the_first_dot_of_blocks_of_12)
 {
+    /* 12 is not a multiple of the 8-dot tile pattern, so the size field's
+     * width (4 bits, up to 16) is told apart from 3 bits. */
     uint16_t out[SCREEN_W];
-    mosaic_scene(0x00FF); /* H-Size 16 (field 15), V-Size 16 */
-    for (uint16_t line = 0; line < 20; line++) {
+    mosaic_scene(0x00BB); /* H-Size 12 (field 11), V-Size 12 */
+    for (uint16_t line = 0; line < 26; line++) {
         PT_ASSERT_EQ_INT(ppu_render_line(line, out), PPU_OK);
-        for (unsigned x = 0; x < 40; x++)
-            PT_ASSERT_EQ_U32(out[x], bank3(pattern_index(0, (line / 16u * 16u) % 8u)));
+        for (unsigned x = 0; x < 60; x++)
+            PT_ASSERT_EQ_U32(out[x], bank3(pattern_index((x / 12u * 12u) % 8u, (line / 12u * 12u) % 8u)));
     }
 }
 

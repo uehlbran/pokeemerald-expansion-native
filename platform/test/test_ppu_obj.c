@@ -444,6 +444,27 @@ PTEST(an_affine_obj_with_the_identity_matrix_draws_like_a_regular_one)
     }
 }
 
+PTEST(an_affine_obj_with_only_pb_set_shears_texel_x_by_the_row)
+{
+    uint16_t out[SCREEN_W];
+    obj_scene(DISP_OBJ_1D);
+    tile_pixels pixels;
+    pattern_tile(pixels);
+    put_obj_tile_4bpp(2, pixels);
+    obj_affine_set(0, FIXED(1), (int16_t)128, 0, FIXED(1)); /* PB = 0.5, PC = 0 */
+    obj_set(0, A0_AFFINE, 0, a2(2, 0, 4));
+    for (uint16_t line = 0; line < 8; line++) {
+        PT_ASSERT_EQ_INT(ppu_render_line(line, out), PPU_OK);
+        for (int col = 0; col < 8; col++) {
+            /* texel = centre + (PA * dx + PB * dy), 8.8 fixed point */
+            const int fx = 256 * (col - 4) + 128 * ((int)line - 4) + 4 * 256;
+            const int tx = fx >> 8;
+            const bool inside = fx >= 0 && tx < 8;
+            PT_ASSERT_EQ_U32(out[col], inside ? objc(4, pattern_index((unsigned)tx, line)) : BACKDROP);
+        }
+    }
+}
+
 PTEST(an_affine_obj_reads_the_parameter_group_attribute_1_selects)
 {
     uint16_t out[SCREEN_W];
@@ -548,6 +569,22 @@ PTEST(obj_mosaic_repeats_dots_and_lines)
     obj_set(0, 1, 1, a2(2, 0, 4));
     PT_ASSERT_EQ_INT(ppu_render_line(2, out), PPU_OK);
     PT_ASSERT_EQ_U32(out[3], objc(4, pattern_index(2, 1)));
+}
+
+PTEST(obj_mosaic_uses_its_own_horizontal_and_vertical_sizes)
+{
+    uint16_t out[SCREEN_W];
+    obj_scene(DISP_OBJ_1D);
+    tile_pixels pixels;
+    pattern_tile(pixels);
+    put_obj_tile_4bpp(2, pixels);
+    io_write16(IO_MOSAIC, 0x1300); /* OBJ H-Size 4 (field 3), V-Size 2 (field 1) */
+    obj_set(0, A0_MOSAIC, 0, a2(2, 0, 4));
+    for (uint16_t line = 0; line < 8; line++) {
+        PT_ASSERT_EQ_INT(ppu_render_line(line, out), PPU_OK);
+        for (unsigned x = 0; x < 8; x++)
+            PT_ASSERT_EQ_U32(out[x], objc(4, pattern_index(x & ~3u, line & ~1u)));
+    }
 }
 
 /* ---- the OBJ rendering cycle budget ---- */

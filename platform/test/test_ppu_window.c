@@ -244,6 +244,28 @@ PTEST(a_rotation_scaling_obj_in_obj_window_mode_marks_its_transformed_dots)
     check_front_span(6, 0, 0);
 }
 
+PTEST(unused_bits_6_and_7_of_each_winin_and_winout_byte_are_ignored)
+{
+    struct ppu_regs regs;
+    memset(&regs, 0, sizeof regs);
+    regs.dispcnt = DISP_WIN0 | DISP_WIN1 | DISP_OBJWIN;
+    regs.winh[0] = win_span(0, 10);
+    regs.winv[0] = win_span(0, 160);
+    regs.winh[1] = win_span(20, 30);
+    regs.winv[1] = win_span(0, 160);
+    regs.winin = 0xC1C2u;  /* Window 1 0x01, Window 0 0x02, plus bits 6-7 */
+    regs.winout = 0xE3E4u; /* OBJ window 0x23, outside 0x24, plus bits 6-7 */
+    struct ppu_obj_line obj;
+    ppu_obj_clear_line(&obj);
+    obj.in_obj_window[100] = true;
+    uint8_t control[SCREEN_W];
+    ppu_window_render_line(&regs, 0, &obj, control);
+    PT_ASSERT_EQ_U32(control[5], 0x02);
+    PT_ASSERT_EQ_U32(control[25], 0x01);
+    PT_ASSERT_EQ_U32(control[100], 0x23);
+    PT_ASSERT_EQ_U32(control[150], 0x24);
+}
+
 PTEST(win0_and_win1_have_priority_over_the_obj_window)
 {
     window_scene(DISP_OBJ | DISP_OBJWIN | DISP_WIN1);
