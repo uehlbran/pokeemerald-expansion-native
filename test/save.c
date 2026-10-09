@@ -14,12 +14,13 @@
 // before stays loadable, is met there by the converter, which reads a
 // 32-bit build's save (platform/save_convert.h, gate h).
 #if __SIZEOF_POINTER__ != 8
-#line 13
+#line 7
 #define T_SAVEBLOCK1_SIZE 15496
 #else
+#line 7
 #define T_SAVEBLOCK1_SIZE 15768
 #endif
-#line 14
+#line 8
 #define T_SAVEBLOCK2_SIZE 3848
 #define T_SAVEBLOCK3_SIZE 1
 #define T_POKEMONSTORAGE_SIZE 34144

@@ -7900,24 +7900,12 @@ static const u32 sCriticalHitOdds[]     = {16,  8,  4,  3,   2}; // 1/X, Gens 3,
 static const u32 sGen2CriticalHitOdds[] = {17, 32, 64, 85, 128}; // X/256
 
 #if PLATFORM_NATIVE
-// CalcCritChanceStage returns CRITICAL_HIT_BLOCKED (-1) or CRITICAL_HIT_ALWAYS
-// (-2), and ShouldCalcCritDamage (battle_ai_util.c) passes -1 on here (-2 is
-// tested first). The tables are indexed with the wrapped u32, so the GBA reads
-// the words before sGen7CriticalHitOdds (0x0843F0B4 in pokeemerald.elf):
-//   [-1] 0x0843F0B0 = 0x02000301 (bytes 01 03 00 02, the 4 bytes of
-//        another function's table, `targets.0`)
-//   [-2] 0x0843F0AC = 0x00623530
-// Neither is 1, so ShouldCalcCritDamage goes on, and the signed -1 is below
-// RISKY_AI_CRIT_STAGE_THRESHOLD: BLOCKED never becomes "guaranteed crit". The
-// other callers test BLOCKED and ALWAYS before the read. Natively the read is
-// 16 GiB away at 64 bits; these constants reproduce the GBA's.
-// The -2 constant is unreachable today (ShouldCalcCritDamage tests ALWAYS
-// first); it is kept for a future caller.
-// Indices 5 and above (0x04030201 at 0x0843F0C8, 0x08070605, ...) are reached
-// only under B_CRIT_CHANCE == GEN_1, where CalcCritChanceStageGen1 returns
-// 0..255. The ROM is a Gen7 build, which keeps only the Gen7 table, so there
-// is no GBA evidence for a Gen1 build; natively they return the [-1] word. The
-// divergence is unknowable and not exercised by the default config.
+// ShouldCalcCritDamage passes CRITICAL_HIT_BLOCKED (-1) here, and the tables are
+// indexed with the wrapped u32. The GBA reads the word before sGen7CriticalHitOdds
+// (0x0843F0B0, not 1, so BLOCKED never becomes a guaranteed crit); natively that
+// read is 16 GiB away at 64 bits. CRITICAL_HIT_ALWAYS (-2) is tested first by
+// that caller, so its constant is for a future one. Indices 5 and up exist only
+// under B_CRIT_CHANCE == GEN_1, which the Gen7 ROM gives no evidence for.
 #define CRIT_ODDS_GBA_READ_BLOCKED 0x02000301
 #define CRIT_ODDS_GBA_READ_ALWAYS  0x00623530
 

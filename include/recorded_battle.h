@@ -34,10 +34,10 @@ struct RecordedBattleSave
     u16 playersGender:4; // 1 bit per player; please don't hate me
     u16 padding:1;
 #if PLATFORM_NATIVE
-#if __SIZEOF_POINTER__ == 8
-    u64_align4 AI_scripts[MAX_BATTLERS_COUNT];
-#else
+#if __SIZEOF_POINTER__ != 8
     u64 AI_scripts[MAX_BATTLERS_COUNT];
+#else
+    u64_align4 AI_scripts[MAX_BATTLERS_COUNT];
 #endif
 #else
     u64 AI_scripts[MAX_BATTLERS_COUNT];
