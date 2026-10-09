@@ -50,7 +50,16 @@ enum crt0_error {
  * objects are compiled with -malign-data=abi (Makefile.native). Returns
  * CRT0_OK and the number of entries in *count if table_bytes is a whole
  * number of entry_size-byte entries; CRT0_ERR_BAD_TEST_TABLE if not (or if
- * entry_size is 0). */
+ * entry_size is 0 or count is NULL).
+ *
+ * crt0_init runs two checks on the table. This one catches a table whose
+ * length is not a multiple of the entry size: a different entry size from
+ * the runner's, or padding that happens to leave a remainder. It misses
+ * padded tables whose length is a multiple by chance (about one count in
+ * five at 64 bits). The second, the runner's PlatformTestTableBadEntry
+ * (test/test_runner.c), walks the table by sizeof(struct Test) and refuses a
+ * null name, filename or runner: padding reads as zeros, so it catches
+ * 64-byte spacing at every count. */
 int crt0_check_test_table(size_t table_bytes, size_t entry_size, size_t *count);
 
 /* Copies the EWRAM_INIT data and the game's initialised data as the loader

@@ -122,6 +122,7 @@ PTEST(test_table_with_padded_entries_is_refused)
     PT_ASSERT_EQ_INT(crt0_check_test_table(6294 * 64 - 24, 40, &count), CRT0_ERR_BAD_TEST_TABLE);
     PT_ASSERT(count == 99);
     PT_ASSERT_EQ_INT(crt0_check_test_table(40, 0, &count), CRT0_ERR_BAD_TEST_TABLE);
+    PT_ASSERT_EQ_INT(crt0_check_test_table(40, 40, NULL), CRT0_ERR_BAD_TEST_TABLE);
 }
 
 PTEST(crt0_init_checks_the_empty_test_table_of_a_test_runner_link)

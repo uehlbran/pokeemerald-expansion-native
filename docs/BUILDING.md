@@ -52,10 +52,11 @@ make -C platform test BITS=64
 
 The platform gate, which a change to anything under `platform/` passes before
 it merges, runs the style check, the static analysis and those tests at both
-widths (about a minute on 32 cores):
+widths, then `tools-test` (platform/test_runner/test_patchelf.sh: tools/patchelf patches
+ELF32 and ELF64 executables at the right bytes and refuses a bad ELF class), about a minute on 32 cores:
 
 ```
-make -C platform gate              # format-check, lint (BITS=32, 64), test (BITS=32, 64)
+make -C platform gate              # format-check, lint (BITS=32, 64), test (BITS=32, 64), tools-test
 make -C platform format            # apply clang-format (../.clang-format) to platform/
 make -C platform format-check      # fail, naming the files, if any would change
 make -C platform lint BITS=64      # clang-tidy (../.clang-tidy) and cppcheck; any finding fails

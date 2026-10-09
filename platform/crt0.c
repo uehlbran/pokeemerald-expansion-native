@@ -43,6 +43,7 @@ extern const unsigned char gba_game_objects_linked[];
  * headers: it is not compiled with the game's flags (platform/Makefile). */
 extern unsigned char __start_tests[], __stop_tests[];
 extern const size_t gPlatformTestEntrySize __attribute__((weak));
+extern int PlatformTestTableBadEntry(void) __attribute__((weak));
 
 const uint32_t IntrMain[CRT0_INTR_MAIN_SIZE / sizeof(uint32_t)];
 
@@ -98,14 +99,15 @@ size_t crt0_game_bss_size(void)
 
 int crt0_check_test_table(size_t table_bytes, size_t entry_size, size_t *count)
 {
-    if (entry_size == 0 || table_bytes % entry_size != 0) {
+    if (count == NULL || entry_size == 0 || table_bytes % entry_size != 0) {
         return CRT0_ERR_BAD_TEST_TABLE;
     }
     *count = table_bytes / entry_size;
     return CRT0_OK;
 }
 
-/* The test runner build's table check, reported on stderr. */
+/* The test runner build's table checks (crt0.h says what each catches),
+ * reported on stderr on failure only. */
 static int check_tests_table(void)
 {
     // cppcheck-suppress knownConditionTrueFalse ; a weak reference, null unless the test runner defines it
@@ -117,11 +119,20 @@ static int check_tests_table(void)
     if (crt0_check_test_table(bytes, gPlatformTestEntrySize, &count) != CRT0_OK) {
         (void)fprintf(stderr,
                       "crt0: the .tests table is %zu bytes, not a whole number of %zu-byte struct Test entries: "
-                      "the test objects need -malign-data=abi (Makefile.native) so the entries are contiguous\n",
+                      "the entry size the table was built with differs from the runner's (at 64 bits the test "
+                      "objects need -malign-data=abi, Makefile.native)\n",
                       bytes, gPlatformTestEntrySize);
         return CRT0_ERR_BAD_TEST_TABLE;
     }
-    (void)fprintf(stderr, "crt0: .tests holds %zu tests of %zu bytes\n", count, gPlatformTestEntrySize);
+    // cppcheck-suppress knownConditionTrueFalse ; a weak reference, as above
+    int bad = &PlatformTestTableBadEntry != NULL ? PlatformTestTableBadEntry() : -1;
+    if (bad >= 0) {
+        (void)fprintf(stderr,
+                      "crt0: .tests entry %d (of %zu) has a null name, filename or runner: padding between the "
+                      "entries (at 64 bits the test objects need -malign-data=abi, Makefile.native)\n",
+                      bad, count);
+        return CRT0_ERR_BAD_TEST_TABLE;
+    }
     return CRT0_OK;
 }
 
