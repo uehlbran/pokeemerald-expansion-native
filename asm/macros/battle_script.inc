@@ -9,7 +9,11 @@
 
 	.macro printselectionstringfromtable ptr:req
 	.byte B_SCR_OP_PRINTSELECTIONSTRINGFROMTABLE
+	.ifdef NATIVE_POINTER_SIZE_8
+	.8byte \ptr
+	.else
 	.4byte \ptr
+	.endif
 	.endm
 
 	.macro typecalc
@@ -72,7 +76,11 @@
 
 	.macro printfromtable ptr:req
 	.byte B_SCR_OP_PRINTFROMTABLE
+	.ifdef NATIVE_POINTER_SIZE_8
+	.8byte \ptr
+	.else
 	.4byte \ptr
+	.endif
 	.endm
 
 	.macro setadditionaleffects
@@ -98,14 +106,22 @@
 	.byte B_SCR_OP_TRYFAINTMON
 	.byte \battler
 	.byte FALSE
+	.ifdef NATIVE_POINTER_SIZE_8
+	.8byte NULL
+	.else
 	.4byte NULL
+	.endif
 	.endm
 
 	.macro tryfaintmon_spikes battler:req, instr:req
 	.byte B_SCR_OP_TRYFAINTMON
 	.byte \battler
 	.byte TRUE
+	.ifdef NATIVE_POINTER_SIZE_8
+	.8byte \instr
+	.else
 	.4byte \instr
+	.endif
 	.endm
 
 	.macro dofaintanimation battler:req
@@ -122,28 +138,44 @@
 	.byte B_SCR_OP_JUMPIFSTATUS
 	.byte \battler
 	.4byte \flags
+	.ifdef NATIVE_POINTER_SIZE_8
+	.8byte \jumpInstr
+	.else
 	.4byte \jumpInstr
+	.endif
 	.endm
 
 	.macro jumpifvolatile battler:req, volatile:req, jumpInstr:req
 	.byte B_SCR_OP_JUMPIFVOLATILE
 	.byte \battler
 	.byte \volatile
+	.ifdef NATIVE_POINTER_SIZE_8
+	.8byte \jumpInstr
+	.else
 	.4byte \jumpInstr
+	.endif
 	.endm
 
 	.macro jumpifability battler:req, ability:req, jumpInstr:req
 	.byte B_SCR_OP_JUMPIFABILITY
 	.byte \battler
 	.2byte \ability
+	.ifdef NATIVE_POINTER_SIZE_8
+	.8byte \jumpInstr
+	.else
 	.4byte \jumpInstr
+	.endif
 	.endm
 
 	.macro jumpifsideaffecting battler:req, flags:req, jumpInstr:req
 	.byte B_SCR_OP_JUMPIFSIDEAFFECTING
 	.byte \battler
 	.4byte \flags
+	.ifdef NATIVE_POINTER_SIZE_8
+	.8byte \jumpInstr
+	.else
 	.4byte \jumpInstr
+	.endif
 	.endm
 
 	.macro jumpifstat battler:req, comparison:req, stat:req, value:req, jumpInstr:req
@@ -152,7 +184,11 @@
 	.byte \comparison
 	.byte \stat
 	.byte \value
+	.ifdef NATIVE_POINTER_SIZE_8
+	.8byte \jumpInstr
+	.else
 	.4byte \jumpInstr
+	.endif
 	.endm
 
 	.macro jumpifstatignorecontrary battler:req, comparison:req, stat:req, value:req, jumpInstr:req
@@ -161,7 +197,11 @@
 	.byte \comparison
 	.byte \stat
 	.byte \value
+	.ifdef NATIVE_POINTER_SIZE_8
+	.8byte \jumpInstr
+	.else
 	.4byte \jumpInstr
+	.endif
 	.endm
 
 	.macro jumpbasedontype battler:req, type:req, jumpIfType:req, jumpInstr:req
@@ -169,7 +209,11 @@
 	.byte \battler
 	.byte \type
 	.byte \jumpIfType
+	.ifdef NATIVE_POINTER_SIZE_8
+	.8byte \jumpInstr
+	.else
 	.4byte \jumpInstr
+	.endif
 	.endm
 
 	.macro jumpiftype battler:req, type:req, jumpInstr:req
@@ -187,120 +231,232 @@
 
 	.macro checkteamslost jumpInstr:req
 	.byte B_SCR_OP_CHECKTEAMSLOST
+	.ifdef NATIVE_POINTER_SIZE_8
+	.8byte \jumpInstr
+	.else
 	.4byte \jumpInstr
+	.endif
 	.endm
 
 	.macro goto instr:req
 	.byte B_SCR_OP_GOTO
+	.ifdef NATIVE_POINTER_SIZE_8
+	.8byte \instr
+	.else
 	.4byte \instr
+	.endif
 	.endm
 
 	.macro jumpifbyte comparison:req, bytePtr:req, value:req, jumpInstr:req
 	.byte B_SCR_OP_JUMPIFBYTE
 	.byte \comparison
+	.ifdef NATIVE_POINTER_SIZE_8
+	.8byte \bytePtr
+	.else
 	.4byte \bytePtr
+	.endif
 	.byte \value
+	.ifdef NATIVE_POINTER_SIZE_8
+	.8byte \jumpInstr
+	.else
 	.4byte \jumpInstr
+	.endif
 	.endm
 
 	.macro jumpifhalfword comparison:req, halfwordPtr:req, value:req, jumpInstr:req
 	.byte B_SCR_OP_JUMPIFHALFWORD
 	.byte \comparison
+	.ifdef NATIVE_POINTER_SIZE_8
+	.8byte \halfwordPtr
+	.else
 	.4byte \halfwordPtr
+	.endif
 	.2byte \value
+	.ifdef NATIVE_POINTER_SIZE_8
+	.8byte \jumpInstr
+	.else
 	.4byte \jumpInstr
+	.endif
 	.endm
 
 	.macro jumpifword comparison:req, wordPtr:req, value:req, jumpInstr:req
 	.byte B_SCR_OP_JUMPIFWORD
 	.byte \comparison
+	.ifdef NATIVE_POINTER_SIZE_8
+	.8byte \wordPtr
+	.else
 	.4byte \wordPtr
+	.endif
 	.4byte \value
+	.ifdef NATIVE_POINTER_SIZE_8
+	.8byte \jumpInstr
+	.else
 	.4byte \jumpInstr
+	.endif
 	.endm
 
 	.macro jumpifarrayequal array1:req, array2:req, size:req, jumpInstr:req
 	.byte B_SCR_OP_JUMPIFARRAYEQUAL
+	.ifdef NATIVE_POINTER_SIZE_8
+	.8byte \array1
+	.else
 	.4byte \array1
+	.endif
+	.ifdef NATIVE_POINTER_SIZE_8
+	.8byte \array2
+	.else
 	.4byte \array2
+	.endif
 	.byte \size
+	.ifdef NATIVE_POINTER_SIZE_8
+	.8byte \jumpInstr
+	.else
 	.4byte \jumpInstr
+	.endif
 	.endm
 
 	.macro jumpifarraynotequal array1:req, array2:req, size:req, jumpInstr:req
 	.byte B_SCR_OP_JUMPIFARRAYNOTEQUAL
+	.ifdef NATIVE_POINTER_SIZE_8
+	.8byte \array1
+	.else
 	.4byte \array1
+	.endif
+	.ifdef NATIVE_POINTER_SIZE_8
+	.8byte \array2
+	.else
 	.4byte \array2
+	.endif
 	.byte \size
+	.ifdef NATIVE_POINTER_SIZE_8
+	.8byte \jumpInstr
+	.else
 	.4byte \jumpInstr
+	.endif
 	.endm
 
 	.macro setbyte bytePtr:req, value:req
 	.byte B_SCR_OP_SETBYTE
+	.ifdef NATIVE_POINTER_SIZE_8
+	.8byte \bytePtr
+	.else
 	.4byte \bytePtr
+	.endif
 	.byte \value
 	.endm
 
 	.macro addbyte bytePtr:req, value:req
 	.byte B_SCR_OP_ADDBYTE
+	.ifdef NATIVE_POINTER_SIZE_8
+	.8byte \bytePtr
+	.else
 	.4byte \bytePtr
+	.endif
 	.byte \value
 	.endm
 
 	.macro subbyte bytePtr:req, value:req
 	.byte B_SCR_OP_SUBBYTE
+	.ifdef NATIVE_POINTER_SIZE_8
+	.8byte \bytePtr
+	.else
 	.4byte \bytePtr
+	.endif
 	.byte \value
 	.endm
 
 	.macro copyarray dest:req, src:req, size:req
 	.byte B_SCR_OP_COPYARRAY
+	.ifdef NATIVE_POINTER_SIZE_8
+	.8byte \dest
+	.else
 	.4byte \dest
+	.endif
+	.ifdef NATIVE_POINTER_SIZE_8
+	.8byte \src
+	.else
 	.4byte \src
+	.endif
 	.byte \size
 	.endm
 
 	.macro copyarraywithindex dest:req, src:req, indexPtr:req, size:req
 	.byte B_SCR_OP_COPYARRAYWITHINDEX
+	.ifdef NATIVE_POINTER_SIZE_8
+	.8byte \dest
+	.else
 	.4byte \dest
+	.endif
+	.ifdef NATIVE_POINTER_SIZE_8
+	.8byte \src
+	.else
 	.4byte \src
+	.endif
+	.ifdef NATIVE_POINTER_SIZE_8
+	.8byte \indexPtr
+	.else
 	.4byte \indexPtr
+	.endif
 	.byte \size
 	.endm
 
 	.macro orbyte bytePtr:req, value:req
 	.byte B_SCR_OP_ORBYTE
+	.ifdef NATIVE_POINTER_SIZE_8
+	.8byte \bytePtr
+	.else
 	.4byte \bytePtr
+	.endif
 	.byte \value
 	.endm
 
 	.macro orhalfword halfwordPtr:req, value:req
 	.byte B_SCR_OP_ORHALFWORD
+	.ifdef NATIVE_POINTER_SIZE_8
+	.8byte \halfwordPtr
+	.else
 	.4byte \halfwordPtr
+	.endif
 	.2byte \value
 	.endm
 
 	.macro orword wordPtr:req, value:req
 	.byte B_SCR_OP_ORWORD
+	.ifdef NATIVE_POINTER_SIZE_8
+	.8byte \wordPtr
+	.else
 	.4byte \wordPtr
+	.endif
 	.4byte \value
 	.endm
 
 	.macro bicbyte bytePtr:req, value:req
 	.byte B_SCR_OP_BICBYTE
+	.ifdef NATIVE_POINTER_SIZE_8
+	.8byte \bytePtr
+	.else
 	.4byte \bytePtr
+	.endif
 	.byte \value
 	.endm
 
 	.macro bichalfword halfwordPtr:req, value:req
 	.byte B_SCR_OP_BICHALFWORD
+	.ifdef NATIVE_POINTER_SIZE_8
+	.8byte \halfwordPtr
+	.else
 	.4byte \halfwordPtr
+	.endif
 	.2byte \value
 	.endm
 
 	.macro bicword wordPtr:req, value:req
 	.byte B_SCR_OP_BICWORD
+	.ifdef NATIVE_POINTER_SIZE_8
+	.8byte \wordPtr
+	.else
 	.4byte \wordPtr
+	.endif
 	.4byte \value
 	.endm
 
@@ -335,7 +491,11 @@
 
 	.macro call instr:req
 	.byte B_SCR_OP_CALL
+	.ifdef NATIVE_POINTER_SIZE_8
+	.8byte \instr
+	.else
 	.4byte \instr
+	.endif
 	.endm
 
 	.macro setroost
@@ -345,7 +505,11 @@
 	.macro jumpifabilitypresent ability:req, jumpInstr:req
 	.byte B_SCR_OP_JUMPIFABILITYPRESENT
 	.2byte \ability
+	.ifdef NATIVE_POINTER_SIZE_8
+	.8byte \jumpInstr
+	.else
 	.4byte \jumpInstr
+	.endif
 	.endm
 
 	.macro endselectionscript
@@ -356,21 +520,37 @@
 	.byte B_SCR_OP_PLAYANIMATION
 	.byte \battler
 	.byte \animId
+	.ifdef NATIVE_POINTER_SIZE_8
+	.8byte \argPtr
+	.else
 	.4byte \argPtr
+	.endif
 	.endm
 
 	.macro playanimation_var battler:req, animIdPtr:req, argPtr=NULL
 	.byte B_SCR_OP_PLAYANIMATION_VAR
 	.byte \battler
+	.ifdef NATIVE_POINTER_SIZE_8
+	.8byte \animIdPtr
+	.else
 	.4byte \animIdPtr
+	.endif
+	.ifdef NATIVE_POINTER_SIZE_8
+	.8byte \argPtr
+	.else
 	.4byte \argPtr
+	.endif
 	.endm
 
 	.macro jumpfifsemiinvulnerable battler:req, state:req, jumpInstr:req
 	.byte B_SCR_OP_JUMPFIFSEMIINVULNERABLE
 	.byte \battler
 	.byte \state
+	.ifdef NATIVE_POINTER_SIZE_8
+	.8byte \jumpInstr
+	.else
 	.4byte \jumpInstr
+	.endif
 	.endm
 
 	.macro trainerslidein position:req
@@ -440,13 +620,21 @@
 	.macro jumpifcantswitch battler:req, jumpInstr:req
 	.byte B_SCR_OP_JUMPIFCANTSWITCH
 	.byte \battler
+	.ifdef NATIVE_POINTER_SIZE_8
+	.8byte \jumpInstr
+	.else
 	.4byte \jumpInstr
+	.endif
 	.endm
 
 	.macro openpartyscreen battler:req, failInstr:req
 	.byte B_SCR_OP_OPENPARTYSCREEN
 	.byte \battler
+	.ifdef NATIVE_POINTER_SIZE_8
+	.8byte \failInstr
+	.else
 	.4byte \failInstr
+	.endif
 	.endm
 
 	.macro switchhandleorder battler:req, state:req
@@ -491,19 +679,35 @@
 
 	.macro handlelearnnewmove learnedMoveInstr:req, nothingToLearnInstr:req, isFirstMove:req
 	.byte B_SCR_OP_HANDLELEARNNEWMOVE
+	.ifdef NATIVE_POINTER_SIZE_8
+	.8byte \learnedMoveInstr
+	.else
 	.4byte \learnedMoveInstr
+	.endif
+	.ifdef NATIVE_POINTER_SIZE_8
+	.8byte \nothingToLearnInstr
+	.else
 	.4byte \nothingToLearnInstr
+	.endif
 	.byte \isFirstMove
 	.endm
 
 	.macro yesnoboxlearnmove forgotMoveInstr:req
 	.byte B_SCR_OP_YESNOBOXLEARNMOVE
+	.ifdef NATIVE_POINTER_SIZE_8
+	.8byte \forgotMoveInstr
+	.else
 	.4byte \forgotMoveInstr
+	.endif
 	.endm
 
 	.macro yesnoboxstoplearningmove noInstr:req
 	.byte B_SCR_OP_YESNOBOXSTOPLEARNINGMOVE
+	.ifdef NATIVE_POINTER_SIZE_8
+	.8byte \noInstr
+	.else
 	.4byte \noInstr
+	.endif
 	.endm
 
 	.macro hitanimation battler:req
@@ -557,12 +761,20 @@
 
 	.macro futuresighttargetfailure failInstr:req
 	.byte B_SCR_OP_FUTURESIGHTTARGETFAILURE
+	.ifdef NATIVE_POINTER_SIZE_8
+	.8byte \failInstr
+	.else
 	.4byte \failInstr
+	.endif
 	.endm
 
 	.macro getpossiblenexttarget jumpInstr:req
 	.byte B_SCR_OP_GETPOSSIBLENEXTTARGET
+	.ifdef NATIVE_POINTER_SIZE_8
+	.8byte \jumpInstr
+	.else
 	.4byte \jumpInstr
+	.endif
 	.endm
 
 	.macro yesnobox
@@ -575,7 +787,11 @@
 
 	.macro setgravity failInstr:req
 	.byte B_SCR_OP_SETGRAVITY
+	.ifdef NATIVE_POINTER_SIZE_8
+	.8byte \failInstr
+	.else
 	.4byte \failInstr
+	.endif
 	.endm
 
 	.macro removeitem battler:req
@@ -615,7 +831,11 @@
 
 	.macro jumpifplayerran jumpInstr:req
 	.byte B_SCR_OP_JUMPIFPLAYERRAN
+	.ifdef NATIVE_POINTER_SIZE_8
+	.8byte \jumpInstr
+	.else
 	.4byte \jumpInstr
+	.endif
 	.endm
 
 	.macro hpthresholds battler:req
@@ -646,13 +866,21 @@
 
 	.macro jumpifnexttargetvalid jumpInstr:req
 	.byte B_SCR_OP_JUMPIFNEXTTARGETVALID
+	.ifdef NATIVE_POINTER_SIZE_8
+	.8byte \jumpInstr
+	.else
 	.4byte \jumpInstr
+	.endif
 	.endm
 
 	.macro tryhealhalfhealth battler:req, failInstr:req
 	.byte B_SCR_OP_TRYHEALHALFHEALTH
 	.byte \battler
+	.ifdef NATIVE_POINTER_SIZE_8
+	.8byte \failInstr
+	.else
 	.4byte \failInstr
+	.endif
 	.endm
 
 	.macro setfieldweather
@@ -678,12 +906,20 @@
 
 	.macro jumpifuproarwakes jumpInstr:req
 	.byte B_SCR_OP_JUMPIFUPROARWAKES
+	.ifdef NATIVE_POINTER_SIZE_8
+	.8byte \jumpInstr
+	.else
 	.4byte \jumpInstr
+	.endif
 	.endm
 
 	.macro stockpiletohpheal failInstr:req
 	.byte B_SCR_OP_STOCKPILETOHPHEAL
+	.ifdef NATIVE_POINTER_SIZE_8
+	.8byte \failInstr
+	.else
 	.4byte \failInstr
+	.endif
 	.endm
 
 	.macro normalisebuffs
@@ -692,7 +928,11 @@
 
 	.macro twoturnmoveschargestringandanimation
 	.byte B_SCR_OP_TWOTURNMOVESCHARGESTRINGANDANIMATION
+	.ifdef NATIVE_POINTER_SIZE_8
+	.8byte 1f @animation then attack string
+	.else
 	.4byte 1f @animation then attack string
+	.endif
 	@default - attack string then animation
 	printsavedstring
 	waitmessage B_WAIT_TIME_LONG
@@ -717,12 +957,20 @@
 
 	.macro forcerandomswitch failInstr:req
 	.byte B_SCR_OP_FORCERANDOMSWITCH
+	.ifdef NATIVE_POINTER_SIZE_8
+	.8byte \failInstr
+	.else
 	.4byte \failInstr
+	.endif
 	.endm
 
 	.macro tryconversiontypechange failInstr:req
 	.byte B_SCR_OP_TRYCONVERSIONTYPECHANGE
+	.ifdef NATIVE_POINTER_SIZE_8
+	.8byte \failInstr
+	.else
 	.4byte \failInstr
+	.endif
 	.endm
 
 	.macro givepaydaymoney
@@ -741,7 +989,11 @@
 	.macro checknonvolatiletrigger nonVolatile:req, failInstr:req
 	.byte B_SCR_OP_CHECKNONVOLATILETRIGGER
 	.2byte \nonVolatile
+	.ifdef NATIVE_POINTER_SIZE_8
+	.8byte \failInstr
+	.else
 	.4byte \failInstr
+	.endif
 	.endm
 
 	.macro animatewildpokemonafterfailedpokeball battler:req
@@ -751,7 +1003,11 @@
 
 	.macro tryinfatuating failInstr:req
 	.byte B_SCR_OP_TRYINFATUATING
+	.ifdef NATIVE_POINTER_SIZE_8
+	.8byte \failInstr
+	.else
 	.4byte \failInstr
+	.endif
 	.endm
 
 	.macro updatestatusicon battler:req
@@ -778,7 +1034,11 @@
 
 	.macro mimicattackcopy failInstr:req
 	.byte B_SCR_OP_MIMICATTACKCOPY
+	.ifdef NATIVE_POINTER_SIZE_8
+	.8byte \failInstr
+	.else
 	.4byte \failInstr
+	.endif
 	.endm
 
 	.macro setcalledmove
@@ -787,22 +1047,38 @@
 
 	.macro disablelastusedattack failInstr:req
 	.byte B_SCR_OP_DISABLELASTUSEDATTACK
+	.ifdef NATIVE_POINTER_SIZE_8
+	.8byte \failInstr
+	.else
 	.4byte \failInstr
+	.endif
 	.endm
 
 	.macro trysetencore failInstr:req
 	.byte B_SCR_OP_TRYSETENCORE
+	.ifdef NATIVE_POINTER_SIZE_8
+	.8byte \failInstr
+	.else
 	.4byte \failInstr
+	.endif
 	.endm
 
 	.macro painsplitdmgcalc failInstr:req
 	.byte B_SCR_OP_PAINSPLITDMGCALC
+	.ifdef NATIVE_POINTER_SIZE_8
+	.8byte \failInstr
+	.else
 	.4byte \failInstr
+	.endif
 	.endm
 
 	.macro settypetorandomresistance failInstr:req
 	.byte B_SCR_OP_SETTYPETORANDOMRESISTANCE
+	.ifdef NATIVE_POINTER_SIZE_8
+	.8byte \failInstr
+	.else
 	.4byte \failInstr
+	.endif
 	.endm
 
 	.macro setalwayshitflag
@@ -811,17 +1087,29 @@
 
 	.macro copymovepermanently failInstr:req
 	.byte B_SCR_OP_COPYMOVEPERMANENTLY
+	.ifdef NATIVE_POINTER_SIZE_8
+	.8byte \failInstr
+	.else
 	.4byte \failInstr
+	.endif
 	.endm
 
 	.macro settailwind failInstr:req
 	.byte B_SCR_OP_SETTAILWIND
+	.ifdef NATIVE_POINTER_SIZE_8
+	.8byte \failInstr
+	.else
 	.4byte \failInstr
+	.endif
 	.endm
 
 	.macro tryspiteppreduce failInstr:req
 	.byte B_SCR_OP_TRYSPITEPPREDUCE
+	.ifdef NATIVE_POINTER_SIZE_8
+	.8byte \failInstr
+	.else
 	.4byte \failInstr
+	.endif
 	.endm
 
 	.macro healpartystatus
@@ -830,12 +1118,20 @@
 
 	.macro cursetarget failInstr:req
 	.byte B_SCR_OP_CURSETARGET
+	.ifdef NATIVE_POINTER_SIZE_8
+	.8byte \failInstr
+	.else
 	.4byte \failInstr
+	.endif
 	.endm
 
 	.macro trysetspikes failInstr:req
 	.byte B_SCR_OP_TRYSETSPIKES
+	.ifdef NATIVE_POINTER_SIZE_8
+	.8byte \failInstr
+	.else
 	.4byte \failInstr
+	.endif
 	.endm
 
 	.macro setvolatile battler:req, volatile:req, value=TRUE
@@ -847,18 +1143,30 @@
 
 	.macro trysetperishsong failInstr:req
 	.byte B_SCR_OP_TRYSETPERISHSONG
+	.ifdef NATIVE_POINTER_SIZE_8
+	.8byte \failInstr
+	.else
 	.4byte \failInstr
+	.endif
 	.endm
 
 	.macro jumpifconfusedandstatmaxed stat:req, jumpInstr:req
 	.byte B_SCR_OP_JUMPIFCONFUSEDANDSTATMAXED
 	.byte \stat
+	.ifdef NATIVE_POINTER_SIZE_8
+	.8byte \jumpInstr
+	.else
 	.4byte \jumpInstr
+	.endif
 	.endm
 
 	.macro setembargo failInstr:req
 	.byte B_SCR_OP_SETEMBARGO
+	.ifdef NATIVE_POINTER_SIZE_8
+	.8byte \failInstr
+	.else
 	.4byte \failInstr
+	.endif
 	.endm
 
 	.macro setsafeguard
@@ -867,7 +1175,11 @@
 
 	.macro jumpifnopursuitswitchdmg jumpInstr:req
 	.byte B_SCR_OP_JUMPIFNOPURSUITSWITCHDMG
+	.ifdef NATIVE_POINTER_SIZE_8
+	.8byte \jumpInstr
+	.else
 	.4byte \jumpInstr
+	.endif
 	.endm
 
 	.macro tryactivateitem battler:req, flag:req
@@ -886,12 +1198,20 @@
 
 	.macro recoverbasedonsunlight failInstr:req
 	.byte B_SCR_OP_RECOVERBASEDONSUNLIGHT
+	.ifdef NATIVE_POINTER_SIZE_8
+	.8byte \failInstr
+	.else
 	.4byte \failInstr
+	.endif
 	.endm
 
 	.macro setstickyweb failInstr:req
 	.byte B_SCR_OP_SETSTICKYWEB
+	.ifdef NATIVE_POINTER_SIZE_8
+	.8byte \failInstr
+	.else
 	.4byte \failInstr
+	.endif
 	.endm
 
 	.macro selectfirstvalidtarget
@@ -918,53 +1238,93 @@
 
 	.macro curestatuswithmove failInstr:req
 	.byte B_SCR_OP_CURESTATUSWITHMOVE
+	.ifdef NATIVE_POINTER_SIZE_8
+	.8byte \failInstr
+	.else
 	.4byte \failInstr
+	.endif
 	.endm
 
 	.macro settorment failInstr:req
 	.byte B_SCR_OP_SETTORMENT
+	.ifdef NATIVE_POINTER_SIZE_8
+	.8byte \failInstr
+	.else
 	.4byte \failInstr
+	.endif
 	.endm
 
 	.macro settaunt failInstr:req
 	.byte B_SCR_OP_SETTAUNT
+	.ifdef NATIVE_POINTER_SIZE_8
+	.8byte \failInstr
+	.else
 	.4byte \failInstr
+	.endif
 	.endm
 
 	.macro trysethelpinghand failInstr:req
 	.byte B_SCR_OP_TRYSETHELPINGHAND
+	.ifdef NATIVE_POINTER_SIZE_8
+	.8byte \failInstr
+	.else
 	.4byte \failInstr
+	.endif
 	.endm
 
 	.macro tryswapitems failInstr:req
 	.byte B_SCR_OP_TRYSWAPITEMS
+	.ifdef NATIVE_POINTER_SIZE_8
+	.8byte \failInstr
+	.else
 	.4byte \failInstr
+	.endif
 	.endm
 
 	.macro trycopyability battler:req, failInstr:req
 	.byte B_SCR_OP_TRYCOPYABILITY
 	.byte \battler
+	.ifdef NATIVE_POINTER_SIZE_8
+	.8byte \failInstr
+	.else
 	.4byte \failInstr
+	.endif
 	.endm
 
 	.macro trywish failInstr:req
 	.byte B_SCR_OP_TRYWISH
+	.ifdef NATIVE_POINTER_SIZE_8
+	.8byte \failInstr
+	.else
 	.4byte \failInstr
+	.endif
 	.endm
 
 	.macro settoxicspikes failInstr:req
 	.byte B_SCR_OP_SETTOXICSPIKES
+	.ifdef NATIVE_POINTER_SIZE_8
+	.8byte \failInstr
+	.else
 	.4byte \failInstr
+	.endif
 	.endm
 
 	.macro setgastroacid failInstr:req
 	.byte B_SCR_OP_SETGASTROACID
+	.ifdef NATIVE_POINTER_SIZE_8
+	.8byte \failInstr
+	.else
 	.4byte \failInstr
+	.endif
 	.endm
 
 	.macro setyawn failInstr:req
 	.byte B_SCR_OP_SETYAWN
+	.ifdef NATIVE_POINTER_SIZE_8
+	.8byte \failInstr
+	.else
 	.4byte \failInstr
+	.endif
 	.endm
 
 	.macro setroom
@@ -973,34 +1333,58 @@
 
 	.macro tryswapabilities failInstr:req
 	.byte B_SCR_OP_TRYSWAPABILITIES
+	.ifdef NATIVE_POINTER_SIZE_8
+	.8byte \failInstr
+	.else
 	.4byte \failInstr
+	.endif
 	.endm
 
 	.macro tryimprison failInstr:req
 	.byte B_SCR_OP_TRYIMPRISON
+	.ifdef NATIVE_POINTER_SIZE_8
+	.8byte \failInstr
+	.else
 	.4byte \failInstr
+	.endif
 	.endm
 
 	.macro setstealthrock failInstr:req
 	.byte B_SCR_OP_SETSTEALTHROCK
+	.ifdef NATIVE_POINTER_SIZE_8
+	.8byte \failInstr
+	.else
 	.4byte \failInstr
+	.endif
 	.endm
 
 	.macro trysetvolatile battler:req, _volatile:req, failInstr:req
 	.byte B_SCR_OP_TRYSETVOLATILE
 	.byte \battler
 	.byte \_volatile
+	.ifdef NATIVE_POINTER_SIZE_8
+	.8byte \failInstr
+	.else
 	.4byte \failInstr
+	.endif
 	.endm
 
 	.macro trysetmagiccoat failInstr:req
 	.byte B_SCR_OP_TRYSETMAGICCOAT
+	.ifdef NATIVE_POINTER_SIZE_8
+	.8byte \failInstr
+	.else
 	.4byte \failInstr
+	.endif
 	.endm
 
 	.macro trysetsnatch failInstr:req
 	.byte B_SCR_OP_TRYSETSNATCH
+	.ifdef NATIVE_POINTER_SIZE_8
+	.8byte \failInstr
+	.else
 	.4byte \failInstr
+	.endif
 	.endm
 
 	.macro switchoutabilities battler:req
@@ -1011,7 +1395,11 @@
 	.macro jumpifhasnohp battler:req, jumpInstr:req
 	.byte B_SCR_OP_JUMPIFHASNOHP
 	.byte \battler
+	.ifdef NATIVE_POINTER_SIZE_8
+	.8byte \jumpInstr
+	.else
 	.4byte \jumpInstr
+	.endif
 	.endm
 
 	.macro pickup
@@ -1020,17 +1408,29 @@
 
 	.macro settypebasedhalvers failInstr:req
 	.byte B_SCR_OP_SETTYPEBASEDHALVERS
+	.ifdef NATIVE_POINTER_SIZE_8
+	.8byte \failInstr
+	.else
 	.4byte \failInstr
+	.endif
 	.endm
 
 	.macro tryrecycleitem failInstr:req
 	.byte B_SCR_OP_TRYRECYCLEITEM
+	.ifdef NATIVE_POINTER_SIZE_8
+	.8byte \failInstr
+	.else
 	.4byte \failInstr
+	.endif
 	.endm
 
 	.macro settypetoenvironment failInstr:req
 	.byte B_SCR_OP_SETTYPETOENVIRONMENT
+	.ifdef NATIVE_POINTER_SIZE_8
+	.8byte \failInstr
+	.else
 	.4byte \failInstr
+	.endif
 	.endm
 
 	.macro snatchsetbattlers
@@ -1043,12 +1443,20 @@
 
 	.macro givecaughtmon passInstr:req
 	.byte B_SCR_OP_GIVECAUGHTMON
+	.ifdef NATIVE_POINTER_SIZE_8
+	.8byte \passInstr
+	.else
 	.4byte \passInstr
+	.endif
 	.endm
 
 	.macro trysetcaughtmondexflags failInstr:req
 	.byte B_SCR_OP_TRYSETCAUGHTMONDEXFLAGS
+	.ifdef NATIVE_POINTER_SIZE_8
+	.8byte \failInstr
+	.else
 	.4byte \failInstr
+	.endif
 	.endm
 
 	.macro displaydexinfo
@@ -1082,7 +1490,11 @@
 
 	.macro settelekinesis failInstr:req
 	.byte B_SCR_OP_SETTELEKINESIS
+	.ifdef NATIVE_POINTER_SIZE_8
+	.8byte \failInstr
+	.else
 	.4byte \failInstr
+	.endif
 	.endm
 
 	.macro swapstatstages stat:req
@@ -1102,7 +1514,11 @@
 
 	.macro tryoverwriteability failInstr:req
 	.byte B_SCR_OP_TRYOVERWRITEABILITY
+	.ifdef NATIVE_POINTER_SIZE_8
+	.8byte \failInstr
+	.else
 	.4byte \failInstr
+	.endif
 	.endm
 
 	.macro trysynchronize
@@ -1132,7 +1548,11 @@
 
 	.macro callnative func:req
 	.byte B_SCR_OP_CALLNATIVE
+	.ifdef NATIVE_POINTER_SIZE_8
+	.8byte \func
+	.else
 	.4byte \func
+	.endif
 	.endm
 
 	.macro savetarget
@@ -1157,25 +1577,49 @@
 
 	.macro tryallyswitch jumpInstr:req
 	callnative BS_TryAllySwitch
+	.ifdef NATIVE_POINTER_SIZE_8
+	.8byte \jumpInstr
+	.else
 	.4byte \jumpInstr
+	.endif
 	.endm
 
 	.macro jumpifmorethanhalfHP battler:req, jumpInstr:req
 	callnative BS_JumpIfMoreThanHalfHP
 	.byte \battler
+	.ifdef NATIVE_POINTER_SIZE_8
+	.8byte \jumpInstr
+	.else
 	.4byte \jumpInstr
+	.endif
 	.endm
 
 	.macro itemrestorehp jumpInstr:req, restoreBattlerInstr:req
 	callnative BS_ItemRestoreHP
+	.ifdef NATIVE_POINTER_SIZE_8
+	.8byte \jumpInstr
+	.else
 	.4byte \jumpInstr
+	.endif
+	.ifdef NATIVE_POINTER_SIZE_8
+	.8byte \restoreBattlerInstr
+	.else
 	.4byte \restoreBattlerInstr
+	.endif
 	.endm
 
 	.macro itemcurestatus jumpInstr:req, restoreBattlerInstr:req
 	callnative BS_ItemCureStatus
+	.ifdef NATIVE_POINTER_SIZE_8
+	.8byte \jumpInstr
+	.else
 	.4byte \jumpInstr
+	.endif
+	.ifdef NATIVE_POINTER_SIZE_8
+	.8byte \restoreBattlerInstr
+	.else
 	.4byte \restoreBattlerInstr
+	.endif
 	.endm
 
 	.macro itemincreasestat
@@ -1192,7 +1636,11 @@
 
 	.macro trysetoctolock failInstr:req
 	callnative BS_TrySetOctolock
+	.ifdef NATIVE_POINTER_SIZE_8
+	.8byte \failInstr
+	.else
 	.4byte \failInstr
+	.endif
 	.endm
 
 	.macro setzeffect
@@ -1214,29 +1662,49 @@
 	.macro checkparentalbondcounter counter:req, ptr:req
 	callnative BS_CheckParentalBondCounter
 	.byte \counter
+	.ifdef NATIVE_POINTER_SIZE_8
+	.8byte \ptr
+	.else
 	.4byte \ptr
+	.endif
 	.endm
 
 	.macro jumpifcantloseitem ptr:req
 	callnative BS_JumpIfCantLoseItem
+	.ifdef NATIVE_POINTER_SIZE_8
+	.8byte \ptr
+	.else
 	.4byte \ptr
+	.endif
 	.endm
 
 	.macro setterrain failInstr:req
 	callnative BS_SetTerrain
+	.ifdef NATIVE_POINTER_SIZE_8
+	.8byte \failInstr
+	.else
 	.4byte \failInstr
+	.endif
 	.endm
 
 	.macro jumpifterrainaffected battler:req, terrainFlags:req, jumpInstr:req
 	callnative BS_JumpIfTerrainAffected
 	.byte \battler
 	.byte \terrainFlags
+	.ifdef NATIVE_POINTER_SIZE_8
+	.8byte \jumpInstr
+	.else
 	.4byte \jumpInstr
+	.endif
 	.endm
 
 	.macro tryreflecttype failInstr:req
 	callnative BS_TryReflectType
+	.ifdef NATIVE_POINTER_SIZE_8
+	.8byte \failInstr
+	.else
 	.4byte \failInstr
+	.endif
 	.endm
 
 	@ Used to active a different Max Move effects.
@@ -1246,57 +1714,101 @@
 
 	.macro setsteelsurge, failInstr:req
 	callnative BS_SetSteelsurge
+	.ifdef NATIVE_POINTER_SIZE_8
+	.8byte \failInstr
+	.else
 	.4byte \failInstr
+	.endif
 	.endm
 
 	.macro trysetparalysis, ptr:req
 	callnative BS_TrySetParalysis
+	.ifdef NATIVE_POINTER_SIZE_8
+	.8byte \ptr
+	.else
 	.4byte \ptr
+	.endif
 	.endm
 
 	.macro trysetpoison, ptr:req
 	callnative BS_TrySetPoison
+	.ifdef NATIVE_POINTER_SIZE_8
+	.8byte \ptr
+	.else
 	.4byte \ptr
+	.endif
 	.endm
 
 	.macro trysetpoisonparalysis, ptr:req
 	callnative BS_TrySetPoisonParalyzis
+	.ifdef NATIVE_POINTER_SIZE_8
+	.8byte \ptr
+	.else
 	.4byte \ptr
+	.endif
 	.endm
 
 	.macro tryseteffectspore, ptr:req
 	callnative BS_TrySetEffectSpore
+	.ifdef NATIVE_POINTER_SIZE_8
+	.8byte \ptr
+	.else
 	.4byte \ptr
+	.endif
 	.endm
 
 	.macro trysetconfusion, ptr:req
 	callnative BS_TrySetConfusion
+	.ifdef NATIVE_POINTER_SIZE_8
+	.8byte \ptr
+	.else
 	.4byte \ptr
+	.endif
 	.endm
 
 	.macro trysetinfatuation, ptr:req
 	callnative BS_TrySetInfatuation
+	.ifdef NATIVE_POINTER_SIZE_8
+	.8byte \ptr
+	.else
 	.4byte \ptr
+	.endif
 	.endm
 
 	.macro trysetescapeprevention, ptr:req
 	callnative BS_TrySetEscapePrevention
+	.ifdef NATIVE_POINTER_SIZE_8
+	.8byte \ptr
+	.else
 	.4byte \ptr
+	.endif
 	.endm
 
 	.macro trysettorment, ptr:req
 	callnative BS_TrySetTorment
+	.ifdef NATIVE_POINTER_SIZE_8
+	.8byte \ptr
+	.else
 	.4byte \ptr
+	.endif
 	.endm
 
 	.macro tryhealsixthhealth, ptr:req
 	callnative BS_HealOneSixth
+	.ifdef NATIVE_POINTER_SIZE_8
+	.8byte \ptr
+	.else
 	.4byte \ptr
+	.endif
 	.endm
 
 	.macro tryrecycleberry, ptr:req
 	callnative BS_TryRecycleBerry
+	.ifdef NATIVE_POINTER_SIZE_8
+	.8byte \ptr
+	.else
 	.4byte \ptr
+	.endif
 	.endm
 
 	.macro updatedynamax
@@ -1305,7 +1817,11 @@
 
 	.macro jumpiftargetdynamaxed, ptr:req
 	callnative BS_JumpIfDynamaxed
+	.ifdef NATIVE_POINTER_SIZE_8
+	.8byte \ptr
+	.else
 	.4byte \ptr
+	.endif
 	.endm
 
 	.macro undodynamax battler:req
@@ -1331,13 +1847,21 @@
 
 	.macro tryhealpulse failInstr:req
 	callnative BS_TryHealPulse
+	.ifdef NATIVE_POINTER_SIZE_8
+	.8byte \failInstr
+	.else
 	.4byte \failInstr
+	.endif
 	.endm
 
 	.macro trydefog clear:req, failInstr:req
 	callnative BS_TryDefog
 	.byte \clear
+	.ifdef NATIVE_POINTER_SIZE_8
+	.8byte \failInstr
+	.else
 	.4byte \failInstr
+	.endif
 	.endm
 
 	.macro trytriggerstatusform
@@ -1352,12 +1876,20 @@
 	.macro trytidyup clear:req, jumpInstr:req
 	callnative BS_TryTidyUp
 	.byte \clear
+	.ifdef NATIVE_POINTER_SIZE_8
+	.8byte \jumpInstr
+	.else
 	.4byte \jumpInstr
+	.endif
 	.endm
 
 	.macro tryquash failInstr:req
 	callnative BS_TryQuash
+	.ifdef NATIVE_POINTER_SIZE_8
+	.8byte \failInstr
+	.else
 	.4byte \failInstr
+	.endif
 	.endm
 
 	.macro removeweather
@@ -1370,24 +1902,40 @@
 
 	.macro jumpifsleepclause jumpInstr:req
 	callnative BS_JumpIfSleepClause
+	.ifdef NATIVE_POINTER_SIZE_8
+	.8byte \jumpInstr
+	.else
 	.4byte \jumpInstr
+	.endif
 	.endm
 
 	.macro jumpifnoberry battler:req, jumpInstr:req
 	callnative BS_JumpIfNoBerry
 	.byte \battler
+	.ifdef NATIVE_POINTER_SIZE_8
+	.8byte \jumpInstr
+	.else
 	.4byte \jumpInstr
+	.endif
 	.endm
 
 	.macro checkteatimetargets failInstr:req
 	callnative BS_CheckTeaTimeTargets
+	.ifdef NATIVE_POINTER_SIZE_8
+	.8byte \failInstr
+	.else
 	.4byte \failInstr
+	.endif
 	.endm
 
 	.macro trywindriderpower battler:req, failInstr:req
 	callnative BS_TryWindRiderPower
 	.byte \battler
+	.ifdef NATIVE_POINTER_SIZE_8
+	.8byte \failInstr
+	.else
 	.4byte \failInstr
+	.endif
 	.endm
 
 	.macro activateweatherchangeabilities battler:req
@@ -1412,19 +1960,31 @@
 
 	.macro tryrevivalblessing, failInstr:req
 	callnative BS_TryRevivalBlessing
+	.ifdef NATIVE_POINTER_SIZE_8
+	.8byte \failInstr
+	.else
 	.4byte \failInstr
+	.endif
 	.endm
 
 	.macro jumpifblockedbysoundproof battler:req, failInstr:req
 	callnative BS_JumpIfBlockedBySoundproof
 	.byte \battler
+	.ifdef NATIVE_POINTER_SIZE_8
+	.8byte \failInstr
+	.else
 	.4byte \failInstr
+	.endif
 	.endm
 
 	.macro jumpifcommanderactive battler:req, jumpInstr:req
 	callnative BS_JumpIfCommanderActive
 	.byte \battler
+	.ifdef NATIVE_POINTER_SIZE_8
+	.8byte \jumpInstr
+	.else
 	.4byte \jumpInstr
+	.endif
 	.endm
 
 	.macro checkpokeflute
@@ -1456,18 +2016,30 @@
 	.macro jumpifmoveresultflags flags:req failInstr:req
 	callnative BS_JumpIfMoveResultFlags
 	.4byte \flags
+	.ifdef NATIVE_POINTER_SIZE_8
+	.8byte \failInstr
+	.else
 	.4byte \failInstr
+	.endif
 	.endm
 
 	.macro jumpifnotcriticalhit failInstr:req
 	callnative BS_JumpIfNotCriticalHit
+	.ifdef NATIVE_POINTER_SIZE_8
+	.8byte \failInstr
+	.else
 	.4byte \failInstr
+	.endif
 	.endm
 
 	.macro jumpifcangigantamax battler:req, jumpInstr:req
 	callnative BS_JumpIfCanGigantamax
 	.byte \battler
+	.ifdef NATIVE_POINTER_SIZE_8
+	.8byte \jumpInstr
+	.else
 	.4byte \jumpInstr
+	.endif
 	.endm
 
 	.macro swapsidestatuses
@@ -1585,7 +2157,11 @@
 	.macro jumpifabilitycantbereactivated battler:req, jumpInstr:req
 	callnative BS_JumpIfAbilityCantBeReactivated
 	.byte \battler
+	.ifdef NATIVE_POINTER_SIZE_8
+	.8byte \jumpInstr
+	.else
 	.4byte \jumpInstr
+	.endif
 	.endm
 
 	.macro tryactivateabilityshield battler:req
@@ -1595,13 +2171,21 @@
 
 	.macro jumpifroarfails jumpInstr:req
 	callnative BS_JumpIfRoarFails
+	.ifdef NATIVE_POINTER_SIZE_8
+	.8byte \jumpInstr
+	.else
 	.4byte \jumpInstr
+	.endif
 	.endm
 
 	.macro jumpifabsent battler:req, jumpInstr:req
 	callnative BS_JumpIfAbsent
 	.byte \battler
+	.ifdef NATIVE_POINTER_SIZE_8
+	.8byte \jumpInstr
+	.else
 	.4byte \jumpInstr
+	.endif
 	.endm
 
 	.macro jumpifnoholdeffect battler:req, holdEffect:req, jumpInstr:req
@@ -1612,14 +2196,22 @@
 	callnative BS_JumpIfHoldEffect
 	.byte \battler
 	.byte \holdEffect
+	.ifdef NATIVE_POINTER_SIZE_8
+	.8byte \jumpInstr
+	.else
 	.4byte \jumpInstr
+	.endif
 	.byte \equal
 	.endm
 
 	.macro jumpifnoally battler:req, jumpInstr:req
 	callnative BS_JumpIfNoAlly
 	.byte \battler
+	.ifdef NATIVE_POINTER_SIZE_8
+	.8byte \jumpInstr
+	.else
 	.4byte \jumpInstr
+	.endif
 	.endm
 
 	.macro setlastuseditem battler:req
@@ -1629,13 +2221,21 @@
 
 	.macro trysetfairylock failInstr:req
 	callnative BS_TrySetFairyLock
+	.ifdef NATIVE_POINTER_SIZE_8
+	.8byte \failInstr
+	.else
 	.4byte \failInstr
+	.endif
 	.endm
 
 	.macro jumpiffullhp battler:req, jumpInstr:req
 	callnative BS_JumpIfFullHp
 	.byte \battler
+	.ifdef NATIVE_POINTER_SIZE_8
+	.8byte \jumpInstr
+	.else
 	.4byte \jumpInstr
+	.endif
 	.endm
 
 	.macro tryfriskmessage
@@ -1821,12 +2421,20 @@
 
 	.macro setluckychant failInstr:req
 	callnative BS_SetLuckyChant
+	.ifdef NATIVE_POINTER_SIZE_8
+	.8byte \failInstr
+	.else
 	.4byte \failInstr
+	.endif
 	.endm
 
 	.macro tryentrainment failInstr:req
 	callnative BS_TryEntrainment
+	.ifdef NATIVE_POINTER_SIZE_8
+	.8byte \failInstr
+	.else
 	.4byte \failInstr
+	.endif
 	.endm
 
 	.macro setlastusedability
@@ -1839,12 +2447,20 @@
 
 	.macro tryelectrify failInstr:req
 	callnative BS_TryElectrify
+	.ifdef NATIVE_POINTER_SIZE_8
+	.8byte \failInstr
+	.else
 	.4byte \failInstr
+	.endif
 	.endm
 
 	.macro trysoak failInstr:req
 	callnative BS_TrySoak
+	.ifdef NATIVE_POINTER_SIZE_8
+	.8byte \failInstr
+	.else
 	.4byte \failInstr
+	.endif
 	.endm
 
 	.macro handleformchange battler:req, caseId:req, bufferSpeciesName=TRUE
@@ -1856,7 +2472,11 @@
 
 	.macro tryinstruct failInstr:req
 	callnative BS_TryInstruct
+	.ifdef NATIVE_POINTER_SIZE_8
+	.8byte \failInstr
+	.else
 	.4byte \failInstr
+	.endif
 	.endm
 
 	.macro showabilitypopup
@@ -1873,13 +2493,25 @@
 
 	.macro jumpiftargetally jumpInstr:req
 	callnative BS_JumpIfTargetAlly
+	.ifdef NATIVE_POINTER_SIZE_8
+	.8byte \jumpInstr
+	.else
 	.4byte \jumpInstr
+	.endif
 	.endm
 
 	.macro trypsychoshift failInstr:req sleepClauseFailInstr:req
 	callnative BS_TryPsychoShift
+	.ifdef NATIVE_POINTER_SIZE_8
+	.8byte \failInstr
+	.else
 	.4byte \failInstr
+	.endif
+	.ifdef NATIVE_POINTER_SIZE_8
+	.8byte \sleepClauseFailInstr
+	.else
 	.4byte \sleepClauseFailInstr
+	.endif
 	.endm
 
 	.macro curestatus battler:req
@@ -1893,12 +2525,20 @@
 
 	.macro tryafteryou failInstr:req
 	callnative BS_TryAfterYou
+	.ifdef NATIVE_POINTER_SIZE_8
+	.8byte \failInstr
+	.else
 	.4byte \failInstr
+	.endif
 	.endm
 
 	.macro trybestow failInstr:req
 	callnative BS_TryBestow
+	.ifdef NATIVE_POINTER_SIZE_8
+	.8byte \failInstr
+	.else
 	.4byte \failInstr
+	.endif
 	.endm
 
 	.macro handletrainerslidemsg battler:req, case_:req
@@ -1923,7 +2563,11 @@
 
 	.macro trythirdtype failInstr:req
 	callnative BS_TryThirdType
+	.ifdef NATIVE_POINTER_SIZE_8
+	.8byte \failInstr
+	.else
 	.4byte \failInstr
+	.endif
 	.endm
 
 	.macro destroyabilitypopup
@@ -1937,13 +2581,21 @@
 	.macro tryroomservice battler:req, failInstr:req
 	callnative BS_TryRoomService
 	.byte \battler
+	.ifdef NATIVE_POINTER_SIZE_8
+	.8byte \failInstr
+	.else
 	.4byte \failInstr
+	.endif
 	.endm
 
 	.macro tryterrainseed battler:req, failInstr:req
 	callnative BS_TryTerrainSeed
 	.byte \battler
+	.ifdef NATIVE_POINTER_SIZE_8
+	.8byte \failInstr
+	.else
 	.4byte \failInstr
+	.endif
 	.endm
 
 	.macro makeinvisible battler:req
@@ -1953,18 +2605,30 @@
 
 	.macro jumpifteamhealthy jumpInstr:req
 	callnative BS_JumpIfTeamHealthy
+	.ifdef NATIVE_POINTER_SIZE_8
+	.8byte \jumpInstr
+	.else
 	.4byte \jumpInstr
+	.endif
 	.endm
 
 	.macro tryhealquarterhealth battler:req, failInstr:req
 	callnative BS_TryHealQuarterHealth
 	.byte \battler
+	.ifdef NATIVE_POINTER_SIZE_8
+	.8byte \failInstr
+	.else
 	.4byte \failInstr
+	.endif
 	.endm
 
 	.macro jumpifpranksterblocked jumpInstr:req
 	callnative BS_JumpIfPranksterBlocked
+	.ifdef NATIVE_POINTER_SIZE_8
+	.8byte \jumpInstr
+	.else
 	.4byte \jumpInstr
+	.endif
 	.endm
 
 	.macro trytoclearprimalweather
@@ -1985,24 +2649,40 @@
 	.macro jumpifweatheraffected flags:req, jumpInstr:req
 	callnative BS_JumpIfWeatherAffected
 	.2byte \flags
+	.ifdef NATIVE_POINTER_SIZE_8
+	.8byte \jumpInstr
+	.else
 	.4byte \jumpInstr
+	.endif
 	.endm
 
 	.macro jumpifspecies species:req, jumpInstr:req
 	callnative BS_JumpIfSpecies
 	.2byte \species
+	.ifdef NATIVE_POINTER_SIZE_8
+	.8byte \jumpInstr
+	.else
 	.4byte \jumpInstr
+	.endif
 	.endm
 
 	.macro jumpifabilitypreventsrest battler:req, jumpInstr:req
 	callnative BS_JumpIfAbilityPreventsRest
 	.byte \battler
+	.ifdef NATIVE_POINTER_SIZE_8
+	.8byte \jumpInstr
+	.else
 	.4byte \jumpInstr
+	.endif
 	.endm
 
 	.macro cutonethirdhpandraisestats failInstr:req
 	callnative BS_CutOneThirdHpAndRaiseStats
+	.ifdef NATIVE_POINTER_SIZE_8
+	.8byte \failInstr
+	.else
 	.4byte \failInstr
+	.endif
 	.endm
 
 	.macro tryresetnegativestatstages
@@ -2054,7 +2734,11 @@
 
 	.macro jumpifnowhiteout jumpInstr:req
 	callnative BS_JumpIfNoWhiteOut
+	.ifdef NATIVE_POINTER_SIZE_8
+	.8byte \jumpInstr
+	.else
 	.4byte \jumpInstr
+	.endif
 	.endm
 
 	.macro tryboosterenergy onFieldStatus:req
@@ -2066,7 +2750,11 @@
 	callnative BS_JumpIfGenConfigLowerThan
 	.2byte \tag
 	.byte \gen
+	.ifdef NATIVE_POINTER_SIZE_8
+	.8byte \jumpInstr
+	.else
 	.4byte \jumpInstr
+	.endif
 	.endm
 
 	.macro tryactivateabilitywithabilityshield battler:req, switchedItems=FALSE
@@ -2089,7 +2777,11 @@
 
 	.macro jumpifnoballs jumpInstr:req
 	callnative BS_JumpIfNoBalls
+	.ifdef NATIVE_POINTER_SIZE_8
+	.8byte \jumpInstr
+	.else
 	.4byte \jumpInstr
+	.endif
 	.endm
 
 	.macro handlefailedvictorycatch
@@ -2117,7 +2809,11 @@
 	.byte B_SCR_OP_JUMPIFTERRAIN
 	.byte \comparison
 	.byte \terrain
+	.ifdef NATIVE_POINTER_SIZE_8
+	.8byte \jumpInstr
+	.else
 	.4byte \jumpInstr
+	.endif
 	.endm
 
 	.macro trydomoveeffectsbeforemoves
