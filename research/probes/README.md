@@ -99,5 +99,5 @@ deployment target and `-ld_classic` as separate attempts.
 the default page zero (A:302-306), and a binary linked with `-pagezero_size 0x1000` (rounded up to
 0x4000 by ld, A:308) is killed on start, status 137 in all 100 runs (A:412): an arm64 process needs a
 page zero of at least 4 GiB. The arm64 layout probe itself never reached the linker: `#` is not a
-comment in the arm64 assembler, so `regions.S` did not assemble (A:217-226); it is now `regions.S`,
+comment in the arm64 assembler, so `regions.s` did not assemble (A:217-226); it is now `regions.S`,
 with C comments, and the next run shows what ld64 does with the layout link on arm64.
