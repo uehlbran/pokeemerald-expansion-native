@@ -9,8 +9,8 @@
 
 // Native only: the party seed (src/trainer_util.c, TrainerDataCrc32) hashes the
 // trainer's bytes without the party table's address, so it is a property of the
-// trainer's data and the player's ID. The test build has no trainer table
-// (src/data.c), so these are copies of three early trainers' data (Calvin,
+// trainer's data and the player's ID. The test build's gTrainers is the
+// test trainers (test/test_runner_battle.c), not src/data/trainers.h, so these are copies of three early trainers' data (Calvin,
 // the Route 103 Brendan, Roxanne) with a dummy party. The constants come from
 // the 32-bit build and pin its value; the 64-bit build, whose struct is 4
 // bytes bigger, must hash the same bytes and so match them.
@@ -92,8 +92,11 @@ TEST("The trainer party seed does not depend on the party table's address")
     struct Trainer moved = sCalvin;
     SetPlayerId();
     moved.party = sDummyPartyB;
-    EXPECT_EQ(GeneratePartySeed(&moved).a, GeneratePartySeed(&sCalvin).a);
-    EXPECT_EQ(GeneratePartySeed(&moved).b, GeneratePartySeed(&sCalvin).b);
+    rng_value_t m = GeneratePartySeed(&moved), c = GeneratePartySeed(&sCalvin);
+    EXPECT_EQ(m.a, c.a);
+    EXPECT_EQ(m.b, c.b);
+    EXPECT_EQ(m.c, c.c);
+    EXPECT_EQ(m.ctr, c.ctr);
 }
 
 #endif

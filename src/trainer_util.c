@@ -15,7 +15,7 @@
 // address: on the GBA a ROM address fixed by the ROM's link layout, natively an
 // address in the executable that moves with any change to the build, and with
 // it the party seed (each Pokemon's personality) and a partner's OT ID.
-#if UINTPTR_MAX <= UINT32_MAX
+#if __SIZEOF_POINTER__ != 8
 static u32 TrainerDataCrc32(const struct Trainer *trainer)
 {
     struct Trainer hashed;
@@ -27,7 +27,11 @@ static u32 TrainerDataCrc32(const struct Trainer *trainer)
 // At 64 bits `party` is 8 bytes, not 4, and the struct is 56 bytes, not 52. The
 // bytes hashed are those the 32-bit build hashes, so the seed is the same at
 // both widths: [0, party), four zero bytes, then everything after the pointer.
-_Static_assert((sizeof(struct Trainer) - sizeof(void *) + 4) % 4 == 0,
+enum { GBA_POINTER_SIZE = 4 };
+// 52 is the 32-bit sizeof(struct Trainer), the length the GBA's seed hashes.
+_Static_assert(sizeof(struct Trainer) - sizeof(void *) + GBA_POINTER_SIZE == 52,
+               "TrainerDataCrc32: the hashed length must be the 32-bit struct size");
+_Static_assert((sizeof(struct Trainer) - sizeof(void *) + GBA_POINTER_SIZE) % 4 == 0,
                "TrainerDataCrc32: Crc32B hashes whole words");
 _Static_assert(offsetof(struct Trainer, items) == offsetof(struct Trainer, party) + sizeof(void *),
                "TrainerDataCrc32: members after party must follow the pointer directly");
@@ -36,14 +40,14 @@ _Static_assert(_Alignof(enum Item) <= 4 && _Alignof(struct StartingStatuses) <= 
                "TrainerDataCrc32: a member after party needs 8-byte alignment");
 static u32 TrainerDataCrc32(const struct Trainer *trainer)
 {
-    u8 hashed[sizeof(struct Trainer) - sizeof(void *) + 4];
+    u8 hashed[sizeof(struct Trainer) - sizeof(void *) + GBA_POINTER_SIZE];
     const u8 *bytes = (const u8 *)trainer;
     const size_t head = offsetof(struct Trainer, party);
     const size_t tail = head + sizeof(void *);
 
     memcpy(hashed, bytes, head);
-    memset(hashed + head, 0, 4);
-    memcpy(hashed + head + 4, bytes + tail, sizeof(struct Trainer) - tail);
+    memset(hashed + head, 0, GBA_POINTER_SIZE);
+    memcpy(hashed + head + GBA_POINTER_SIZE, bytes + tail, sizeof(struct Trainer) - tail);
     return Crc32B(hashed, sizeof(hashed));
 }
 #endif
