@@ -230,7 +230,9 @@ static int64_t read_fixed_clock(void)
 static int start_rtc(const struct options *o)
 {
     fixed_clock_base = o->rtc_fixed_epoch;
-    return rtc_init(o->rtc_fixed ? read_fixed_clock : NULL, o->rtc_offset_path);
+    if (o->rtc_fixed) /* no host time zone in a deterministic run */
+        return rtc_init_utc(read_fixed_clock, o->rtc_offset_path);
+    return rtc_init(NULL, o->rtc_offset_path);
 }
 static int start_frame_pacer(const struct options *o) { return frame_pacer_init(o->unthrottled); }
 

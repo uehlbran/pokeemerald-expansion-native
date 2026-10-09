@@ -126,3 +126,10 @@ SECTIONS
     . = gba_regions_saved_dot;
 }
 INSERT AFTER .bss;
+
+/* platform/script_tag.h keeps expansion's ROM_SIZE tag on event script
+ * function pointers as bit 25 (0x02000000); that only works while no code
+ * address has it set, that is while the code ends below 0x42000000 (the image
+ * starts at 0x40000000; data is never tagged, so a large .data or .bss, as
+ * the sanitizers make, is no problem). */
+ASSERT(etext < 0x42000000, "the code reaches 0x42000000: platform/script_tag.h's tag bit would be ambiguous");

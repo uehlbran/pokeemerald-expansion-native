@@ -1057,14 +1057,7 @@ static void BuildDoorTiles(u16 *tiles, u16 tileNum, const u8 *paletteNums)
     // The remaining layers are left as tile 0 (with the same palette)
     for (; i < 8; i++)
     {
-#if PLATFORM_NATIVE
-        // The palette tables hold 8 entries but the offsets 4, 8 and 12 read 8 from there, past the end of the table
-        // (the GBA read what followed it in ROM). These tiles are tile 0 "with the same palette" as the visible ones.
-        tile = paletteNums[i - 8] << 12;
-#else
         tile = *(paletteNums++) << 12;
-#endif
-#line 1061
         tiles[i] = tile;
     }
 }
@@ -1072,6 +1065,21 @@ static void BuildDoorTiles(u16 *tiles, u16 tileNum, const u8 *paletteNums)
 static void DrawCurrentDoorAnimFrame(const struct DoorGraphics *gfx, u32 x, u32 y, const u8 *paletteNums)
 {
     u16 tiles[24];
+
+#if PLATFORM_NATIVE
+    // BuildDoorTiles reads 8 palette entries at every offset it is given (0 and 4 for a 1x2 door, 0, 4, 8 and 12
+    // for a 2x2 one), so the last four of the last call lie past an 8-entry table (the 2x2 door's table has 16);
+    // the GBA read the next object in ROM. Those entries are the palette number of tile 0, transparent in all
+    // three primary tilesets, so the substitute (the table's last entry) may differ from what the GBA read, for those entries only, and
+    // does not change what is drawn. Entries
+    // inside the table are passed through unchanged.
+    u8 paddedPalettes[20];
+    int tableLength = (gfx->size == DOOR_SIZE_2x2_LEFT || gfx->size == DOOR_SIZE_2x2_RIGHT) ? 16 : 8;
+    for (int i = 0; i < 20; i++)
+        paddedPalettes[i] = paletteNums[i < tableLength ? i : tableLength - 1];
+    paletteNums = paddedPalettes;
+#endif
+#line 1068
 
     switch (gfx->size)
     {

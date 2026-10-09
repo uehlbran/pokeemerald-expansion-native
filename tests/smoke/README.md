@@ -85,7 +85,9 @@ editing `opening.replay`:
   file alone, which is what a player's switch-off and switch-on does.
   `--rtc-fixed` is advanced by the time that has passed, so the clock does not
   run backwards across the restart. After a restart the frame counter starts
-  from 0 again.
+  from 0 again, so a `frame N` after `restart` is a parse error (use `wait`).
+  `--rtc-fixed` also makes the clock start at UTC with no host time zone
+  (run.sh sets `TZ=UTC` too). Every `wait N` in the script has its reason in a comment.
 
 ## The key sequence
 
@@ -105,7 +107,7 @@ The player is the boy, `Ab`. The names are `opening.replay`'s dump names.
 | `10_may_2f`, `11_met_may` | RIGHT to the neighbour's door (14,9), UP; upstairs, DOWN, RIGHT, RIGHT again, A on the Poke Ball at (5,4) | the scenes; `town_state=1` |
 | `13_outside_again`, `14_warned` | down and out, LEFT to x=11, UP to the north exit | the little girl's warning, `town_state=2` |
 | `15_route101`, `16_birch_chase` | UP onto Route 101 | Birch's "Help me" scene |
-| `17_starter_screen`.. | LEFT to (7,15), UP, A on the bag; on the screen LEFT (Treecko), A, A (Yes) | `CB2_StarterChoose`, the confirmation, `in_battle=1`, Treecko (species 252) in the party |
+| `17_starter_screen`.. (`19b_battle` is mid-battle) | LEFT to (7,15), UP, A on the bag; on the screen LEFT (Treecko), A, A (Yes) | `CB2_StarterChoose`, the confirmation, `in_battle=1`, Treecko (species 252) in the party |
 | `20_battle_end` | A mashed (FIGHT, first move, ...) | `in_battle=0` |
 | `21_lab` .. `23_lab_free` | A mashed through Birch's thanks; B at "give a nickname?" (No); A at "go see your rival?" (Yes) | the lab, both questions (`task_last=Task_HandleYesNoInput`), the controls |
 | `24_start_menu`, `25_saved` | START, DOWN x3 (SAVE), A, A mashed through the prompts | `task_last=Task_ShowStartMenu`; the controls again; `save_counter=1`, `flash_dirty_writes` > 0 |

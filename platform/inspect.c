@@ -41,6 +41,11 @@
 
 static const char *const none_text = "none";
 
+/* 64-bit flag: the (uintptr_t) casts of function pointers in this file (this
+ * table and name_function's callers) compare code addresses as integers with
+ * the symbol table's values; uintptr_t is wide enough on both widths, the cast
+ * is the one place a function pointer becomes a number. */
+
 /* Every callback the game declares in a header, by its own name. The rest
  * (most are static) come from the symbol table. */
 static const struct inspect_known_callback known_callbacks[] = {

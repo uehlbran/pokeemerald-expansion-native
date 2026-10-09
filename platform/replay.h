@@ -27,7 +27,9 @@
  *                              script should not have to count.
  *   restart                    end this process and start the game again from
  *                              a cold start with the same save, continuing
- *                              the script after this line (replay_restart_line)
+ *                              the script after this line (replay_restart_line).
+ *                              The frame count starts again in the new process, so
+ *                              a `frame` command after a `restart` is a parse error.
  *
  * A value is the rest of the line (wait-until: up to " max"), trimmed. NAME
  * is letters, digits, '_' and '-'. The driver is a state machine stepped
@@ -101,6 +103,12 @@ struct replay_parse_error {
 /* Parses `text` (NUL-terminated) into `script`. Returns 0, or -1 with the
  * first error in `error` (line number and reason). */
 int replay_parse(const char *text, struct replay_script *script, struct replay_parse_error *error);
+
+/* As replay_parse for a file's bytes: `bytes` has `length` bytes and bytes[length]
+ * is NUL. A NUL byte inside is an error (reported at its line), as it would
+ * silently end the script. */
+int replay_parse_buffer(const char *bytes, size_t length, struct replay_script *script,
+                        struct replay_parse_error *error);
 
 /* What the driver needs from the game and the platform. */
 struct replay_host {

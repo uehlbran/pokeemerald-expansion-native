@@ -19,7 +19,10 @@
 #     (after it).
 # Sanitizer reports in the game's stderr are listed and fail the run, except
 # the lines matched by tests/smoke/sanitizer-known.txt (if present).
+# Not `set -e`: the game's exit status, grep and diff results are tested on
+# purpose and every failure is counted and reported; `-u` catches typos.
 set -u
+export TZ=UTC # belt and braces: --rtc-fixed already makes the clock independent of the zone
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 script="$here/opening.replay"
@@ -34,7 +37,12 @@ die() { echo "run.sh: $*" >&2; exit 2; }
 binary="$1"
 outdir="$2"
 update=0
-[ "${3:-}" = "--update" ] && update=1
+case "${3:-}" in
+"") ;;
+--update) update=1 ;;
+*) die "unknown argument '$3' (usage: run.sh BINARY OUTDIR [--update])" ;;
+esac
+[ $# -le 3 ] || die "too many arguments (usage: run.sh BINARY OUTDIR [--update])"
 [ -x "$binary" ] || die "no executable $binary (build it first; see docs/BUILDING.md)"
 
 work="$outdir/work"

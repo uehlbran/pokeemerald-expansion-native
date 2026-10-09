@@ -136,4 +136,131 @@ PTEST(rejects_a_truncated_file_and_an_empty_one)
     PT_ASSERT_EQ_INT(load_damaged(1, NULL), -1);
 }
 
+/* --- Lying headers, in a whole copy of this executable ------------------------- */
+
+#include <link.h>
+#include <sys/stat.h>
+
+enum lie {
+    LIE_SH_SIZE,       /* the symbol table is longer than the file */
+    LIE_SH_OFFSET,     /* the symbol table starts past the end of the file */
+    LIE_SH_LINK,       /* its string table is a section that does not exist */
+    LIE_SH_LINK_WRONG, /* its string table is a section that is not one */
+    LIE_SH_ENTSIZE,    /* its entries are not symbols */
+    LIE_E_SHNUM,       /* a section count that leaves the symbol table out */
+    LIE_STRTAB_SMALL,  /* the string table is shorter than the names point to */
+    LIE_E_TYPE         /* a shared object, as a PIE is */
+};
+
+/* Applies the lie to the bytes of the executable. */
+static void tell(unsigned char *bytes, enum lie lie)
+{
+    ElfW(Ehdr) eh;
+    memcpy(&eh, bytes, sizeof eh);
+    ElfW(Shdr) *sections = (ElfW(Shdr) *)(void *)(bytes + eh.e_shoff);
+    ElfW(Shdr) *symtab = NULL;
+    for (size_t i = 0; i < eh.e_shnum; i++) {
+        if (sections[i].sh_type == SHT_SYMTAB)
+            symtab = &sections[i];
+    }
+    if (symtab == NULL)
+        return;
+    switch (lie) {
+    case LIE_SH_SIZE:
+        symtab->sh_size = (ElfW(Xword))0x7FFFFFF0u;
+        break;
+    case LIE_SH_OFFSET:
+        symtab->sh_offset = (ElfW(Off))0x7FFFFFF0u;
+        break;
+    case LIE_SH_LINK:
+        symtab->sh_link = eh.e_shnum + 5u;
+        break;
+    case LIE_SH_LINK_WRONG:
+        symtab->sh_link = 0; /* the null section, not a string table */
+        break;
+    case LIE_SH_ENTSIZE:
+        symtab->sh_entsize = 3;
+        break;
+    case LIE_E_SHNUM:
+        eh.e_shnum = 1; /* the symbol table is not among the sections the header admits to */
+        memcpy(bytes, &eh, sizeof eh);
+        break;
+    case LIE_STRTAB_SMALL:
+        sections[symtab->sh_link].sh_size = 4;
+        break;
+    case LIE_E_TYPE:
+        eh.e_type = ET_DYN;
+        memcpy(bytes, &eh, sizeof eh);
+        break;
+    }
+}
+
+static int load_lying(enum lie lie)
+{
+    struct stat st;
+    FILE *source = fopen(SYMBOLS_EXE_PATH, "rb");
+    if (source == NULL || fstat(fileno(source), &st) != 0)
+        return 99;
+    unsigned char *bytes = malloc((size_t)st.st_size);
+    size_t got = bytes != NULL ? fread(bytes, 1, (size_t)st.st_size, source) : 0;
+    fclose(source);
+    if (bytes == NULL || got != (size_t)st.st_size) {
+        free(bytes);
+        return 99;
+    }
+    tell(bytes, lie);
+    char path[64];
+    snprintf(path, sizeof path, "/tmp/test_symbols_XXXXXX");
+    int fd = mkstemp(path);
+    bool ok = fd >= 0 && write(fd, bytes, got) == (ssize_t)got;
+    if (fd >= 0)
+        close(fd);
+    free(bytes);
+    if (!ok)
+        return 99;
+    int result = symbols_load(path);
+    unlink(path);
+    return result;
+}
+
+PTEST(a_symbol_table_longer_than_the_file_is_refused)
+{
+    PT_ASSERT_EQ_INT(load_lying(LIE_SH_SIZE), -1);
+}
+
+PTEST(a_symbol_table_past_the_end_of_the_file_is_refused)
+{
+    PT_ASSERT_EQ_INT(load_lying(LIE_SH_OFFSET), -1);
+}
+
+PTEST(a_string_table_link_that_does_not_exist_or_is_not_a_string_table_is_refused)
+{
+    PT_ASSERT_EQ_INT(load_lying(LIE_SH_LINK), -1);
+    PT_ASSERT_EQ_INT(load_lying(LIE_SH_LINK_WRONG), -1);
+}
+
+PTEST(entries_that_are_not_symbols_are_refused)
+{
+    PT_ASSERT_EQ_INT(load_lying(LIE_SH_ENTSIZE), -1);
+}
+
+PTEST(a_section_count_that_hides_the_symbol_table_is_refused)
+{
+    PT_ASSERT_EQ_INT(load_lying(LIE_E_SHNUM), -1);
+}
+
+PTEST(a_name_past_the_end_of_the_string_table_is_skipped_not_read)
+{
+    /* the symbols load; none can have a name inside a 4-byte table, and nothing is read past it */
+    int result = load_lying(LIE_STRTAB_SMALL);
+    PT_ASSERT(result == 0 || result == -1);
+    PT_ASSERT(symbols_name_at((uintptr_t)symbols_test_function_alpha) == NULL);
+    symbols_unload();
+}
+
+PTEST(a_position_independent_executable_is_refused)
+{
+    PT_ASSERT_EQ_INT(load_lying(LIE_E_TYPE), -1);
+}
+
 PTEST_MAIN()

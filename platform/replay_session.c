@@ -63,7 +63,7 @@ static enum frame_step_result step(void *context)
 
 /* The whole file in a NUL-terminated heap string the caller frees, or NULL
  * after printing why. */
-static char *read_text(const char *path)
+static char *read_text(const char *path, size_t *length_out)
 {
     FILE *file = fopen(path, "rb");
     if (file == NULL) {
@@ -81,6 +81,7 @@ static char *read_text(const char *path)
         return NULL;
     }
     text[length] = '\0';
+    *length_out = length;
     return text;
 }
 
@@ -96,10 +97,11 @@ static bool make_out_dir(const char *out_dir)
 int replay_session_start(const char *script_path, const char *out_dir, uint32_t resume_after_line)
 {
     struct replay_parse_error error;
-    char *text = read_text(script_path);
+    size_t length;
+    char *text = read_text(script_path, &length);
     if (text == NULL)
         return -1;
-    int parsed = replay_parse(text, &script, &error);
+    int parsed = replay_parse_buffer(text, length, &script, &error);
     free(text);
     if (parsed != 0) {
         fprintf(stderr, "replay: %s:%u: %s\n", script_path, (unsigned)error.line, error.message);

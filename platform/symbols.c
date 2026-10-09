@@ -78,8 +78,15 @@ static bool read_header(FILE *file, uint64_t file_size, elf_header *header)
 {
     if (!in_file(0, sizeof *header, file_size) || !read_at(file, 0, header, sizeof *header))
         return false;
-    return memcmp(header->e_ident, ELFMAG, SELFMAG) == 0 && header->e_ident[EI_CLASS] == SYMBOLS_ELF_CLASS
-           && header->e_shentsize == sizeof(elf_section);
+    if (memcmp(header->e_ident, ELFMAG, SELFMAG) != 0 || header->e_ident[EI_CLASS] != SYMBOLS_ELF_CLASS
+        || header->e_shentsize != sizeof(elf_section))
+        return false;
+    if (header->e_type != ET_EXEC) {
+        /* A PIE (ET_DYN) has load-bias-relative symbol values; not supported. */
+        fprintf(stderr, "symbols: the executable is not ET_EXEC (a PIE?); the native build links with -no-pie\n");
+        return false;
+    }
+    return true;
 }
 
 /* Reads section `index` of the table at the header. */

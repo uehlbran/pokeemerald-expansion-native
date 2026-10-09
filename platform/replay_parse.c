@@ -301,6 +301,7 @@ int replay_parse(const char *text, struct replay_script *script, struct replay_p
 {
     char line[REPLAY_MAX_LINE_LENGTH + 2u];
     uint32_t line_number = 0;
+    bool restarted = false;
     script->count = 0;
     while (*text != '\0') {
         size_t length = strcspn(text, "\n");
@@ -313,6 +314,8 @@ int replay_parse(const char *text, struct replay_script *script, struct replay_p
         line[length] = '\0';
         text += length + (text[length] == '\n' ? 1u : 0u);
 
+        for (char *c = line; *c != '\0'; c++)
+            *c = *c == '\t' ? ' ' : *c; /* a tab is a blank everywhere, including inside " max " and " for " */
         char *hash = strchr(line, '#');
         if (hash != NULL)
             *hash = '\0';
@@ -327,7 +330,26 @@ int replay_parse(const char *text, struct replay_script *script, struct replay_p
         *command = (struct replay_command){ .line = line_number };
         if (!parse_command(body, command, error))
             return -1;
+        if (command->kind == REPLAY_CMD_FRAME && restarted) {
+            set_error(error, line_number, "'frame' after 'restart': the frame count starts again in the new process; use wait");
+            return -1;
+        }
+        restarted = restarted || command->kind == REPLAY_CMD_RESTART;
         script->count++;
     }
     return 0;
+}
+
+int replay_parse_buffer(const char *bytes, size_t length, struct replay_script *script,
+                        struct replay_parse_error *error)
+{
+    const char *nul = memchr(bytes, '\0', length);
+    if (nul != NULL) {
+        uint32_t line = 1;
+        for (const char *at = bytes; at < nul; at++)
+            line += *at == '\n' ? 1u : 0u;
+        set_error(error, line, "the script contains a NUL byte");
+        return -1;
+    }
+    return replay_parse(bytes, script, error);
 }

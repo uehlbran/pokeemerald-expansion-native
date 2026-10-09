@@ -5,7 +5,9 @@
  * a task's func), most of them static, so no header names them; the replay
  * inspection (inspect.h) turns the pointers into names by reading the
  * executable's own ELF symbol table (.symtab, which the native build keeps).
- * Only function symbols with a size are kept. Single-threaded.
+ * Only function symbols with a size are kept. Non-PIE executables only (ELF
+ * type ET_EXEC, whose symbol values are run-time addresses, as the native build
+ * links with -no-pie); a PIE is refused with a message. Single-threaded.
  */
 #ifndef PLATFORM_SYMBOLS_H
 #define PLATFORM_SYMBOLS_H
