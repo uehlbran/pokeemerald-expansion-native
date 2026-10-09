@@ -167,6 +167,13 @@ HOST_CC ?= gcc
 HOST_AS ?= as
 PYTHON ?= python3
 
+# A newline, for recipes that run one command per word of a list:
+# $(foreach x,$(LIST),command $(x)$(NEWLINE)).
+define NEWLINE
+
+
+endef
+
 # -funsigned-char: plain char is unsigned on ARM, and the game was written
 # for that ABI. Passed to the preprocessing step too, so <limits.h> agrees.
 include platform/game_flags.mk
@@ -234,9 +241,15 @@ GAME_TEST_SANITIZER_FLAGS := --param=asan-use-after-return=0
 C_FILTER_SCRIPT := platform/build_glue/c_filter.sed
 C_FILTER := sed -f $(C_FILTER_SCRIPT)
 
-ASM_FILTER_SCRIPT := platform/build_glue/asm_filter.py
+GLUE_DIR := platform/build_glue
+ASM_FILTER_SCRIPT := $(GLUE_DIR)/asm_filter.py
 ASM_FILTER := $(PYTHON) -I $(ASM_FILTER_SCRIPT)
-# The filter runs its self-test once (per change) before anything uses it.
+# The modules the filter imports. Every glue script is run with python3 -I,
+# which keeps the current directory off the import path, so each puts its own
+# directory on it (a comment in each says so).
+ASM_FILTER_MODULES := $(GLUE_DIR)/asm_syntax.py $(GLUE_DIR)/check_support.py
+# The filter and its modules run their self-tests once (per change) before
+# anything uses the filter.
 ASM_FILTER_CHECKED := $(OBJ_DIR)/asm_filter.checked
 # The assembler reads the filtered program on stdin, as every recipe that
 # uses $(AS) pipes into it (expansion's data rules and map_data_rules.mk).
@@ -270,9 +283,11 @@ endif
 ASM_FILTER_INPUT := data
 ifeq ($(DATA_POINTER_SIZE),8)
   ASFLAGS += --defsym NATIVE_POINTER_SIZE_8=1
-  ASM_FILTER_POINTERS = --pointer-size 8 --input $(ASM_FILTER_INPUT)
-  # Made by the relocation and battle script checks (below); the link waits for them.
-  DATA_LAYOUT_CHECKS := $(OBJ_DIR)/data_relocations.checked $(OBJ_DIR)/battle_script_operands.checked
+  # --source: the file an error message names (the recipes' first prerequisite).
+  ASM_FILTER_POINTERS = --pointer-size 8 --input $(ASM_FILTER_INPUT) --source $<
+  # Made by the three checks of the 64-bit data (below); the link waits for them.
+  DATA_LAYOUT_CHECKS := $(OBJ_DIR)/data_relocations.checked $(OBJ_DIR)/data_layout.checked \
+                        $(OBJ_DIR)/battle_script_operands.checked
 endif
 
 # --------------------------------------------------------------------------
@@ -694,28 +709,57 @@ $(MPLAYDEF_NATIVE): sound/MPlayDef.s $(ASM_FILTER_CHECKED)
 # map_events.o included) waits for its self-test.
 $(DATA_ASM_OBJS) $(MID_OBJS): $(ASM_FILTER_CHECKED)
 
-$(ASM_FILTER_CHECKED): $(ASM_FILTER_SCRIPT)
+$(ASM_FILTER_CHECKED): $(ASM_FILTER_SCRIPT) $(ASM_FILTER_MODULES)
 	@mkdir -p $(@D)
 	$(ASM_FILTER) --self-test
+	$(foreach module,$(ASM_FILTER_MODULES),$(PYTHON) -I $(module) --self-test$(NEWLINE))
 	@touch $@
 
-# The 64-bit link checks the address words of every data object and song
-# (platform/build_glue/check_relocations.py, which explains the rules)
-# against data_address_words.txt, and their count against the same objects
-# assembled with 4-byte pointers, which a second make builds under
-# $(DATA_POINTER4_DIR) for that purpose only.
+# The 64-bit link checks the data it assembled against the C that reads it,
+# with three checks, each of which says what it checks in its own header:
+# the address words (check_relocations.py, against data_address_words.txt and
+# the same objects assembled with 4-byte pointers), the bytes of the structs
+# (check_data_layout.py, against the layouts data_layout_probe.c prints
+# compiled with the game's flags, and the same reference objects) and the
+# battle script macros against src/battle_script_commands.c
+# (check_battle_script_operands.py). The checkers and the modules they share
+# run their self-tests first, once per change.
 ifeq ($(DATA_POINTER_SIZE),8)
-CHECK_RELOCATIONS_SCRIPT := platform/build_glue/check_relocations.py
-DATA_ADDRESS_WORDS := platform/build_glue/data_address_words.txt
+CHECK_RELOCATIONS_SCRIPT := $(GLUE_DIR)/check_relocations.py
+CHECK_DATA_LAYOUT_SCRIPT := $(GLUE_DIR)/check_data_layout.py
+CHECK_BATTLE_SCRIPTS_SCRIPT := $(GLUE_DIR)/check_battle_script_operands.py
+CHECKER_MODULES := $(addprefix $(GLUE_DIR)/,asm_syntax.py check_support.py elf_object.py preprocessor_conditions.py)
+CHECKER_SELF_TESTS := $(OBJ_DIR)/checkers.self-tested
+
+# The reference objects: the same sources assembled with 4-byte pointers by a
+# second make, under $(DATA_POINTER4_DIR) for this purpose only. The stamp is
+# older than the 64-bit objects when their sources or the filter changed, which
+# is when the reference is stale; the second make decides what to rebuild.
 DATA_POINTER4_DIR := $(OBJ_DIR)/pointer4
 CHECKED_DATA_OBJS := $(patsubst $(OBJ_DIR)/%,%,$(DATA_ASM_OBJS) $(MID_OBJS))
+DATA_POINTER4_BUILT := $(OBJ_DIR)/pointer4.built
 
-# Then it compares the bytes of the structs the data holds (struct ToneData,
-# Song, MusicPlayer, SongHeader, the map structs) with the same reference,
-# against their C layout at both widths, which data_layout_probe.c prints
-# compiled with the game's flags (check_data_layout.py).
-CHECK_DATA_LAYOUT_SCRIPT := platform/build_glue/check_data_layout.py
-DATA_LAYOUT_PROBE := platform/build_glue/data_layout_probe.c
+$(DATA_POINTER4_BUILT): $(DATA_ASM_OBJS) $(MID_OBJS)
+	@echo "$(MAKE) -f Makefile.native BITS=$(BITS) TEST=$(TEST) DATA_POINTER_SIZE=4 OBJ_DIR=$(DATA_POINTER4_DIR) <data objects>"
+	@+$(MAKE) -f Makefile.native BITS=$(BITS) TEST=$(TEST) DATA_POINTER_SIZE=4 OBJ_DIR=$(DATA_POINTER4_DIR) \
+	    $(addprefix $(DATA_POINTER4_DIR)/,$(CHECKED_DATA_OBJS))
+	@touch $@
+
+$(CHECKER_SELF_TESTS): $(CHECK_RELOCATIONS_SCRIPT) $(CHECK_DATA_LAYOUT_SCRIPT) $(CHECK_BATTLE_SCRIPTS_SCRIPT) \
+                       $(CHECKER_MODULES)
+	$(foreach script,$^,$(PYTHON) -I $(script) --self-test$(NEWLINE))
+	@touch $@
+
+DATA_ADDRESS_WORDS := $(GLUE_DIR)/data_address_words.txt
+CHECK_RELOCATIONS = $(PYTHON) -I $(CHECK_RELOCATIONS_SCRIPT) --list $(DATA_ADDRESS_WORDS) --objdir $(OBJ_DIR) \
+                    --reference $(DATA_POINTER4_DIR)
+
+$(OBJ_DIR)/data_relocations.checked: $(DATA_POINTER4_BUILT) $(CHECKER_SELF_TESTS) $(DATA_ADDRESS_WORDS)
+	@echo "$(CHECK_RELOCATIONS) <data objects>"
+	@$(CHECK_RELOCATIONS) $(CHECKED_DATA_OBJS)
+	@touch $@
+
+DATA_LAYOUT_PROBE := $(GLUE_DIR)/data_layout_probe.c
 DATA_LAYOUTS := $(OBJ_DIR)/data_layout32.txt $(OBJ_DIR)/data_layout64.txt
 
 $(OBJ_DIR)/data_layout%.txt: $(DATA_LAYOUT_PROBE)
@@ -727,33 +771,17 @@ ifneq ($(NODEP),1)
 -include $(DATA_LAYOUTS:.txt=.d)
 endif
 
-$(OBJ_DIR)/data_relocations.checked: $(DATA_ASM_OBJS) $(MID_OBJS) $(CHECK_RELOCATIONS_SCRIPT) $(DATA_ADDRESS_WORDS) \
-                                     $(CHECK_DATA_LAYOUT_SCRIPT) $(DATA_LAYOUTS)
-	@echo "$(MAKE) -f Makefile.native BITS=$(BITS) TEST=$(TEST) DATA_POINTER_SIZE=4 OBJ_DIR=$(DATA_POINTER4_DIR) <data objects>"
-	@+$(MAKE) -f Makefile.native BITS=$(BITS) TEST=$(TEST) DATA_POINTER_SIZE=4 OBJ_DIR=$(DATA_POINTER4_DIR) \
-	    $(addprefix $(DATA_POINTER4_DIR)/,$(CHECKED_DATA_OBJS))
-	$(PYTHON) -I $(CHECK_RELOCATIONS_SCRIPT) --self-test
-	@echo "$(PYTHON) -I $(CHECK_RELOCATIONS_SCRIPT) --list $(DATA_ADDRESS_WORDS) --objdir $(OBJ_DIR) --reference $(DATA_POINTER4_DIR) <data objects>"
-	@$(PYTHON) -I $(CHECK_RELOCATIONS_SCRIPT) --list $(DATA_ADDRESS_WORDS) --objdir $(OBJ_DIR) \
-	    --reference $(DATA_POINTER4_DIR) $(CHECKED_DATA_OBJS)
-	$(PYTHON) -I $(CHECK_DATA_LAYOUT_SCRIPT) --self-test
-	$(PYTHON) -I $(CHECK_DATA_LAYOUT_SCRIPT) --layout32 $(OBJ_DIR)/data_layout32.txt --layout64 $(OBJ_DIR)/data_layout64.txt \
-	    --objdir $(OBJ_DIR) --reference $(DATA_POINTER4_DIR)
+$(OBJ_DIR)/data_layout.checked: $(DATA_POINTER4_BUILT) $(CHECKER_SELF_TESTS) $(DATA_LAYOUTS)
+	$(PYTHON) -I $(CHECK_DATA_LAYOUT_SCRIPT) --layout32 $(OBJ_DIR)/data_layout32.txt \
+	    --layout64 $(OBJ_DIR)/data_layout64.txt --objdir $(OBJ_DIR) --reference $(DATA_POINTER4_DIR)
 	@touch $@
 
-# The battle script macros must write each command's operands as
-# src/battle_script_commands.c reads them (CMD_ARGS, a packed struct over the
-# bytecode), with 4-byte and with 8-byte pointers, and src/battle_z_move.c's
-# length of the setzeffect command must match; check_battle_script_operands.py
-# explains the rule.
-CHECK_BATTLE_SCRIPTS_SCRIPT := platform/build_glue/check_battle_script_operands.py
 BATTLE_SCRIPT_MACROS := asm/macros/battle_script.inc
 BATTLE_SCRIPT_COMMANDS := $(C_SUBDIR)/battle_script_commands.c
 BATTLE_SCRIPT_Z_MOVE := $(C_SUBDIR)/battle_z_move.c
 
-$(OBJ_DIR)/battle_script_operands.checked: $(CHECK_BATTLE_SCRIPTS_SCRIPT) $(BATTLE_SCRIPT_MACROS) $(BATTLE_SCRIPT_COMMANDS) \
+$(OBJ_DIR)/battle_script_operands.checked: $(CHECKER_SELF_TESTS) $(BATTLE_SCRIPT_MACROS) $(BATTLE_SCRIPT_COMMANDS) \
                                            $(BATTLE_SCRIPT_Z_MOVE)
-	$(PYTHON) -I $(CHECK_BATTLE_SCRIPTS_SCRIPT) --self-test
 	$(PYTHON) -I $(CHECK_BATTLE_SCRIPTS_SCRIPT) $(BATTLE_SCRIPT_MACROS) $(BATTLE_SCRIPT_COMMANDS) $(BATTLE_SCRIPT_Z_MOVE)
 	@touch $@
 endif

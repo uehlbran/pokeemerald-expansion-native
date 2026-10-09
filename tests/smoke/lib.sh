@@ -37,6 +37,13 @@ volatile_facts='^frame='
 
 die() { echo "$SMOKE_NAME: $*" >&2; exit 2; }
 
+# A failed check: report it and count it. The gate's exit status is decided by `failures`.
+failures=0
+fail() {
+    echo "FAIL: $*"
+    failures=$((failures + 1))
+}
+
 # grep's status 1 is "no match", which is an answer; anything above is an error that must not
 # pass for one. Runs grep with the arguments, prints the matches.
 grep_or_die() {
@@ -72,6 +79,40 @@ new_sanitizer_reports() {
     [ -s "$new_findings" ]
 }
 
+# Runs binary $1 headless in directory $2 with replay $3 and the save and RTC files there, plus
+# arguments $4...; checks the exit status and the sanitizer reports.
+play() {
+    local binary="$1" dir="$2" script="$3"
+    shift 3
+    echo "== $(basename "$dir"): $binary, $(basename "$script") $*"
+    "$binary" --headless --silent --unthrottled --replay "$script" --out "$dir" \
+        --save "$dir/pokeemerald.sav" --rtc-offset "$dir/pokeemerald.rtc" "$@" \
+        > "$dir/stdout.log" 2> "$dir/stderr.log"
+    local status=$?
+    echo "replay exit status $status; $(grep_or_die -c '^main: ' "$dir/stdout.log") process(es)"
+    if [ "$status" -ne 0 ]; then
+        fail "$(basename "$dir"): the replay ended with status $status:"
+        grep -E '^(replay|main|restart|symbols|save_file):' "$dir/stderr.log" | head -20
+    fi
+    if new_sanitizer_reports "$dir/stderr.log" "$dir/sanitizer-new.log"; then
+        fail "$(basename "$dir"): sanitizer reports in $dir/stderr.log:"
+        sort "$dir/sanitizer-new.log" | uniq -c | sort -rn | head -40
+    fi
+}
+
+# Facts $3... equal in dumps $1 and $2.
+same_facts() {
+    local before_dump="$1" after_dump="$2" key before after
+    shift 2
+    for key in "$@"; do
+        before="$(fact "$before_dump" "$key")"
+        after="$(fact "$after_dump" "$key")"
+        if [ -z "$before" ] || [ "$before" != "$after" ]; then
+            fail "$key was '$before' in $before_dump and '$after' in $after_dump"
+        fi
+    done
+}
+
 smoke_main() {
 local script="$SMOKE_SCRIPT"
 local expected="$SMOKE_EXPECTED"
@@ -93,28 +134,7 @@ local work="$outdir/work"
 rm -rf "$work" || die "cannot remove $work"
 mkdir -p "$work" || die "cannot create $work"
 
-echo "== replaying $script with $binary"
-"$binary" --headless --silent --unthrottled \
-    --replay "$script" --out "$work" --rtc-fixed "$rtc_epoch" \
-    --save "$work/pokeemerald.sav" --rtc-offset "$work/pokeemerald.rtc" \
-    > "$work/stdout.log" 2> "$work/stderr.log"
-local status=$?
-echo "replay exit status $status; $(grep -c '^main: ' "$work/stdout.log") process(es)"
-local failures=0
-
-if [ "$status" -ne 0 ]; then
-    echo "FAIL: the replay did not end with status 0:"
-    grep -E '^(replay|main|restart|symbols):' "$work/stderr.log" | head -20
-    failures=$((failures + 1))
-fi
-
-# Sanitizer findings, minus the known ones.
-local new_findings="$work/sanitizer-new.log"
-if new_sanitizer_reports "$work/stderr.log" "$new_findings"; then
-    echo "FAIL: sanitizer reports in $work/stderr.log:"
-    sort "$new_findings" | uniq -c | sort -rn | head -40
-    failures=$((failures + 1))
-fi
+play "$binary" "$work" "$script" --rtc-fixed "$rtc_epoch"
 
 if [ "$update" -eq 1 ]; then
     [ "$failures" -eq 0 ] || die "not updating the expectations from a failing run"
@@ -138,43 +158,33 @@ for want in "$expected"/*.txt; do
     name="$(basename "$want")"
     got="$work/$name"
     if [ ! -f "$got" ]; then
-        echo "FAIL: the replay did not write $name"
-        failures=$((failures + 1))
+        fail "the replay did not write $name"
         continue
     fi
     if ! diff <(facts_of "$got") "$want" > "$work/$name.diff"; then
-        echo "FAIL: $name differs (got <, expected >):"
+        fail "$name differs (got <, expected >):"
         cat "$work/$name.diff"
-        failures=$((failures + 1))
     else
         rm -f "$work/$name.diff"
     fi
 done
 for got in "$work"/*.txt; do
-    [ -f "$expected/$(basename "$got")" ] || { echo "FAIL: $(basename "$got") is new (no expectation); run --update"; failures=$((failures + 1)); }
+    [ -f "$expected/$(basename "$got")" ] || fail "$(basename "$got") is new (no expectation); run --update"
 done
 
 # Screenshots, by md5.
 if ! diff <(cd "$work" && md5sum -- *.ppm) "$expected/screenshots.md5" > "$work/screenshots.diff"; then
-    echo "FAIL: screenshots differ (got <, expected >; the PPMs are in $work):"
+    fail "screenshots differ (got <, expected >; the PPMs are in $work):"
     cat "$work/screenshots.diff"
-    failures=$((failures + 1))
 else
     rm -f "$work/screenshots.diff"
 fi
 
 # The save round trips: what the game saved is what Continue loaded.
-local trip before_dump after_dump keys key before after
+local trip before_dump after_dump keys
 for trip in $SMOKE_ROUND_TRIP; do
     IFS=: read -r before_dump after_dump keys <<< "$trip"
-    for key in ${keys//,/ }; do
-        before="$(fact "$work/$before_dump.txt" "$key")"
-        after="$(fact "$work/$after_dump.txt" "$key")"
-        if [ -z "$before" ] || [ "$before" != "$after" ]; then
-            echo "FAIL: $key was '$before' when saved and '$after' after the restart"
-            failures=$((failures + 1))
-        fi
-    done
+    same_facts "$work/$before_dump.txt" "$work/$after_dump.txt" ${keys//,/ }
 done
 
 if [ "$failures" -eq 0 ]; then

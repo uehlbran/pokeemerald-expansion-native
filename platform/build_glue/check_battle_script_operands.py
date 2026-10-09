@@ -41,8 +41,15 @@ Usage:
 Exit 0 and no output when consistent; otherwise one line per problem, exit 1.
 """
 
+import collections
+import os
 import re
 import sys
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))   # python3 -I leaves the script's directory off
+from asm_syntax import split_statements, strip_comment  # noqa: E402
+from check_support import CheckError, problems_match  # noqa: E402
+from preprocessor_conditions import constant_value  # noqa: E402
 
 POINTER_SIZES = (4, 8)
 POINTER_SYMBOL = "NATIVE_POINTER_SIZE_8"
@@ -59,6 +66,9 @@ MEMBER_SIZES = {
     "enum Ability": 2, "enum Species": 2,
 }
 NATIVE_FUNCTION_MEMBER = "void (*func)(void)"
+MAX_MACRO_DEPTH = 20
+# Where a pointer size's width goes in a table row.
+POINTER_COLUMN = {4: 1, 8: 2}
 
 MACRO_START = re.compile(r"^\s*\.macro\s+(\w+)\s*,?\s*(.*)$")
 MACRO_END = re.compile(r"^\s*\.endm\b")
@@ -69,8 +79,8 @@ ARGS_USE = re.compile(r"\b(CMD_ARGS|NATIVE_ARGS)\s*\(")
 TABLE_ENTRY = re.compile(r"\[\s*(B_SCR_OP_\w+)\s*\]\s*=\s*(\w+)")
 
 
-class CheckError(Exception):
-    """Input this script cannot read; the build must stop."""
+# A file this check reads: the path, for messages, and its text.
+Source = collections.namedtuple("Source", "path text")
 
 
 # --------------------------------------------------------------------------
@@ -147,30 +157,44 @@ def operand_sizes(members, pointer_size):
     return sizes
 
 
-def read_commands(c_text):
-    """(opcode -> function name, function name -> [Member])."""
+def read_table(source):
+    """opcode -> function name, from gBattleScriptingCommandsTable."""
     table = {}
-    start = c_text.find("gBattleScriptingCommandsTable[]")
+    start = source.text.find("gBattleScriptingCommandsTable[]")
     if start < 0:
-        raise CheckError("no gBattleScriptingCommandsTable in the C file")
-    end = c_text.find("};", start)
-    for match in TABLE_ENTRY.finditer(c_text, start, end):
+        raise CheckError("%s: no gBattleScriptingCommandsTable (expected the table of the C functions that read "
+                         "the commands)" % source.path)
+    end = source.text.find("};", start)
+    for match in TABLE_ENTRY.finditer(source.text, start, end):
         table[match.group(1)] = match.group(2)
+    return table
+
+
+def read_members(function, body):
+    """The Members a function body declares with CMD_ARGS or NATIVE_ARGS:
+    [] if it reads no operand, None for an empty stub (Cmd_tryKO: it never
+    advances, so no script uses it)."""
+    uses = list(ARGS_USE.finditer(body))
+    if len(uses) > 1:
+        raise CheckError("%s declares its arguments %d times (expected one CMD_ARGS or NATIVE_ARGS)"
+                         % (function, len(uses)))
+    if not uses:
+        return [] if body.strip() else None
+    declarations = split_top(balanced(body, uses[0].end()))
+    if uses[0].group(1) == "NATIVE_ARGS":
+        declarations.insert(0, NATIVE_FUNCTION_MEMBER)
+    return [Member(declaration) for declaration in declarations]
+
+
+def read_commands(source):
+    """(opcode -> function name, function name -> [Member] or None)."""
+    table = read_table(source)
     functions = {}
-    for match in FUNCTION.finditer(c_text):
-        uses = list(ARGS_USE.finditer(match.group(2)))
-        if len(uses) > 1:
-            raise CheckError("%s declares its arguments %d times" % (match.group(1), len(uses)))
-        if not uses and match.group(2).strip():
-            functions[match.group(1)] = []   # reads no operand (return, end, ...)
-            continue
-        if not uses:
-            functions[match.group(1)] = None   # an empty stub (Cmd_tryKO): never advances, so unused
-            continue
-        declarations = split_top(balanced(match.group(2), uses[0].end()))
-        if uses[0].group(1) == "NATIVE_ARGS":
-            declarations.insert(0, NATIVE_FUNCTION_MEMBER)
-        functions[match.group(1)] = [Member(declaration) for declaration in declarations]
+    for match in FUNCTION.finditer(source.text):
+        try:
+            functions[match.group(1)] = read_members(match.group(1), match.group(2))
+        except CheckError as error:
+            raise CheckError("%s: %s: %s" % (source.path, match.group(1), error))
     return table, functions
 
 
@@ -178,21 +202,21 @@ def read_commands(c_text):
 # Macro side
 
 class Macro:
-    def __init__(self, name, parameters, body, first_line):
+    def __init__(self, path, name, parameters, first_line):
+        self.path = path
         self.name = name
         self.parameters = parameters   # [(name, default or None)]
-        self.body = body               # [(line number, text)]
+        self.body = []                 # [(line number, text)]
         self.first_line = first_line
 
+    def where(self, line):
+        return "%s:%d: macro %s" % (self.path, line, self.name)
 
-def strip_comment(line):
-    return line.split("@", 1)[0]
 
-
-def read_macros(text):
+def read_macros(source):
     macros = {}
     current = None
-    for number, line in enumerate(text.splitlines(), 1):
+    for number, line in enumerate(source.text.splitlines(), 1):
         code = strip_comment(line)
         start = MACRO_START.match(code)
         if start:
@@ -201,21 +225,22 @@ def read_macros(text):
                 if token:
                     name, _, default = token.partition("=")
                     parameters.append((name.split(":")[0], default if _ else None))
-            current = Macro(start.group(1), parameters, [], number)
+            current = Macro(source.path, start.group(1), parameters, number)
         elif MACRO_END.match(code):
             if current is None:
-                raise CheckError("line %d: .endm without .macro" % number)
+                raise CheckError("%s:%d: .endm without .macro (expected the end of a macro that was started)"
+                                 % (source.path, number))
             macros[current.name] = current
             current = None
         elif current is not None:
-            for statement in code.split(";"):
+            for statement in split_statements(code):
                 if statement.strip():
                     current.body.append((number, statement.strip()))
     return macros
 
 
-def bind(macro, arguments):
-    """Parameter -> value for a call of macro with the argument texts."""
+def bind(macro, arguments, line):
+    """Parameter -> value for a call of macro (at line of its caller) with the argument texts."""
     values = {name: default for name, default in macro.parameters}
     names = [name for name, _ in macro.parameters]
     position = 0
@@ -225,7 +250,8 @@ def bind(macro, arguments):
             values[keyword.group(1)] = keyword.group(2).strip()
         else:
             if position >= len(names):
-                raise CheckError("too many arguments to %s: %r" % (macro.name, arguments))
+                raise CheckError("%s:%d: too many arguments to %s: %r (it takes %d)"
+                                 % (macro.path, line, macro.name, arguments, len(names)))
             values[names[position]] = argument
             position += 1
     return values
@@ -240,18 +266,19 @@ def substitute(text, values):
 
 
 class Item:
-    """One emitted operand: its width, expression and source line."""
+    """One emitted operand: its width, its expression and where it was written."""
 
-    def __init__(self, width, expression, line):
-        self.width, self.expression, self.line = width, expression, line
+    def __init__(self, width, expression, where):
+        self.width, self.expression, self.where = width, expression, where
 
 
 def expand(macros, macro, values, pointer_size, depth=0):
     """The Items a call of macro emits, with NATIVE_POINTER_SIZE_8 defined
     when pointer_size is 8. A condition that cannot be evaluated here
     ('.if' on a parameter) contributes both branches."""
-    if depth > 20:
-        raise CheckError("%s: macros nested too deeply" % macro.name)
+    if depth > MAX_MACRO_DEPTH:
+        raise CheckError("%s: macros nested more than %d deep (expected a macro that does not call itself)"
+                         % (macro.where(macro.first_line), MAX_MACRO_DEPTH))
     items = []
     conditions = []   # True/False: a decided .ifdef; None: undecided
     for number, statement in macro.body:
@@ -261,32 +288,30 @@ def expand(macros, macro, values, pointer_size, depth=0):
         word = statement.split(None, 1)[0]
         rest = statement[len(word):].strip()
         if word in (".ifdef", ".ifndef"):
-            defined = rest == POINTER_SYMBOL and pointer_size == 8
             if rest != POINTER_SYMBOL:
-                raise CheckError("%s:%d: .ifdef %s" % (macro.name, number, rest))
+                raise CheckError("%s: .ifdef %s (expected %s, the only symbol the macros test)"
+                                 % (macro.where(number), rest, POINTER_SYMBOL))
+            defined = pointer_size == 8
             conditions.append(defined if word == ".ifdef" else not defined)
-            continue
-        if word.startswith(".if"):
+        elif word.startswith(".if"):
             conditions.append(None)
-            continue
-        if word == ".else":
+        elif word == ".else":
             if conditions and conditions[-1] is not None:
                 conditions[-1] = not conditions[-1]
-            continue
-        if word == ".endif":
+        elif word == ".endif":
             conditions.pop()
+        elif False in conditions:
             continue
-        if False in conditions:
-            continue
-        if word in WIDTHS:
+        elif word in WIDTHS:
             for expression in split_top(substitute(rest, values)):
-                items.append(Item(WIDTHS[word], expression, number))
+                items.append(Item(WIDTHS[word], expression, "%s:%d" % (macro.path, number)))
         elif word in macros:
             callee = macros[word]
             arguments = split_top(substitute(rest, values))
-            items.extend(expand(macros, callee, bind(callee, arguments), pointer_size, depth + 1))
+            items.extend(expand(macros, callee, bind(callee, arguments, number), pointer_size, depth + 1))
         else:
-            raise CheckError("%s:%d: cannot expand %r" % (macro.name, number, statement))
+            raise CheckError("%s: cannot expand %r (expected a data directive or a macro of this file)"
+                             % (macro.where(number), statement))
     return items
 
 
@@ -297,7 +322,8 @@ def commands(items):
         if item.width == 1 and item.expression.startswith(OPCODE_PREFIX):
             result.append((item.expression, []))
         elif not result:
-            raise CheckError("line %d: an operand before any command" % item.line)
+            raise CheckError("%s: an operand before any command (expected '.byte %s*' first)"
+                             % (item.where, OPCODE_PREFIX))
         else:
             result[-1][1].append(item)
     return result
@@ -306,7 +332,7 @@ def commands(items):
 # --------------------------------------------------------------------------
 # The check
 
-def reader(opcode, operands, table, functions):
+def reader(opcode, operands, table, functions, c_path):
     """(C function name, its Members) for a command, or (name, None) when
     the command's function is not known (an undefined callnative), or
     (None, None) for a callnative whose function is a parameter."""
@@ -319,51 +345,80 @@ def reader(opcode, operands, table, functions):
         return None, None
     name = table[opcode]
     if name not in functions:
-        raise CheckError("%s (%s) is not defined in the C file" % (name, opcode))
+        raise CheckError("%s: %s (%s) is not defined (expected a function of that name that reads the command)"
+                         % (c_path, name, opcode))
     return name, functions[name]   # None for a stub
 
 
-def check(macro_text, c_text, z_text=None):
-    """(problems, table rows, pointer lines). A row is (macro, opcode, C
-    function, [(declaration, width with 4-byte pointers, with 8-byte)]).
-    With z_text (src/battle_z_move.c), its command length is checked too."""
-    macros = read_macros(macro_text)
-    table, functions = read_commands(c_text)
-    problems = []
-    rows = {}
-    kinds = {}   # macro source line of a .4byte/.8byte -> {True: pointer, False: integer}
-    # (a line has one meaning: a macro that writes operands but no command,
-    # the only way to share a line between commands, is rejected by commands())
+def expected_operands(opcode, operands, members, pointer_size):
+    """([(width, [Member])] the C reads, the operands to compare with it),
+    or None for a command the C file does not implement. A callnative of an
+    undefined function is checked for its function pointer only."""
+    if members is not None:
+        return operand_sizes(members, pointer_size), operands
+    if opcode == CALLNATIVE:
+        return [(pointer_size, [Member(NATIVE_FUNCTION_MEMBER)])], operands[:1]
+    return None
+
+
+class Findings:
+    """What the check learns: its problems, the table rows (macro, opcode,
+    C function) -> [[declaration, width with 4-byte pointers, with 8-byte]],
+    and, per macro line that writes a '.4byte' or '.8byte', whether it is a
+    pointer ({True}), an integer ({False}) or, wrongly, both. (A line has
+    one meaning: a macro that writes operands but no command, the only way
+    to share a line between commands, is rejected by commands().)"""
+
+    def __init__(self):
+        self.problems = []
+        self.rows = {}
+        self.word_kinds = {}
+
+    def add_row(self, key, expected, pointer_size):
+        row = self.rows.setdefault(key, [[", ".join(m.declaration for m in group), None, None]
+                                         for _, group in expected])
+        for entry, (size, _) in zip(row, expected):
+            entry[POINTER_COLUMN[pointer_size]] = size
+
+    def add_command(self, macro, opcode, name, operands, expected, pointer_size):
+        self.add_row((macro.name, opcode, name), expected, pointer_size)
+        widths = [item.width for item in operands]
+        sizes = [size for size, _ in expected]
+        if widths != sizes:
+            self.problems.append("%s:%d: %s (%s, %s), %d-byte pointers: the macro writes %s, the C reads %s"
+                                 % (macro.path, macro.first_line, macro.name, opcode, name, pointer_size, widths, sizes))
+            return
+        for item, (_, group) in zip(operands, expected):
+            if item.width in (4, 8):
+                self.word_kinds.setdefault(item.where, set()).add(group[0].pointer)
+
+    def pointer_lines(self):
+        return sorted(where for where, seen in self.word_kinds.items() if seen == {True})
+
+
+def check_macro(macros, macro, table, functions, c_path, findings):
+    """Compare each command the macro emits, with each pointer size, with the C that reads it."""
+    unbound = {name: None for name, _ in macro.parameters}
+    for pointer_size in POINTER_SIZES:
+        for opcode, operands in commands(expand(macros, macro, unbound, pointer_size)):
+            name, members = reader(opcode, operands, table, functions, c_path)
+            wanted = expected_operands(opcode, operands, members, pointer_size)
+            if wanted is not None:
+                findings.add_command(macro, opcode, name, wanted[1], wanted[0], pointer_size)
+
+
+def check(macro_source, c_source, z_source=None):
+    """(problems, table rows, pointer lines), each Source a file's path and
+    text. With z_source (src/battle_z_move.c), its command length is
+    checked too."""
+    macros = read_macros(macro_source)
+    table, functions = read_commands(c_source)
+    findings = Findings()
     for macro in macros.values():
-        unbound = {name: None for name, _ in macro.parameters}
-        for pointer_size in POINTER_SIZES:
-            for opcode, operands in commands(expand(macros, macro, unbound, pointer_size)):
-                name, members = reader(opcode, operands, table, functions)
-                if members is None and opcode == CALLNATIVE:
-                    expected = [(pointer_size, [Member(NATIVE_FUNCTION_MEMBER)])]
-                    operands = operands[:1]
-                elif members is None:
-                    continue
-                else:
-                    expected = operand_sizes(members, pointer_size)
-                key = (macro.name, opcode, name)
-                row = rows.setdefault(key, [[", ".join(m.declaration for m in group), None, None]
-                                            for _, group in expected])
-                for entry, (size, _) in zip(row, expected):
-                    entry[1 if pointer_size == 4 else 2] = size
-                widths = [item.width for item in operands]
-                sizes = [size for size, _ in expected]
-                if widths != sizes:
-                    problems.append("%s (%s, %s), %d-byte pointers: the macro writes %s, the C reads %s"
-                                    % (macro.name, opcode, name, pointer_size, widths, sizes))
-                    continue
-                for item, (_, group) in zip(operands, expected):
-                    if item.width in (4, 8):
-                        kinds.setdefault(item.line, set()).add(group[0].pointer)
-    pointer_lines = sorted(line for line, seen in kinds.items() if seen == {True})
-    if z_text is not None:
-        problems.extend(check_skipped_length(macros, z_text))
-    return problems, rows, pointer_lines
+        check_macro(macros, macro, table, functions, c_source.path, findings)
+    if z_source is not None:
+        findings.problems.extend(check_skipped_length(macros, macro_source.path, z_source))
+    return findings.problems, findings.rows, findings.pointer_lines()
 
 
 def print_table(rows, pointer_lines):
@@ -378,93 +433,30 @@ def print_table(rows, pointer_lines):
 # The command length in src/battle_z_move.c
 
 SKIPPED_COMMAND = ("Z_EFFECT_BS_LENGTH", "setzeffect")
-DIRECTIVE = re.compile(r"^\s*#\s*(if|ifdef|ifndef|elif|else|endif|define)\b\s*(.*?)\s*(?://.*)?$")
-CONDITION_TOKEN = re.compile(r"\s*(defined\s*\(\s*\w+\s*\)|defined\s+\w+|\w+|&&|\|\||==|!=|<=|>=|[()!<>])")
 
 
-def evaluate(condition, values):
-    """A preprocessor condition over the names in values (others: error)."""
-    words = []
-    position = 0
-    while position < len(condition.rstrip()):
-        match = CONDITION_TOKEN.match(condition, position)
-        if not match:
-            raise CheckError("cannot read the condition %r" % condition)
-        token = match.group(1)
-        position = match.end()
-        if token.startswith("defined"):
-            words.append("1" if re.sub(r"defined|[\s()]", "", token) in values else "0")
-        elif token.isdigit():
-            words.append(token)
-        elif re.match(r"^\w+$", token):
-            if token not in values:
-                raise CheckError("the condition %r depends on %s" % (condition, token))
-            words.append(str(values[token]))
-        else:
-            words.append({"&&": " and ", "||": " or ", "!": " not "}.get(token, token))
-    return bool(eval("".join(words), {"__builtins__": {}}))   # digits, comparisons and logic only
-
-
-def branch_taken(branch, values):
-    kind, condition = branch
-    if kind == "if" or kind == "elif":
-        return evaluate(condition, values)
-    if kind in ("ifdef", "ifndef"):
-        return (condition in values) == (kind == "ifdef")
-    return True   # else
-
-
-def definitions(text, name):
-    """[(value, enclosing conditions)] for each '#define name value'; the
-    conditions are, per open #if, its branches up to the current one."""
-    chains = []
-    found = []
-    for line in text.splitlines():
-        match = DIRECTIVE.match(line)
-        if not match:
-            continue
-        word, rest = match.groups()
-        if word in ("if", "ifdef", "ifndef"):
-            chains.append([(word, rest)])
-        elif word in ("elif", "else"):
-            chains[-1].append((word, rest))
-        elif word == "endif":
-            chains.pop()
-        elif word == "define" and rest.split()[:1] == [name]:
-            found.append((int(rest.split()[1], 0), [list(chain) for chain in chains]))
-    return found
-
-
-def constant_value(text, name, pointer_size):
-    """The value of #define name in text for the native build with
-    pointers of pointer_size bytes, or None if no definition applies. Only
-    the conditions around the definitions are evaluated."""
-    values = {"PLATFORM_NATIVE": 1, "__SIZEOF_POINTER__": pointer_size}
-    active = [value for value, chains in definitions(text, name)
-              if all(branch_taken(chain[-1], values) and not any(branch_taken(b, values) for b in chain[:-1])
-                     for chain in chains)]
-    if len(active) > 1:
-        raise CheckError("%s is defined %d times at %d-byte pointers" % (name, len(active), pointer_size))
-    return active[0] if active else None
-
-
-def check_skipped_length(macros, z_text):
+def check_skipped_length(macros, macro_path, z_source):
     """Problems with the length src/battle_z_move.c gives the setzeffect command."""
     name, macro_name = SKIPPED_COMMAND
     if macro_name not in macros:
-        raise CheckError("no %s macro" % macro_name)
+        raise CheckError("%s: no %s macro (expected the command whose length %s is)" % (macro_path, macro_name, name))
     problems = []
     for pointer_size in POINTER_SIZES:
         items = expand(macros, macros[macro_name], {}, pointer_size)
         if len(commands(items)) != 1:
-            raise CheckError("the %s macro is not one command" % macro_name)
+            raise CheckError("%s: the %s macro is not one command (expected one, the length of %s)"
+                             % (macro_path, macro_name, name))
         length = sum(item.width for item in items)
-        value = constant_value(z_text, name, pointer_size)
+        try:
+            value = constant_value(z_source.text, name, {"PLATFORM_NATIVE": 1, "__SIZEOF_POINTER__": pointer_size})
+        except CheckError as error:
+            raise CheckError("%s: %s" % (z_source.path, error))
         if value is None:
-            raise CheckError("no definition of %s for %d-byte pointers" % (name, pointer_size))
+            raise CheckError("%s: no definition of %s for %d-byte pointers (expected %d)"
+                             % (z_source.path, name, pointer_size, length))
         if value != length:
-            problems.append("%s is %d with %d-byte pointers; the %s command is %d bytes"
-                            % (name, value, pointer_size, macro_name, length))
+            problems.append("%s: %s is %d with %d-byte pointers; the %s command is %d bytes"
+                            % (z_source.path, name, value, pointer_size, macro_name, length))
     return problems
 
 
@@ -576,18 +568,19 @@ SELF_TEST_MACROS = """
 def self_test():
     failures = []
 
-    def expect(name, macro_text, c_text, wanted):
+    def expect(name, macro_text, c_text, wanted, z_text=None):
         try:
-            problems = check(macro_text, c_text)[0]
+            problems = check(Source("macros", macro_text), Source("c", c_text),
+                             None if z_text is None else Source("z.c", z_text))[0]
         except CheckError as error:
             problems = ["CheckError: %s" % error]
-        if len(problems) != len(wanted) or any(w not in p for w, p in zip(wanted, problems)):
+        if not problems_match(wanted, problems):
             failures.append("%s\n  expected %r\n  got      %r" % (name, wanted, problems))
 
     expect("consistent", SELF_TEST_MACROS, SELF_TEST_C, [])
     # Five pointer operands, each on a '.8byte' and a '.4byte' line; the
     # switch's flags is the one integer word.
-    lines = check(SELF_TEST_MACROS, SELF_TEST_C)[2]
+    lines = check(Source("macros", SELF_TEST_MACROS), Source("c", SELF_TEST_C))[2]
     if len(lines) != 10:
         failures.append("pointer lines: expected 10, got %r" % (lines,))
     unguarded = SELF_TEST_MACROS.replace(
@@ -614,12 +607,12 @@ def self_test():
             "jumpifbyte (B_SCR_OP_JUMPIFBYTE, Cmd_jumpifbyte), 8-byte pointers",
             "jumpifnotx", "jumpifnotx"])
     expect("unknown type", SELF_TEST_MACROS, SELF_TEST_C.replace("u32 flags", "enum Weather flags"),
-           ["CheckError: unknown member type 'enum Weather'"])
+           ["CheckError: c: Cmd_switch: unknown member type 'enum Weather'"])
     expect("opcode not in the table: skipped", SELF_TEST_MACROS.replace("B_SCR_OP_SWITCH\n\t.byte", "B_SCR_OP_SWAP\n\t.byte")
            .replace("\t.4byte \\flags", "\t.8byte \\flags"), SELF_TEST_C, [])
     # A macro that writes operands but no command cannot be checked alone.
     expect("operands without a command", SELF_TEST_MACROS + "\n\t.macro word v\n\t.4byte \\v\n\t.endm\n",
-           SELF_TEST_C, ["CheckError: line 68: an operand before any command"])
+           SELF_TEST_C, ["CheckError: macros:68: an operand before any command"])
     # A keyword argument can name the callnative's function.
     keyword = ("\n\t.macro callnativeof extra=0, func=BS_NotDefined\n\tcallnative \\func\n\t.endm\n"
                "\n\t.macro jumpifxkw battler:req\n\tcallnativeof func=BS_JumpIfX\n\t.byte \\battler\n"
@@ -630,7 +623,7 @@ def self_test():
     expect("undefined native", SELF_TEST_MACROS.replace("\tcallnative BS_NotDefined\n", "\tcallnative BS_NotDefined\n\t.byte 1\n"),
            SELF_TEST_C, [])
     expect("unknown statement", SELF_TEST_MACROS.replace("1:\n", "\tnosuchmacro\n"), SELF_TEST_C,
-           ["CheckError: jumpifnotx"])
+           ["CheckError: macros:55: macro jumpifnotx: cannot expand 'nosuchmacro'"])
     # Z_EFFECT_BS_LENGTH: the setzeffect callnative is 5 and 9 bytes.
     z_macros = SELF_TEST_MACROS + "\n\t.macro setzeffect\n\tcallnative BS_SetZEffect\n\t.endm\n"
     z_c = SELF_TEST_C + "\nvoid BS_SetZEffect(void)\n{\n    NATIVE_ARGS();\n}\n"
@@ -651,20 +644,18 @@ def self_test():
              "#ifndef PLATFORM_NATIVE\n#define Z_EFFECT_BS_LENGTH 7\n"
              "#elif PLATFORM_NATIVE && __SIZEOF_POINTER__ == 8\n#define Z_EFFECT_BS_LENGTH 9\n"
              "#elif !(__SIZEOF_POINTER__ == 8) || 0\n#define Z_EFFECT_BS_LENGTH 5\n#endif\n", []),
-            ("Z_EFFECT_BS_LENGTH missing", "#define OTHER 5\n", ["CheckError: no definition of Z_EFFECT_BS_LENGTH"]),
+            ("Z_EFFECT_BS_LENGTH missing", "#define OTHER 5\n", ["CheckError: z.c: no definition of Z_EFFECT_BS_LENGTH for 4-byte pointers (expected 5)"]),
             ("Z_EFFECT_BS_LENGTH under an unknown condition", "#if B_SOME_CONFIG\n#define Z_EFFECT_BS_LENGTH 5\n#endif\n",
-             ["CheckError: the condition 'B_SOME_CONFIG' depends on B_SOME_CONFIG"])):
-        try:
-            problems = check(z_macros, z_c, text)[0]
-        except CheckError as error:
-            problems = ["CheckError: %s" % error]
-        if len(problems) != len(wanted) or any(w not in p for w, p in zip(wanted, problems)):
-            failures.append("%s\n  expected %r\n  got      %r" % (name, wanted, problems))
+             ["CheckError: z.c: the condition 'B_SOME_CONFIG' depends on B_SOME_CONFIG"])):
+        expect(name, z_macros, z_c, wanted, text)
     if failures:
         for failure in failures:
             sys.stderr.write("check_battle_script_operands self-test: %s\n" % failure)
         return 1
     return 0
+
+
+USAGE = "usage: check_battle_script_operands.py [--table] MACROS C_FILE Z_MOVE_FILE | --self-test\n"
 
 
 def main(argv):
@@ -675,15 +666,15 @@ def main(argv):
     if printing:
         args = args[1:]
     if len(args) != 3:
-        sys.stderr.write("usage: check_battle_script_operands.py [--table] MACROS C_FILE Z_MOVE_FILE | --self-test\n")
+        sys.stderr.write(USAGE)
         return 2
-    texts = []
-    for path in args:
-        with open(path) as handle:
-            texts.append(handle.read())
     try:
-        problems, rows, pointer_lines = check(*texts)
-    except CheckError as error:
+        sources = []
+        for path in args:
+            with open(path) as handle:
+                sources.append(Source(path, handle.read()))
+        problems, rows, pointer_lines = check(*sources)
+    except (CheckError, OSError) as error:   # an OSError names the file it could not open
         sys.stderr.write("check_battle_script_operands: %s\n" % error)
         return 1
     if printing:

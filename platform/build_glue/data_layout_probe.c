@@ -13,7 +13,9 @@
  *   struct NAME SIZE
  *   member NAME FIELD OFFSET SIZE KIND
  * KIND is "pointer" (a pointer, or a union holding one), "value", or
- * "pointers" (a trailing pointer array; its length is in the data).
+ * "pointers" (a trailing pointer array; its length is in the data). The
+ * words are the ones check_data_layout.py reads (LAYOUT_STRUCT,
+ * LAYOUT_MEMBER, KIND_*); change them together.
  */
 #include <stddef.h>
 #include <stdio.h>
@@ -22,9 +24,15 @@
 #include "global.fieldmap.h"
 #include "gba/m4a_internal.h"
 
-#define STRUCT(type) (void)printf("struct %s %zu\n", #type, sizeof(struct type))
-#define FIELD(type, field, kind)                                                           \
-    (void)printf("member %s %s %zu %zu %s\n", #type, #field, offsetof(struct type, field), \
+#define LAYOUT_STRUCT "struct"
+#define LAYOUT_MEMBER "member"
+#define KIND_VALUE "value"
+#define KIND_POINTER "pointer"
+#define KIND_POINTERS "pointers"
+
+#define STRUCT(type) (void)printf(LAYOUT_STRUCT " %s %zu\n", #type, sizeof(struct type))
+#define FIELD(type, field, kind)                                                                   \
+    (void)printf(LAYOUT_MEMBER " %s %s %zu %zu %s\n", #type, #field, offsetof(struct type, field), \
                  sizeof(((struct type *)NULL)->field), kind)
 
 /* struct MapHeader's flag bits share the byte after nightMusic; offsetof
@@ -36,97 +44,99 @@ _Static_assert(offsetof(struct MapHeader, battleType) == MAP_HEADER_FLAGS_OFFSET
 static void sound_structs(void)
 {
     STRUCT(ToneData);
-    FIELD(ToneData, type, "value");
-    FIELD(ToneData, key, "value");
-    FIELD(ToneData, length, "value");
-    FIELD(ToneData, pan_sweep, "value");
-    FIELD(ToneData, wav, "pointer");
-    FIELD(ToneData, attack, "value");
-    FIELD(ToneData, decay, "value");
-    FIELD(ToneData, sustain, "value");
-    FIELD(ToneData, release, "value");
+    FIELD(ToneData, type, KIND_VALUE);
+    FIELD(ToneData, key, KIND_VALUE);
+    FIELD(ToneData, length, KIND_VALUE);
+    FIELD(ToneData, pan_sweep, KIND_VALUE);
+    FIELD(ToneData, wav, KIND_POINTER);
+    FIELD(ToneData, attack, KIND_VALUE);
+    FIELD(ToneData, decay, KIND_VALUE);
+    FIELD(ToneData, sustain, KIND_VALUE);
+    FIELD(ToneData, release, KIND_VALUE);
     STRUCT(Song);
-    FIELD(Song, header, "pointer");
-    FIELD(Song, ms, "value");
-    FIELD(Song, me, "value");
+    FIELD(Song, header, KIND_POINTER);
+    FIELD(Song, ms, KIND_VALUE);
+    FIELD(Song, me, KIND_VALUE);
     STRUCT(MusicPlayer);
-    FIELD(MusicPlayer, info, "pointer");
-    FIELD(MusicPlayer, track, "pointer");
-    FIELD(MusicPlayer, numTracks, "value");
-    FIELD(MusicPlayer, unk_A, "value");
+    FIELD(MusicPlayer, info, KIND_POINTER);
+    FIELD(MusicPlayer, track, KIND_POINTER);
+    FIELD(MusicPlayer, numTracks, KIND_VALUE);
+    FIELD(MusicPlayer, unk_A, KIND_VALUE);
     STRUCT(SongHeader);
-    FIELD(SongHeader, trackCount, "value");
-    FIELD(SongHeader, blockCount, "value");
-    FIELD(SongHeader, priority, "value");
-    FIELD(SongHeader, reverb, "value");
-    FIELD(SongHeader, tone, "pointer");
-    (void)printf("member SongHeader part %zu %zu pointers\n", offsetof(struct SongHeader, part), sizeof(u8 *));
+    FIELD(SongHeader, trackCount, KIND_VALUE);
+    FIELD(SongHeader, blockCount, KIND_VALUE);
+    FIELD(SongHeader, priority, KIND_VALUE);
+    FIELD(SongHeader, reverb, KIND_VALUE);
+    FIELD(SongHeader, tone, KIND_POINTER);
+    (void)printf(LAYOUT_MEMBER " SongHeader part %zu %zu " KIND_POINTERS "\n", offsetof(struct SongHeader, part),
+                 sizeof(u8 *));
 }
 
 static void map_structs(void)
 {
     STRUCT(MapHeader);
-    FIELD(MapHeader, mapLayout, "pointer");
-    FIELD(MapHeader, events, "pointer");
-    FIELD(MapHeader, mapScripts, "pointer");
-    FIELD(MapHeader, connections, "pointer");
-    FIELD(MapHeader, music, "value");
-    FIELD(MapHeader, mapLayoutId, "value");
-    FIELD(MapHeader, regionMapSectionId, "value");
-    FIELD(MapHeader, weather, "value");
-    FIELD(MapHeader, mapType, "value");
-    FIELD(MapHeader, floorNumber, "value");
-    FIELD(MapHeader, nightMusic, "value");
-    (void)printf("member MapHeader flags %zu 1 value\n", MAP_HEADER_FLAGS_OFFSET);
-    FIELD(MapHeader, battleType, "value");
+    FIELD(MapHeader, mapLayout, KIND_POINTER);
+    FIELD(MapHeader, events, KIND_POINTER);
+    FIELD(MapHeader, mapScripts, KIND_POINTER);
+    FIELD(MapHeader, connections, KIND_POINTER);
+    FIELD(MapHeader, music, KIND_VALUE);
+    FIELD(MapHeader, mapLayoutId, KIND_VALUE);
+    FIELD(MapHeader, regionMapSectionId, KIND_VALUE);
+    FIELD(MapHeader, weather, KIND_VALUE);
+    FIELD(MapHeader, mapType, KIND_VALUE);
+    FIELD(MapHeader, floorNumber, KIND_VALUE);
+    FIELD(MapHeader, nightMusic, KIND_VALUE);
+    (void)printf(LAYOUT_MEMBER " MapHeader flags %zu 1 " KIND_VALUE "\n", MAP_HEADER_FLAGS_OFFSET);
+    FIELD(MapHeader, battleType, KIND_VALUE);
     STRUCT(MapLayout);
-    FIELD(MapLayout, width, "value");
-    FIELD(MapLayout, height, "value");
-    FIELD(MapLayout, border, "pointer");
-    FIELD(MapLayout, map, "pointer");
-    FIELD(MapLayout, primaryTileset, "pointer");
-    FIELD(MapLayout, secondaryTileset, "pointer");
-    FIELD(MapLayout, isFrlg, "value");
-    FIELD(MapLayout, borderWidth, "value");
-    FIELD(MapLayout, borderHeight, "value");
-    FIELD(MapLayout, padding, "value");
+    FIELD(MapLayout, width, KIND_VALUE);
+    FIELD(MapLayout, height, KIND_VALUE);
+    FIELD(MapLayout, border, KIND_POINTER);
+    FIELD(MapLayout, map, KIND_POINTER);
+    FIELD(MapLayout, primaryTileset, KIND_POINTER);
+    FIELD(MapLayout, secondaryTileset, KIND_POINTER);
+    FIELD(MapLayout, isFrlg, KIND_VALUE);
+    FIELD(MapLayout, borderWidth, KIND_VALUE);
+    FIELD(MapLayout, borderHeight, KIND_VALUE);
+    FIELD(MapLayout, padding, KIND_VALUE);
     STRUCT(MapConnections);
-    FIELD(MapConnections, count, "value");
-    FIELD(MapConnections, connections, "pointer");
+    FIELD(MapConnections, count, KIND_VALUE);
+    FIELD(MapConnections, connections, KIND_POINTER);
     STRUCT(MapEvents);
-    FIELD(MapEvents, objectEventCount, "value");
-    FIELD(MapEvents, warpCount, "value");
-    FIELD(MapEvents, coordEventCount, "value");
-    FIELD(MapEvents, bgEventCount, "value");
-    FIELD(MapEvents, objectEvents, "pointer");
-    FIELD(MapEvents, warps, "pointer");
-    FIELD(MapEvents, coordEvents, "pointer");
-    FIELD(MapEvents, bgEvents, "pointer");
+    FIELD(MapEvents, objectEventCount, KIND_VALUE);
+    FIELD(MapEvents, warpCount, KIND_VALUE);
+    FIELD(MapEvents, coordEventCount, KIND_VALUE);
+    FIELD(MapEvents, bgEventCount, KIND_VALUE);
+    FIELD(MapEvents, objectEvents, KIND_POINTER);
+    FIELD(MapEvents, warps, KIND_POINTER);
+    FIELD(MapEvents, coordEvents, KIND_POINTER);
+    FIELD(MapEvents, bgEvents, KIND_POINTER);
     STRUCT(ObjectEventTemplate);
-    FIELD(ObjectEventTemplate, localId, "value");
-    FIELD(ObjectEventTemplate, graphicsId, "value");
-    FIELD(ObjectEventTemplate, kind, "value");
-    FIELD(ObjectEventTemplate, x, "value");
-    FIELD(ObjectEventTemplate, y, "value");
+    FIELD(ObjectEventTemplate, localId, KIND_VALUE);
+    FIELD(ObjectEventTemplate, graphicsId, KIND_VALUE);
+    FIELD(ObjectEventTemplate, kind, KIND_VALUE);
+    FIELD(ObjectEventTemplate, x, KIND_VALUE);
+    FIELD(ObjectEventTemplate, y, KIND_VALUE);
     /* the anonymous union of the normal and the clone fields, bytes 8..15 */
-    (void)printf("member ObjectEventTemplate fields %zu %zu value\n", offsetof(struct ObjectEventTemplate, elevation),
+    (void)printf(LAYOUT_MEMBER " ObjectEventTemplate fields %zu %zu " KIND_VALUE "\n",
+                 offsetof(struct ObjectEventTemplate, elevation),
                  offsetof(struct ObjectEventTemplate, script) - offsetof(struct ObjectEventTemplate, elevation));
-    FIELD(ObjectEventTemplate, script, "pointer");
-    FIELD(ObjectEventTemplate, flagId, "value");
-    FIELD(ObjectEventTemplate, filler, "value");
+    FIELD(ObjectEventTemplate, script, KIND_POINTER);
+    FIELD(ObjectEventTemplate, flagId, KIND_VALUE);
+    FIELD(ObjectEventTemplate, filler, KIND_VALUE);
     STRUCT(CoordEvent);
-    FIELD(CoordEvent, x, "value");
-    FIELD(CoordEvent, y, "value");
-    FIELD(CoordEvent, elevation, "value");
-    FIELD(CoordEvent, trigger, "value");
-    FIELD(CoordEvent, index, "value");
-    FIELD(CoordEvent, script, "pointer");
+    FIELD(CoordEvent, x, KIND_VALUE);
+    FIELD(CoordEvent, y, KIND_VALUE);
+    FIELD(CoordEvent, elevation, KIND_VALUE);
+    FIELD(CoordEvent, trigger, KIND_VALUE);
+    FIELD(CoordEvent, index, KIND_VALUE);
+    FIELD(CoordEvent, script, KIND_POINTER);
     STRUCT(BgEvent);
-    FIELD(BgEvent, x, "value");
-    FIELD(BgEvent, y, "value");
-    FIELD(BgEvent, elevation, "value");
-    FIELD(BgEvent, kind, "value");
-    FIELD(BgEvent, bgUnion, "pointer");
+    FIELD(BgEvent, x, KIND_VALUE);
+    FIELD(BgEvent, y, KIND_VALUE);
+    FIELD(BgEvent, elevation, KIND_VALUE);
+    FIELD(BgEvent, kind, KIND_VALUE);
+    FIELD(BgEvent, bgUnion, KIND_POINTER);
 }
 
 int main(void)
