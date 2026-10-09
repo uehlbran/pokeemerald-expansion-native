@@ -100,8 +100,9 @@ use for (`docs/ARCHITECTURE.md`, "The 64-bit build", says what each catches):
   macros' operand widths with the C that reads them.
 
 Each runs its `--self-test` first. Together they add well under half a minute
-to a 64-bit build; a 64-bit build from nothing takes about as long as the
-32-bit one (about 2 minutes with `-j32` including asset conversion). A table that
+to a 64-bit build (the self-tests take under a second and the reference build
+a few seconds); a 64-bit build from nothing takes about 1.5 minutes with `-j32`,
+asset conversion included, and about 30 s once the assets exist. A table that
 upstream adds to the data without a rule, or a macro whose operands change, stops
 the link with the symbol or macro named; `docs/UPGRADING.md` says what to do.
 
