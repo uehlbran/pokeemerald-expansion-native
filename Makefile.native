@@ -196,8 +196,16 @@ endif
 # -fsanitize-recover=address AddressSanitizer does too when run with
 # ASAN_OPTIONS=halt_on_error=0 (by default it still stops at its first
 # report). The platform library always stops at the first.
+#
+# AddressSanitizer's checks are calls, not inline code
+# (asan-instrumentation-with-call-threshold=0): inline, the game's code is
+# about 40 MB and does not fit the 32 MiB ROM window it must sit in for
+# platform/rom_mirror.h; as calls it is about 29 MB (measured 2026-10-08,
+# TEST=1). Its read-only data and variables then go to their own segments
+# above the window (NATIVE_LDFLAGS below), where the mirror cannot overlap
+# them.
 GAME_SANITIZER_FLAGS := -fsanitize=address,undefined -fno-sanitize=shift-base -fsanitize-recover=address \
-                        -fno-omit-frame-pointer
+                        -fno-omit-frame-pointer --param=asan-instrumentation-with-call-threshold=0
 ifeq ($(SANITIZE),1)
   CFLAGS += $(GAME_SANITIZER_FLAGS)
 endif
@@ -363,6 +371,16 @@ NATIVE_LDFLAGS := -m$(BITS) -no-pie -Wl,-Ttext-segment=0x08000000 \
                   $(NATIVE_LINKER_SCRIPTS:%=-Wl,-T,%) \
                   -Wl,--defsym,gInitialMainCB2=$(INITIAL_MAIN_CB2) \
                   -Wl,--defsym,gba_game_objects_linked=1 $(NATIVE_LINK_SANITIZERS)
+# The sanitized build's code fills most of the ROM window (above), so its
+# read-only data and variables (about 60 MB with AddressSanitizer's redzones)
+# start at 0x10000000, GBATEK's unused upper address space and still below
+# the shadow memory 32-bit AddressSanitizer reserves from 0x20000000. Limits
+# of that build: strings are no longer in the ROM window, so the heap's
+# allocation-site names (MemBlockLocation) and SetSpeaker's ROM check do not
+# work in it.
+ifeq ($(SANITIZE),1)
+  NATIVE_LDFLAGS += -Wl,-z,separate-code -Wl,-Trodata-segment=0x10000000
+endif
 NATIVE_LDLIBS := $(shell pkg-config --libs sdl2) -lm
 
 native: $(NATIVE_EXE)

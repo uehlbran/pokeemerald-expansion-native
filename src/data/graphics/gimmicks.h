@@ -94,7 +94,15 @@ static const u8 ALIGNED(4) sFairyIndicatorGfx[] = INCGFX_U8("graphics/battle_int
 static const u8 ALIGNED(4) sStellarIndicatorGfx[] = INCGFX_U8("graphics/battle_interface/stellar_indicator.png", ".4bpp");
 
 static const u16 sMiscIndicatorPal[] = INCGFX_U16("graphics/battle_interface/misc_indicator.pal", ".gbapal"); // has room for more colors
+#if PLATFORM_NATIVE
+// The PNG has 15 colours (30 bytes) but LoadSpritePalette always loads 16
+// (32 bytes); pad with zeros instead of reading past the array.
+static const u16 sMegaIndicatorPal[16] = INCGFX_U16("graphics/battle_interface/mega_indicator.png", ".gbapal");
+#else
+#line 97
 static const u16 sMegaIndicatorPal[] = INCGFX_U16("graphics/battle_interface/mega_indicator.png", ".gbapal");
+#endif
+#line 98
 static const u16 sTeraIndicatorPal[] = INCGFX_U16("graphics/battle_interface/tera_indicator.pal", ".gbapal");
 
 static const u8 *const sTeraIndicatorDataPtrs[] =
