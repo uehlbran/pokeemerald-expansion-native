@@ -9,6 +9,7 @@
 
 #include <inttypes.h>
 #include <stdio.h>
+#include <string.h>
 
 static char decode_char(uint8_t byte)
 {
@@ -61,4 +62,32 @@ const char *inspect_find_known_callback(const struct inspect_known_callback *tab
 void inspect_format_unknown_callback(uintptr_t address, char *out, size_t size)
 {
     snprintf(out, size, "unknown:0x%" PRIxPTR, address);
+}
+
+size_t inspect_split_name(const char *text, const char **argument)
+{
+    const char *separator = strchr(text, INSPECT_ARGUMENT_SEPARATOR);
+    if (separator == NULL) {
+        *argument = NULL;
+        return strlen(text);
+    }
+    *argument = separator + 1;
+    return (size_t)(separator - text);
+}
+
+int inspect_parse_argument(const char *text, uint32_t maximum, uint32_t *out)
+{
+    size_t length = strlen(text);
+    uint32_t value = 0;
+    if (length == 0 || length > INSPECT_ARGUMENT_MAX_DIGITS)
+        return -1;
+    for (size_t i = 0; i < length; i++) {
+        if (text[i] < '0' || text[i] > '9')
+            return -1;
+        value = value * 10u + (uint32_t)(text[i] - '0');
+    }
+    if (value > maximum)
+        return -1;
+    *out = value;
+    return 0;
 }

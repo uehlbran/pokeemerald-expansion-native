@@ -130,7 +130,7 @@ static bool valid_fact_name(const char *text)
     if (length == 0 || length > REPLAY_MAX_FACT_LENGTH)
         return false;
     for (size_t i = 0; i < length; i++) {
-        if (!((text[i] >= 'a' && text[i] <= 'z') || (text[i] >= '0' && text[i] <= '9') || text[i] == '_'))
+        if (!((text[i] >= 'a' && text[i] <= 'z') || (text[i] >= '0' && text[i] <= '9') || text[i] == '_' || text[i] == ':'))
             return false;
     }
     return true;
@@ -204,6 +204,27 @@ static bool parse_hold(struct replay_command *command, char *rest, struct replay
     return true;
 }
 
+/* press KEYS [times N]: N presses in a row (N at least 1; number is always the count) */
+static bool parse_press(struct replay_command *command, char *rest, struct replay_parse_error *error)
+{
+    const char *bad;
+    char *times_at = strstr(rest, " times ");
+    command->kind = REPLAY_CMD_PRESS;
+    command->number = 1;
+    if (times_at != NULL) {
+        *times_at = '\0';
+        if (!parse_number(trim(times_at + strlen(" times ")), 1u, &command->number)) {
+            set_error(error, command->line, "'press ... times' needs a whole number of presses, at least 1");
+            return false;
+        }
+    }
+    if (!parse_keys(trim(rest), &command->keys, &bad)) {
+        set_error(error, command->line, "unknown key '%s'", bad);
+        return false;
+    }
+    return true;
+}
+
 /* wait-until FACT=VALUE max N, and the tail of mash KEYS until FACT=VALUE max N */
 static bool parse_condition_and_max(struct replay_command *command, char *rest, struct replay_parse_error *error)
 {
@@ -259,8 +280,10 @@ static bool parse_command(char *text, struct replay_command *command, struct rep
         command->kind = word[0] == 'f' ? REPLAY_CMD_FRAME : REPLAY_CMD_WAIT;
         return parse_count_command(command, word, rest, error);
     }
-    if (strcmp(word, "press") == 0 || strcmp(word, "release") == 0) {
-        command->kind = word[0] == 'p' ? REPLAY_CMD_PRESS : REPLAY_CMD_RELEASE;
+    if (strcmp(word, "press") == 0)
+        return parse_press(command, rest, error);
+    if (strcmp(word, "release") == 0) {
+        command->kind = REPLAY_CMD_RELEASE;
         if (!parse_keys(rest, &command->keys, &bad)) {
             set_error(error, command->line, "unknown key '%s'", bad);
             return false;

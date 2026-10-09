@@ -123,6 +123,49 @@ PTEST(an_empty_script_is_done_at_the_first_step)
     PT_ASSERT_EQ_INT(replay_step(&replay), REPLAY_DONE);
 }
 
+PTEST(press_times_n_is_n_separate_presses_then_the_next_command)
+{
+    struct replay replay;
+    struct fake fake;
+    PT_ASSERT_EQ_INT(start(&replay, &fake, "press A times 3\nrestart", 0), 0);
+    PT_ASSERT_EQ_INT(run(&replay, &fake, 30), REPLAY_RESTART);
+    /* down, up, down, up, down, up, then the restart at step 7 */
+    PT_ASSERT_EQ_U32(fake.keys_at[0], INPUT_KEY_A);
+    PT_ASSERT_EQ_U32(fake.keys_at[1], 0);
+    PT_ASSERT_EQ_U32(fake.keys_at[2], INPUT_KEY_A);
+    PT_ASSERT_EQ_U32(fake.keys_at[3], 0);
+    PT_ASSERT_EQ_U32(fake.keys_at[4], INPUT_KEY_A);
+    PT_ASSERT_EQ_U32(fake.keys_at[5], 0);
+    PT_ASSERT(fake.steps == 7);
+}
+
+PTEST(press_times_counts_again_for_a_second_such_command)
+{
+    struct replay replay;
+    struct fake fake;
+    PT_ASSERT_EQ_INT(start(&replay, &fake, "press A times 2\npress B times 2\nrestart", 0), 0);
+    PT_ASSERT_EQ_INT(run(&replay, &fake, 30), REPLAY_RESTART);
+    PT_ASSERT_EQ_U32(fake.keys_at[2], INPUT_KEY_A);
+    PT_ASSERT_EQ_U32(fake.keys_at[3], 0);
+    PT_ASSERT_EQ_U32(fake.keys_at[4], INPUT_KEY_B);
+    PT_ASSERT_EQ_U32(fake.keys_at[6], INPUT_KEY_B);
+    PT_ASSERT_EQ_U32(fake.keys_at[7], 0);
+    PT_ASSERT(fake.steps == 9);
+}
+
+PTEST(press_times_resumes_after_a_restart_line_without_repeating)
+{
+    struct replay replay;
+    struct fake fake;
+    /* a restart on line 2; resuming after it plays line 3 only */
+    PT_ASSERT_EQ_INT(start(&replay, &fake, "press A times 2\nrestart\npress B times 2\nrestart", 2), 0);
+    PT_ASSERT_EQ_INT(run(&replay, &fake, 30), REPLAY_RESTART);
+    PT_ASSERT_EQ_U32(fake.keys_at[0], INPUT_KEY_B);
+    PT_ASSERT_EQ_U32(fake.keys_at[2], INPUT_KEY_B);
+    PT_ASSERT(fake.steps == 5);
+    PT_ASSERT_EQ_INT(replay_restart_line(&replay), 4);
+}
+
 PTEST(press_is_down_for_one_frame_and_up_for_one)
 {
     struct replay replay;

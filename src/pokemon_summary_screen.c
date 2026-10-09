@@ -1280,7 +1280,15 @@ static void VBlank(void)
 
 static void CB2_InitSummaryScreen(void)
 {
+#if PLATFORM_NATIVE
+    // On the GBA the VBlank interrupt drains the DMA3 queue while this loop spins on
+    // IsDma3ManagerBusyWithBgCopy; natively a frame passes only in VBlankIntrWait.
+    while (MenuHelpers_ShouldWaitForLinkRecv() != TRUE && LoadGraphics() != TRUE && MenuHelpers_IsLinkActive() != TRUE)
+        VBlankIntrWait();
+#else
     while (MenuHelpers_ShouldWaitForLinkRecv() != TRUE && LoadGraphics() != TRUE && MenuHelpers_IsLinkActive() != TRUE);
+#endif
+#line 1284
 }
 
 static bool8 LoadGraphics(void)

@@ -120,4 +120,44 @@ PTEST(formats_an_unknown_callback_as_hex)
     PT_ASSERT_EQ_STR(out, "unknown:0");
 }
 
+PTEST(splits_a_name_from_its_argument)
+{
+    const char *argument = "unset";
+    PT_ASSERT(inspect_split_name("flag:2078", &argument) == 4);
+    PT_ASSERT_EQ_STR(argument, "2078");
+    PT_ASSERT(inspect_split_name("party_count", &argument) == 11);
+    PT_ASSERT(argument == NULL);
+    PT_ASSERT(inspect_split_name("var:", &argument) == 3);
+    PT_ASSERT_EQ_STR(argument, "");
+    PT_ASSERT(inspect_split_name("", &argument) == 0);
+    PT_ASSERT(argument == NULL);
+    /* only the first separator splits: the argument keeps the rest, and parsing it fails */
+    PT_ASSERT(inspect_split_name("a:1:2", &argument) == 1);
+    PT_ASSERT_EQ_STR(argument, "1:2");
+}
+
+PTEST(parses_decimal_arguments_up_to_the_maximum)
+{
+    uint32_t value = 77;
+    PT_ASSERT(inspect_parse_argument("0", 65535u, &value) == 0 && value == 0);
+    PT_ASSERT(inspect_parse_argument("293", 65535u, &value) == 0 && value == 293);
+    PT_ASSERT(inspect_parse_argument("00012", 65535u, &value) == 0 && value == 12);
+    PT_ASSERT(inspect_parse_argument("65535", 65535u, &value) == 0 && value == 65535);
+    PT_ASSERT(inspect_parse_argument("99999", 99999u, &value) == 0 && value == 99999);
+}
+
+PTEST(rejects_bad_arguments_and_leaves_the_output_alone)
+{
+    uint32_t value = 77;
+    PT_ASSERT(inspect_parse_argument("", 65535u, &value) == -1);
+    PT_ASSERT(inspect_parse_argument("65536", 65535u, &value) == -1);
+    PT_ASSERT(inspect_parse_argument("123456", 4294967295u, &value) == -1); /* more than five digits */
+    PT_ASSERT(inspect_parse_argument("-1", 65535u, &value) == -1);
+    PT_ASSERT(inspect_parse_argument("+1", 65535u, &value) == -1);
+    PT_ASSERT(inspect_parse_argument("1a", 65535u, &value) == -1);
+    PT_ASSERT(inspect_parse_argument(" 1", 65535u, &value) == -1);
+    PT_ASSERT(inspect_parse_argument("0x10", 65535u, &value) == -1);
+    PT_ASSERT(value == 77);
+}
+
 PTEST_MAIN()

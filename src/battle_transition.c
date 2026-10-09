@@ -1023,6 +1023,13 @@ bool8 IsBattleTransitionDone(void)
     {
         DestroyTask(taskId);
         FREE_AND_SET_NULL(sTransitionData);
+#if PLATFORM_NATIVE
+        // The effects' V-Blank callbacks (VBlankCB_Slice, ...) read sTransitionData, which is
+        // NULL from here until CB2_InitBattle replaces them; the GBA read the BIOS area.
+        SetVBlankCallback(NULL);
+        SetHBlankCallback(NULL);
+#endif
+#line 1026
         return TRUE;
     }
     else

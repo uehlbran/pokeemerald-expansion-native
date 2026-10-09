@@ -213,6 +213,12 @@ static void run_command(struct replay *replay, const struct replay_command *comm
         replay->transient = command->keys;
         replay->release_at = replay->tick + REPLAY_PRESS_FRAMES;
         begin_wait_frames(replay, replay->release_at + REPLAY_PRESS_RELEASE_FRAMES);
+        /* `times N`: run this command again after the release until N presses were made */
+        if (replay->presses_left == 0)
+            replay->presses_left = command->number;
+        replay->presses_left--;
+        if (replay->presses_left > 0)
+            replay->next--;
         break;
     case REPLAY_CMD_HOLD:
         replay->held = (uint16_t)(replay->held | command->keys);

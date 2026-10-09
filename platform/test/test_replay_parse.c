@@ -56,6 +56,32 @@ PTEST(parses_press_with_every_key_in_any_case)
     PT_ASSERT_EQ_U32(c->keys, INPUT_KEYS_MASK);
 }
 
+PTEST(parses_press_times_and_defaults_to_one_press)
+{
+    const struct replay_command *c = only_command("press UP,A times 12");
+    PT_ASSERT(c != NULL);
+    PT_ASSERT_EQ_INT(c->kind, REPLAY_CMD_PRESS);
+    PT_ASSERT_EQ_U32(c->keys, INPUT_KEY_UP | INPUT_KEY_A);
+    PT_ASSERT_EQ_INT(c->number, 12);
+    c = only_command("press   A   times\t1   # comment");
+    PT_ASSERT(c != NULL);
+    PT_ASSERT_EQ_INT(c->number, 1);
+    c = only_command("press B");
+    PT_ASSERT(c != NULL);
+    PT_ASSERT_EQ_INT(c->number, 1);
+}
+
+PTEST(parses_a_fact_name_with_an_argument)
+{
+    const struct replay_command *c = only_command("expect flag:2078=1");
+    PT_ASSERT(c != NULL);
+    PT_ASSERT_EQ_STR(c->fact, "flag:2078");
+    PT_ASSERT_EQ_STR(c->value, "1");
+    c = only_command("wait-until bag_item_count:293=1 max 5");
+    PT_ASSERT(c != NULL);
+    PT_ASSERT_EQ_STR(c->fact, "bag_item_count:293");
+}
+
 PTEST(parses_a_single_key_and_spaces_around_commas)
 {
     const struct replay_command *c = only_command("  press  A , START  ");
@@ -175,6 +201,16 @@ PTEST(rejects_bad_keys)
     assert_parse_error("press A B", 1, "unknown key 'A B'");
 }
 
+PTEST(rejects_bad_press_times)
+{
+    assert_parse_error("press A times", 1, "unknown key");
+    assert_parse_error("press A times 0", 1, "at least 1");
+    assert_parse_error("press A times x", 1, "at least 1");
+    assert_parse_error("press A times -3", 1, "at least 1");
+    assert_parse_error("press times 3", 1, "unknown key");
+    assert_parse_error("press X times 3", 1, "unknown key 'X'");
+}
+
 PTEST(rejects_bad_hold_for)
 {
     assert_parse_error("hold A for", 1, "unknown key");
@@ -211,6 +247,7 @@ PTEST(rejects_bad_expect)
     assert_parse_error("expect =5", 1, "bad fact name");
     assert_parse_error("expect map=", 1, "empty or too long");
     assert_parse_error("expect has-dash=1", 1, "bad fact name");
+    assert_parse_error("expect Flag:1=1", 1, "bad fact name");
 }
 
 PTEST(rejects_bad_names_and_restart_arguments)
