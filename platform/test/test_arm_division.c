@@ -107,6 +107,25 @@ static struct result div_prefixed(uint32_t dividend, const uint32_t *divisor)
     return r;
 }
 
+/* idivl -4(%ebp): mod 1 with EBP as the base and a negative disp8; the
+ * divisor is 4 bytes below the base. EBP is saved and restored around it. */
+static struct result idiv_ebp_negative_disp8(int32_t dividend, const int32_t *divisor)
+{
+    struct result r;
+    __asm__ volatile("pushl %%ebp\n\tleal 4(%%ecx), %%ebp\n\tcltd\n\tidivl -4(%%ebp)\n\tpopl %%ebp"
+                     : "=a"(r.quotient), "=&d"(r.remainder) : "a"(dividend), "c"(divisor) : "memory");
+    return r;
+}
+
+/* divl 8(%esp): a SIB byte with ESP as the base and no index, mod 1. */
+static struct result div_esp_disp8(uint32_t dividend, uint32_t divisor)
+{
+    struct result r;
+    __asm__ volatile("subl $12, %%esp\n\tmovl %%ecx, 8(%%esp)\n\txorl %%edx, %%edx\n\tdivl 8(%%esp)\n\taddl $12, %%esp"
+                     : "=a"(r.quotient), "=&d"(r.remainder) : "a"(dividend), "c"(divisor) : "memory");
+    return r;
+}
+
 static void expect(struct result r, uint32_t quotient, uint32_t remainder)
 {
     PT_ASSERT_EQ_U32(r.quotient, quotient);
@@ -168,6 +187,9 @@ PTEST(every_memory_operand_form_is_decoded)
     struct result sib_no_base = div_sib_no_base(5);
     struct result stack = idiv_stack(-5, 0);
     struct result prefixed = div_prefixed(5, &divisor_in_memory[0]);
+    const int32_t below_ebp = 0;
+    struct result ebp_negative = idiv_ebp_negative_disp8(7, &below_ebp);
+    struct result esp_disp8 = div_esp_disp8(5, 0);
     arm_division_shutdown();
     expect(base, UINT32_MAX, UINT32_MAX);
     expect(disp8, UINT32_MAX, UINT32_MAX);
@@ -177,6 +199,21 @@ PTEST(every_memory_operand_form_is_decoded)
     expect(sib_no_base, UINT32_MAX, UINT32_MAX);
     expect(stack, (uint32_t)INT32_MIN, (uint32_t)INT32_MIN);
     expect(prefixed, UINT32_MAX, UINT32_MAX);
+    expect(ebp_negative, (uint32_t)INT32_MAX, (uint32_t)INT32_MAX);
+    expect(esp_disp8, UINT32_MAX, UINT32_MAX);
+}
+
+PTEST(ebp_and_esp_based_operands_are_read_at_their_offsets)
+{
+    /* Non-zero divisors at the same addressing forms divide normally, so the
+     * decoder found the divisor where the CPU did. */
+    const int32_t below_ebp = -3;
+    PT_ASSERT_EQ_INT(arm_division_init(), ARM_DIVISION_OK);
+    struct result ebp_negative = idiv_ebp_negative_disp8(10, &below_ebp);
+    struct result esp_disp8 = div_esp_disp8(10, 4);
+    arm_division_shutdown();
+    expect(ebp_negative, (uint32_t)-3, 1);
+    expect(esp_disp8, 2, 2);
 }
 
 PTEST(memory_operands_are_read_not_assumed_zero)
@@ -218,6 +255,29 @@ static void wide_quotient(void)
     __asm__ volatile("movl $2, %%edx\n\tmovl $0, %%eax\n\tmovl $1, %%ecx\n\tdivl %%ecx" : : : "eax", "ecx", "edx");
 }
 
+/* divw %cx (66h F7h F1h): the operand-size prefix makes it a 16-bit
+ * division, not one the decoder completes. */
+static void word_division_by_zero(void)
+{
+    __asm__ volatile("movl $5, %%eax\n\txorl %%edx, %%edx\n\txorl %%ecx, %%ecx\n\t.byte 0x66, 0xF7, 0xF1"
+                     : : : "eax", "ecx", "edx");
+}
+
+/* 67h F7h F1h: an address-size prefix (meaningless with a register operand,
+ * the CPU still divides EDX:EAX by ECX), which the decoder refuses. */
+static void address_size_prefixed_division_by_zero(void)
+{
+    __asm__ volatile("movl $5, %%eax\n\txorl %%edx, %%edx\n\txorl %%ecx, %%ecx\n\t.byte 0x67, 0xF7, 0xF1"
+                     : : : "eax", "ecx", "edx");
+}
+
+/* An unsigned division by zero of a 64-bit dividend (EDX non-zero): not
+ * one of libgcc's 32-bit routines' cases. */
+static void wide_dividend_by_zero(void)
+{
+    __asm__ volatile("movl $1, %%edx\n\tmovl $5, %%eax\n\txorl %%ecx, %%ecx\n\tdivl %%ecx" : : : "eax", "ecx", "edx");
+}
+
 static int calls_after(void (*division)(void))
 {
     struct sigaction mine, saved;
@@ -242,6 +302,9 @@ PTEST(other_divide_errors_go_to_the_previous_handler)
 {
     PT_ASSERT_EQ_INT(calls_after(byte_division_by_zero), 1);
     PT_ASSERT_EQ_INT(calls_after(wide_quotient), 1);
+    PT_ASSERT_EQ_INT(calls_after(word_division_by_zero), 1);
+    PT_ASSERT_EQ_INT(calls_after(address_size_prefixed_division_by_zero), 1);
+    PT_ASSERT_EQ_INT(calls_after(wide_dividend_by_zero), 1);
 }
 
 PTEST(shutdown_twice_is_safe)

@@ -93,6 +93,8 @@ struct frame_config {
     uint32_t frame_limit;        /* 0: no limit; otherwise end after this many frames */
     const char *screenshot_path; /* NULL: none; otherwise the last frame as a PPM, at the end */
     /* true: the PPU draws nothing (step 1 leaves the frame buffer alone).
+     * Only the PPU's line drawing is skipped: step 6's video_present still
+     * runs (a no-op when headless) and shows the buffer as it is.
      * main sets it only in --test-runner mode without a replay or a
      * screenshot, where nobody sees the frames. Everything the game can
      * observe still happens: the lines' VCOUNT and DISPSTAT, H-Blank DMA,

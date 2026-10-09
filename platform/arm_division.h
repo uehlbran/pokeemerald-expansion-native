@@ -29,9 +29,15 @@
  * The handler is async-signal-safe (it only reads the instruction and its
  * operand and edits the saved registers).
  *
- * i386 only: the 64-bit build reports ARM_DIVISION_ERR_64_BIT (flagged for
- * the 64-bit milestone: REX prefixes, 64-bit operands and RIP-relative
- * operands would need decoding). Single-threaded.
+ * A divide error it cannot complete is reported on stderr (one line with
+ * the program counter) before it is passed on.
+ *
+ * i386 only. 64-bit: the decoder has to be redone for x86-64 (REX
+ * prefixes, 64-bit operands, RIP-relative operands, the 64-bit register
+ * set). Until then arm_division_init refuses with ARM_DIVISION_ERR_64_BIT,
+ * and main, which starts this module unconditionally, stops there: a
+ * deliberate hard stop for the 64-bit build (platform/build_glue/
+ * LINK-NEEDS.md, "Runtime hazards"). Single-threaded.
  */
 #ifndef ARM_DIVISION_H
 #define ARM_DIVISION_H

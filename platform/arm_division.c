@@ -17,6 +17,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <ucontext.h>
+#include <unistd.h>
 
 /* Intel SDM vol. 2: DIV r/m32 is F7 /6, IDIV r/m32 is F7 /7. */
 #define OPCODE_GROUP3_32 0xF7u
@@ -40,11 +41,20 @@ static struct {
 
 #if defined(__i386__)
 
-/* Segment override prefixes that address the flat user segment on Linux:
- * ES 26h, CS 2Eh, SS 36h, DS 3Eh (FS and GS hold thread-local bases). */
+/* Segment override prefixes (Intel SDM vol. 2, 2.1.1 "Instruction
+ * Prefixes", group 2) that address the flat user segment on Linux. FS
+ * (64h) and GS (65h) hold thread-local bases and are refused, as are the
+ * operand-size (66h) and address-size (67h) prefixes: with them the
+ * instruction is not a 32-bit DIV or IDIV with 32-bit addressing. */
+#define PREFIX_SEGMENT_ES 0x26u
+#define PREFIX_SEGMENT_CS 0x2Eu
+#define PREFIX_SEGMENT_SS 0x36u
+#define PREFIX_SEGMENT_DS 0x3Eu
+
 static bool is_flat_segment_prefix(uint8_t byte)
 {
-    return byte == 0x26u || byte == 0x2Eu || byte == 0x36u || byte == 0x3Eu;
+    return byte == PREFIX_SEGMENT_ES || byte == PREFIX_SEGMENT_CS || byte == PREFIX_SEGMENT_SS
+           || byte == PREFIX_SEGMENT_DS;
 }
 
 /* ModRM register numbers to the saved registers (Intel SDM vol. 2,
@@ -167,11 +177,31 @@ static bool complete(ucontext_t *context)
     return true;
 }
 
-/* Passes the signal to the handler installed before, or lets it kill the
- * process: with the default action restored, the instruction faults again
- * on return. */
+/* "arm_division: undecodable divide error at pc 0x12345678, passed on\n",
+ * formatted without stdio (signal-safety(7): write is async-signal-safe). */
+static void report_passed_on(const void *context)
+{
+    static const char head[] = "arm_division: undecodable divide error at pc 0x";
+    static const char tail[] = ", passed on (not a 32-bit DIV or IDIV by zero, nor INT32_MIN / -1)\n";
+    static const char hex[] = "0123456789abcdef";
+    char line[sizeof head - 1 + 8 + sizeof tail - 1];
+    uint32_t pc = (uint32_t)((const ucontext_t *)context)->uc_mcontext.gregs[REG_EIP];
+    memcpy(line, head, sizeof head - 1);
+    for (size_t i = 0; i < 8; i++)
+        line[sizeof head - 1 + i] = hex[(pc >> (28u - 4u * (unsigned)i)) & 0xFu];
+    memcpy(line + sizeof head - 1 + 8, tail, sizeof tail - 1);
+    (void)!write(STDERR_FILENO, line, sizeof line); /* nothing to do if stderr is gone */
+}
+
+/* Reports the divide error it cannot complete (so that one fails loudly in
+ * game mode too, where the default action ends the process with nothing
+ * more than "Floating point exception"), then passes the signal to the
+ * handler installed before (crash_reboot in test runner mode), or lets it
+ * kill the process: with the default action restored, the instruction
+ * faults again on return. */
 static void pass_on(int signal_number, siginfo_t *info, void *context)
 {
+    report_passed_on(context);
     const struct sigaction *previous = &division.previous;
     if ((previous->sa_flags & SA_SIGINFO) != 0 && previous->sa_sigaction != NULL) {
         previous->sa_sigaction(signal_number, info, context);
@@ -215,7 +245,8 @@ int arm_division_init(void)
 int arm_division_init(void)
 {
     arm_division_shutdown();
-    fprintf(stderr, "arm_division: only the 32-bit build decodes x86 division (arm_division.h)\n");
+    fprintf(stderr, "arm_division: only the 32-bit build decodes x86 division; the 64-bit build stops here until "
+            "the decoder is redone for x86-64 (arm_division.h)\n");
     return ARM_DIVISION_ERR_64_BIT;
 }
 

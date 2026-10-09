@@ -805,7 +805,10 @@ static void Intr_Timer2(void)
             // The #else branch makes the BIOS's IRQ return land in
             // JumpToAgbMainLoop. Natively this handler runs inside the
             // platform's interrupt dispatch in the frame loop, and the
-            // platform jumps from here.
+            // platform jumps from here. The jump skips the dispatch's
+            // restore of IE and IME, which is harmless: IME was 1 when it
+            // was saved (Timer 2 is taken only with IME set) and this
+            // handler leaves IE as it was.
             PlatformJumpToAgbMainLoop();
 #else
 #line 747

@@ -151,8 +151,8 @@ layout. Flagged for 64-bit.
 The first full runs took 15 minutes, almost all of it drawing frames nobody
 sees. `frame` no longer draws in `--test-runner` mode (never with a replay
 or a screenshot, whose images need every frame); the
-suite takes about 35 seconds on 32 cores (the GBA baseline about 2.5
-minutes under mGBA).
+suite takes about 40 seconds on 32 cores (the GBA baseline about 2.5 to
+3 minutes under mGBA).
 
 ## Runs
 
@@ -175,6 +175,29 @@ run compared with it test by test.
 | 11 | 5862 | 5405 | 18 | 9 | 421 | 0 | 0 | after merging main (work/replay's script-tag untagging): class 4 closed; per test equal to the GBA baseline but for the 9 benchmarks; 44 s |
 | SANITIZE=1 | 5862 | 5402 | 18 | 9 | 421 | 3 | 1 | the sanitized run below, before the palettes were padded: 3 CRASH (fatal AddressSanitizer reports), 9 assumption failures; 78 s |
 | SANITIZE=1 | 5862 | 5405 | 18 | 9 | 421 | 0 | 0 | eight battle-animation palettes padded; per test the GBA baseline but for the 9 benchmarks; 76 s |
+
+## Notes from review
+
+- `src/battle_script_commands.c` `Cmd_jumpifarrayequal`: the guard covers
+  the default configuration only. `BattleScript_DynamaxBegins_SwitchIn`
+  (data/battle_scripts_1.s) says `jumpifbyteequal B_SHOW_DYNAMAX_MESSAGE,
+  FALSE`, which passes the two constants as array addresses. With the
+  default FALSE both are NULL and the guard jumps without reading. With
+  `B_SHOW_DYNAMAX_MESSAGE` TRUE they are 1 and 0: the GBA reads both from
+  its BIOS (and, finding them equal, never shows the message), the native
+  build faults (crash_reboot reports it). The upstream bug is
+  `jumpifbyteequal` with two constants; an assembly-time `.if` is the fix.
+- Persistent state: natively the 28-bit `address` field of
+  `gPersistentTestRunnerState` holds `PersistentTestId(test)`, the test's
+  index in `.tests` plus one (0 still means none), since a native test
+  address does not fit it.
+- `Intr_Timer2`'s timeout jump (`PlatformJumpToAgbMainLoop`) leaves
+  `interrupt_dispatch` without its restore of IE and IME. Harmless: IME was
+  1 when it was saved (Timer 2 is taken only with IME set) and the handler
+  leaves IE alone (commented at the jump site and in game_hooks.h).
+- `arm_division` reports every divide error it passes on (one line with
+  the program counter) and refuses 66h/67h-prefixed forms; 64-bit is a
+  deliberate hard stop until the decoder is redone (arm_division.h).
 
 ## The timeout, end to end
 

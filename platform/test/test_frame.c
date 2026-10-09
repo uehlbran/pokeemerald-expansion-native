@@ -261,6 +261,48 @@ PTEST(the_games_stores_to_the_status_bits_are_overwritten)
 #define FRAME_TEST_DISPCNT_OFFSET UINT32_C(0x000)
 #define FRAME_TEST_FORCED_BLANK UINT16_C(0x0080)
 
+static volatile uint16_t hblank_destination;
+static uint16_t hblank_source[LCD_VISIBLE_LINES + 1];
+
+/* One halfword per H-Blank from hblank_source (incrementing) to
+ * hblank_destination (fixed), repeating. */
+static bool start_hblank_dma(void)
+{
+    for (uint16_t i = 0; i <= LCD_VISIBLE_LINES; i++)
+        hblank_source[i] = (uint16_t)(0x2000u + i);
+    uint32_t control = ((DMA_CNT_ENABLE | (uint32_t)DMA_TIMING_HBLANK | DMA_CNT_REPEAT | DMA_CNT_DEST_FIXED) << 16) | 1u;
+    return dma_set(0, hblank_source, (void *)&hblank_destination, control) == DMA_OK;
+}
+
+/* The lines' events of one frame, as a drawn frame has them: each H-Blank
+ * on its line with the H-Blank flag; the VCount match at the start of
+ * TEST_LYC, before that line's H-Blank; one V-Blank at line 160. */
+static bool lines_events_in_order(void)
+{
+    uint16_t expected_line = 0;
+    bool vcount_seen = false, vblank_seen = false;
+    for (size_t i = 0; i < event_count; i++) {
+        const struct event *e = &events[i];
+        if (e->kind == EVENT_HBLANK) {
+            if (e->vcount != expected_line || !(e->dispstat & LCD_DISPSTAT_HBLANK_FLAG)
+                || (e->dispstat & LCD_DISPSTAT_VBLANK_FLAG))
+                return false;
+            expected_line++;
+        } else if (e->kind == EVENT_VCOUNT) {
+            if (vcount_seen || e->vcount != TEST_LYC || expected_line != TEST_LYC
+                || !(e->dispstat & LCD_DISPSTAT_VCOUNTER_FLAG) || (e->dispstat & LCD_DISPSTAT_HBLANK_FLAG))
+                return false;
+            vcount_seen = true;
+        } else if (e->kind == EVENT_VBLANK) {
+            if (vblank_seen || expected_line != LCD_VISIBLE_LINES || e->vcount != LCD_VISIBLE_LINES
+                || !(e->dispstat & LCD_DISPSTAT_VBLANK_FLAG))
+                return false;
+            vblank_seen = true;
+        }
+    }
+    return vcount_seen && vblank_seen && expected_line == LCD_VISIBLE_LINES;
+}
+
 PTEST(skip_drawing_leaves_the_frame_buffer_and_keeps_the_lines_events)
 {
     /* A drawn frame in forced blank is white; then, not drawing, a frame that
@@ -273,10 +315,14 @@ PTEST(skip_drawing_leaves_the_frame_buffer_and_keeps_the_lines_events)
     frame_shutdown();
     PT_ASSERT_EQ_INT(frame_init(&undrawn), 0);
     *io(FRAME_TEST_DISPCNT_OFFSET) = 0;
+    bool dma_started = start_hblank_dma();
     event_count = 0;
     PT_ASSERT_EQ_INT(frame_run(), FRAME_CONTINUE);
     int hblanks = count_events(EVENT_HBLANK);
     int vblanks = count_events(EVENT_VBLANK);
+    bool in_order = lines_events_in_order();
+    uint16_t last_dma = hblank_destination;
+    dma_stop(0);
     bool still_white = true;
     for (size_t i = 0; i < VIDEO_PIXEL_COUNT; i++)
         still_white = still_white && frame_pixels()[i] == 0x7FFF;
@@ -286,6 +332,9 @@ PTEST(skip_drawing_leaves_the_frame_buffer_and_keeps_the_lines_events)
     PT_ASSERT(still_white);
     PT_ASSERT_EQ_INT(hblanks, LCD_VISIBLE_LINES);
     PT_ASSERT_EQ_INT(vblanks, 1);
+    PT_ASSERT(in_order);
+    PT_ASSERT(dma_started);
+    PT_ASSERT_EQ_INT(last_dma, 0x2000 + LCD_VISIBLE_LINES - 1); /* one transfer per line */
     PT_ASSERT_EQ_U32(frames, 1);
 }
 
@@ -488,17 +537,10 @@ PTEST(a_timeout_jump_from_the_timer_handler_leaves_the_frame)
     PT_ASSERT_EQ_U32(frame_count(), 1);
 }
 
-static volatile uint16_t hblank_destination;
-static uint16_t hblank_source[LCD_VISIBLE_LINES + 1];
-
 PTEST(hblank_dma_runs_once_per_drawn_line)
 {
     PT_ASSERT(start(0, NULL, NULL));
-    for (uint16_t i = 0; i <= LCD_VISIBLE_LINES; i++)
-        hblank_source[i] = (uint16_t)(0x2000u + i);
-    /* One halfword per H-Blank, source incrementing, destination fixed. */
-    uint32_t control = ((DMA_CNT_ENABLE | (uint32_t)DMA_TIMING_HBLANK | DMA_CNT_REPEAT | DMA_CNT_DEST_FIXED) << 16) | 1u;
-    PT_ASSERT_EQ_INT(dma_set(0, hblank_source, (void *)&hblank_destination, control), DMA_OK);
+    PT_ASSERT(start_hblank_dma());
     PT_ASSERT_EQ_INT(frame_run(), FRAME_CONTINUE);
     PT_ASSERT_EQ_INT(hblank_destination, 0x2000 + LCD_VISIBLE_LINES - 1);
     dma_stop(0);

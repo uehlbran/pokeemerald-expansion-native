@@ -254,7 +254,7 @@ bool PlatformIsRomPointer(uintptr_t address)
 {
     const ElfW(Phdr) *headers = (const ElfW(Phdr) *)(uintptr_t)getauxval(AT_PHDR);
     size_t count = (size_t)getauxval(AT_PHNUM);
-    if (headers == NULL)
+    if (headers == NULL) /* getauxval gives 0 when the kernel passed no AT_PHDR: then nothing reads as ROM */
         return false;
     /* The executable is non-PIE (load bias 0); PT_PHDR gives the bias anyway. */
     uintptr_t bias = 0;

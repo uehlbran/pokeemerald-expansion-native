@@ -51,9 +51,9 @@ make -C platform test BITS=64
 ```
 
 Expansion's test suite against the native build, through expansion's own
-hydra (as `make check` runs it against mgba-rom-test; about 35 seconds on
-32 cores; `TESTS=` filters as expansion's does; `SANITIZE=1` runs the
-sanitized build):
+hydra (as `make check` runs it against mgba-rom-test; about 40 seconds on
+32 cores, about 75 with `SANITIZE=1`, which runs the sanitized build;
+`TESTS=` filters as expansion's does):
 
 ```
 make -f Makefile.native -j32 check BITS=32

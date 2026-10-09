@@ -204,6 +204,12 @@ ignores them.
   is an unused static function that gcc drops at `-O1` and above, but
   `-O0` emits it and the x86 assembler rejects `swi`. The m4a work's
   guarded call removes it.
+- Integer division by zero (and `INT32_MIN / -1`) returns on the GBA
+  (libgcc) and traps on x86; `platform/arm_division` completes the trap
+  with libgcc's results by decoding the faulting 32-bit `DIV`/`IDIV`.
+  64-bit: the decoder knows no REX prefixes, 64-bit operands or
+  RIP-relative operands, so `arm_division_init` refuses on 64-bit and
+  `main` stops there, deliberately, until the 64-bit milestone redoes it.
 - `src/libisagbprn.c` assertion paths emit `.hword 0xEFFF`, an ARM
   undefined instruction used as a breakpoint. On x86 those two bytes are
   an invalid instruction too, so a failed assertion still stops, with

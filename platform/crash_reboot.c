@@ -152,7 +152,10 @@ static void encode_state(void)
     reboot.state_hex[CRASH_REBOOT_STATE_HEX_LENGTH] = '\0';
 }
 
-/* Lets the signal do what it does without the handler: kill the process. */
+/* Lets the signal do what it does without the handler: kill the process.
+ * Relies on the handler being installed without SA_NODEFER: the signal is
+ * blocked while the handler runs, so the raise stays pending and is
+ * delivered, with the default action, when the handler returns. */
 static void die_of(int signal_number)
 {
     struct sigaction action;

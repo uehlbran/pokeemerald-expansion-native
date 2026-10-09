@@ -116,6 +116,11 @@ static int rebooted_child(int argc, char **argv)
 
 static const char *self_name = "test_crash_reboot";
 
+/* Seconds a forked child (and every reboot of it: alarm(2) survives execve)
+ * may take before SIGALRM ends it, so that a regressed loop guard fails the
+ * test instead of rebooting forever. */
+#define CHILD_TIME_LIMIT_SECONDS 10u
+
 /* Forks a child that installs the reboot with mode as its argument, puts
  * pattern A in the region (unless mode is MODE_NO_PROGRESS) and crashes by
  * crash(signal). Returns the child's wait status, or -1. */
@@ -127,6 +132,7 @@ static int run_crashing_child(const char *mode, int signal_number)
         return -1;
     if (pid == 0) {
         char *argv[] = { (char *)self_name, (char *)mode, NULL };
+        (void)alarm(CHILD_TIME_LIMIT_SECONDS);
         if (gba_memmap_init() != GBA_MEMMAP_OK)
             _exit(CHILD_SETUP_FAILED);
         clear_region();
