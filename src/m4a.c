@@ -1,5 +1,9 @@
 #include "global.h"
 #include "gba/m4a_internal.h"
+#if PLATFORM_NATIVE
+#include "constants/songs.h"
+#endif
+#line 3
 #include "global.h"
 
 extern const u8 gCgb3Vol[];
@@ -103,6 +107,16 @@ void m4aSoundMain(void)
 
 void m4aSongNumStart(u16 n)
 {
+#if PLATFORM_NATIVE
+    // PhantomForceAttack (data/battle_anim_scripts.s) plays song
+    // SOUND_PAN_ATTACKER, -64, so 0xFFC0. The GBA reads that entry from ROM
+    // far past gSongTable, finds no music player there and MPlayStart
+    // starts nothing; natively the read leaves the executable. A song
+    // number past the table (constants/songs.h) starts nothing.
+    if (n > LAST_PHONEME_SONG)
+        return;
+#endif
+#line 106
     const struct MusicPlayer *mplayTable = gMPlayTable;
     const struct Song *songTable = gSongTable;
     const struct Song *song = &songTable[n];

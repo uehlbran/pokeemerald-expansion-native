@@ -162,6 +162,17 @@ void RecordedBattle_ClearBattlerAction(enum BattlerId battler, u8 bytesToClear)
 
     for (i = 0; i < bytesToClear; i++)
     {
+#if PLATFORM_NATIVE
+        // Asked to clear more than was recorded (the AI's switch handling in
+        // doubles, HandleTurnActionSelectionState), the size wraps from 0 to
+        // 0xFFFF and the GBA writes 0xFF 64 KiB past the record, which
+        // EWRAM's mirroring (GBATEK "GBA Memory Map") folds back onto some
+        // other EWRAM variable; natively that address is unmapped. An empty
+        // record stays empty.
+        if (sBattlerRecordSizes[battler] == 0)
+            break;
+#endif
+#line 165
         sBattlerRecordSizes[battler]--;
         sBattleRecords[battler][sBattlerRecordSizes[battler]] = 0xFF;
         if (sBattlerRecordSizes[battler] == 0)
