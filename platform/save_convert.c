@@ -299,23 +299,24 @@ static uint32_t chunk_size(const struct layout *layout, uint32_t chunk)
     return rest < (uint32_t)SECTOR_DATA_SIZE ? rest : (uint32_t)SECTOR_DATA_SIZE;
 }
 
-/* Flash sector n of the chip (flash.h: sector n at n * FLASH_SECTOR_SIZE). */
-static uint8_t *sector_bytes(uint8_t *image, uint32_t sector)
+/* Where flash sector n is in the chip's image (flash.h: n * FLASH_SECTOR_SIZE). */
+static size_t sector_offset(uint32_t sector)
 {
-    return image + (size_t)sector * FLASH_SECTOR_SIZE;
+    return (size_t)sector * FLASH_SECTOR_SIZE;
 }
 
 /* What src/save.c GetSaveValidStatus accepts of SaveBlock1's sectors in a
- * slot: each chunk in exactly one sector, with the signature and a checksum
- * that matches at the layout's chunk size. Fills sector_of_chunk and returns
- * true if so. */
-static bool find_saveblock1(uint8_t *image, uint32_t slot, const struct layout *layout,
+ * slot written by the game: each chunk in one sector, with the signature and
+ * a checksum that matches at the layout's chunk size. Fills sector_of_chunk
+ * and returns true if so; a chunk in two sectors is not a slot the game
+ * wrote, and returns false. */
+static bool find_saveblock1(const uint8_t *image, uint32_t slot, const struct layout *layout,
                             uint32_t sector_of_chunk[SAVEBLOCK1_CHUNK_COUNT])
 {
     bool found[SAVEBLOCK1_CHUNK_COUNT] = {false};
     for (uint32_t i = 0; i < NUM_SECTORS_PER_SLOT; i++) {
         const uint32_t sector = slot * NUM_SECTORS_PER_SLOT + i;
-        const uint8_t *bytes = sector_bytes(image, sector);
+        const uint8_t *bytes = image + sector_offset(sector);
         if (read_u32(bytes + (uint32_t)SECTOR_SIGNATURE_OFFSET) != SECTOR_SIGNATURE)
             continue;
         /* an id below SaveBlock1's wraps past the chunk count too */
@@ -379,14 +380,14 @@ static bool convert_slot(uint8_t *image, uint32_t slot, enum layout_index from, 
     uint8_t source[SAVEBLOCK1_CAPACITY] = {0};
     uint8_t target[SAVEBLOCK1_CAPACITY] = {0};
     for (uint32_t chunk = 0; chunk < SAVEBLOCK1_CHUNK_COUNT; chunk++)
-        memcpy(source + (size_t)chunk * SECTOR_DATA_SIZE, sector_bytes(image, sector_of_chunk[chunk]),
+        memcpy(source + (size_t)chunk * SECTOR_DATA_SIZE, image + sector_offset(sector_of_chunk[chunk]),
                chunk_size(&layouts[from], chunk));
     convert_saveblock1(source, from, target, to);
     for (uint32_t chunk = 0; chunk < SAVEBLOCK1_CHUNK_COUNT; chunk++) {
         /* HandleWriteSector: the data, zeros to the end of the data area,
          * the checksum of the data; id, signature, counter and the
          * SaveBlock3 chunk stay. */
-        uint8_t *bytes = sector_bytes(image, sector_of_chunk[chunk]);
+        uint8_t *bytes = image + sector_offset(sector_of_chunk[chunk]);
         const uint32_t size = chunk_size(&layouts[to], chunk);
         memcpy(bytes, target + (size_t)chunk * SECTOR_DATA_SIZE, size);
         memset(bytes + size, 0, (uint32_t)SECTOR_DATA_SIZE - size);
