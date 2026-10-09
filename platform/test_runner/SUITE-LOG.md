@@ -174,6 +174,19 @@ run compared with it test by test.
 | 11 | 5862 | 5405 | 18 | 9 | 421 | 0 | 0 | after merging main (work/replay's script-tag untagging): class 4 closed; per test equal to the GBA baseline but for the 9 benchmarks; 44 s |
 | SANITIZE=1 | 5862 | 5402 | 18 | 9 | 421 | 3 | 1 | the sanitized run below: 3 CRASH (fatal AddressSanitizer reports), 9 assumption failures; 78 s |
 
+## The timeout, end to end
+
+No test in the suite times out, so the Timer 2 path was checked with a
+throwaway file (not committed), `TESTS=test/zz_timeout_probe.c`: a function
+test and a battle test whose bodies loop on `VBlankIntrWait`, each followed
+by a passing test. The function test reported `TIMEOUT` after 60 emulated
+seconds; the battle body (run by every runner while it sizes the battle
+tests, so 32 times) reported `TIMEOUT` from the battle runner's stack, and
+the runners went on to pass the tests after them (3.5 s for the run).
+`Intr_Timer2` calls `PlatformJumpToAgbMainLoop` from inside the interrupt
+dispatch, which leaves the frame loop and the battle stack as the GBA's
+rewritten IRQ return does.
+
 ## The sanitized run (SANITIZE=1)
 
 `make -f Makefile.native -j32 check SANITIZE=1 [DINFO=1]` (DINFO=1 gives
