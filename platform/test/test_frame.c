@@ -154,7 +154,7 @@ static bool start(uint32_t frame_limit, const char *screenshot_path, const char 
         || dma_init(interrupt_raise) != DMA_OK || ppu_init() != PPU_OK || psg_init(FRAME_AUDIO_SAMPLE_RATE_HZ) != PSG_OK
         || audio_init(FRAME_AUDIO_SAMPLE_RATE_HZ, true) != 0 || video_init(&video) != 0
         || input_init(INPUT_SOURCE_SCRIPT) != 0 || save_file_init(save_path) != SAVE_FILE_OK
-        || frame_pacer_init(true) != 0 || frame_init(&config) != 0)
+        || frame_pacer_init(FRAME_PACER_UNTHROTTLED) != 0 || frame_init(&config) != 0)
         return false;
     flash_init();
     *io(GBA_IME_OFFSET) = GBA_IME_ENABLE;

@@ -64,7 +64,7 @@ PTEST(period_is_not_sixty_hertz)
 
 PTEST(unthrottled_wait_returns_at_once)
 {
-    PT_ASSERT_EQ_INT(frame_pacer_init(true), 0);
+    PT_ASSERT_EQ_INT(frame_pacer_init(FRAME_PACER_UNTHROTTLED), 0);
     uint64_t start = SDL_GetPerformanceCounter();
     for (unsigned i = 0; i < 100; i++)
         frame_pacer_wait();
@@ -79,7 +79,7 @@ PTEST(throttled_wait_takes_about_one_frame_period)
     /* Deadlines sit on the grid from init, so 7 waits cannot finish before 7
      * periods (117.2 ms) after init, however late any wait woke up. */
     uint64_t start = SDL_GetPerformanceCounter();
-    PT_ASSERT_EQ_INT(frame_pacer_init(false), 0);
+    PT_ASSERT_EQ_INT(frame_pacer_init(FRAME_PACER_REALTIME), 0);
     for (unsigned i = 0; i < 7; i++)
         frame_pacer_wait();
     uint64_t elapsed = SDL_GetPerformanceCounter() - start;
@@ -95,7 +95,7 @@ PTEST(shutdown_twice_and_wait_without_init_are_safe)
 {
     frame_pacer_wait(); /* returns at once when not initialised */
     frame_pacer_shutdown();
-    PT_ASSERT_EQ_INT(frame_pacer_init(true), 0);
+    PT_ASSERT_EQ_INT(frame_pacer_init(FRAME_PACER_UNTHROTTLED), 0);
     frame_pacer_shutdown();
     frame_pacer_shutdown();
 }

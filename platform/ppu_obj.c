@@ -241,22 +241,25 @@ static bool image_dot(const struct obj *obj, int32_t col, int32_t row, int32_t *
     return *tx < obj->width && *ty < obj->height;
 }
 
+/* How the game numbers OBJ tiles in VRAM: DISPCNT bit 6 (GBATEK "LCD OBJ - VRAM Character (Tile) Mapping"). */
+enum obj_mapping { OBJ_MAPPING_2D, OBJ_MAPPING_1D };
+
 /* The colour index (0 = transparent) of image dot (tx, ty). */
-static uint32_t colour_index(const struct obj *obj, bool one_dimensional, uint32_t tx, uint32_t ty)
+static uint32_t colour_index(const struct obj *obj, enum obj_mapping mapping, uint32_t tx, uint32_t ty)
 {
     const uint32_t tile = obj->attr2 & ATTR2_TILE_MASK;
     const uint32_t tile_col = tx / PPU_TILE_SIZE, tile_row = ty / PPU_TILE_SIZE;
     const uint32_t dot_x = tx % PPU_TILE_SIZE, dot_y = ty % PPU_TILE_SIZE;
     const uint32_t tiles_across = (uint32_t)obj->width / PPU_TILE_SIZE;
     if (obj->attr0 & ATTR0_8BPP) {
-        const uint32_t first = one_dimensional
+        const uint32_t first = mapping == OBJ_MAPPING_1D
                                    ? tile * TILE_NUMBER_BYTES
                                          + (tile_row * tiles_across + tile_col) * PPU_TILE_BYTES_8BPP
                                    : (tile & TILE_8BPP_EVEN_MASK) * TILE_NUMBER_BYTES
                                          + tile_row * MATRIX_ROW_BYTES + tile_col * PPU_TILE_BYTES_8BPP;
         return ppu_obj_vram_byte(first + dot_y * PPU_TILE_ROW_BYTES_8BPP + dot_x);
     }
-    const uint32_t row_stride = one_dimensional ? tiles_across * TILE_NUMBER_BYTES : MATRIX_ROW_BYTES;
+    const uint32_t row_stride = mapping == OBJ_MAPPING_1D ? tiles_across * TILE_NUMBER_BYTES : MATRIX_ROW_BYTES;
     const uint32_t first = tile * TILE_NUMBER_BYTES + tile_row * row_stride + tile_col * PPU_TILE_BYTES_4BPP;
     const uint8_t pair =
         ppu_obj_vram_byte(first + dot_y * PPU_TILE_ROW_BYTES_4BPP + dot_x / PPU_DOTS_PER_BYTE_4BPP);
@@ -297,7 +300,7 @@ static void draw_obj(const struct ppu_regs *regs, const struct line_obj *entry, 
                      struct ppu_obj_line *out)
 {
     const struct obj *obj = &entry->obj;
-    const bool one_dimensional = (regs->dispcnt & PPU_DISPCNT_OBJ_1D) != 0;
+    const enum obj_mapping mapping = (regs->dispcnt & PPU_DISPCNT_OBJ_1D) ? OBJ_MAPPING_1D : OBJ_MAPPING_2D;
     const int32_t mosaic_w = mosaic_size(obj, regs->mosaic, PPU_MOSAIC_OBJ_H_SHIFT);
     const int32_t mosaic_h = mosaic_size(obj, regs->mosaic, PPU_MOSAIC_OBJ_V_SHIFT);
     int32_t sample_line = line - line % mosaic_h;
@@ -316,7 +319,7 @@ static void draw_obj(const struct ppu_regs *regs, const struct line_obj *entry, 
         int32_t tx, ty;
         if (!image_dot(obj, sample_x - obj->x, row, &tx, &ty))
             continue;
-        const uint32_t index = colour_index(obj, one_dimensional, (uint32_t)tx, (uint32_t)ty);
+        const uint32_t index = colour_index(obj, mapping, (uint32_t)tx, (uint32_t)ty);
         if (index != 0)
             put_dot(obj, index, x, out);
     }

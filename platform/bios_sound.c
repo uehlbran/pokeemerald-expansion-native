@@ -56,15 +56,10 @@ static const uint32_t halftone_factor[HALFTONES_PER_OCTAVE] = {
     3037000500u, 3217589947u, 3408917802u, 3611622603u, 3826380858u, 4053909305u,
 };
 
-static volatile uint16_t *soundbias(void)
-{
-    return (volatile uint16_t *)(uintptr_t)(GBA_IO_BASE + IO_SOUNDBIAS);
-}
-
 void SoundBiasChange(uint32_t level)
 {
-    uint16_t kept = (uint16_t)(*soundbias() & ~SOUNDBIAS_LEVEL_MASK);
-    *soundbias() = (uint16_t)(kept | (level != 0 ? SOUNDBIAS_LEVEL_SET : SOUNDBIAS_LEVEL_ZERO));
+    uint16_t kept = (uint16_t)(*gba_io_u16(IO_SOUNDBIAS) & ~SOUNDBIAS_LEVEL_MASK);
+    *gba_io_u16(IO_SOUNDBIAS) = (uint16_t)(kept | (level != 0 ? SOUNDBIAS_LEVEL_SET : SOUNDBIAS_LEVEL_ZERO));
 }
 
 void SoundBiasReset(void)

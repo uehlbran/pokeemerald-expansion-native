@@ -143,7 +143,7 @@ static int start_rtc(const struct options *o)
         return rtc_init_utc(read_fixed_clock, o->rtc_offset_path);
     return rtc_init(NULL, o->rtc_offset_path);
 }
-static int start_frame_pacer(const struct options *o) { return frame_pacer_init(o->unthrottled); }
+static int start_frame_pacer(const struct options *o) { return frame_pacer_init(o->unthrottled ? FRAME_PACER_UNTHROTTLED : FRAME_PACER_REALTIME); }
 
 static void run_frame(void);
 

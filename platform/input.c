@@ -92,7 +92,7 @@ uint16_t input_pad_to_keys(const struct input_pad_state *pad)
 
 static void write_keyinput(uint16_t keys_active_high)
 {
-    volatile uint16_t *reg = (volatile uint16_t *)(uintptr_t)(GBA_IO_BASE + KEYINPUT_OFFSET);
+    volatile uint16_t *reg = gba_io_u16(KEYINPUT_OFFSET);
     *reg = input_keys_to_keyinput(keys_active_high);
 }
 
