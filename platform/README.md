@@ -323,7 +323,8 @@ make -f Makefile.native -j$(nproc) native               # build/native32/pokeeme
 make -f Makefile.native -j$(nproc) native TEST=1        # build/native32-test/pokeemerald-native-test
 make -f Makefile.native -j$(nproc) native SANITIZE=1    # build/native32-san/, ASan and UBSan throughout
 ./build/native32/pokeemerald-native [--headless] [--silent] [--save PATH] [--rtc-offset PATH]
-        [--scale N] [--unthrottled] [--frames N] [--screenshot PATH] [--help]
+        [--scale N] [--unthrottled] [--frames N] [--screenshot PATH]
+        [--replay SCRIPT [--out DIR]] [--rtc-fixed EPOCH] [--help]
 ```
 
 The defaults are `pokeemerald.sav` and `pokeemerald.rtc` in the current
@@ -371,3 +372,41 @@ output capacitor removes.
 `build_glue/LINK-NEEDS.md` maps every symbol and section the link needed to
 its provider; `build_glue/BOOT-LOG.md` records what failed on the way to
 the first boot, and the sanitizer findings in expansion's code.
+
+## The input replay (`replay`, `inspect`, `restart`, ...)
+
+The gate that plays the game, `tests/smoke/` (its README has the script's
+key sequence and how to run and update it). `--replay SCRIPT --out DIR`
+makes the keypad read the script, not the keyboard (window or `--headless`),
+and `--rtc-fixed EPOCH` makes the clock deterministic.
+
+| Module | What it is |
+|---|---|
+| `replay.h`, `replay_parse.c`, `replay.c` | the script's grammar (`replay.h` documents every command) and the state machine that plays it, stepped once per frame against a `struct replay_host`, so `test/test_replay.c` plays scripts against a fake |
+| `replay_session.c` | glue: reads the script file, connects the driver to `inspect`, `input_script_set`, `video_write_frame_ppm` and the frame loop's step hook |
+| `inspect.h`, `inspect.c`, `inspect_decode.c`, `symbols.c` | the facts (`callback2`, `map_name`, `party0_species`, ... `inspect.h` lists them) read from expansion's variables; `inspect.c` is a documented exception to the rule that platform files do not include expansion's headers (like `m4a_output.c`), compiled with the game's defines (see `platform/Makefile`); `symbols.c` names the game's function pointers from the executable's own ELF symbol table, since most callbacks are `static`; `inspect_decode.c` has the charmap decoding and callback naming that need no game variables, and is unit tested |
+| `restart.c` | `restart`: build the arguments for, and `execv`, a new process |
+| `fixed_clock.c` | `--rtc-fixed`: base epoch plus the frame count divided by 60 |
+| `frame.c`'s `frame_set_step_hook` | a function called once per frame before KEYINPUT is written; the replay driver is the one user |
+| `script_tag.h` | see below |
+
+`replay_step` is called at the end of each frame, so a key state it sets is
+what the game reads in the next frame; `press` is therefore down for one frame
+and up for one, and two presses in a row are two presses. `wait-until` and
+`expect` see the state the game left at the end of the frame.
+
+A `restart` is a process re-exec because it is what a player's switch-off and
+switch-on does: the in-game soft reset only reinitialises RAM and cannot show
+that the game starts from its save file. `main` shuts every module down (the
+save is flushed), `restart_exec` runs `/proc/self/exe` with the same arguments
+plus `--resume-at LINE`, and `--rtc-fixed` advanced by the time that passed.
+
+### Event script function tags
+
+Expansion lists a script command, native or special that can be run for effect
+analysis as its function's address plus `ROM_SIZE` (0x02000000), and on the GBA
+that is also a valid address, the ROM's wait-state mirror. `script_tag.h`
+explains how the native build keeps the tag (bit 25, clear in the code's link
+addresses) and where it is removed (`SCRIPT_UNTAG`, in the guarded changes to
+`src/script.c`, `src/scrcmd.c` and `include/script.h`). 64-bit needs more: the
+tables are assembled with `.4byte`, which cannot hold a 64-bit pointer.

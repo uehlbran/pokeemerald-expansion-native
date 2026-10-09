@@ -20,7 +20,7 @@ PTEST(decodes_letters_digits_and_space)
     size_t n;
     decode(text, sizeof text, out, sizeof out, &n);
     PT_ASSERT_EQ_STR(out, "Ab 9z");
-    PT_ASSERT_EQ_INT(n, 5);
+    PT_ASSERT(n == 5);
 }
 
 PTEST(decodes_the_edges_of_every_range)
@@ -63,7 +63,7 @@ PTEST(stops_at_eos_and_at_the_maximum_length)
     PT_ASSERT_EQ_STR(out, "ABC");
     decode(no_eos, 0, out, sizeof out, &n);
     PT_ASSERT_EQ_STR(out, "");
-    PT_ASSERT_EQ_INT(n, 0);
+    PT_ASSERT(n == 0);
 }
 
 PTEST(never_writes_past_the_output_and_always_terminates)
@@ -73,14 +73,14 @@ PTEST(never_writes_past_the_output_and_always_terminates)
     memset(out, 'x', sizeof out);
     size_t n = inspect_decode_text(text, sizeof text, out, 3);
     PT_ASSERT_EQ_STR(out, "AB");
-    PT_ASSERT_EQ_INT(n, 2);
+    PT_ASSERT(n == 2);
     PT_ASSERT_EQ_INT(out[3], 'x');
     n = inspect_decode_text(text, sizeof text, out, 1);
     PT_ASSERT_EQ_STR(out, "");
-    PT_ASSERT_EQ_INT(n, 0);
+    PT_ASSERT(n == 0);
     out[0] = 'q';
     n = inspect_decode_text(text, sizeof text, out, 0);
-    PT_ASSERT_EQ_INT(n, 0);
+    PT_ASSERT(n == 0);
     PT_ASSERT_EQ_INT(out[0], 'q');
 }
 

@@ -138,7 +138,7 @@ PTEST(comments_blank_lines_and_line_numbers)
 {
     struct replay_parse_error error;
     PT_ASSERT_EQ_INT(parse("# header\n\n  \nwait 1 # trailing\r\n\tpress A\nrestart", &error), 0);
-    PT_ASSERT_EQ_INT(script.count, 3);
+    PT_ASSERT(script.count == 3);
     PT_ASSERT_EQ_INT(script.commands[0].line, 4);
     PT_ASSERT_EQ_INT(script.commands[1].line, 5);
     PT_ASSERT_EQ_INT(script.commands[2].line, 6);
@@ -148,9 +148,9 @@ PTEST(an_empty_script_has_no_commands)
 {
     struct replay_parse_error error;
     PT_ASSERT_EQ_INT(parse("", &error), 0);
-    PT_ASSERT_EQ_INT(script.count, 0);
+    PT_ASSERT(script.count == 0);
     PT_ASSERT_EQ_INT(parse("# nothing\n\n", &error), 0);
-    PT_ASSERT_EQ_INT(script.count, 0);
+    PT_ASSERT(script.count == 0);
 }
 
 PTEST(rejects_unknown_command)
@@ -395,7 +395,7 @@ PTEST(press_is_down_for_one_frame_and_up_for_one)
     PT_ASSERT_EQ_U32(fake.keys_at[1], 0);
     PT_ASSERT_EQ_U32(fake.keys_at[2], INPUT_KEY_A);
     PT_ASSERT_EQ_U32(fake.keys_at[3], 0);
-    PT_ASSERT_EQ_INT(fake.steps, 5);
+    PT_ASSERT(fake.steps == 5);
     PT_ASSERT_EQ_INT(replay_restart_line(&replay), 3);
 }
 
@@ -406,7 +406,7 @@ PTEST(wait_and_frame_count_steps)
     PT_ASSERT_EQ_INT(start(&replay, &fake, "wait 3\nframe 10\nwait 0\nrestart", 0), 0);
     PT_ASSERT_EQ_INT(run(&replay, &fake, 100), REPLAY_RESTART);
     /* wait 3 runs at step 1 and ends at step 4; frame 10 ends at step 10, where the rest runs */
-    PT_ASSERT_EQ_INT(fake.steps, 10);
+    PT_ASSERT(fake.steps == 10);
     PT_ASSERT_EQ_INT(replay_ticks(&replay), 10);
 }
 
@@ -425,7 +425,7 @@ PTEST(frame_equal_to_now_does_not_wait)
     struct fake fake;
     PT_ASSERT_EQ_INT(start(&replay, &fake, "frame 1\nrestart", 0), 0);
     PT_ASSERT_EQ_INT(run(&replay, &fake, 100), REPLAY_RESTART);
-    PT_ASSERT_EQ_INT(fake.steps, 1);
+    PT_ASSERT(fake.steps == 1);
 }
 
 PTEST(hold_and_release_persist_across_waits)
@@ -471,7 +471,7 @@ PTEST(wait_until_continues_in_the_frame_the_fact_changes)
     PT_ASSERT_EQ_INT(run(&replay, &fake, 4), REPLAY_RUNNING);
     strcpy(fake.values[0], "go");
     PT_ASSERT_EQ_INT(run(&replay, &fake, 100), REPLAY_RESTART);
-    PT_ASSERT_EQ_INT(fake.steps, 5);
+    PT_ASSERT(fake.steps == 5);
 }
 
 PTEST(wait_until_that_already_holds_does_not_wait)
@@ -480,7 +480,7 @@ PTEST(wait_until_that_already_holds_does_not_wait)
     struct fake fake;
     PT_ASSERT_EQ_INT(start(&replay, &fake, "wait-until alpha=one max 5\nrestart", 0), 0);
     PT_ASSERT_EQ_INT(run(&replay, &fake, 100), REPLAY_RESTART);
-    PT_ASSERT_EQ_INT(fake.steps, 1);
+    PT_ASSERT(fake.steps == 1);
 }
 
 PTEST(wait_until_times_out_after_exactly_max_frames)
@@ -490,7 +490,7 @@ PTEST(wait_until_times_out_after_exactly_max_frames)
     PT_ASSERT_EQ_INT(start(&replay, &fake, "wait 2\nwait-until alpha=never max 7\nrestart", 0), 0);
     PT_ASSERT_EQ_INT(run(&replay, &fake, 100), REPLAY_FAILED);
     /* the wait-until starts at step 3; it may still succeed at step 3 + 7 and fails there */
-    PT_ASSERT_EQ_INT(fake.steps, 10);
+    PT_ASSERT(fake.steps == 10);
     PT_ASSERT(strstr(replay_message(&replay), "line 2: wait-until alpha=never timed out after 7 frames") != NULL);
     PT_ASSERT(strstr(replay_message(&replay), "alpha=one") != NULL);
 }
@@ -503,7 +503,7 @@ PTEST(wait_until_succeeds_in_the_last_allowed_frame)
     PT_ASSERT_EQ_INT(run(&replay, &fake, 3), REPLAY_RUNNING);
     strcpy(fake.values[0], "go");
     PT_ASSERT_EQ_INT(run(&replay, &fake, 100), REPLAY_RESTART);
-    PT_ASSERT_EQ_INT(fake.steps, 4);
+    PT_ASSERT(fake.steps == 4);
 }
 
 PTEST(wait_until_max_zero_requires_the_fact_now)
@@ -512,7 +512,7 @@ PTEST(wait_until_max_zero_requires_the_fact_now)
     struct fake fake;
     PT_ASSERT_EQ_INT(start(&replay, &fake, "wait-until alpha=go max 0", 0), 0);
     PT_ASSERT_EQ_INT(run(&replay, &fake, 100), REPLAY_FAILED);
-    PT_ASSERT_EQ_INT(fake.steps, 1);
+    PT_ASSERT(fake.steps == 1);
 }
 
 PTEST(mash_presses_in_cycles_until_the_fact_holds_then_releases)
@@ -527,7 +527,7 @@ PTEST(mash_presses_in_cycles_until_the_fact_holds_then_releases)
     }
     strcpy(fake.values[0], "go");
     PT_ASSERT_EQ_INT(run(&replay, &fake, 100), REPLAY_RESTART);
-    PT_ASSERT_EQ_INT(fake.steps, 14); /* the keys stay up one frame after the mash */
+    PT_ASSERT(fake.steps == 14); /* the keys stay up one frame after the mash */
     PT_ASSERT_EQ_U32(fake.keys, 0);
 }
 
@@ -537,7 +537,7 @@ PTEST(mash_that_already_holds_presses_nothing)
     struct fake fake;
     PT_ASSERT_EQ_INT(start(&replay, &fake, "mash A until alpha=one max 100\nrestart", 0), 0);
     PT_ASSERT_EQ_INT(run(&replay, &fake, 100), REPLAY_RESTART);
-    PT_ASSERT_EQ_INT(fake.steps, 1);
+    PT_ASSERT(fake.steps == 1);
     PT_ASSERT_EQ_U32(fake.keys_at[0], 0);
 }
 
@@ -549,7 +549,7 @@ PTEST(mash_times_out_and_keeps_held_keys_while_running)
     PT_ASSERT_EQ_INT(run(&replay, &fake, 100), REPLAY_FAILED);
     PT_ASSERT_EQ_U32(fake.keys_at[0], INPUT_KEY_UP | INPUT_KEY_A);
     PT_ASSERT_EQ_U32(fake.keys_at[REPLAY_MASH_DOWN_FRAMES], INPUT_KEY_UP);
-    PT_ASSERT_EQ_INT(fake.steps, 10);
+    PT_ASSERT(fake.steps == 10);
     PT_ASSERT(strstr(replay_message(&replay), "line 2: mash until alpha=never timed out after 9 frames") != NULL);
     PT_ASSERT_EQ_U32(fake.keys, 0);
 }
@@ -628,10 +628,10 @@ PTEST(resume_skips_commands_up_to_the_restart_line)
     struct fake fake;
     PT_ASSERT_EQ_INT(start(&replay, &fake, "expect alpha=bad\n# c\nrestart\nexpect alpha=one\nwait 2\nexpect beta=two", 3), 0);
     PT_ASSERT_EQ_INT(run(&replay, &fake, 100), REPLAY_DONE);
-    PT_ASSERT_EQ_INT(fake.steps, 3);
+    PT_ASSERT(fake.steps == 3);
     PT_ASSERT_EQ_INT(start(&replay, &fake, "restart\nrestart\nwait 1", 99), 0);
     PT_ASSERT_EQ_INT(run(&replay, &fake, 100), REPLAY_DONE);
-    PT_ASSERT_EQ_INT(fake.steps, 1);
+    PT_ASSERT(fake.steps == 1);
 }
 
 PTEST(restart_stops_the_keys_and_the_run)

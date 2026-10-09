@@ -1057,7 +1057,14 @@ static void BuildDoorTiles(u16 *tiles, u16 tileNum, const u8 *paletteNums)
     // The remaining layers are left as tile 0 (with the same palette)
     for (; i < 8; i++)
     {
+#if PLATFORM_NATIVE
+        // The palette tables hold 8 entries but the offsets 4, 8 and 12 read 8 from there, past the end of the table
+        // (the GBA read what followed it in ROM). These tiles are tile 0 "with the same palette" as the visible ones.
+        tile = paletteNums[i - 8] << 12;
+#else
         tile = *(paletteNums++) << 12;
+#endif
+#line 1061
         tiles[i] = tile;
     }
 }

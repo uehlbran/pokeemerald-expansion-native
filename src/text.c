@@ -784,7 +784,12 @@ inline static void GLYPH_COPY(u8 *windowTiles, u32 widthOffset, u32 x0, u32 y0, 
     if (width <= 0)
         return;
 
+#if PLATFORM_NATIVE
+    u32 widthMask = width >= 8 ? 0xFFFFFFFF : (1 << (width * 4)) - 1; // 1 << 32 is 0 on the GBA
+#else
     u32 widthMask = (1 << (width * 4)) - 1;
+#endif
+#line 788
 
     u32 shift0 = (x0 % 8) * 4, shift8 = 32 - shift0;
 
@@ -801,8 +806,19 @@ inline static void GLYPH_COPY(u8 *windowTiles, u32 widthOffset, u32 x0, u32 y0, 
         mask = mask & 0x11111111;
         mask = mask * 0xF;
 
+#if PLATFORM_NATIVE
+        // A shift by 32 is 0 on the GBA (ARM); x86 masks the count to 5 bits and would copy the glyph into the next tile.
+        u32 pixels0 = pixels << shift0, pixels8 = shift8 < 32 ? pixels >> shift8 : 0;
+#else
         u32 pixels0 = pixels << shift0, pixels8 = pixels >> shift8;
+#endif
+#line 805
+#if PLATFORM_NATIVE
+        u32 mask0 = mask << shift0, mask8 = shift8 < 32 ? mask >> shift8 : 0;
+#else
         u32 mask0 = mask << shift0, mask8 = mask >> shift8;
+#endif
+#line 806
 
         u32 *alignedWindowTiles = (u32 *)((u8 *)alignedWindowTilesX + ((y / 8) * widthOffset) + ((y % 8) * 4));
 

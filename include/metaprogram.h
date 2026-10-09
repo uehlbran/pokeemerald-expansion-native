@@ -215,6 +215,13 @@ Input must be of the form (upper << lower) where upper can be up to 7, lower up 
  *
  * Because 'cond' must be known at compile-time, this is rarely useful
  * outside macros. */
+#if PLATFORM_NATIVE
+// The same test without the null load in the other arm: UBSan checks that load when the compiler has not
+// folded it away (sanitized builds), and reports it for every run-time cond.
+#define if_comptime(cond) if (__builtin_constant_p(cond) && (cond))
+#else
 #define if_comptime(cond) if (__builtin_constant_p((cond) ? 0 : *(int *)0))
+#endif
+#line 219
 
 #endif
