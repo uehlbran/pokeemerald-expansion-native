@@ -37,7 +37,16 @@
 
 #define SOUND_INFO_PTR (*(struct SoundInfo **)0x3007FF0)
 #define INTR_CHECK     (*(u16 *)0x3007FF8)
+#if PLATFORM_NATIVE
+#include <stdint.h>
+#if UINTPTR_MAX > UINT32_MAX
+#define INTR_VECTOR    (*(u32 *)0x3007FFC)
+#else
 #define INTR_VECTOR    (*(void **)0x3007FFC)
+#endif
+#else
+#define INTR_VECTOR    (*(void **)0x3007FFC)
+#endif
 
 #define ROM_START 0x8000000
 #define ROM_END 0xA000000
