@@ -12,7 +12,7 @@ data_address_words.txt, whose header explains the classes.
 
 Each address word in an object is a relocation: R_X86_64_64 for an 8-byte
 word, R_X86_64_32 for a 4-byte one (the System V x86-64 psABI,
-"Relocation Types"). Each relocation belongs to the symbol at or before its
+"Relocation Types"; elf_object.py reads the objects). Each relocation belongs to the symbol at or before its
 offset in its section (the label of the table or script that holds it),
 and the list classifies that symbol. The check fails unless:
 
@@ -49,15 +49,19 @@ problem (at most MAX_REPORTS per object) and exit 1.
 
 import bisect
 import collections
-import fnmatch
 import os
-import re
 import subprocess
 import sys
+import tempfile
 
-ADDRESS_8 = "R_X86_64_64"
-ADDRESS_4 = "R_X86_64_32"
-ADDRESS_TYPES = (ADDRESS_8, ADDRESS_4, "R_X86_64_32S")
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))   # python3 -I leaves the script's directory off
+from check_support import CheckError, capped, matching_rule, parse_options, problems_match  # noqa: E402
+from elf_object import (ElfObject, R_X86_64_16, R_X86_64_32, R_X86_64_32S, R_X86_64_64, Section, Symbol,  # noqa: E402
+                        read_elf64, relocation_name)
+
+ADDRESS_8 = R_X86_64_64
+ADDRESS_4 = R_X86_64_32
+ADDRESS_TYPES = (ADDRESS_8, ADDRESS_4, R_X86_64_32S)
 
 POINTER_SIZE = 8
 TONE_DATA_SIZE = 24            # sizeof(struct ToneData) at 64 bits
@@ -65,99 +69,22 @@ TONE_WAV_OFFSET = 8            # offsetof(struct ToneData, wav)
 TONE_KEY_SPLIT_OFFSET = 16     # offsetof(struct ToneData, attack)
 
 CLASSES = ("pointer", "table", "packed", "operands", "tone", "bytecode", "label")
+LABEL = "label"
+TABLE = "table"
 MAX_REPORTS = 20
-READELF_BATCH = 64
 
-Symbol = collections.namedtuple("Symbol", "name section value")
 Relocation = collections.namedtuple("Relocation", "section offset type")
-
-
-class ObjectFile:
-    """What the check needs from one relocatable object."""
-
-    def __init__(self):
-        self.alignments = {}   # section name -> sh_addralign
-        self.sizes = {}        # section name -> sh_size
-        self.symbols = []      # Symbol, in symbol-table order, defined in a section
-        self.relocations = []  # Relocation
-
-
-SECTION_LINE = re.compile(
-    r"^\s*\[\s*(\d+)\]\s+(\S+)\s+\S+\s+[0-9a-f]+\s+[0-9a-f]+\s+([0-9a-f]+)\s+[0-9a-f]+"
-    r"\s+[A-Za-z]*\s*\d+\s+\d+\s+(\d+)\s*$")
-SYMBOL_LINE = re.compile(
-    r"^\s*\d+:\s+([0-9a-f]+)\s+\S+\s+(\w+)\s+\w+\s+\w+\s+(\w+)\s+(\S+)\s*$")
-RELOCATION_SECTION = re.compile(r"^Relocation section '\.rela?(\S+)' at offset")
-RELOCATION_LINE = re.compile(r"^([0-9a-f]+)\s+[0-9a-f]+\s+(R_\w+)")
-FILE_LINE = re.compile(r"^File: (.+)$")
-
-
-def parse_readelf(text, first_name):
-    """Parse `readelf -SsrW` output for one or more files into ObjectFiles.
-
-    readelf names each file in a "File:" line only when given several."""
-    objects = {}
-    current = objects.setdefault(first_name, ObjectFile())
-    section_names = {}
-    pending_symbols = []
-    relocation_section = None
-
-    def finish():
-        for name, index, value in pending_symbols:
-            if index in section_names:
-                current.symbols.append(Symbol(name, section_names[index], value))
-        pending_symbols.clear()
-
-    for line in text.splitlines():
-        match = FILE_LINE.match(line)
-        if match:
-            finish()
-            current = objects.setdefault(match.group(1), ObjectFile())
-            section_names = {}
-            relocation_section = None
-            continue
-        match = SECTION_LINE.match(line)
-        if match:
-            section_names[match.group(1)] = match.group(2)
-            current.sizes[match.group(2)] = int(match.group(3), 16)
-            current.alignments[match.group(2)] = int(match.group(4))
-            continue
-        match = RELOCATION_SECTION.match(line)
-        if match:
-            relocation_section = match.group(1)
-            continue
-        match = RELOCATION_LINE.match(line)
-        if match and relocation_section is not None:
-            current.relocations.append(Relocation(relocation_section, int(match.group(1), 16), match.group(2)))
-            continue
-        match = SYMBOL_LINE.match(line)
-        if match:
-            relocation_section = None
-            kind, index, name = match.group(2), match.group(3), match.group(4)
-            if kind not in ("SECTION", "FILE"):
-                pending_symbols.append((name, index, int(match.group(1), 16)))
-    finish()
-    return objects
+# object glob, symbol glob, class, the line of the list it came from
+Rule = collections.namedtuple("Rule", "object symbol kind line")
 
 
 def read_objects(directory, names):
-    """ObjectFile for each name (a path relative to directory)."""
-    objects = {}
-    for start in range(0, len(names), READELF_BATCH):
-        batch = names[start:start + READELF_BATCH]
-        paths = [os.path.join(directory, name) for name in batch]
-        text = subprocess.run(["readelf", "-SsrW"] + paths, check=True,
-                              stdout=subprocess.PIPE, universal_newlines=True).stdout
-        parsed = parse_readelf(text, paths[0])
-        for name, path in zip(batch, paths):
-            if path not in parsed:
-                raise RuntimeError("readelf printed nothing for %s" % path)
-            objects[name] = parsed[path]
-    return objects
+    """ElfObject for each name (a path relative to directory)."""
+    return {name: read_elf64(os.path.join(directory, name)) for name in names}
 
 
 def read_rules(path):
-    """The list: (object glob, symbol glob, class, line number), in order."""
+    """The list: the Rules, in order."""
     rules = []
     with open(path) as handle:
         for number, line in enumerate(handle, 1):
@@ -165,43 +92,49 @@ def read_rules(path):
             if not fields:
                 continue
             if len(fields) != 3 or fields[2] not in CLASSES:
-                raise ValueError("%s:%d: expected 'object symbol class' with class one of %s"
-                                 % (path, number, ", ".join(CLASSES)))
-            rules.append((fields[0], fields[1], fields[2], number))
+                raise CheckError("%s:%d: expected 'object symbol class' with class one of %s, got %r"
+                                 % (path, number, ", ".join(CLASSES), line.strip()))
+            rules.append(Rule(fields[0], fields[1], fields[2], number))
     return rules
 
 
-def classify(rules, object_name, symbol_name, used):
-    """The class of the first rule matching the symbol ('{stem}' is the
-    object's file name without '.o'), or None; marks the rule used."""
-    stem = os.path.splitext(os.path.basename(object_name))[0]
-    for index, (object_glob, symbol_glob, kind, _) in enumerate(rules):
-        if (fnmatch.fnmatchcase(object_name, object_glob)
-                and fnmatch.fnmatchcase(symbol_name, symbol_glob.replace("{stem}", stem))):
+def classify_symbols(rules, object_name, obj, used):
+    """The class of each of obj's symbols (a list parallel to obj.symbols)
+    by the first rule matching it, or None; marks the rules used."""
+    kinds = []
+    for symbol in obj.symbols:
+        index = matching_rule(rules, object_name, symbol.name)
+        if index is None:
+            kinds.append(None)
+        else:
             used.add(index)
-            return kind
-    return None
+            kinds.append(rules[index].kind)
+    return kinds
 
 
-def owners(rules, object_name, obj, used):
+def address_relocations(obj):
+    """The Relocations of obj that are address words."""
+    return [Relocation(section, offset, kind)
+            for section, table in obj.relocations.items()
+            for offset, kind in table.items() if kind in ADDRESS_TYPES]
+
+
+def owners(obj, kinds):
     """For each address relocation: (relocation, owning Symbol or None, class).
 
     The owner is the last symbol at or before the relocation's offset; of
     several at one address, the last in the symbol table. A "label" symbol
     is never an owner."""
     by_section = collections.defaultdict(list)
-    for order, symbol in enumerate(obj.symbols):
-        kind = classify(rules, object_name, symbol.name, used)
-        if kind != "label":
+    for order, (symbol, kind) in enumerate(zip(obj.symbols, kinds)):
+        if kind != LABEL:
             by_section[symbol.section].append((symbol.value, order, symbol, kind))
     values = {}
     for section, entries in by_section.items():
         entries.sort(key=lambda entry: entry[:2])
         values[section] = [entry[0] for entry in entries]
     result = []
-    for relocation in obj.relocations:
-        if relocation.type not in ADDRESS_TYPES:
-            continue
+    for relocation in address_relocations(obj):
         index = bisect.bisect_right(values.get(relocation.section, []), relocation.offset) - 1
         if index < 0:
             result.append((relocation, None, None))
@@ -213,12 +146,13 @@ def owners(rules, object_name, obj, used):
 
 def placement_problem(obj, relocation, owner, kind):
     """Why this relocation's type or place does not fit the class, or None."""
-    aligned = relocation.offset % POINTER_SIZE == 0 and obj.alignments.get(relocation.section, 0) >= POINTER_SIZE
+    aligned = (relocation.offset % POINTER_SIZE == 0
+               and obj.sections[relocation.section].alignment >= POINTER_SIZE)
     if kind == "bytecode":
         return None if relocation.type == ADDRESS_4 else "a bytecode address word must stay 4 bytes"
     if kind in ("packed", "operands"):
         return None if relocation.type == ADDRESS_8 else "a pointer must be 8 bytes"
-    if kind in ("pointer", "table"):
+    if kind in ("pointer", TABLE):
         if relocation.type != ADDRESS_8:
             return "a pointer must be 8 bytes"
         return None if aligned else "a pointer must be 8-byte aligned"
@@ -230,122 +164,89 @@ def placement_problem(obj, relocation, owner, kind):
     return "a ToneData address word must be the 8-byte wav at offset 8 or the 4-byte key split at 16"
 
 
-def check_object(rules, name, obj, reference, used):
-    """Problems in one object, compared with its 4-byte-pointer reference."""
+def placement_problems(name, obj, kinds):
+    """Problems with the type and place of each address word of obj."""
     problems = []
-    counts = collections.Counter()
-    for relocation, owner, kind in owners(rules, name, obj, used):
-        where = "%s: %s+0x%x" % (name, relocation.section, relocation.offset)
+    for relocation, owner, kind in owners(obj, kinds):
+        where = "%s: %s+0x%x" % (name, obj.sections[relocation.section].name, relocation.offset)
         if owner is None:
             problems.append("%s: address word before any symbol" % where)
-            continue
-        counts[owner.name] += 1
-        if kind is None:
+        elif kind is None:
             problems.append("%s (%s): symbol not in the list" % (where, owner.name))
-            continue
-        problem = placement_problem(obj, relocation, owner, kind)
-        if problem:
-            problems.append("%s (%s, %s, %s): %s" % (where, owner.name, kind, relocation.type, problem))
-    expected = collections.Counter()
-    for relocation, owner, _ in owners(rules, name, reference, set()):
-        if relocation.type != ADDRESS_4:
-            problems.append("%s: reference %s+0x%x is %s, not a 4-byte word"
-                            % (name, relocation.section, relocation.offset, relocation.type))
-        expected[owner.name if owner else None] += 1
-    for symbol in sorted(set(counts) | set(expected), key=str):
-        if counts[symbol] != expected[symbol]:
-            problems.append("%s: %s holds %d address words, %d with 4-byte pointers"
-                            % (name, symbol, counts[symbol], expected[symbol]))
-    for symbol, extent in table_extents(rules, name, obj):
-        if counts[symbol.name] * POINTER_SIZE != extent:
-            problems.append("%s: table %s holds %d pointers (%d bytes) but %d bytes lie before the next symbol"
-                            % (name, symbol.name, counts[symbol.name], counts[symbol.name] * POINTER_SIZE, extent))
+        else:
+            problem = placement_problem(obj, relocation, owner, kind)
+            if problem:
+                problems.append("%s (%s, %s, %s): %s"
+                                % (where, owner.name, kind, relocation_name(relocation.type), problem))
     return problems
 
 
-def table_extents(rules, name, obj):
-    """(Symbol, bytes from it to the next symbol or its section's end) for
-    each "table" symbol."""
-    starts = collections.defaultdict(set)
-    for symbol in obj.symbols:
-        if classify(rules, name, symbol.name, set()) != "label":
-            starts[symbol.section].add(symbol.value)
-    result = []
-    for symbol in obj.symbols:
-        if classify(rules, name, symbol.name, set()) == "table":
-            later = [value for value in starts[symbol.section] if value > symbol.value]
-            end = min(later) if later else obj.sizes.get(symbol.section, symbol.value)
-            result.append((symbol, end - symbol.value))
-    return result
+def word_counts(obj, kinds):
+    """Symbol name (None: before any symbol) -> its number of address words."""
+    return collections.Counter(owner.name if owner else None for _, owner, _ in owners(obj, kinds))
 
 
-def check(rules, objects, references):
+def reference_problems(name, reference, kinds):
+    """Problems with the object assembled with 4-byte pointers: it must
+    hold only 4-byte address words."""
+    return ["%s: reference %s+0x%x is %s, not a 4-byte word"
+            % (name, reference.sections[relocation.section].name, relocation.offset, relocation_name(relocation.type))
+            for relocation, _, _ in owners(reference, kinds) if relocation.type != ADDRESS_4]
+
+
+def count_problems(name, counts, expected):
+    """Problems with the number of address words each symbol holds, against
+    the number it holds in the reference."""
+    return ["%s: %s holds %d address words, %d with 4-byte pointers" % (name, symbol, counts[symbol], expected[symbol])
+            for symbol in sorted(set(counts) | set(expected), key=str) if counts[symbol] != expected[symbol]]
+
+
+def table_problems(name, obj, kinds, counts):
+    """Problems with each "table" symbol: its words fill it up to the next
+    symbol."""
+    kind_of = dict(zip(obj.symbols, kinds))
+    extents = obj.extents(lambda symbol: kind_of[symbol] != LABEL)
+    return ["%s: table %s holds %d pointers (%d bytes) but %d bytes lie before the next symbol"
+            % (name, symbol.name, counts[symbol.name], counts[symbol.name] * POINTER_SIZE, extent)
+            for symbol, kind, extent in zip(obj.symbols, kinds, extents)
+            if kind == TABLE and counts[symbol.name] * POINTER_SIZE != extent]
+
+
+def check_object(rules, name, obj, reference, used):
+    """Problems in one object, compared with its 4-byte-pointer reference."""
+    kinds = classify_symbols(rules, name, obj, used)
+    reference_kinds = classify_symbols(rules, name, reference, set())
+    counts = word_counts(obj, kinds)
+    counts.pop(None, None)   # a word before any symbol is reported by placement_problems, once
+    return (placement_problems(name, obj, kinds)
+            + reference_problems(name, reference, reference_kinds)
+            + count_problems(name, counts, word_counts(reference, reference_kinds))
+            + table_problems(name, obj, kinds, counts))
+
+
+def check(rules, objects, references, list_path):
     """Every problem in the objects, then every rule that named no symbol."""
     problems = []
     used = set()
     for name in sorted(objects):
-        found = check_object(rules, name, objects[name], references[name], used)
-        problems.extend(found[:MAX_REPORTS])
-        if len(found) > MAX_REPORTS:
-            problems.append("%s: %d more problems" % (name, len(found) - MAX_REPORTS))
-    for index, (object_glob, symbol_glob, kind, number) in enumerate(rules):
+        problems.extend(capped(check_object(rules, name, objects[name], references[name], used), MAX_REPORTS, name))
+    for index, rule in enumerate(rules):
         if index not in used:
-            problems.append("list line %d: '%s %s %s' names no symbol" % (number, object_glob, symbol_glob, kind))
+            problems.append("%s:%d: '%s %s %s' names no symbol" % (list_path, rule.line, rule.object, rule.symbol, rule.kind))
     return problems
 
 
 # --------------------------------------------------------------------------
 # Self-test
 
-SELF_TEST_READELF = """
-File: a.o
-Section Headers:
-  [Nr] Name              Type            Address          Off    Size   ES Flg Lk Inf Al
-  [ 0]                   NULL            0000000000000000 000000 000000 00      0   0  0
-  [ 1] .rodata           PROGBITS        0000000000000000 000040 000030 00   A  0   0  8
-  [ 2] .rela.rodata      RELA            0000000000000000 0000a8 000048 18   I  4   1  8
-  [ 3] script_data       PROGBITS        0000000000000000 000070 000010 00  WA  0   0  1
-
-Relocation section '.rela.rodata' at offset 0xa8 contains 3 entries:
-    Offset             Info             Type               Symbol's Value  Symbol's Name + Addend
-0000000000000000  0000000500000001 R_X86_64_64            0000000000000000 gTarget + 0
-0000000000000008  0000000500000001 R_X86_64_64            0000000000000000 gTarget + 4
-0000000000000010  0000000500000002 R_X86_64_16            0000000000000000 SOME_CONSTANT + 0
-
-Relocation section '.relascript_data' at offset 0xf0 contains 1 entry:
-    Offset             Info             Type               Symbol's Value  Symbol's Name + Addend
-0000000000000003  0000000500000002 R_X86_64_32            0000000000000000 gTarget + 0
-
-Symbol table '.symtab' contains 6 entries:
-   Num:    Value          Size Type    Bind   Vis      Ndx Name
-     0: 0000000000000000     0 NOTYPE  LOCAL  DEFAULT  UND
-     1: 0000000000000000     0 SECTION LOCAL  DEFAULT    1 .rodata
-     2: 0000000000000001     0 NOTYPE  LOCAL  DEFAULT  ABS NATIVE_POINTER_SIZE_8
-     3: 0000000000000000     0 NOTYPE  GLOBAL DEFAULT    1 gTable
-     4: 0000000000000000     0 NOTYPE  LOCAL  DEFAULT    3 Script_Start
-     5: 0000000000000000     0 NOTYPE  GLOBAL DEFAULT  UND gTarget
-
-File: b.o
-Section Headers:
-  [Nr] Name              Type            Address          Off    Size   ES Flg Lk Inf Al
-  [ 1] .rodata           PROGBITS        0000000000000000 000040 000030 00   A  0   0  4
-
-There are no relocations in this file.
-
-Symbol table '.symtab' contains 2 entries:
-   Num:    Value          Size Type    Bind   Vis      Ndx Name
-     0: 0000000000000000     0 NOTYPE  LOCAL  DEFAULT  UND
-     1: 0000000000000004     0 NOTYPE  GLOBAL DEFAULT    1 gOther
-"""
-
-
 def make_object(alignments, symbols, relocations, sizes=None):
-    obj = ObjectFile()
-    obj.alignments = dict(alignments)
-    obj.sizes = dict(sizes or {})
-    obj.symbols = [Symbol(*symbol) for symbol in symbols]
-    obj.relocations = [Relocation(*relocation) for relocation in relocations]
-    return obj
+    """An ElfObject with sections keyed by their names, as the cases name them."""
+    sizes = sizes or {}
+    sections = {name: Section(name, sizes.get(name, 0), alignment, b"") for name, alignment in alignments.items()}
+    table = {}
+    for section, offset, kind in relocations:
+        table.setdefault(section, {})[offset] = kind
+    return ElfObject("self-test", sections, [Symbol(*symbol) for symbol in symbols], table)
 
 
 def self_test_cases():
@@ -354,7 +255,7 @@ def self_test_cases():
     table = [("gTable", ".rodata", 0), ("Script", "script_data", 0)]
     good = make_object({".rodata": 8, "script_data": 1}, table,
                        [(".rodata", 0, ADDRESS_8), (".rodata", 8, ADDRESS_8), ("script_data", 3, ADDRESS_4),
-                        (".rodata", 16, "R_X86_64_16")])
+                        (".rodata", 16, R_X86_64_16)])
     reference = make_object({".rodata": 4, "script_data": 1}, table,
                             [(".rodata", 0, ADDRESS_4), (".rodata", 4, ADDRESS_4), ("script_data", 3, ADDRESS_4)])
     tone_rules = [("s.o", "keysplit_*", "label", 1), ("s.o", "voicegroup_*", "tone", 2)]
@@ -384,7 +285,7 @@ def self_test_cases():
         ("symbol not listed", [("a.o", "gTable", "pointer", 1)], {"a.o": good}, {"a.o": reference},
          ["(Script): symbol not in the list"]),
         ("rule names nothing", pointer_rules + [("a.o", "gRenamed", "pointer", 3)],
-         {"a.o": good}, {"a.o": reference}, ["list line 3: 'a.o gRenamed pointer' names no symbol"]),
+         {"a.o": good}, {"a.o": reference}, ["list:3: 'a.o gRenamed pointer' names no symbol"]),
         ("reference not 4-byte", pointer_rules, {"a.o": good}, {"a.o": good},
          ["reference .rodata+0x0 is R_X86_64_64", "reference .rodata+0x8 is R_X86_64_64"]),
         ("word before any symbol", pointer_rules,
@@ -446,51 +347,105 @@ def self_test_cases():
     ]
 
 
+
+
+def run_case(rules, objects, references):
+    return check([Rule(*rule) for rule in rules], objects, references, "list")
+
+
+END_TO_END_8 = """
+	.section .rodata
+	.balign 8
+gTable:
+	.8byte gTarget
+	.8byte gTarget + 4
+	.section script_data, "a"
+Script:
+	.byte 1
+	.4byte gTarget
+"""
+END_TO_END_4 = """
+	.section .rodata
+	.balign 4
+gTable:
+	.4byte gTarget
+	.4byte gTarget + 4
+	.section script_data, "a"
+Script:
+	.byte 1
+	.4byte gTarget
+"""
+
+
+def self_test_end_to_end(failures, directory):
+    """Objects written by the host assembler, read back by read_objects."""
+    for subdirectory, source in (("obj", END_TO_END_8), ("narrow", END_TO_END_8.replace(".8byte", ".4byte")),
+                                 ("ref", END_TO_END_4)):
+        os.makedirs(os.path.join(directory, subdirectory))
+        subprocess.run(["as", "--64", "-o", os.path.join(directory, subdirectory, "a.o")], input=source,
+                       universal_newlines=True, check=True)
+    rules = [Rule("a.o", "gTable", "pointer", 1), Rule("a.o", "Script", "bytecode", 2)]
+    reference = read_objects(os.path.join(directory, "ref"), ["a.o"])
+    for name, subdirectory, wanted in (
+            ("assembled objects, consistent", "obj", []),
+            ("assembled objects, the table left at 4 bytes", "narrow",
+             ["a.o: .rodata+0x0 (gTable, pointer, R_X86_64_32): a pointer must be 8 bytes",
+              "a.o: .rodata+0x4 (gTable, pointer, R_X86_64_32): a pointer must be 8 bytes"])):
+        problems = check(rules, read_objects(os.path.join(directory, subdirectory), ["a.o"]), reference, "list")
+        if not problems_match(wanted, problems):
+            failures.append("%s\n  expected %r\n  got      %r" % (name, wanted, problems))
+
+
+def self_test_read_rules(failures, directory):
+    path = os.path.join(directory, "words.txt")
+    with open(path, "w") as handle:
+        handle.write("# a comment\n\na.o gTable table  # trailing\n")
+    if read_rules(path) != [Rule("a.o", "gTable", "table", 3)]:
+        failures.append("read_rules: %r" % (read_rules(path),))
+    for text in ("a.o gTable\n", "a.o gTable nonsense\n", "a.o gTable table extra\n"):
+        with open(path, "w") as handle:
+            handle.write(text)
+        try:
+            read_rules(path)
+            failures.append("read_rules accepted %r" % text)
+        except CheckError as error:
+            if not str(error).startswith("%s:1: expected 'object symbol class'" % path):
+                failures.append("read_rules message for %r: %s" % (text, error))
+
+
 def self_test():
-    failures = 0
-    parsed = parse_readelf(SELF_TEST_READELF, "unused")
-    a, b = parsed.get("a.o"), parsed.get("b.o")
-    expected_a = ({".rodata": 8, ".rela.rodata": 8, "script_data": 1},
-                  [Symbol("gTable", ".rodata", 0), Symbol("Script_Start", "script_data", 0)],
-                  [Relocation(".rodata", 0, ADDRESS_8), Relocation(".rodata", 8, ADDRESS_8),
-                   Relocation(".rodata", 16, "R_X86_64_16"), Relocation("script_data", 3, ADDRESS_4)])
-    if a is None or b is None or (a.alignments, a.symbols, a.relocations) != expected_a \
-            or a.sizes != {".rodata": 0x30, ".rela.rodata": 0x48, "script_data": 0x10}:
-        failures += 1
-        sys.stderr.write("check_relocations self-test: parse_readelf: got %r\n"
-                         % ({k: (v.alignments, v.symbols, v.relocations) for k, v in parsed.items()},))
-    elif (b.alignments, b.symbols, b.relocations) != ({".rodata": 4}, [Symbol("gOther", ".rodata", 4)], []):
-        failures += 1
-        sys.stderr.write("check_relocations self-test: parse_readelf b.o: got %r\n"
-                         % ((b.alignments, b.symbols, b.relocations),))
+    failures = []
     for name, rules, objects, references, expected in self_test_cases():
-        problems = check(rules, objects, references)
-        if len(problems) != len(expected) or any(e not in p for e, p in zip(expected, problems)):
-            failures += 1
-            sys.stderr.write("check_relocations self-test: %s\n  expected %r\n  got      %r\n"
-                             % (name, expected, problems))
+        problems = run_case(rules, objects, references)
+        if not problems_match(expected, problems):
+            failures.append("%s\n  expected %r\n  got      %r" % (name, expected, problems))
+    with tempfile.TemporaryDirectory() as directory:
+        self_test_end_to_end(failures, directory)
+        self_test_read_rules(failures, directory)
     if failures:
-        sys.stderr.write("check_relocations self-test: %d failed\n" % failures)
+        for failure in failures:
+            sys.stderr.write("check_relocations self-test: %s\n" % failure)
         return 1
     return 0
+
+
+USAGE = ("usage: check_relocations.py --list LIST --objdir DIR --reference DIR OBJECT...\n"
+         "       check_relocations.py --self-test\n")
 
 
 def main(argv):
     if argv[1:] == ["--self-test"]:
         return self_test()
-    args = argv[1:]
-    options = {}
-    while len(args) >= 2 and args[0] in ("--list", "--objdir", "--reference"):
-        options[args[0]] = args[1]
-        args = args[2:]
-    if len(options) != 3 or not args:
-        sys.stderr.write("usage: check_relocations.py --list LIST --objdir DIR --reference DIR OBJECT...\n"
-                         "       check_relocations.py --self-test\n")
+    options, names = parse_options(argv[1:], {"--list": None, "--objdir": None, "--reference": None})
+    if len(options) != 3 or not names:
+        sys.stderr.write(USAGE)
         return 2
-    rules = read_rules(options["--list"])
-    objects = read_objects(options["--objdir"], args)
-    references = read_objects(options["--reference"], args)
-    problems = check(rules, objects, references)
+    try:
+        problems = check(read_rules(options["--list"]), read_objects(options["--objdir"], names),
+                         read_objects(options["--reference"], names), options["--list"])
+    except (CheckError, OSError) as error:   # an OSError names the file it could not open
+        sys.stderr.write("check_relocations: %s\n" % error)
+        return 1
     for problem in problems:
         sys.stderr.write("check_relocations: %s\n" % problem)
     if problems:

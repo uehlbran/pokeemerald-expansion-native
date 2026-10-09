@@ -30,14 +30,16 @@ Exit 0 and no output when consistent; otherwise one line per problem (at
 most MAX_REPORTS per symbol) and exit 1.
 """
 
-import bisect
-import fnmatch
+import collections
 import glob
 import os
-import struct
 import subprocess
 import sys
 import tempfile
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))   # python3 -I leaves the script's directory off
+from check_support import CheckError, capped, matching_rule, parse_options, problems_match  # noqa: E402
+from elf_object import R_X86_64_32, R_X86_64_64, read_elf64  # noqa: E402
 
 ONE, ARRAY, SKIP = "one", "array", "skip"
 # object glob, symbol glob ('{stem}': the object's name without .o), struct, how
@@ -67,15 +69,11 @@ POINTER_ALIGNMENT_SLACK = 7  # the 64-bit padding at most 7
 POINTER_ARRAY_COUNT = "trackCount"   # SongHeader.part has one pointer per track
 MAX_REPORTS = 10
 
-R_X86_64_64 = 1
-R_X86_64_32 = 10
-SHT_SYMTAB, SHT_RELA, SHT_NOBITS = 2, 4, 8
-STT_SECTION, STT_FILE = 3, 4
-SHN_LORESERVE = 0xFF00
-
-
-class CheckError(Exception):
-    """Input this script cannot read; the build must stop."""
+# The words of the probe's output (data_layout_probe.c prints them).
+LAYOUT_STRUCT, LAYOUT_MEMBER = "struct", "member"
+KIND_VALUE, KIND_POINTER, KIND_POINTERS = "value", "pointer", "pointers"
+KINDS = (KIND_VALUE, KIND_POINTER, KIND_POINTERS)
+LAYOUT_LINE_FORMS = "'%s NAME SIZE' or '%s STRUCT FIELD OFFSET SIZE %s'" % (LAYOUT_STRUCT, LAYOUT_MEMBER, "|".join(KINDS))
 
 
 # --------------------------------------------------------------------------
@@ -88,87 +86,45 @@ class Layout:
         self.size = size
         self.members = []
 
+    def member_places(self):
+        """Member name -> (offset, size)."""
+        return {name: (offset, size) for name, offset, size, _ in self.members}
 
-def read_layouts(text):
+
+def parse_layouts(text, path):
+    """{struct name: Layout} from the probe's output, read from path."""
     layouts = {}
-    for line in text.splitlines():
+    for number, line in enumerate(text.splitlines(), 1):
         fields = line.split()
-        if fields[:1] == ["struct"] and len(fields) == 3:
+        if fields[:1] == [LAYOUT_STRUCT] and len(fields) == 3 and fields[2].isdigit():
             layouts[fields[1]] = Layout(int(fields[2]))
-        elif fields[:1] == ["member"] and len(fields) == 6 and fields[1] in layouts:
+        elif (fields[:1] == [LAYOUT_MEMBER] and len(fields) == 6 and fields[1] in layouts
+              and fields[3].isdigit() and fields[4].isdigit() and fields[5] in KINDS):
             layouts[fields[1]].members.append((fields[2], int(fields[3]), int(fields[4]), fields[5]))
         elif fields:
-            raise CheckError("cannot read the layout line %r" % line)
+            raise CheckError("%s:%d: expected %s (a member after its struct), got %r"
+                             % (path, number, LAYOUT_LINE_FORMS, line))
     return layouts
 
 
-class ElfObject:
-    """The sections, symbols and relocations of an ELF64 relocatable object."""
-
-    def __init__(self, data):
-        if data[:4] != b"\x7fELF" or data[4] != 2 or data[5] != 1:
-            raise CheckError("not a little-endian ELF64 object")
-        shoff, = struct.unpack_from("<Q", data, 0x28)
-        shentsize, shnum, shstrndx = struct.unpack_from("<HHH", data, 0x3A)
-        headers = [struct.unpack_from("<IIQQQQIIQQ", data, shoff + index * shentsize) for index in range(shnum)]
-        names = headers[shstrndx]
-
-        def string(table, offset):
-            start = table[4] + offset
-            return data[start:data.index(b"\0", start)].decode()
-
-        self.sections = {}     # index -> (name, bytes)
-        for index, header in enumerate(headers):
-            contents = b"" if header[1] == SHT_NOBITS else data[header[4]:header[4] + header[5]]
-            self.sections[index] = (string(names, header[0]), contents, header[5])
-        self.symbols = []      # (name, section index, value)
-        self.relocations = {}  # section index -> {offset: type}
-        for header in headers:
-            if header[1] == SHT_SYMTAB:
-                strings = headers[header[6]]
-                for start in range(header[4], header[4] + header[5], 24):
-                    name, info, _, shndx, value, _ = struct.unpack_from("<IBBHQQ", data, start)
-                    if info & 0xF not in (STT_SECTION, STT_FILE) and 0 < shndx < SHN_LORESERVE:
-                        self.symbols.append((string(strings, name), shndx, value))
-            elif header[1] == SHT_RELA:
-                target = self.relocations.setdefault(header[7], {})
-                for start in range(header[4], header[4] + header[5], 24):
-                    offset, info, _ = struct.unpack_from("<QQq", data, start)
-                    target[offset] = info & 0xFFFFFFFF
-
-
-def read_object(path):
-    with open(path, "rb") as handle:
-        return ElfObject(handle.read())
+def read_layouts(path):
+    with open(path) as handle:
+        return parse_layouts(handle.read(), path)
 
 
 # --------------------------------------------------------------------------
 # The check
 
 def rule_for(object_name, symbol):
-    stem = os.path.splitext(os.path.basename(object_name))[0]
-    for object_glob, symbol_glob, layout, count in RULES:
-        if fnmatch.fnmatchcase(object_name, object_glob) and \
-                fnmatch.fnmatchcase(symbol, symbol_glob.replace("{stem}", stem)):
-            return layout, count
-    return None, ONE
+    index = matching_rule(RULES, object_name, symbol)
+    return (RULES[index][2], RULES[index][3]) if index is not None else (None, ONE)
 
 
 def extents(obj, object_name):
-    """symbol name -> (section index, value, bytes to the next symbol or the
+    """symbol name -> (section key, value, bytes to the next symbol or the
     section's end); SKIP symbols are not ends."""
-    starts = {}
-    for name, section, value in obj.symbols:
-        if rule_for(object_name, name)[1] != SKIP:
-            starts.setdefault(section, set()).add(value)
-    starts = {section: sorted(values) for section, values in starts.items()}
-    result = {}
-    for name, section, value in obj.symbols:
-        values = starts.get(section, [])
-        index = bisect.bisect_right(values, value)
-        end = values[index] if index < len(values) else obj.sections[section][2]
-        result[name] = (section, value, end - value)
-    return result
+    lengths = obj.extents(lambda symbol: rule_for(object_name, symbol.name)[1] != SKIP)
+    return {symbol.name: (symbol.section, symbol.value, length) for symbol, length in zip(obj.symbols, lengths)}
 
 
 def array_length(name, layout32, layout64, range32, range64):
@@ -186,97 +142,187 @@ def array_length(name, layout32, layout64, range32, range64):
     return count, None
 
 
-def compare_entry(where, obj, ref, at64, at32, layout32, layout64, problems):
-    """Compare one struct at obj[at64] with ref[at32]; at64, at32 are
-    (section index, offset)."""
-    section64, base64 = at64
-    section32, base32 = at32
-    bytes64, bytes32 = obj.sections[section64][1], ref.sections[section32][1]
-    relocations64 = obj.relocations.get(section64, {})
-    relocations32 = ref.relocations.get(section32, {})
-    members32 = {name: (offset, size) for name, offset, size, _ in layout32.members}
+class Side:
+    """Where a struct lies in one object's section: the section's bytes and
+    relocations, and the struct's offset in them."""
+
+    def __init__(self, contents, relocations, base):
+        self.contents, self.relocations, self.base = contents, relocations, base
+
+    def shifted(self, offset):
+        return Side(self.contents, self.relocations, self.base + offset)
+
+    def span(self, offset, size):
+        return Span(self, self.base + offset, size)
+
+
+class Span:
+    """size bytes at start in a Side's section."""
+
+    def __init__(self, side, start, size):
+        self.side, self.start, self.size = side, start, size
+
+    def data(self):
+        return self.side.contents[self.start:self.start + self.size]
+
+    def offsets(self):
+        return range(self.start, self.start + self.size)
+
+    def relocations(self):
+        """{offset from start: relocation type} of the relocations inside."""
+        return {o - self.start: self.side.relocations[o] for o in self.offsets() if o in self.side.relocations}
+
+    def address_type(self):
+        return self.side.relocations.get(self.start)
+
+    def value(self):
+        return int.from_bytes(self.data(), "little")
+
+
+def compare_value(where, field, span64, span32):
+    """Problems with a member that holds no address: the same bytes and the
+    same relocations (an address inside a bitfield-like blob) at both widths."""
+    problems = []
+    if span64.data() != span32.data():
+        problems.append("%s: %s differs from the 4-byte-pointer data" % (where, field))
+    if span64.relocations() != span32.relocations():
+        problems.append("%s: %s relocations %r, with 4-byte pointers %r"
+                        % (where, field, span64.relocations(), span32.relocations()))
+    return problems
+
+
+def compare_address(where, field, span64, span32):
+    """Problems with a pointer member: an 8-byte address where there is a
+    4-byte one in the reference, else the same value zero-extended."""
+    if span32.address_type() == R_X86_64_32:
+        if span64.address_type() != R_X86_64_64:
+            return ["%s: %s is an address with 4-byte pointers, not an 8-byte one here" % (where, field)]
+    elif span64.address_type() is not None:
+        return ["%s: %s has a relocation here only" % (where, field)]
+    elif span64.value() != span32.value():
+        return ["%s: %s differs from the 4-byte-pointer data" % (where, field)]
+    return []
+
+
+def padding_problem(where, side64, size64, covered):
+    """The first byte of the struct's size64 bytes that no member covers and
+    is not zero or holds a relocation, or None."""
+    for offset in range(side64.base, min(side64.base + size64, len(side64.contents))):
+        if offset not in covered and (side64.contents[offset] != 0 or offset in side64.relocations):
+            return "%s: padding byte %d is not zero" % (where, offset - side64.base)
+    return None
+
+
+def compare_entry(where, side64, side32, layout32, layout64, layout_files):
+    """(problems, the entry's size at 64 bits) from comparing one struct at
+    side64 with the same struct at side32. A trailing pointer array is as
+    long as the data says."""
+    places32 = layout32.member_places()
+    problems = []
     covered = set()
     size64 = layout64.size
     for name, offset64, member_size64, kind in layout64.members:
-        offset32, member_size32 = members32[name]
+        if name not in places32:
+            raise CheckError("%s: member %s is in the 64-bit layout but not in the 32-bit one (%s, %s)"
+                             % (where, name, *layout_files))
+        offset32, member_size32 = places32[name]
         repeat = 1
-        if kind == "pointers":
-            count_offset = members32[POINTER_ARRAY_COUNT][0]
-            repeat = bytes32[base32 + count_offset]
-            size64 = offset64 + repeat * member_size64   # a trailing array: as long as the data says
+        if kind == KIND_POINTERS:
+            count_offset = places32[POINTER_ARRAY_COUNT][0]
+            repeat = side32.contents[side32.base + count_offset]
+            size64 = offset64 + repeat * member_size64
         for index in range(repeat):
-            start64 = base64 + offset64 + index * member_size64
-            start32 = base32 + offset32 + index * member_size32
-            covered.update(range(start64, start64 + member_size64))
-            field = "%s%s" % (name, "[%d]" % index if kind == "pointers" else "")
-            if kind == "value":
-                if bytes64[start64:start64 + member_size64] != bytes32[start32:start32 + member_size32]:
-                    problems.append("%s: %s differs from the 4-byte-pointer data" % (where, field))
-                inner64 = {o - start64: relocations64[o] for o in range(start64, start64 + member_size64)
-                           if o in relocations64}
-                inner32 = {o - start32: relocations32[o] for o in range(start32, start32 + member_size32)
-                           if o in relocations32}
-                if inner64 != inner32:
-                    problems.append("%s: %s relocations %r, with 4-byte pointers %r" % (where, field, inner64, inner32))
-                continue
-            moved = relocations64.get(start64)
-            if relocations32.get(start32) == R_X86_64_32:
-                if moved != R_X86_64_64:
-                    problems.append("%s: %s is an address with 4-byte pointers, not an 8-byte one here" % (where, field))
-            elif moved is not None:
-                problems.append("%s: %s has a relocation here only" % (where, field))
-            elif int.from_bytes(bytes64[start64:start64 + member_size64], "little") != \
-                    int.from_bytes(bytes32[start32:start32 + member_size32], "little"):
-                problems.append("%s: %s differs from the 4-byte-pointer data" % (where, field))
-    for offset in range(base64, min(base64 + size64, len(bytes64))):
-        if offset not in covered and (bytes64[offset] != 0 or offset in relocations64):
-            problems.append("%s: padding byte %d is not zero" % (where, offset - base64))
-            break
-    return size64
+            span64 = side64.span(offset64 + index * member_size64, member_size64)
+            span32 = side32.span(offset32 + index * member_size32, member_size32)
+            covered.update(span64.offsets())
+            field = "%s%s" % (name, "[%d]" % index if kind == KIND_POINTERS else "")
+            compare = compare_value if kind == KIND_VALUE else compare_address
+            problems.extend(compare(where, field, span64, span32))
+    problem = padding_problem(where, side64, size64, covered)
+    if problem:
+        problems.append(problem)
+    return problems, size64
 
 
-def check_object(name, obj, ref, layouts32, layouts64):
+class ObjectPair:
+    """An object and its 4-byte-pointer reference, with the struct layouts at
+    both widths (the LayoutFiles)."""
+
+    def __init__(self, name, obj, reference, layouts32, layouts64):
+        self.name, self.obj, self.reference = name, obj, reference
+        self.layouts32, self.layouts64 = layouts32, layouts64
+
+    def layouts_of(self, struct):
+        for layouts in (self.layouts32, self.layouts64):
+            if struct not in layouts.structs:
+                raise CheckError("%s: the rules name struct %s, which %s does not describe"
+                                 % (self.name, struct, layouts.path))
+        return self.layouts32.structs[struct], self.layouts64.structs[struct]
+
+    def sides(self, section64, value64, section32, value32):
+        return (Side(self.obj.sections[section64].contents, self.obj.relocations.get(section64, {}), value64),
+                Side(self.reference.sections[section32].contents, self.reference.relocations.get(section32, {}), value32))
+
+    def compare(self, where, at64, at32, layout32, layout64):
+        side64, side32 = self.sides(*at64, *at32)
+        return compare_entry(where, side64, side32, layout32, layout64, (self.layouts32.path, self.layouts64.path))
+
+
+def check_array(pair, where, at64, at32, ranges, layouts):
+    """Problems with an array of structs at at64 and at32 (section key and
+    offset), range64 and range32 bytes from the next symbol."""
+    (section64, value64), (section32, value32) = at64, at32
+    range64, range32 = ranges
+    layout32, layout64 = layouts
+    length, problem = array_length(where, layout32, layout64, range32, range64)
+    if problem:
+        return [problem]
+    found = []
+    for index in range(length):
+        entry_problems, _ = pair.compare("%s[%d]" % (where, index), (section64, value64 + index * layout64.size),
+                                         (section32, value32 + index * layout32.size), layout32, layout64)
+        found.extend(entry_problems)
+    # What follows the array up to the next symbol is the same data at
+    # both widths, less the padding at its end.
+    rest32 = range32 - length * layout32.size
+    rest64 = range64 - length * layout64.size
+    same = max(0, min(rest32 - ALIGNMENT_SLACK, rest64 - POINTER_ALIGNMENT_SLACK))
+    after64 = value64 + length * layout64.size
+    after32 = value32 + length * layout32.size
+    if pair.obj.sections[section64].contents[after64:after64 + same] \
+            != pair.reference.sections[section32].contents[after32:after32 + same]:
+        found.append("%s: the %d bytes after its %d entries differ from the 4-byte-pointer data" % (where, same, length))
+    return found
+
+
+def check_one(pair, where, at64, at32, range64, layouts):
+    """Problems with a single struct at at64 and at32."""
+    layout32, layout64 = layouts
+    found, size = pair.compare(where, at64, at32, layout32, layout64)
+    if size > range64:
+        found.append("%s: the %d-byte struct runs into the next symbol, %d bytes on" % (where, size, range64))
+    return found
+
+
+def check_object(pair, extents64, extents32):
+    """Problems with every struct the rules name in pair's object."""
     problems = []
-    extents64, extents32 = extents(obj, name), extents(ref, name)
-    for symbol, section, _ in obj.symbols:
-        layout_name, count = rule_for(name, symbol)
-        if layout_name is None:
+    for symbol in pair.obj.symbols:
+        struct, count = rule_for(pair.name, symbol.name)
+        if struct is None:
             continue
-        if layout_name not in layouts64 or layout_name not in layouts32:
-            raise CheckError("no layout for struct %s" % layout_name)
-        if symbol not in extents32:
-            problems.append("%s: %s is not in the 4-byte-pointer object" % (name, symbol))
+        layouts = pair.layouts_of(struct)
+        if symbol.name not in extents32:
+            problems.append("%s: %s is not in the 4-byte-pointer object" % (pair.name, symbol.name))
             continue
-        layout32, layout64 = layouts32[layout_name], layouts64[layout_name]
-        section64, value64, range64 = extents64[symbol]
-        section32, value32, range32 = extents32[symbol]
-        where = "%s: %s" % (name, symbol)
-        found = []
+        section64, value64, range64 = extents64[symbol.name]
+        section32, value32, range32 = extents32[symbol.name]
+        where = "%s: %s" % (pair.name, symbol.name)
         if count == ARRAY:
-            length, problem = array_length(where, layout32, layout64, range32, range64)
-            if problem:
-                problems.append(problem)
-                continue
-            for index in range(length):
-                compare_entry("%s[%d]" % (where, index), obj, ref, (section64, value64 + index * layout64.size),
-                              (section32, value32 + index * layout32.size), layout32, layout64, found)
-            # What follows the array up to the next symbol is the same data at
-            # both widths, less the padding at its end.
-            rest32 = range32 - length * layout32.size
-            rest64 = range64 - length * layout64.size
-            same = max(0, min(rest32 - ALIGNMENT_SLACK, rest64 - POINTER_ALIGNMENT_SLACK))
-            after64 = value64 + length * layout64.size
-            after32 = value32 + length * layout32.size
-            if obj.sections[section64][1][after64:after64 + same] != ref.sections[section32][1][after32:after32 + same]:
-                found.append("%s: the %d bytes after its %d entries differ from the 4-byte-pointer data"
-                             % (where, same, length))
+            found = check_array(pair, where, (section64, value64), (section32, value32), (range64, range32), layouts)
         else:
-            size = compare_entry(where, obj, ref, (section64, value64), (section32, value32), layout32, layout64, found)
-            if size > range64:
-                found.append("%s: the %d-byte struct runs into the next symbol, %d bytes on" % (where, size, range64))
-        problems.extend(found[:MAX_REPORTS])
-        if len(found) > MAX_REPORTS:
-            problems.append("%s: %d more problems" % (where, len(found) - MAX_REPORTS))
+            found = check_one(pair, where, (section64, value64), (section32, value32), range64, layouts)
+        problems.extend(capped(found, MAX_REPORTS, where))
     return problems
 
 
@@ -285,16 +331,22 @@ def objects_to_check(objdir):
     for object_glob in sorted({rule[0] for rule in RULES}):
         names.extend(sorted(os.path.relpath(path, objdir) for path in glob.glob(os.path.join(objdir, object_glob))))
     if not names:
-        raise CheckError("no data objects under %s" % objdir)
+        raise CheckError("%s: no data objects (expected %s)" % (objdir, ", ".join(sorted({rule[0] for rule in RULES}))))
     return names
 
 
-def check(layout32_text, layout64_text, objdir, reference):
-    layouts32, layouts64 = read_layouts(layout32_text), read_layouts(layout64_text)
+LayoutFile = collections.namedtuple("LayoutFile", "path structs")
+
+
+def check(layouts32, layouts64, objdir, reference):
+    """The problems in the data objects under objdir, against the objects
+    under reference (assembled with 4-byte pointers) and the LayoutFiles."""
     problems = []
     for name in objects_to_check(objdir):
-        problems.extend(check_object(name, read_object(os.path.join(objdir, name)),
-                                     read_object(os.path.join(reference, name)), layouts32, layouts64))
+        obj = read_elf64(os.path.join(objdir, name))
+        ref = read_elf64(os.path.join(reference, name))
+        problems.extend(check_object(ObjectPair(name, obj, ref, layouts32, layouts64),
+                                     extents(obj, name), extents(ref, name)))
     return problems
 
 
@@ -366,7 +418,12 @@ mus_a:
 """
 
 
-def self_test_run(directory, sources):
+def self_test_layouts(text32=None, text64=None):
+    return (LayoutFile("layout32.txt", parse_layouts(text32 or SELF_TEST_LAYOUT32, "layout32.txt")),
+            LayoutFile("layout64.txt", parse_layouts(text64 or SELF_TEST_LAYOUT64, "layout64.txt")))
+
+
+def self_test_run(directory, sources, layout_texts=(None, None)):
     """Assemble {path: (text32, text64)} and check them."""
     for name, (text32, text64) in sources.items():
         for subdirectory, text in (("ref", text32), ("obj", text64)):
@@ -374,8 +431,7 @@ def self_test_run(directory, sources):
             os.makedirs(os.path.dirname(path), exist_ok=True)
             subprocess.run(["as", "--64", "-o", path], input=text, universal_newlines=True, check=True)
     try:
-        return check(SELF_TEST_LAYOUT32, SELF_TEST_LAYOUT64, os.path.join(directory, "obj"),
-                     os.path.join(directory, "ref"))
+        return check(*self_test_layouts(*layout_texts), os.path.join(directory, "obj"), os.path.join(directory, "ref"))
     except CheckError as error:
         return ["CheckError: %s" % error]
 
@@ -402,36 +458,73 @@ def self_test():
          ["voicegroup_b: the 17 bytes after its 1 entries differ"]),
     )
     failures = []
+    sources = {"data/sound_data.o": (SELF_TEST_SOUND32, SELF_TEST_SOUND64),
+               "sound/songs/midi/mus_a.o": (SELF_TEST_SONG32, SELF_TEST_SONG64)}
     for name, sound64, song64, expected in cases:
         with tempfile.TemporaryDirectory() as directory:
             problems = self_test_run(directory, {"data/sound_data.o": (SELF_TEST_SOUND32, sound64),
                                                  "sound/songs/midi/mus_a.o": (SELF_TEST_SONG32, song64)})
-        if len(problems) != len(expected) or any(e not in p for e, p in zip(expected, problems)):
+        if not problems_match(expected, problems):
             failures.append("%s\n  expected %r\n  got      %r" % (name, expected, problems))
+    refusals = (
+        ("a struct missing from the 64-bit layout", (None, SELF_TEST_LAYOUT64.split("struct SongHeader")[0]),
+         "layout64.txt does not describe"),
+        ("a member missing from the 32-bit layout",
+         (SELF_TEST_LAYOUT32.replace("member ToneData attack 8 1 value\n", ""), None),
+         "member attack is in the 64-bit layout but not in the 32-bit one"),
+    )
+    for name, layout_texts, wanted in refusals:
+        with tempfile.TemporaryDirectory() as directory:
+            problems = self_test_run(directory, sources, layout_texts)
+        if not problems_match(["CheckError: "], problems) or wanted not in problems[0]:
+            failures.append("%s\n  expected a CheckError with %r\n  got      %r" % (name, wanted, problems))
+    failures.extend(self_test_layout_files())
     for failure in failures:
         sys.stderr.write("check_data_layout self-test: %s\n" % failure)
     return 1 if failures else 0
 
 
+def self_test_layout_files():
+    failures = []
+    layouts = parse_layouts(SELF_TEST_LAYOUT64, "layout64.txt")
+    if (layouts["SongHeader"].size, layouts["SongHeader"].members[-1]) != (24, ("part", 16, 8, KIND_POINTERS)):
+        failures.append("parse_layouts: %r" % (layouts["SongHeader"].members,))
+    for name, text, wanted in (
+            ("an unknown line", "struct A 4\nsurprise A\n", "layout.txt:2: expected 'struct NAME SIZE'"),
+            ("a member before its struct", "member A x 0 4 value\n", "layout.txt:1: expected"),
+            ("an unknown kind", "struct A 4\nmember A x 0 4 pointerish\n", "layout.txt:2: expected"),
+            ("a size that is not a number", "struct A four\n", "layout.txt:1: expected")):
+        try:
+            parse_layouts(text, "layout.txt")
+            failures.append("parse_layouts accepted %s" % name)
+        except CheckError as error:
+            if wanted not in str(error):
+                failures.append("parse_layouts, %s: the message is %r, not %r" % (name, str(error), wanted))
+    try:
+        objects_to_check(tempfile.gettempdir() + "/no-such-data-objects-directory")
+        failures.append("objects_to_check accepted a directory without data objects")
+    except CheckError as error:
+        if "no-such-data-objects-directory: no data objects" not in str(error):
+            failures.append("objects_to_check: %s" % error)
+    return failures
+
+
+USAGE = "usage: check_data_layout.py --layout32 FILE --layout64 FILE --objdir DIR --reference DIR | --self-test\n"
+
+
 def main(argv):
-    args = argv[1:]
-    if args == ["--self-test"]:
+    if argv[1:] == ["--self-test"]:
         return self_test()
-    options = {}
-    while len(args) >= 2 and args[0] in ("--layout32", "--layout64", "--objdir", "--reference"):
-        options[args[0]] = args[1]
-        args = args[2:]
-    if len(options) != 4 or args:
-        sys.stderr.write("usage: check_data_layout.py --layout32 FILE --layout64 FILE --objdir DIR --reference DIR"
-                         " | --self-test\n")
+    options, rest = parse_options(argv[1:], {"--layout32": None, "--layout64": None, "--objdir": None,
+                                             "--reference": None})
+    if len(options) != 4 or rest:
+        sys.stderr.write(USAGE)
         return 2
     try:
-        with open(options["--layout32"]) as handle:
-            layout32 = handle.read()
-        with open(options["--layout64"]) as handle:
-            layout64 = handle.read()
-        problems = check(layout32, layout64, options["--objdir"], options["--reference"])
-    except CheckError as error:
+        layouts32 = LayoutFile(options["--layout32"], read_layouts(options["--layout32"]))
+        layouts64 = LayoutFile(options["--layout64"], read_layouts(options["--layout64"]))
+        problems = check(layouts32, layouts64, options["--objdir"], options["--reference"])
+    except (CheckError, OSError) as error:   # an OSError names the file it could not open
         sys.stderr.write("check_data_layout: %s\n" % error)
         return 1
     for problem in problems:
