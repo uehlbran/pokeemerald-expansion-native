@@ -7899,8 +7899,35 @@ static const u32 sGen6CriticalHitOdds[] = {16,  8,  2,  1,   1}; // 1/X
 static const u32 sCriticalHitOdds[]     = {16,  8,  4,  3,   2}; // 1/X, Gens 3,4,5
 static const u32 sGen2CriticalHitOdds[] = {17, 32, 64, 85, 128}; // X/256
 
+#if PLATFORM_NATIVE
+// CalcCritChanceStage returns CRITICAL_HIT_BLOCKED (-1) or CRITICAL_HIT_ALWAYS
+// (-2), and ShouldCalcCritDamage (battle_ai_util.c) passes -1 on here (-2 is
+// tested first). The tables are indexed with the wrapped u32, so the GBA reads
+// the words before sGen7CriticalHitOdds (0x0843F0B4 in pokeemerald.elf):
+//   [-1] 0x0843F0B0 = 0x02000301 (bytes 01 03 00 02, the 4 bytes of
+//        another function's table, `targets.0`)
+//   [-2] 0x0843F0AC = 0x00623530
+// Neither is 1, so ShouldCalcCritDamage goes on, and BLOCKED (< RISKY stage
+// threshold as a signed value) never becomes "guaranteed crit". The other
+// callers test BLOCKED/ALWAYS before the read. Natively the read is 16 GiB
+// away at 64 bits; these constants reproduce the GBA's. The ROM holds only
+// the Gen7 table (the config is compile-time), so the others take the same
+// values; indices 5 to 255 (Gen 1 stages) read other ROM data on the GBA and
+// get the -1 value here.
+#define CRIT_ODDS_GBA_READ_BLOCKED 0x02000301
+#define CRIT_ODDS_GBA_READ_ALWAYS  0x00623530
+
 u32 GetCriticalHitOdds(u32 critChance)
 {
+    if (critChance == (u32)CRITICAL_HIT_ALWAYS)
+        return CRIT_ODDS_GBA_READ_ALWAYS;
+    if (critChance >= ARRAY_COUNT(sGen7CriticalHitOdds))
+        return CRIT_ODDS_GBA_READ_BLOCKED;
+#else
+u32 GetCriticalHitOdds(u32 critChance)
+{
+#endif
+#line 7894
     if (GetConfig(B_CRIT_CHANCE) >= GEN_7)
         return sGen7CriticalHitOdds[critChance];
     if (GetConfig(B_CRIT_CHANCE) == GEN_6)
