@@ -102,4 +102,33 @@ PTEST(crt0_restart_zeroes_game_bss_and_restores_game_data)
     game_data_word = UINT32_C(0x1234ABCD);
 }
 
+/* What the test runner build defines (test/test_runner.c), at 64 bits. */
+const size_t gPlatformTestEntrySize = 40;
+
+PTEST(test_table_of_whole_entries_is_counted)
+{
+    size_t count = 99;
+    PT_ASSERT_EQ_INT(crt0_check_test_table(6294 * 40, 40, &count), CRT0_OK);
+    PT_ASSERT(count == 6294);
+    PT_ASSERT_EQ_INT(crt0_check_test_table(0, 40, &count), CRT0_OK);
+    PT_ASSERT(count == 0);
+}
+
+PTEST(test_table_with_padded_entries_is_refused)
+{
+    size_t count = 99;
+    /* 64-byte spacing for 40-byte entries (GCC's 32-byte alignment of a
+     * 40-byte global, no -malign-data=abi): the table is 6294 x 64 - 24. */
+    PT_ASSERT_EQ_INT(crt0_check_test_table(6294 * 64 - 24, 40, &count), CRT0_ERR_BAD_TEST_TABLE);
+    PT_ASSERT(count == 99);
+    PT_ASSERT_EQ_INT(crt0_check_test_table(40, 0, &count), CRT0_ERR_BAD_TEST_TABLE);
+}
+
+PTEST(crt0_init_checks_the_empty_test_table_of_a_test_runner_link)
+{
+    /* gba_game.ld's .tests is empty here: 0 tests of 40 bytes. */
+    PT_ASSERT_EQ_INT(crt0_init(), CRT0_OK);
+    crt0_shutdown();
+}
+
 PTEST_MAIN()

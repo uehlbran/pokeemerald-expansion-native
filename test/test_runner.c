@@ -50,6 +50,9 @@ static u32 PersistentTestId(const struct Test *test)
 {
     return (test - __start_tests) + 1;
 }
+// platform/crt0.c checks at start-up that the .tests table is a whole number
+// of entries of this size; the platform cannot include the test headers.
+const size_t gPlatformTestEntrySize = sizeof(struct Test);
 #endif
 #line 41
 
