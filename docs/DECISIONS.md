@@ -742,7 +742,8 @@ run, rather than guarded out: one decoder with one set of tests at both
 widths, and the 32-bit executables stay byte-identical because the code
 is placed after the existing text (the reviewer and author kept the
 32-bit line numbers for the sanitized build). The duplicated plumbing
-that placement first required was merged in the refactoring pass.
+that placement first required was merged in the review round (c10ba57e0a,
+one decoder) before the branch merged.
 
 ## 2026-10-09: The test table check uses weak symbols and succeeds silently
 
