@@ -772,3 +772,25 @@ does not apply. Cos is fixed only at index 320: the other out-of-range
 indices (336 and on, -64) have no evidence gathered and stay as upstream
 wrote them. The constants live in trig.h so the psychic step and Cos
 share one definition.
+
+## 2026-10-09: The milestone 7 refactoring pass keeps expansion's tools in their smallest form
+
+The pass over the build glue had rewritten the milestone 7 changes to
+tools/patchelf and the hydra (ELF32 or ELF64 chosen by class at every
+use) into a helper layer of structs and three readers, about 75 more
+lines of difference from upstream per tool for the same behaviour. The
+reviewer recommended reverting it and the orchestrator agreed: expansion's
+files, the tools included, take the smallest clear change
+(UPSTREAM_MODIFICATIONS.md's policy), because every line of difference is
+a line to carry across an upstream upgrade (UPGRADING.md), and the
+per-use form was already readable. The same rule kept two other things
+the pass raised: the unreachable `CRITICAL_HIT_ALWAYS` branch in
+`GetCriticalHitOdds` (two lines with ROM evidence; removing it would
+change the 32-bit executables for nothing) and the 174 repeated
+`.ifdef NATIVE_POINTER_SIZE_8` blocks in asm/macros/battle_script.inc (a
+helper macro would rewrite upstream's lines in every operand macro;
+check_battle_script_operands.py guards them). The pass's eight glue
+self-tests now run in the platform gate (`glue-test`); before it they ran
+only as the 64-bit build's stamps, so a 32-bit-only change could not have
+broken them unnoticed, but a change to a module would have failed the
+next 64-bit build rather than the gate.
