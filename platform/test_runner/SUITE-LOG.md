@@ -245,6 +245,9 @@ reading what the game asked it to. "Same on GBA" means the GBA performs
 the same out-of-bounds access and survives it; where the bytes it reads or
 writes differ natively (another neighbour), it says so. Not fixed (game
 code) except the fatal palette over-reads; none changes a test result.
+The list is incomplete: the 32-bit run keeps one AddressSanitizer report
+per access size per runner, and the three sites it hid or this table
+missed are in the table of "The sanitized run at 64 bits" below.
 
 | Site | Sanitizer | Root cause | GBA, and native difference |
 |---|---|---|---|
@@ -278,3 +281,57 @@ false positives (`include/metaprogram.h`: `*(int *)0` inside
 every `RandomPercentage`/`RandomChance` site), `src/pokemon.c:6278`
 (`gBattleStruct` NULL outside battle), `src/text.c` `GLYPH_COPY`'s shifts
 by 32 and `sMegaIndicatorPal`.
+
+## The sanitized run at 64 bits
+
+`make -f Makefile.native -j32 check BITS=64 SANITIZE=1 DINFO=1` on main
+at 902eaf796b, compared with the same run at `BITS=32`, report by report
+and test by test. The runners share the hydra's stderr, which interleaves
+their reports line by line (UBSan stack frames such as the recorded
+controllers' `HandleChooseMove`, `HandleAction_ActionFinished`,
+`DoAttackCanceler` and `SetBallThrowShakes` can land inside another
+runner's AddressSanitizer report); so for this comparison a copy of
+`native-rom-test` (not committed) sent each runner's stdout and stderr,
+in order, to a file of its own, and each report is attributed to the test
+whose `:N` line precedes it.
+
+Result: per test the 32-bit sanitized results except `SaveBlock1 is
+backwards compatible` (gate h): 5866 total, 5408 passed, 18 known
+failing, 9 expected failing, 421 to-do, 9 assumption failures, 1 failed.
+UBSan's reports are the same at both widths, test by test (347 reports
+at 32 sites, all in the 32-bit table but `src/battle_anim_effects_3.c:2790`
+below). **No AddressSanitizer report is new at 64 bits.**
+
+The 32-bit run lists fewer AddressSanitizer reports (25 at 5 sites,
+against 56 at 9) for a reason of its own. With the outline checks, the
+32-bit libasan reports its own `__asan_loadN_noabort` as the program
+counter (frame #0 is `asan_rtl.cpp:185` or `:186`), the same for every
+report of a size, and `suppress_equal_pcs` (on by default) drops every
+later report with that program counter: each runner keeps the first
+1-byte and the first 2-byte report of its partition. At 64 bits the
+program counter is the game's and each site is reported once per runner.
+Run with `ASAN_OPTIONS=suppress_equal_pcs=0`, both widths report every
+access, 56930 reports at 32 bits and 56921 at 64, and the two lists are
+identical test by test but for the last row (9 reports at 32 bits only).
+Compare widths that way.
+
+| Site (first game frame) | Report | Tests | At 32 bits | Root cause |
+|---|---|---|---|---|
+| `src/pokemon.c:2609` `SetBoxMonData` (the nickname loop), from `src/daycare.c:1058` `SetInitialEggData` | global-buffer-overflow, 1-byte reads 0 to 5 bytes after `sJapaneseEggNickname` | the 11 egg tests of `test/daycare.c` ("(Daycare) ...", "InheritPokeball ...") and their variants | same report | the 32-bit row (a 4-byte name copied as 12) |
+| `src/pokemon.c:2613`, `:2615` (`data[10]`, `data[11]`), the same call | 6 and 7 bytes after `sJapaneseEggNickname` | the same | same reports, hidden by the suppression | the same root cause, two more lines of the copy |
+| `src/battle_script_commands.c:1536` `Cmd_printfromtable` | 2-byte read just past `gTerrainStringIds` | "Flower Gift reverts Cherrim back after Teraform Zero clears weather", "Forecast reverts Castform back after Teraform Zero clears weather", "Teraform Zero doesn't reactivate when Terapagos-Stellar switches back in" | same report | the 32-bit row |
+| `src/sprite.c:1172` `JumpToTopOfAffineAnimLoop` | 2-byte read of `[-1]` of `gMetronomeFingerAffineAnimCmds2`, `gTeaAffineAnimCmds2`, `sAffineAnim_QuestionMark` | "Front anims work", "Gimmick Form Change animations work", "Move Animations work 1" to "4", "Tera Blast animations work", "Z-Moves animations work" | same report | the 32-bit row; the Tea and question-mark tables also loop with no `LOOP(0)` start |
+| `src/trig.c:523` `Cos`, from `src/battle_anim_electric.c:726` `AnimZapCannonSpark_Step` | 2-byte read of `gSineTable[320]` (UBSan's `[336]` lands inside the next object) | "Move Animations work 1", "3" | UBSan at this line in both runs; this report hidden by the suppression | the 32-bit `Sin`/`Cos` row |
+| `src/battle_anim_effects_3.c:2790` `AnimTask_DoomDesireLightBeam` | 1-byte read of `gDoomDesireLightBeamCoordTable[4]`; UBSan index 4 of `s8[4]` at the same line | "Move Animations work 1", "Z-Moves animations work" | same reports (ASan and UBSan); missing from the 32-bit table | upstream, both widths: state 1 runs five times (`data[2]` 0 to 4, as `gDoomDesireLightBeamDelayTable` has five entries) over a four-entry table. The GBA reads the delay table's first byte, 0 (0x083FC72C); natively 0 at 64 bits and in the sanitized builds, 0x01 in the plain 32-bit build: `gBattle_BG1_X` one pixel off for one frame (state 5 resets it). Not fixed |
+| `src/battle_anim_psychic.c:1214` `AnimTask_ExtrasensoryDistortion_Step` | 2-byte read of `gSineTable[320]` | "Move Animations work 2", "4" | same report, hidden by the suppression (UBSan cannot see it: `include/trig.h` declares `gSineTable[]` without a size) | upstream, both widths: stage 1 starts at sine index 192 and adds 2 per scanline over the 65 scanlines `yOffset - 32` to `yOffset + 32`, so the last reads index 320, one past the table. The GBA reads 0x041E (0x08DE3B78, the low half of a code address in a jump table) and shifts that scanline 32 to 35 pixels for the effect's 24 frames; natively the low half of whatever follows the table (0 when sanitized, 0x7018 in the plain 32-bit game build, 0x9AF0 at 64 bits). One scanline, as for `Cos` above. Not fixed |
+| `src/sprite.c:1076` `JumpToTopOfAnimLoop` | 2-byte read of `[-1]` of `gEclipsingOrbAnimCmds`, `gKinesisZapEnergyAnimCmds` | "Move Animations work 1", "2", "3" | same report, hidden by the suppression | upstream, both widths: the affine row's bug in the non-affine twin (reads `[animCmdIndex - 1]` before testing `animCmdIndex == 0`; both tables end with `ANIMCMD_LOOP(1)` and have no start). Either way `animCmdIndex` becomes 255 and `ContinueAnim` restarts at command 0, so the value (on the GBA 0xCDA0 and 0xC45C, the low half of the animation table's pointer) does not matter. Not fixed |
+| `src/pokemon.c:2901` `SetBoxMonData` (OT name), from `test/test_runner_battle.c:2725` `OTName_` | stack-buffer-overflow, 32 bits only | "Large exp gains are supported" | 32 bits only | the 32-bit row: `MON_DATA_OT_NAME` copies 7 bytes from `&otName`, a 4-byte pointer at 32 bits and an 8-byte one at 64, so at 64 bits the read stays inside it. The OT name is the pointer's bytes at both widths; the test only needs it to differ |
+
+No report involves a host stack address cut to 32 bits (inventory risk
+R1). The same run with ASLR off (`setarch x86_64 -R`) and
+`ASAN_OPTIONS=detect_stack_use_after_return=1`, which moves the game's
+address-taken locals into fake frames above 4 GiB (UBSan's
+`CanPledgeComboAttackHappen` reports show them at 0x7ffff3e1df28 and
+nearby), gave the same per-test results and the same reports, and its
+only `crash_reboot` was "Tests resume after CRASH" (address 0, on
+purpose).
