@@ -37,6 +37,8 @@ static uintptr_t code_address(void)
     return address;
 }
 
+#define TRANSFER_FIRST_PAGE_BOUNDARY ((uintptr_t)0x1000) /* the first byte after the refused page */
+
 static uintptr_t address_of(const void *pointer)
 {
     uintptr_t address = 0;
@@ -153,6 +155,15 @@ PTEST(address_plus_length_overflow_is_refused)
     PT_ASSERT(!transfer_bounds_ok(UINTPTR_MAX - 3, 8, TRANSFER_WRITE));
     PT_ASSERT(!transfer_bounds_ok(GBA_EWRAM_BASE, SIZE_MAX, TRANSFER_READ));
     PT_ASSERT(!transfer_bounds_ok(address_of(bss_bytes), SIZE_MAX, TRANSFER_WRITE));
+    transfer_bounds_shutdown();
+}
+
+PTEST(the_first_page_boundary_is_refused_on_both_sides)
+{
+    start();
+    PT_ASSERT(!transfer_bounds_ok(TRANSFER_FIRST_PAGE_BOUNDARY - 1, 1, TRANSFER_READ));
+    PT_ASSERT(!transfer_bounds_ok(TRANSFER_FIRST_PAGE_BOUNDARY, 1, TRANSFER_READ));
+    PT_ASSERT(!transfer_bounds_ok(TRANSFER_FIRST_PAGE_BOUNDARY, 1, TRANSFER_WRITE));
     transfer_bounds_shutdown();
 }
 

@@ -54,7 +54,7 @@ enum options_error {
  * printing what is wrong and the usage text to stderr; *out is then
  * unspecified. A persistent state without --test-runner is an error, and
  * --test-runner clears the save and clock paths. */
-int options_parse(int argc, char **argv, struct options *out);
+enum options_error options_parse(int argc, char **argv, struct options *out);
 
 /* The usage text, to `out`. */
 void options_print_usage(FILE *out);

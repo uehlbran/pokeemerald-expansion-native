@@ -11,21 +11,28 @@
 #include <string.h>
 #include <unistd.h>
 
+#define OPTIONS_TEST_MAX_ARGS 31
+
 /* Parses a NULL-terminated argument list (argv[0] added), with the error
  * messages and usage text sent to /dev/null: tests check the result, and the
  * text is checked directly in the last test. */
-static int parse(struct options *out, const char *const *args)
+static enum options_error parse(struct options *out, const char *const *args)
 {
     fflush(stderr);
     const int saved_stderr = dup(STDERR_FILENO);
     const int null_fd = open("/dev/null", O_WRONLY);
     if (saved_stderr >= 0 && null_fd >= 0)
         dup2(null_fd, STDERR_FILENO);
-    char *argv[32] = { "pokeemerald-native" };
+    char *argv[OPTIONS_TEST_MAX_ARGS + 1] = { "pokeemerald-native" };
     int argc = 1;
-    for (; *args != NULL; args++)
+    for (; *args != NULL; args++) {
+        if (argc > OPTIONS_TEST_MAX_ARGS) {
+            fprintf(stderr, "test_options: too many arguments for the helper\n");
+            abort();
+        }
         argv[argc++] = (char *)(uintptr_t)*args;
-    const int result = options_parse(argc, argv, out);
+    }
+    const enum options_error result = options_parse(argc, argv, out);
     fflush(stderr);
     if (saved_stderr >= 0) {
         dup2(saved_stderr, STDERR_FILENO);
@@ -89,10 +96,14 @@ PTEST(a_value_that_looks_like_an_option_is_still_the_value)
 PTEST(an_option_with_a_value_as_the_last_argument_is_refused)
 {
     struct options o;
-    PT_ASSERT_EQ_INT(PARSE(&o, "--save"), OPTIONS_ERR_USAGE);
-    PT_ASSERT_EQ_INT(PARSE(&o, "--replay"), OPTIONS_ERR_USAGE);
-    PT_ASSERT_EQ_INT(PARSE(&o, "--scale"), OPTIONS_ERR_USAGE);
-    PT_ASSERT_EQ_INT(PARSE(&o, "--rtc-fixed"), OPTIONS_ERR_USAGE);
+    static const char *const with_value[] = {
+        "--save", "--rtc-offset", "--screenshot", "--replay", "--out", "--scale", "--frames", "--resume-at",
+        "--rtc-fixed",
+    };
+    for (size_t i = 0; i < sizeof with_value / sizeof with_value[0]; i++)
+        PT_ASSERT_EQ_INT(PARSE(&o, with_value[i]), OPTIONS_ERR_USAGE);
+    /* after --test-runner, so only the missing value is wrong */
+    PT_ASSERT_EQ_INT(PARSE(&o, "--test-runner", "--persistent-state"), OPTIONS_ERR_USAGE);
 }
 
 PTEST(scale_accepts_one_to_the_maximum_and_nothing_else)

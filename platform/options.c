@@ -78,7 +78,7 @@ static bool parse_epoch(const char *text, int64_t *out)
 }
 
 /* Returns OPTIONS_OK, or OPTIONS_ERR_USAGE after printing what is wrong. */
-int options_parse(int argc, char **argv, struct options *out)
+enum options_error options_parse(int argc, char **argv, struct options *out)
 {
     *out = (struct options){
         .scale = OPTIONS_DEFAULT_SCALE,

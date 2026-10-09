@@ -73,7 +73,13 @@ int timer_init(void (*raise)(enum gba_irq))
     }
     raise_irq = raise;
     for (unsigned i = 0; i < TIMER_COUNT; i++) {
+        /* cell_value is seeded with the cell. Any other seed behaves the same:
+         * sync_with_game would take the cell as the reload, which is what is
+         * seeded here. */
         uint16_t cell = *cnt_l(i);
+        /* cell_value is seeded with the cell, but any other seed gives the same
+         * timers: sync_with_game would take the cell as the reload, which is
+         * what is seeded here. It makes the first advance see "no game write". */
         timers[i] = (struct timer){ .counter = cell, .reload = cell, .cell_value = cell };
     }
     return TIMER_OK;

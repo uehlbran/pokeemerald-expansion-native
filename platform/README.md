@@ -340,7 +340,8 @@ Headless, the keypad reads no keys. A save file this build cannot use
 game starts, so it is never overwritten.
 
 `options.c` (`options.h`, `test/test_options.c`) reads and validates the
-command line and prints the usage text; it starts nothing. `main.c` starts the modules in dependency order (`module_steps`), checks
+command line and prints the usage text; it starts nothing. `main.c` starts
+the modules in dependency order (`module_steps`), checks
 each, and stops the ones started, in reverse, on a failure or at the end. It
 then calls expansion's `AgbMain` with two `setjmp` targets: the exit target,
 where the frame hook (a frame limit, the window closed, a failure) and
