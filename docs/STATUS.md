@@ -17,15 +17,25 @@ the GBA ROM is byte-identical (gate c). Seven upstream issues are filed
 (rh-hideout #10892 to #10898, approved text). Every commit is authored by
 uehlbran; the GitHub repository was recreated so no other identity remains.
 
-**In flight.** Milestone 6: the refactoring pass runs as seven worker
-branches (core, video, audio, bios, tools, store, modaudit), each reviewed
-before merge; after they merge, the clang-format and clang-tidy gate, then
-the docs (CONTRIBUTING, UPGRADING, ARCHITECTURE), then the orchestrator's
-end-to-end read, then "32-bit done" here. Milestone 7 (64-bit) follows.
+**In flight.** Milestone 6: six of the seven refactoring branches are
+merged with their reviews (core, video, audio, bios and debug, replay and
+inspection, storage and build glue); the audit of the modifications to
+expansion's files is finishing; the clang-format and clang-tidy gate and
+the docs (CONTRIBUTING, UPGRADING, ARCHITECTURE, README) are in progress;
+then the orchestrator's end-to-end read and "32-bit done" here. Milestone
+7 (64-bit) follows.
 
-**Broke and fixed.** Nothing open. Past breakages and their fixes are in
-the milestone logs (`platform/build_glue/BOOT-LOG.md`,
-`platform/test_runner/SUITE-LOG.md`) and in `UPSTREAM_MODIFICATIONS.md`.
+**Broke and fixed.** The debug-menu gate's two battle screenshots flipped
+between male and female for the opponent's Poochyena whenever the binary
+was relinked (three refactoring branches hit it). Root cause: expansion
+seeds a trainer's party with a CRC over the whole trainer struct, pointer
+to the party table included; on the GBA that is a fixed ROM address,
+natively it moves with every build. Fixed under a guard (the CRC skips
+the pointer; DECISIONS.md "The trainer party seed does not hash the
+party table's address"), and the gate's expectations updated once. The
+same investigation removed the save file's nine uninitialised bytes
+(CreateBoxMon's species-name buffer, now padded): two runs give
+byte-identical saves. Earlier breakages are in the milestone logs.
 
 **Needs the owner.** rh-hideout's maintainer replied to all seven upstream
 issues citing their LLM policy and said they will close them (details and a
