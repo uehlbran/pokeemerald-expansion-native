@@ -70,13 +70,21 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Prerequisites (docs/BUILDING.md, the native lines)
+      # docs/BUILDING.md installs libsdl2-dev:i386 for the 32-bit build. On the
+      # runner image that package cannot be installed: it pulls in
+      # libglib2.0-dev:i386, whose -dev-bin part cannot coexist with the
+      # image's amd64 one. The 32-bit link needs only the i386 runtime library
+      # and a libSDL2.so link to it (the headers are the amd64 package's, the
+      # same files; pkg-config's -lSDL2 then resolves in /usr/lib/i386-linux-gnu).
+      - name: Prerequisites (docs/BUILDING.md, the native lines; the i386 SDL2 as the comment says)
         run: |
           sudo dpkg --add-architecture i386
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends build-essential gcc-multilib g++-multilib clang clang-format clang-tidy cppcheck cmake ninja-build pkg-config git python3 libpng-dev
-          sudo apt-get install -y --no-install-recommends libsdl2-dev libsdl2-dev:i386 libc6-dev-i386
+          sudo apt-get install -y --no-install-recommends libsdl2-dev libsdl2-2.0-0:i386 libc6-dev-i386
+          sudo ln -s libSDL2-2.0.so.0 /usr/lib/i386-linux-gnu/libSDL2.so
           gcc --version | head -1; clang-format --version; clang-tidy --version | head -1; cppcheck --version
+          pkg-config --cflags --libs sdl2; ls -l /usr/lib/i386-linux-gnu/libSDL2.so
 
       - name: Cache the build tools
         uses: actions/cache@v4
