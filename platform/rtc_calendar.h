@@ -12,13 +12,13 @@
 #include <stdint.h>
 
 #define RTC_SECONDS_PER_MINUTE 60
-#define RTC_MINUTES_PER_HOUR   60
-#define RTC_HOURS_PER_DAY      24
-#define RTC_NOON_HOUR          12
-#define RTC_SECONDS_PER_DAY    ((int64_t)86400)
-#define RTC_MONTHS_PER_YEAR    12
-#define RTC_CHIP_YEARS         100 /* the year register, 00h..99h = 2000..2099 */
-#define RTC_CHIP_MAX_WEEKDAY   6   /* the weekday register, 0 = Sunday */
+#define RTC_MINUTES_PER_HOUR 60
+#define RTC_HOURS_PER_DAY 24
+#define RTC_NOON_HOUR 12
+#define RTC_SECONDS_PER_DAY ((int64_t)86400)
+#define RTC_MONTHS_PER_YEAR 12
+#define RTC_CHIP_YEARS 100     /* the year register, 00h..99h = 2000..2099 */
+#define RTC_CHIP_MAX_WEEKDAY 6 /* the weekday register, 0 = Sunday */
 
 /* Broken-down chip time, plain integers (not BCD). */
 struct rtc_calendar_time {

@@ -15,7 +15,10 @@
 #define FIXED(n) ((int16_t)((n) * 256))
 
 /* OBJ palette bank b, colour i: red i, green b, blue 16. */
-static uint16_t objc(unsigned bank, unsigned index) { return rgb(index, bank, 16); }
+static uint16_t objc(unsigned bank, unsigned index)
+{
+    return rgb(index, bank, 16);
+}
 
 static void set_obj_banks(void)
 {
@@ -103,9 +106,18 @@ static void check_obj_flip(uint16_t flips, bool hflip, bool vflip)
     }
 }
 
-PTEST(obj_horizontal_flip_mirrors_the_columns) { check_obj_flip(A1_HFLIP, true, false); }
-PTEST(obj_vertical_flip_mirrors_the_rows) { check_obj_flip(A1_VFLIP, false, true); }
-PTEST(obj_both_flips_mirror_both) { check_obj_flip(A1_HFLIP | A1_VFLIP, true, true); }
+PTEST(obj_horizontal_flip_mirrors_the_columns)
+{
+    check_obj_flip(A1_HFLIP, true, false);
+}
+PTEST(obj_vertical_flip_mirrors_the_rows)
+{
+    check_obj_flip(A1_VFLIP, false, true);
+}
+PTEST(obj_both_flips_mirror_both)
+{
+    check_obj_flip(A1_HFLIP | A1_VFLIP, true, true);
+}
 
 PTEST(horizontal_flip_of_a_wide_obj_swaps_its_tiles)
 {
@@ -133,7 +145,7 @@ PTEST(an_8bpp_obj_uses_the_256_colour_obj_palette_and_colour_0_is_transparent)
     pixels[0][3] = 0;
     for (unsigned i = 100; i < 164; i++)
         palette_set(256 + i, rgb(i % 32u, 0, i / 32u));
-    put_obj_tile_8bpp(4, pixels); /* 64 bytes: tile numbers 4 and 5 */
+    put_obj_tile_8bpp(4, pixels);        /* 64 bytes: tile numbers 4 and 5 */
     obj_set(0, A0_8BPP, 0, a2(4, 0, 9)); /* the palette number is ignored */
     PT_ASSERT_EQ_INT(ppu_render_line(0, out), PPU_OK);
     PT_ASSERT_EQ_U32(out[0], rgb(100 % 32, 0, 3));
@@ -145,9 +157,9 @@ PTEST(an_8bpp_obj_uses_the_256_colour_obj_palette_and_colour_0_is_transparent)
 
 /* GBATEK "LCD OBJ - OAM Attributes": the size table, [shape][size] = {w, h}. */
 static const unsigned obj_sizes[3][4][2] = {
-    { { 8, 8 }, { 16, 16 }, { 32, 32 }, { 64, 64 } },
-    { { 16, 8 }, { 32, 8 }, { 32, 16 }, { 64, 32 } },
-    { { 8, 16 }, { 8, 32 }, { 16, 32 }, { 32, 64 } },
+    {{8, 8}, {16, 16}, {32, 32}, {64, 64}},
+    {{16, 8}, {32, 8}, {32, 16}, {64, 32}},
+    {{8, 16}, {8, 32}, {16, 32}, {32, 64}},
 };
 
 PTEST(every_shape_and_size_has_the_gbatek_dimensions)
@@ -281,8 +293,14 @@ PTEST(an_obj_is_above_a_bg_of_equal_or_lower_priority_and_below_a_higher_one)
     solid_bg0(1, rgb(0, 0, 31));
     solid_obj_tiles_4bpp(0, 1, 1);
     const uint16_t bg = rgb(0, 0, 31), obj = objc(2, 1);
-    const struct { unsigned obj_priority; uint16_t expected; } cases[] = {
-        { 0, obj }, { 1, obj }, { 2, bg }, { 3, bg },
+    const struct {
+        unsigned obj_priority;
+        uint16_t expected;
+    } cases[] = {
+        {0, obj},
+        {1, obj},
+        {2, bg},
+        {3, bg},
     };
     for (unsigned i = 0; i < 4; i++) {
         obj_set(0, 0, 0, a2(0, cases[i].obj_priority, 2));

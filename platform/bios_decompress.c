@@ -76,8 +76,7 @@ static int lz77_copy(struct bios_source *in, struct bios_sink *out)
     return BIOS_OK;
 }
 
-static int lz77_uncomp(const char *function, const void *src, size_t src_size, void *dest,
-                       enum bios_write_width width)
+static int lz77_uncomp(const char *function, const void *src, size_t src_size, void *dest, enum bios_write_width width)
 {
     struct bios_source in;
     struct bios_stream_header header;
@@ -91,8 +90,7 @@ static int lz77_uncomp(const char *function, const void *src, size_t src_size, v
         if (!bios_source_byte(&in, &flags)) {
             return BIOS_ERR_TRUNCATED;
         }
-        for (unsigned block = 0; block < LZ77_BLOCKS_PER_FLAG && error == BIOS_OK && !bios_sink_full(&out);
-             block++) {
+        for (unsigned block = 0; block < LZ77_BLOCKS_PER_FLAG && error == BIOS_OK && !bios_sink_full(&out); block++) {
             uint8_t literal = 0;
             if (((unsigned)flags << block) & LZ77_FLAG_COMPRESSED) {
                 error = lz77_copy(&in, &out);
@@ -125,8 +123,7 @@ void LZ77UnCompVram(const uint32_t *src, void *dest)
 
 /* ---- Run-length ---------------------------------------------------------- */
 
-static int rl_uncomp(const char *function, const void *src, size_t src_size, void *dest,
-                     enum bios_write_width width)
+static int rl_uncomp(const char *function, const void *src, size_t src_size, void *dest, enum bios_write_width width)
 {
     struct bios_source in;
     struct bios_stream_header header;
@@ -163,14 +160,12 @@ int bios_rl_uncomp_bounded(const void *src, size_t src_size, void *dest, enum bi
 
 void RLUnCompWram(const uint32_t *src, void *dest)
 {
-    bios_stream_report("RLUnCompWram",
-                       rl_uncomp("RLUnCompWram", src, BIOS_STREAM_UNBOUNDED, dest, BIOS_WRITE_8BIT));
+    bios_stream_report("RLUnCompWram", rl_uncomp("RLUnCompWram", src, BIOS_STREAM_UNBOUNDED, dest, BIOS_WRITE_8BIT));
 }
 
 void RLUnCompVram(const uint32_t *src, void *dest)
 {
-    bios_stream_report("RLUnCompVram",
-                       rl_uncomp("RLUnCompVram", src, BIOS_STREAM_UNBOUNDED, dest, BIOS_WRITE_16BIT));
+    bios_stream_report("RLUnCompVram", rl_uncomp("RLUnCompVram", src, BIOS_STREAM_UNBOUNDED, dest, BIOS_WRITE_16BIT));
 }
 
 /* ---- Huffman ------------------------------------------------------------- */
@@ -206,8 +201,8 @@ static int next_bit(struct bios_source *in, uint32_t *word, unsigned *bits_left,
 }
 
 /* Walks from the root to a data node; *unit is its data byte. */
-static int decode_unit(const struct huffman_tree *tree, struct bios_source *in, uint32_t *word,
-                       unsigned *bits_left, uint8_t *unit)
+static int decode_unit(const struct huffman_tree *tree, struct bios_source *in, uint32_t *word, unsigned *bits_left,
+                       uint8_t *unit)
 {
     size_t position = HUFF_ROOT_OFFSET;
     for (;;) {
@@ -245,7 +240,7 @@ static int huff_uncomp(const char *function, const void *src, size_t src_size, v
     if (!bios_source_byte(&in, &tree_size)) {
         return BIOS_ERR_TRUNCATED;
     }
-    struct huffman_tree tree = { in.bytes, HUFF_TREE_SIZE_OFFSET + ((size_t)tree_size + 1u) * 2u };
+    struct huffman_tree tree = {in.bytes, HUFF_TREE_SIZE_OFFSET + ((size_t)tree_size + 1u) * 2u};
     if (tree.end > in.size) {
         return BIOS_ERR_TRUNCATED;
     }

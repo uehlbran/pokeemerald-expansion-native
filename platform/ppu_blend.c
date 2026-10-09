@@ -25,12 +25,7 @@
 #define BLDCNT_SECOND_TARGET_SHIFT 8u /* bits 8-13: the 2nd target layers */
 #define BLDCNT_EFFECT_SHIFT 6u        /* bits 6-7: the effect */
 #define BLDCNT_EFFECT_MASK 0x3u
-enum blend_effect {
-    EFFECT_NONE = 0,
-    EFFECT_ALPHA = 1,
-    EFFECT_BRIGHTEN = 2,
-    EFFECT_DARKEN = 3
-};
+enum blend_effect { EFFECT_NONE = 0, EFFECT_ALPHA = 1, EFFECT_BRIGHTEN = 2, EFFECT_DARKEN = 3 };
 
 /* BLDALPHA bits 0-4 EVA, 8-12 EVB; BLDY bits 0-4 EVY: "0..16 = 0/16..16/16,
  * 17..31=16/16". */
@@ -67,8 +62,7 @@ uint16_t ppu_blend_alpha(uint16_t first, uint16_t second, uint16_t bldalpha)
     const uint32_t evb = coefficient((uint32_t)bldalpha >> BLDALPHA_EVB_SHIFT);
     uint16_t result = 0;
     for (unsigned i = 0; i < CHANNEL_COUNT; i++) {
-        const uint32_t mixed =
-            (channel(first, i) * eva + channel(second, i) * evb) >> COEFFICIENT_SHIFT;
+        const uint32_t mixed = (channel(first, i) * eva + channel(second, i) * evb) >> COEFFICIENT_SHIFT;
         result = with_channel(result, i, mixed > CHANNEL_MAX ? CHANNEL_MAX : mixed);
     }
     return result;
@@ -103,12 +97,10 @@ static bool is_first_target(uint16_t bldcnt, enum ppu_layer layer)
 
 static bool is_second_target(uint16_t bldcnt, enum ppu_layer layer)
 {
-    return layer <= PPU_LAYER_BACKDROP
-           && (((uint32_t)bldcnt >> (BLDCNT_SECOND_TARGET_SHIFT + layer)) & 1u) != 0;
+    return layer <= PPU_LAYER_BACKDROP && (((uint32_t)bldcnt >> (BLDCNT_SECOND_TARGET_SHIFT + layer)) & 1u) != 0;
 }
 
-uint16_t ppu_blend_pixel(const struct ppu_regs *regs, const struct ppu_pixel_targets *targets,
-                         bool effects_enabled)
+uint16_t ppu_blend_pixel(const struct ppu_regs *regs, const struct ppu_pixel_targets *targets, bool effects_enabled)
 {
     const struct ppu_target top = targets->top;
     if (!effects_enabled)
@@ -120,8 +112,7 @@ uint16_t ppu_blend_pixel(const struct ppu_regs *regs, const struct ppu_pixel_tar
         return top.colour;
     switch ((regs->bldcnt >> BLDCNT_EFFECT_SHIFT) & BLDCNT_EFFECT_MASK) {
     case EFFECT_ALPHA:
-        return below_is_second ? ppu_blend_alpha(top.colour, targets->below.colour, regs->bldalpha)
-                               : top.colour;
+        return below_is_second ? ppu_blend_alpha(top.colour, targets->below.colour, regs->bldalpha) : top.colour;
     case EFFECT_BRIGHTEN:
         return ppu_blend_brighten(top.colour, regs->bldy);
     case EFFECT_DARKEN:

@@ -48,7 +48,7 @@ static uint32_t load32(const uint8_t *bytes)
 PTEST(cpuset_copy_16bit)
 {
     setup();
-    const uint16_t src[5] = { 1, 2, 3, 4, 0xFFFF };
+    const uint16_t src[5] = {1, 2, 3, 4, 0xFFFF};
     uint16_t dst[8];
     memset(dst, FILL_BYTE, sizeof dst);
     CpuSet(src, dst, 5);
@@ -61,7 +61,7 @@ PTEST(cpuset_copy_16bit)
 PTEST(cpuset_copy_32bit)
 {
     setup();
-    const uint32_t src[3] = { 0x11111111, 0x22222222, 0xDEADBEEF };
+    const uint32_t src[3] = {0x11111111, 0x22222222, 0xDEADBEEF};
     uint32_t dst[4];
     memset(dst, FILL_BYTE, sizeof dst);
     CpuSet(src, dst, BIOS_CPU_SET_32BIT | 3);
@@ -95,8 +95,8 @@ PTEST(cpuset_fill_16bit_and_32bit)
 PTEST(cpuset_count_zero_touches_nothing)
 {
     setup();
-    uint16_t dst[2] = { FILL_16, FILL_16 };
-    const uint16_t src[2] = { 1, 2 };
+    uint16_t dst[2] = {FILL_16, FILL_16};
+    const uint16_t src[2] = {1, 2};
     CpuSet(src, dst, 0);
     CpuSet(src, dst, BIOS_CPU_SET_32BIT);
     CpuSet(src, dst, BIOS_CPU_SET_SRC_FIXED);
@@ -110,7 +110,7 @@ PTEST(cpuset_count_zero_touches_nothing)
 PTEST(cpuset_ignores_unused_control_bits)
 {
     setup();
-    const uint16_t src[2] = { 0x1111, 0x2222 };
+    const uint16_t src[2] = {0x1111, 0x2222};
     uint16_t dst[4];
     memset(dst, FILL_BYTE, sizeof dst);
     CpuSet(src, dst, UINT32_C(0xFAE00002)); /* count 2, 16-bit copy */
@@ -140,7 +140,7 @@ PTEST(cpuset_maximum_counts)
 PTEST(cpuset_misaligned_source_and_destination_copy_correctly)
 {
     setup();
-    const uint8_t src[12] = { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11 };
+    const uint8_t src[12] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11};
     uint8_t dst[12];
     memset(dst, FILL_BYTE, sizeof dst);
     CpuSet(src + 1, dst + 3, 3); /* three halfwords, both addresses odd */
@@ -154,10 +154,10 @@ PTEST(cpuset_misaligned_source_and_destination_copy_correctly)
     PT_ASSERT_EQ_U32(dst[0], FILL_BYTE);
     PT_ASSERT_EQ_U32(dst[9], FILL_BYTE);
 
-    const uint8_t fill[3] = { 0, 0x34, 0x12 };
+    const uint8_t fill[3] = {0, 0x34, 0x12};
     memset(dst, FILL_BYTE, sizeof dst);
     CpuSet(fill + 1, dst + 1, BIOS_CPU_SET_SRC_FIXED | 2);
-    const uint8_t expected[4] = { 0x34, 0x12, 0x34, 0x12 };
+    const uint8_t expected[4] = {0x34, 0x12, 0x34, 0x12};
     PT_ASSERT_MEM_EQ(dst + 1, expected, sizeof expected);
     PT_ASSERT_EQ_U32(dst[5], FILL_BYTE);
     teardown();
@@ -168,9 +168,9 @@ PTEST(cpuset_misaligned_source_and_destination_copy_correctly)
 PTEST(cpuset_overlapping_copy_goes_forward_unit_by_unit)
 {
     setup();
-    uint16_t buffer[6] = { 1, 2, 3, 4, 5, 6 };
+    uint16_t buffer[6] = {1, 2, 3, 4, 5, 6};
     CpuSet(buffer, buffer + 1, 5);
-    const uint16_t expected[6] = { 1, 1, 1, 1, 1, 1 };
+    const uint16_t expected[6] = {1, 1, 1, 1, 1, 1};
     PT_ASSERT_MEM_EQ(buffer, expected, sizeof expected);
     teardown();
 }
@@ -178,8 +178,8 @@ PTEST(cpuset_overlapping_copy_goes_forward_unit_by_unit)
 PTEST(cpuset_destination_in_rodata_refused)
 {
     setup();
-    static const uint16_t rodata[4] = { 9, 9, 9, 9 };
-    const uint16_t src[4] = { 1, 2, 3, 4 };
+    static const uint16_t rodata[4] = {9, 9, 9, 9};
+    const uint16_t src[4] = {1, 2, 3, 4};
     /* The game can name any address; here, read-only data. */
     CpuSet(src, (void *)(uintptr_t)rodata, 4);
     PT_ASSERT_EQ_U32(rodata[0], 9);
@@ -280,7 +280,7 @@ PTEST(cpufastset_overlapping_copy_moves_blocks)
     for (uint32_t i = 0; i < 17; i++)
         buffer[i] = i;
     CpuFastSet(buffer, buffer + 1, 8);
-    const uint32_t expected[10] = { 0, 0, 1, 2, 3, 4, 5, 6, 7, 9 };
+    const uint32_t expected[10] = {0, 0, 1, 2, 3, 4, 5, 6, 7, 9};
     PT_ASSERT_MEM_EQ(buffer, expected, sizeof expected);
     teardown();
 }
@@ -289,8 +289,8 @@ PTEST(cpufastset_overlapping_copy_moves_blocks)
 PTEST(cpufastset_ignores_32bit_flag)
 {
     setup();
-    uint32_t src[8] = { 1, 2, 3, 4, 5, 6, 7, 8 };
-    uint32_t dst[8] = { 0 };
+    uint32_t src[8] = {1, 2, 3, 4, 5, 6, 7, 8};
+    uint32_t dst[8] = {0};
     CpuFastSet(src, dst, BIOS_CPU_SET_32BIT | 8);
     PT_ASSERT_MEM_EQ(dst, src, sizeof src);
     teardown();
@@ -319,8 +319,8 @@ PTEST(cpufastset_misaligned_copy_and_fill)
 PTEST(cpufastset_destination_in_rodata_refused)
 {
     setup();
-    static const uint32_t rodata[8] = { 9 };
-    const uint32_t src[8] = { 1 };
+    static const uint32_t rodata[8] = {9};
+    const uint32_t src[8] = {1};
     CpuFastSet(src, (void *)(uintptr_t)rodata, 8);
     PT_ASSERT_EQ_U32(rodata[0], 9);
     teardown();

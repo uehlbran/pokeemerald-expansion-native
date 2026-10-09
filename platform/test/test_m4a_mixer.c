@@ -315,12 +315,11 @@ static void FillPattern(struct SoundInfo *si, uint32_t seed)
 
 static void RefReverb(uint32_t frame, uint32_t nextFrame, uint32_t reverb)
 {
-    for (uint32_t i = 0; i < SPV; i++)
-    {
+    for (uint32_t i = 0; i < SPV; i++) {
         uint32_t cur = frame * SPV + i;
         uint32_t next = nextFrame * SPV + i;
-        int64_t sum = (int8_t)sExpected[cur] + (int8_t)sExpected[PCM_DMA_BUF_SIZE + cur]
-                    + (int8_t)sExpected[next] + (int8_t)sExpected[PCM_DMA_BUF_SIZE + next];
+        int64_t sum = (int8_t)sExpected[cur] + (int8_t)sExpected[PCM_DMA_BUF_SIZE + cur] + (int8_t)sExpected[next]
+                      + (int8_t)sExpected[PCM_DMA_BUF_SIZE + next];
         int64_t v = M4aTestFloorDiv(sum * reverb, 512);
 
         if (v < 0)
@@ -401,8 +400,8 @@ PTEST(SoundMain_reverb_rounds_negative_results_toward_zero)
  * holds, the pseudo echo holds for its length; the result is scaled by
  * (masterVolume + 1) / 16 and by the channel's left and right volume. */
 
-static struct SoundInfo *SetUpEnvelope(union M4aTestWave *w, uint8_t attack, uint8_t decay,
-                                       uint8_t sustain, uint8_t release)
+static struct SoundInfo *SetUpEnvelope(union M4aTestWave *w, uint8_t attack, uint8_t decay, uint8_t sustain,
+                                       uint8_t release)
 {
     struct SoundInfo *si = M4aTestSetUp();
     struct SoundChannel *chan;
@@ -449,14 +448,14 @@ PTEST(Envelope_attack_decay_sustain_release_steps)
 
     chan->statusFlags |= SOUND_CHANNEL_SF_STOP;
     env = 64;
-    while (env != 0)
-    {
+    while (env != 0) {
         env = env * 200 >> 8;
         SoundMain();
         if (env == 0)
             break;
         PT_ASSERT_EQ_U32(chan->envelopeVolume, env);
-        PT_ASSERT_EQ_U32(chan->statusFlags, SOUND_CHANNEL_SF_LOOP | SOUND_CHANNEL_SF_STOP | SOUND_CHANNEL_SF_ENV_SUSTAIN);
+        PT_ASSERT_EQ_U32(chan->statusFlags,
+                         SOUND_CHANNEL_SF_LOOP | SOUND_CHANNEL_SF_STOP | SOUND_CHANNEL_SF_ENV_SUSTAIN);
     }
     /* released to 0 with no pseudo echo: the channel is off */
     PT_ASSERT_EQ_U32(chan->statusFlags, 0);
@@ -671,8 +670,7 @@ PTEST(Mixer_reverb_and_a_channel_combine)
     M4aTestStartChannel(si, 0, &w.wave, TONEDATA_TYPE_FIX, STEP_ONE, 0);
     FillPattern(si, 5);
     RefReverb(0, 1, 90);
-    for (uint32_t i = 0; i < SPV; i++)
-    {
+    for (uint32_t i = 0; i < SPV; i++) {
         sExpected[i] = (uint8_t)(sExpected[i] + 63);
         sExpected[PCM_DMA_BUF_SIZE + i] = (uint8_t)(sExpected[PCM_DMA_BUF_SIZE + i] + 31);
     }
@@ -688,8 +686,7 @@ PTEST(m4aSoundVSync_ignores_a_sound_info_that_is_not_running)
 {
     static const uint32_t kIdents[] = {ID_NUMBER - 1, ID_NUMBER + 2, ID_NUMBER + 10, 0};
 
-    for (size_t i = 0; i < sizeof(kIdents) / sizeof(kIdents[0]); i++)
-    {
+    for (size_t i = 0; i < sizeof(kIdents) / sizeof(kIdents[0]); i++) {
         struct SoundInfo *si = M4aTestSetUp();
 
         PT_ASSERT(si != NULL);

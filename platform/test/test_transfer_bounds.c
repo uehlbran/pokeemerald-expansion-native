@@ -80,15 +80,18 @@ PTEST(init_twice_is_fine)
 /* Literal GBATEK "GBA Memory Map" addresses, deliberately not gba_memmap's
  * constants, so a wrong constant there is caught here. The mGBA debug page is
  * not GBATEK (see gba_memmap.h). */
-static const struct { uintptr_t first; uintptr_t last; } literal_regions[] = {
-    { 0x02000000u, 0x0203FFFFu }, /* EWRAM */
-    { 0x03000000u, 0x03007FFFu }, /* IWRAM */
-    { 0x04000000u, 0x040003FFu }, /* I/O */
-    { 0x04FFF000u, 0x04FFFFFFu }, /* mGBA debug page */
-    { 0x05000000u, 0x050003FFu }, /* palette RAM */
-    { 0x06000000u, 0x06017FFFu }, /* VRAM */
-    { 0x07000000u, 0x070003FFu }, /* OAM */
-    { 0x0E000000u, 0x0E01FFFFu }, /* SRAM / flash, 128 KiB chip */
+static const struct {
+    uintptr_t first;
+    uintptr_t last;
+} literal_regions[] = {
+    {0x02000000u, 0x0203FFFFu}, /* EWRAM */
+    {0x03000000u, 0x03007FFFu}, /* IWRAM */
+    {0x04000000u, 0x040003FFu}, /* I/O */
+    {0x04FFF000u, 0x04FFFFFFu}, /* mGBA debug page */
+    {0x05000000u, 0x050003FFu}, /* palette RAM */
+    {0x06000000u, 0x06017FFFu}, /* VRAM */
+    {0x07000000u, 0x070003FFu}, /* OAM */
+    {0x0E000000u, 0x0E01FFFFu}, /* SRAM / flash, 128 KiB chip */
 };
 
 PTEST(every_gba_region_edges_by_literal_address)

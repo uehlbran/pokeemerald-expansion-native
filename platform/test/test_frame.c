@@ -93,14 +93,28 @@ static size_t event_count;
 static void record(enum event_kind kind)
 {
     if (event_count < MAX_EVENTS)
-        events[event_count++] = (struct event){ kind, *io(LCD_VCOUNT_OFFSET), *io(LCD_DISPSTAT_OFFSET) };
+        events[event_count++] = (struct event){kind, *io(LCD_VCOUNT_OFFSET), *io(LCD_DISPSTAT_OFFSET)};
 }
 
-static void on_vcount(void) { record(EVENT_VCOUNT); }
-static void on_hblank(void) { record(EVENT_HBLANK); }
-static void on_vblank(void) { record(EVENT_VBLANK); }
-static void on_timer0(void) { record(EVENT_TIMER0); }
-static void on_nothing(void) {}
+static void on_vcount(void)
+{
+    record(EVENT_VCOUNT);
+}
+static void on_hblank(void)
+{
+    record(EVENT_HBLANK);
+}
+static void on_vblank(void)
+{
+    record(EVENT_VBLANK);
+}
+static void on_timer0(void)
+{
+    record(EVENT_TIMER0);
+}
+static void on_nothing(void)
+{
+}
 
 /* Set by a test: Timer 2's handler times the test out as the test runner's
  * Intr_Timer2 does natively, by jumping to AgbMainLoop. */
@@ -115,7 +129,7 @@ static void on_timer2(void)
 
 /* src/main.c gIntrTableTemplate's order (interrupt.h). */
 static interrupt_handler const table[INTERRUPT_TABLE_LENGTH] = {
-    on_vcount, on_nothing, on_nothing, on_hblank, on_vblank, on_timer0, on_nothing,
+    on_vcount, on_nothing, on_nothing, on_hblank,  on_vblank,  on_timer0,  on_nothing,
     on_timer2, on_nothing, on_nothing, on_nothing, on_nothing, on_nothing, on_nothing,
 };
 
@@ -145,8 +159,8 @@ static size_t index_of(const struct event *event)
  * file; IME on, the three LCD interrupts enabled in IE and DISPSTAT. */
 static bool start(uint32_t frame_limit, const char *screenshot_path, const char *save_path)
 {
-    struct video_config video = { .headless = true, .scale = 1, .title = "test_frame" };
-    struct frame_config config = { .frame_limit = frame_limit, .screenshot_path = screenshot_path };
+    struct video_config video = {.headless = true, .scale = 1, .title = "test_frame"};
+    struct frame_config config = {.frame_limit = frame_limit, .screenshot_path = screenshot_path};
     memset((void *)(uintptr_t)GBA_IO_BASE, 0, GBA_IO_SIZE);
     event_count = 0;
     if (gba_memmap_init() != GBA_MEMMAP_OK || transfer_bounds_init() != 0
@@ -159,8 +173,8 @@ static bool start(uint32_t frame_limit, const char *screenshot_path, const char 
     flash_init();
     *io(GBA_IME_OFFSET) = GBA_IME_ENABLE;
     *io(GBA_IE_OFFSET) = IE_VBLANK | IE_HBLANK | IE_VCOUNT;
-    *io(LCD_DISPSTAT_OFFSET) = (uint16_t)(LCD_DISPSTAT_VBLANK_IRQ | LCD_DISPSTAT_HBLANK_IRQ
-                                          | LCD_DISPSTAT_VCOUNTER_IRQ | (TEST_LYC << LCD_DISPSTAT_LYC_SHIFT));
+    *io(LCD_DISPSTAT_OFFSET) = (uint16_t)(LCD_DISPSTAT_VBLANK_IRQ | LCD_DISPSTAT_HBLANK_IRQ | LCD_DISPSTAT_VCOUNTER_IRQ
+                                          | (TEST_LYC << LCD_DISPSTAT_LYC_SHIFT));
     return true;
 }
 
@@ -270,7 +284,8 @@ static bool start_hblank_dma(void)
 {
     for (uint16_t i = 0; i <= LCD_VISIBLE_LINES; i++)
         hblank_source[i] = (uint16_t)(0x2000u + i);
-    uint32_t control = ((DMA_CNT_ENABLE | (uint32_t)DMA_TIMING_HBLANK | DMA_CNT_REPEAT | DMA_CNT_DEST_FIXED) << 16) | 1u;
+    uint32_t control = ((DMA_CNT_ENABLE | (uint32_t)DMA_TIMING_HBLANK | DMA_CNT_REPEAT | DMA_CNT_DEST_FIXED) << 16)
+                       | 1u;
     return dma_set(0, hblank_source, (void *)&hblank_destination, control) == DMA_OK;
 }
 
@@ -311,7 +326,7 @@ PTEST(skip_drawing_leaves_the_frame_buffer_and_keeps_the_lines_events)
     *io(FRAME_TEST_DISPCNT_OFFSET) = FRAME_TEST_FORCED_BLANK;
     PT_ASSERT_EQ_INT(frame_run(), FRAME_CONTINUE);
     bool drawn_white = frame_pixels()[0] == 0x7FFF && frame_pixels()[VIDEO_PIXEL_COUNT - 1] == 0x7FFF;
-    struct frame_config undrawn = { .skip_drawing = true };
+    struct frame_config undrawn = {.skip_drawing = true};
     frame_shutdown();
     PT_ASSERT_EQ_INT(frame_init(&undrawn), 0);
     *io(FRAME_TEST_DISPCNT_OFFSET) = 0;
@@ -351,7 +366,7 @@ PTEST(a_frame_drawn_after_undrawn_frames_shows_the_current_image)
     *io(FRAME_TEST_DISPCNT_OFFSET) = FRAME_TEST_FORCED_BLANK;
     PT_ASSERT_EQ_INT(frame_run(), FRAME_CONTINUE);
     bool drawn_white = frame_pixels()[0] == 0x7FFF;
-    struct frame_config undrawn = { .skip_drawing = true };
+    struct frame_config undrawn = {.skip_drawing = true};
     frame_shutdown();
     PT_ASSERT_EQ_INT(frame_init(&undrawn), 0);
     *io(FRAME_TEST_DISPCNT_OFFSET) = 0;
@@ -359,7 +374,7 @@ PTEST(a_frame_drawn_after_undrawn_frames_shows_the_current_image)
     for (int i = 0; i < 3; i++)
         PT_ASSERT_EQ_INT(frame_run(), FRAME_CONTINUE);
     bool still_white = frame_pixels()[0] == 0x7FFF;
-    struct frame_config drawn = { .skip_drawing = false };
+    struct frame_config drawn = {.skip_drawing = false};
     frame_shutdown();
     PT_ASSERT_EQ_INT(frame_init(&drawn), 0);
     PT_ASSERT_EQ_INT(frame_run(), FRAME_CONTINUE);
@@ -621,14 +636,14 @@ static enum frame_step_result step_hook(void *context)
 
 PTEST(the_step_hook_runs_once_a_frame_before_keyinput_is_written)
 {
-    struct hook_log log = { .answer_at_third = FRAME_STEP_CONTINUE };
+    struct hook_log log = {.answer_at_third = FRAME_STEP_CONTINUE};
     PT_ASSERT(start(0, NULL, NULL));
     frame_set_step_hook(step_hook, &log);
     *io(KEYINPUT_OFFSET) = KEYINPUT_NONE;
     input_script_set(INPUT_KEY_A);
     PT_ASSERT_EQ_INT(frame_run(), FRAME_CONTINUE);
     PT_ASSERT_EQ_INT(log.calls, 1);
-    PT_ASSERT_EQ_U32(log.keyinput_seen, KEYINPUT_NONE); /* KEYINPUT not written yet this frame */
+    PT_ASSERT_EQ_U32(log.keyinput_seen, KEYINPUT_NONE);                   /* KEYINPUT not written yet this frame */
     PT_ASSERT_EQ_U32(*io(KEYINPUT_OFFSET), KEYINPUT_NONE & ~INPUT_KEY_B); /* what the hook set */
     PT_ASSERT_EQ_INT(frame_run(), FRAME_CONTINUE);
     PT_ASSERT_EQ_INT(log.calls, 2);
@@ -637,7 +652,7 @@ PTEST(the_step_hook_runs_once_a_frame_before_keyinput_is_written)
 
 PTEST(a_step_hook_stop_ends_the_game_with_status_0_after_the_frame)
 {
-    struct hook_log log = { .answer_at_third = FRAME_STEP_STOP };
+    struct hook_log log = {.answer_at_third = FRAME_STEP_STOP};
     PT_ASSERT(start(0, NULL, NULL));
     frame_set_step_hook(step_hook, &log);
     PT_ASSERT_EQ_INT(frame_run(), FRAME_CONTINUE);
@@ -650,7 +665,7 @@ PTEST(a_step_hook_stop_ends_the_game_with_status_0_after_the_frame)
 
 PTEST(a_step_hook_fail_ends_the_game_with_status_1)
 {
-    struct hook_log log = { .answer_at_third = FRAME_STEP_FAIL };
+    struct hook_log log = {.answer_at_third = FRAME_STEP_FAIL};
     PT_ASSERT(start(0, NULL, NULL));
     frame_set_step_hook(step_hook, &log);
     for (int i = 0; i < 2; i++)
@@ -662,7 +677,7 @@ PTEST(a_step_hook_fail_ends_the_game_with_status_1)
 
 PTEST(removing_the_step_hook_and_frame_init_both_clear_it)
 {
-    struct hook_log log = { .answer_at_third = FRAME_STEP_CONTINUE };
+    struct hook_log log = {.answer_at_third = FRAME_STEP_CONTINUE};
     PT_ASSERT(start(0, NULL, NULL));
     frame_set_step_hook(step_hook, &log);
     frame_set_step_hook(NULL, NULL);

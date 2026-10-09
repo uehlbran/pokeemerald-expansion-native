@@ -71,7 +71,8 @@ static bool in_file(uint64_t offset, uint64_t size, uint64_t file_size)
 
 static bool read_at(FILE *file, uint64_t offset, void *out, size_t size)
 {
-    return offset <= (uint64_t)LONG_MAX && fseek(file, (long)offset, SEEK_SET) == 0 && fread(out, 1, size, file) == size;
+    return offset <= (uint64_t)LONG_MAX && fseek(file, (long)offset, SEEK_SET) == 0
+           && fread(out, 1, size, file) == size;
 }
 
 static bool read_header(FILE *file, uint64_t file_size, elf_header *header)
@@ -93,7 +94,8 @@ static bool read_header(FILE *file, uint64_t file_size, elf_header *header)
 static bool read_section(FILE *file, uint64_t file_size, const elf_header *header, uint32_t index, elf_section *out)
 {
     uint64_t offset = (uint64_t)header->e_shoff + (uint64_t)index * sizeof *out;
-    return index < header->e_shnum && in_file(offset, sizeof *out, file_size) && read_at(file, offset, out, sizeof *out);
+    return index < header->e_shnum && in_file(offset, sizeof *out, file_size)
+           && read_at(file, offset, out, sizeof *out);
 }
 
 /* Finds the SHT_SYMTAB section and its string table. */
@@ -104,15 +106,16 @@ static bool find_symtab(FILE *file, uint64_t file_size, const elf_header *header
         if (!read_section(file, file_size, header, i, symtab))
             return false;
         if (symtab->sh_type == SHT_SYMTAB)
-            return symtab->sh_entsize == sizeof(elf_symbol) && read_section(file, file_size, header, symtab->sh_link, strtab)
-                   && strtab->sh_type == SHT_STRTAB;
+            return symtab->sh_entsize == sizeof(elf_symbol)
+                   && read_section(file, file_size, header, symtab->sh_link, strtab) && strtab->sh_type == SHT_STRTAB;
     }
     return false;
 }
 
 static bool load_names(FILE *file, uint64_t file_size, const elf_section *strtab)
 {
-    if (strtab->sh_size == 0 || !in_file(strtab->sh_offset, strtab->sh_size, file_size) || strtab->sh_size >= UINT32_MAX)
+    if (strtab->sh_size == 0 || !in_file(strtab->sh_offset, strtab->sh_size, file_size)
+        || strtab->sh_size >= UINT32_MAX)
         return false;
     loaded.names = malloc((size_t)strtab->sh_size + 1u);
     if (loaded.names == NULL)
@@ -136,8 +139,8 @@ static bool load_symbols(FILE *file, uint64_t file_size, const elf_section *symt
         if (ELF32_ST_TYPE(raw[i].st_info) != STT_FUNC || raw[i].st_size == 0 || raw[i].st_name == 0
             || raw[i].st_name >= loaded.names_size)
             continue;
-        loaded.symbols[loaded.count++] = (struct symbol){ .address = (uintptr_t)raw[i].st_value,
-                                                           .name_offset = raw[i].st_name };
+        loaded.symbols[loaded.count++] = (struct symbol){.address = (uintptr_t)raw[i].st_value,
+                                                         .name_offset = raw[i].st_name};
     }
     free(raw);
     if (ok)
@@ -173,7 +176,8 @@ int symbols_load(const char *path)
               && load_symbols(file, file_size, &symtab);
     fclose(file);
     if (!ok) {
-        fprintf(stderr, "symbols: %s is not an ELF executable of this build's width with a usable symbol table\n", path);
+        fprintf(stderr, "symbols: %s is not an ELF executable of this build's width with a usable symbol table\n",
+                path);
         symbols_unload();
         return -1;
     }

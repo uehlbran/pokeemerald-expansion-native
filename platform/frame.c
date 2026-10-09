@@ -74,7 +74,7 @@ int frame_init(const struct frame_config *config)
         fprintf(stderr, "frame: frame_init: no configuration\n");
         return -1;
     }
-    frame = (__typeof__(frame)){ .config = *config, .initialised = true };
+    frame = (__typeof__(frame)){.config = *config, .initialised = true};
     return 0;
 }
 
@@ -174,9 +174,10 @@ static bool fifo_frame(struct m4a_output_frame *fifo)
     if (fifo->samples == FRAME_AUDIO_SAMPLES_PER_FRAME)
         return true;
     if (!frame.sound_rate_mismatch) {
-        fprintf(stderr, "frame: the sound engine mixes %zu samples a frame (%u Hz), the output plays %u (%u Hz); "
-                "its Direct Sound is left silent (reported once)\n", fifo->samples, m4a_output_sample_rate(),
-                FRAME_AUDIO_SAMPLES_PER_FRAME, FRAME_AUDIO_SAMPLE_RATE_HZ);
+        fprintf(stderr,
+                "frame: the sound engine mixes %zu samples a frame (%u Hz), the output plays %u (%u Hz); "
+                "its Direct Sound is left silent (reported once)\n",
+                fifo->samples, m4a_output_sample_rate(), FRAME_AUDIO_SAMPLES_PER_FRAME, FRAME_AUDIO_SAMPLE_RATE_HZ);
         frame.sound_rate_mismatch = true;
     }
     return false;
@@ -254,8 +255,10 @@ static void present_and_read_keys(void)
 static int store_save(void)
 {
     if (save_file_store() != SAVE_FILE_OK) {
-        fprintf(stderr, "frame: the save file could not be stored; the game's save is only in memory, "
-                "retrying in %u frames\n", FRAME_SAVE_RETRY_FRAMES);
+        fprintf(stderr,
+                "frame: the save file could not be stored; the game's save is only in memory, "
+                "retrying in %u frames\n",
+                FRAME_SAVE_RETRY_FRAMES);
         frame.save_retry_wait = FRAME_SAVE_RETRY_FRAMES;
         return -1;
     }
@@ -288,7 +291,7 @@ static void finish_frame(void)
     frame.frames++;
     if (interrupt_halted()) {
         fprintf(stderr, "frame: the interrupt controller halted on a Game Pak interrupt, as the GBA hangs; "
-                "stopping\n");
+                        "stopping\n");
         fail();
     }
     if (frame.config.frame_limit != 0 && frame.frames >= frame.config.frame_limit)

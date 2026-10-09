@@ -17,18 +17,18 @@
 #include <unistd.h>
 
 #define EPOCH_2024_03_15_13_45_30 1710510330LL /* Friday */
-#define EPOCH_2000_01_01          946684800LL  /* Saturday */
-#define EPOCH_2099_12_31_235959   4102444799LL /* Thursday */
-#define EPOCH_2024_02_29_235959   1709251199LL
-#define EPOCH_2023_02_28_235959   1677628799LL
-#define EPOCH_2024_04_30_235959   1714521599LL
-#define EPOCH_2024_12_31_235959   1735689599LL
-#define EPOCH_2024_01_31_235959   1706745599LL
-#define EPOCH_2100_02_28_235959   4107542399LL
-#define EPOCH_2024_03_15_000000   1710460800LL
-#define EPOCH_2024_03_15_120000   1710504000LL
-#define EPOCH_2024_03_15_115959   1710503999LL
-#define SECONDS_PER_HOUR          3600LL
+#define EPOCH_2000_01_01 946684800LL           /* Saturday */
+#define EPOCH_2099_12_31_235959 4102444799LL   /* Thursday */
+#define EPOCH_2024_02_29_235959 1709251199LL
+#define EPOCH_2023_02_28_235959 1677628799LL
+#define EPOCH_2024_04_30_235959 1714521599LL
+#define EPOCH_2024_12_31_235959 1735689599LL
+#define EPOCH_2024_01_31_235959 1706745599LL
+#define EPOCH_2100_02_28_235959 4107542399LL
+#define EPOCH_2024_03_15_000000 1710460800LL
+#define EPOCH_2024_03_15_120000 1710504000LL
+#define EPOCH_2024_03_15_115959 1710503999LL
+#define SECONDS_PER_HOUR 3600LL
 
 #define PATH_SIZE 512
 
@@ -110,8 +110,8 @@ static void start_at(int64_t now)
     PT_ASSERT_EQ_INT(rtc_init(fake_source, NULL), 0);
 }
 
-static void assert_dt(const struct rtc_datetime *d, uint8_t y, uint8_t mo, uint8_t da,
-                      uint8_t dow, uint8_t h, uint8_t mi, uint8_t s)
+static void assert_dt(const struct rtc_datetime *d, uint8_t y, uint8_t mo, uint8_t da, uint8_t dow, uint8_t h,
+                      uint8_t mi, uint8_t s)
 {
     PT_ASSERT_EQ_U32(d->year_bcd, y);
     PT_ASSERT_EQ_U32(d->month_bcd, mo);
@@ -123,8 +123,7 @@ static void assert_dt(const struct rtc_datetime *d, uint8_t y, uint8_t mo, uint8
 }
 
 /* Reads the chip at `now` and checks every field. */
-static void check_at(int64_t now, uint8_t y, uint8_t mo, uint8_t da, uint8_t dow,
-                     uint8_t h, uint8_t mi, uint8_t s)
+static void check_at(int64_t now, uint8_t y, uint8_t mo, uint8_t da, uint8_t dow, uint8_t h, uint8_t mi, uint8_t s)
 {
     struct rtc_datetime d;
     start_at(now);
@@ -281,7 +280,7 @@ PTEST(source_out_of_range_is_an_error)
 
 static struct rtc_datetime sample(void)
 {
-    struct rtc_datetime d = { 0x31, 0x07, 0x04, 0x00, 0x16, 0x20, 0x05 };
+    struct rtc_datetime d = {0x31, 0x07, 0x04, 0x00, 0x16, 0x20, 0x05};
     return d;
 }
 
@@ -333,7 +332,7 @@ PTEST(second_init_with_the_offset_file_continues_from_the_offset)
 
 PTEST(negative_offset_round_trips)
 {
-    struct rtc_datetime in = { 0x01, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00 }, out;
+    struct rtc_datetime in = {0x01, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00}, out;
     char text[64];
     new_scratch();
     pin_utc();
@@ -422,11 +421,21 @@ PTEST(dst_change_does_not_move_the_chip_time)
 PTEST(corrupt_offset_file_is_an_error)
 {
     static const char *const bad[] = {
-        "", "\n", "abc\n", "12abc\n", "12\n34\n", "12", "1 2\n", "-\n", "+5\n",
-        "99999999999999999999999\n", "-99999999999999999999999\n",
-        "0000000000000000000000000000005\n",   /* 32 bytes, valid prefix: file may continue unseen */
+        "",
+        "\n",
+        "abc\n",
+        "12abc\n",
+        "12\n34\n",
+        "12",
+        "1 2\n",
+        "-\n",
+        "+5\n",
+        "99999999999999999999999\n",
+        "-99999999999999999999999\n",
+        "0000000000000000000000000000005\n", /* 32 bytes, valid prefix: file may continue unseen */
         "5\n000000000000000000000000000000000000",
-        "9223372036854775807\n", "1125899906842625\n", /* beyond +-2^50 */
+        "9223372036854775807\n",
+        "1125899906842625\n", /* beyond +-2^50 */
         "123456789012345678901234567890123456789012345678901234567890\n",
     };
     size_t i;
@@ -471,26 +480,25 @@ PTEST(overlong_offset_path_is_an_error)
 PTEST(invalid_bcd_and_ranges_are_rejected_without_changing_the_offset)
 {
     static const struct rtc_datetime bad[] = {
-        { 0x1A, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00 }, /* year digit > 9 */
-        { 0xA0, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00 },
-        { 0x24, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00 }, /* month 0 */
-        { 0x24, 0x13, 0x01, 0x00, 0x00, 0x00, 0x00 }, /* month 13 */
-        { 0x24, 0x0A, 0x01, 0x00, 0x00, 0x00, 0x00 }, /* month not BCD */
-        { 0x24, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00 }, /* day 0 */
-        { 0x24, 0x01, 0x32, 0x00, 0x00, 0x00, 0x00 }, /* day 32 */
-        { 0x24, 0x04, 0x31, 0x00, 0x00, 0x00, 0x00 }, /* April 31 */
-        { 0x23, 0x02, 0x29, 0x00, 0x00, 0x00, 0x00 }, /* Feb 29 in a common year */
-        { 0x24, 0x02, 0x30, 0x00, 0x00, 0x00, 0x00 }, /* Feb 30 */
-        { 0x24, 0x01, 0x1F, 0x00, 0x00, 0x00, 0x00 }, /* day not BCD */
-        { 0x24, 0x01, 0x01, 0x07, 0x00, 0x00, 0x00 }, /* weekday 7 */
-        { 0x24, 0x01, 0x01, 0x0A, 0x00, 0x00, 0x00 }, /* weekday not BCD */
-        { 0x24, 0x01, 0x01, 0x00, 0x24, 0x00, 0x00 }, /* hour 24 */
-        { 0x24, 0x01, 0x01, 0x00, 0x1A, 0x00, 0x00 }, /* hour not BCD */
-        { 0x24, 0x01, 0x01, 0x00, 0x40, 0x00, 0x00 }, /* hour bit 6 */
-        { 0x24, 0x01, 0x01, 0x00, 0x00, 0x60, 0x00 }, /* minute 60 */
-        { 0x24, 0x01, 0x01, 0x00, 0x00, 0x0F, 0x00 }, /* minute not BCD */
-        { 0x24, 0x01, 0x01, 0x00, 0x00, 0x00, 0x60 }, /* second 60 */
-        { 0x24, 0x01, 0x01, 0x00, 0x00, 0x00, 0x80 }, /* test-mode bit */
+        {0x1A, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00},                                             /* year digit > 9 */
+        {0xA0, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00}, {0x24, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00}, /* month 0 */
+        {0x24, 0x13, 0x01, 0x00, 0x00, 0x00, 0x00},                                             /* month 13 */
+        {0x24, 0x0A, 0x01, 0x00, 0x00, 0x00, 0x00},                                             /* month not BCD */
+        {0x24, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00},                                             /* day 0 */
+        {0x24, 0x01, 0x32, 0x00, 0x00, 0x00, 0x00},                                             /* day 32 */
+        {0x24, 0x04, 0x31, 0x00, 0x00, 0x00, 0x00},                                             /* April 31 */
+        {0x23, 0x02, 0x29, 0x00, 0x00, 0x00, 0x00}, /* Feb 29 in a common year */
+        {0x24, 0x02, 0x30, 0x00, 0x00, 0x00, 0x00}, /* Feb 30 */
+        {0x24, 0x01, 0x1F, 0x00, 0x00, 0x00, 0x00}, /* day not BCD */
+        {0x24, 0x01, 0x01, 0x07, 0x00, 0x00, 0x00}, /* weekday 7 */
+        {0x24, 0x01, 0x01, 0x0A, 0x00, 0x00, 0x00}, /* weekday not BCD */
+        {0x24, 0x01, 0x01, 0x00, 0x24, 0x00, 0x00}, /* hour 24 */
+        {0x24, 0x01, 0x01, 0x00, 0x1A, 0x00, 0x00}, /* hour not BCD */
+        {0x24, 0x01, 0x01, 0x00, 0x40, 0x00, 0x00}, /* hour bit 6 */
+        {0x24, 0x01, 0x01, 0x00, 0x00, 0x60, 0x00}, /* minute 60 */
+        {0x24, 0x01, 0x01, 0x00, 0x00, 0x0F, 0x00}, /* minute not BCD */
+        {0x24, 0x01, 0x01, 0x00, 0x00, 0x00, 0x60}, /* second 60 */
+        {0x24, 0x01, 0x01, 0x00, 0x00, 0x00, 0x80}, /* test-mode bit */
     };
     size_t i;
     new_scratch();
@@ -518,10 +526,10 @@ PTEST(invalid_bcd_and_ranges_are_rejected_without_changing_the_offset)
 PTEST(set_datetime_accepts_leap_day_and_boundaries)
 {
     static const struct rtc_datetime good[] = {
-        { 0x24, 0x02, 0x29, 0x00, 0x00, 0x00, 0x00 },
-        { 0x00, 0x02, 0x29, 0x00, 0x00, 0x00, 0x00 }, /* year 00 is leap on the chip */
-        { 0x99, 0x12, 0x31, 0x06, 0x23, 0x59, 0x59 },
-        { 0x00, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00 },
+        {0x24, 0x02, 0x29, 0x00, 0x00, 0x00, 0x00},
+        {0x00, 0x02, 0x29, 0x00, 0x00, 0x00, 0x00}, /* year 00 is leap on the chip */
+        {0x99, 0x12, 0x31, 0x06, 0x23, 0x59, 0x59},
+        {0x00, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00},
     };
     size_t i;
     start_at(EPOCH_2024_03_15_13_45_30);
@@ -539,7 +547,7 @@ PTEST(set_datetime_accepts_leap_day_and_boundaries)
 
 PTEST(set_datetime_in_12_hour_mode_takes_hour_and_pm_flag)
 {
-    struct rtc_datetime in = { 0x24, 0x03, 0x15, 0x00, 0x81, 0x00, 0x00 }, out;
+    struct rtc_datetime in = {0x24, 0x03, 0x15, 0x00, 0x81, 0x00, 0x00}, out;
     start_at(EPOCH_2024_03_15_13_45_30);
     PT_ASSERT_EQ_INT(rtc_set_status(0), 0);
     PT_ASSERT_EQ_INT(rtc_set_datetime(&in), 0); /* 01 PM */
@@ -548,7 +556,7 @@ PTEST(set_datetime_in_12_hour_mode_takes_hour_and_pm_flag)
     PT_ASSERT_EQ_INT(rtc_set_status(RTC_STATUS_24HOUR), 0);
     PT_ASSERT_EQ_INT(rtc_get_datetime(&out), 0);
     PT_ASSERT_EQ_U32(out.hour_bcd, 0x93u); /* the same instant, 13h */
-    in.hour_bcd = 0x12; /* 12 is not a valid 12-hour-mode hour (00..11) */
+    in.hour_bcd = 0x12;                    /* 12 is not a valid 12-hour-mode hour (00..11) */
     PT_ASSERT_EQ_INT(rtc_set_status(0), 0);
     PT_ASSERT_EQ_INT(rtc_set_datetime(&in), -1);
     rtc_shutdown();
@@ -556,7 +564,7 @@ PTEST(set_datetime_in_12_hour_mode_takes_hour_and_pm_flag)
 
 PTEST(set_datetime_in_24_hour_mode_ignores_the_read_only_pm_flag)
 {
-    struct rtc_datetime in = { 0x24, 0x03, 0x15, 0x00, 0x03, 0x00, 0x00 }, out;
+    struct rtc_datetime in = {0x24, 0x03, 0x15, 0x00, 0x03, 0x00, 0x00}, out;
     start_at(EPOCH_2024_03_15_13_45_30);
     in.hour_bcd = 0x83; /* PM flag set but hour 03: the flag is derived, not stored */
     PT_ASSERT_EQ_INT(rtc_set_datetime(&in), 0);
@@ -567,7 +575,7 @@ PTEST(set_datetime_in_24_hour_mode_ignores_the_read_only_pm_flag)
 
 PTEST(set_time_keeps_the_date)
 {
-    struct rtc_datetime in = { 0, 0, 0, 0, 0x08, 0x30, 0x15 }, out;
+    struct rtc_datetime in = {0, 0, 0, 0, 0x08, 0x30, 0x15}, out;
     start_at(EPOCH_2024_03_15_13_45_30);
     PT_ASSERT_EQ_INT(rtc_set_time(&in), 0);
     PT_ASSERT_EQ_INT(rtc_get_datetime(&out), 0);
@@ -587,8 +595,8 @@ PTEST(set_time_keeps_the_date)
 PTEST(set_time_keeps_the_chip_date_when_a_positive_offset_crosses_midnight)
 {
     /* UTC 2024-03-15 23:30:00; the chip is set to 2024-03-16 00:30:00 (offset +3600). */
-    struct rtc_datetime date = { 0x24, 0x03, 0x16, 0, 0x00, 0x30, 0x00 }, out;
-    struct rtc_datetime time = { 0, 0, 0, 0, 0x01, 0x15, 0x00 };
+    struct rtc_datetime date = {0x24, 0x03, 0x16, 0, 0x00, 0x30, 0x00}, out;
+    struct rtc_datetime time = {0, 0, 0, 0, 0x01, 0x15, 0x00};
     start_at(EPOCH_2024_03_15_000000 + 23 * SECONDS_PER_HOUR + 1800);
     PT_ASSERT_EQ_INT(rtc_set_datetime(&date), 0);
     PT_ASSERT_EQ_INT(rtc_set_time(&time), 0);
@@ -600,8 +608,8 @@ PTEST(set_time_keeps_the_chip_date_when_a_positive_offset_crosses_midnight)
 PTEST(set_time_keeps_the_chip_date_when_a_negative_offset_crosses_midnight)
 {
     /* UTC 2024-03-16 00:30:00; the chip is set to 2024-03-15 23:30:00 (offset -3600). */
-    struct rtc_datetime date = { 0x24, 0x03, 0x15, 0, 0x23, 0x30, 0x00 }, out;
-    struct rtc_datetime time = { 0, 0, 0, 0, 0x22, 0x10, 0x00 };
+    struct rtc_datetime date = {0x24, 0x03, 0x15, 0, 0x23, 0x30, 0x00}, out;
+    struct rtc_datetime time = {0, 0, 0, 0, 0x22, 0x10, 0x00};
     start_at(EPOCH_2024_03_15_000000 + 24 * SECONDS_PER_HOUR + 1800);
     PT_ASSERT_EQ_INT(rtc_set_datetime(&date), 0);
     PT_ASSERT_EQ_INT(rtc_set_time(&time), 0);
@@ -612,7 +620,7 @@ PTEST(set_time_keeps_the_chip_date_when_a_negative_offset_crosses_midnight)
 
 PTEST(set_time_persists_the_offset)
 {
-    struct rtc_datetime in = { 0, 0, 0, 0, 0x14, 0x45, 0x30 };
+    struct rtc_datetime in = {0, 0, 0, 0, 0x14, 0x45, 0x30};
     char text[64];
     new_scratch();
     pin_utc();
@@ -638,7 +646,11 @@ PTEST(status_defaults_to_24_hour_with_power_flag_clear)
 PTEST(status_round_trips_the_writable_bits)
 {
     static const uint8_t values[] = {
-        0, RTC_STATUS_24HOUR, RTC_STATUS_INTFE, RTC_STATUS_INTME, RTC_STATUS_INTAE,
+        0,
+        RTC_STATUS_24HOUR,
+        RTC_STATUS_INTFE,
+        RTC_STATUS_INTME,
+        RTC_STATUS_INTAE,
         RTC_STATUS_INTFE | RTC_STATUS_INTME | RTC_STATUS_INTAE | RTC_STATUS_24HOUR,
     };
     size_t i;
@@ -692,7 +704,7 @@ PTEST(reset_clears_status_and_sets_the_time_to_2000_01_01)
 
 PTEST(alarm_is_validated_and_stored)
 {
-    struct rtc_datetime in = { 0, 0, 0, 0, 0x17, 0x30, 0 }, out;
+    struct rtc_datetime in = {0, 0, 0, 0, 0x17, 0x30, 0}, out;
     start_at(EPOCH_2000_01_01);
     PT_ASSERT_EQ_INT(rtc_set_alarm(&in), 0);
     PT_ASSERT_EQ_INT(rtc_get_alarm(&out), 0);
@@ -772,7 +784,7 @@ PTEST(null_pointers_are_errors)
 PTEST(init_restores_the_default_status_and_clears_the_alarm)
 {
     uint8_t s;
-    struct rtc_datetime alarm = { 0, 0, 0, 0, 0x17, 0x30, 0 };
+    struct rtc_datetime alarm = {0, 0, 0, 0, 0x17, 0x30, 0};
     start_at(EPOCH_2000_01_01);
     PT_ASSERT_EQ_INT(rtc_set_status(RTC_STATUS_INTFE), 0);
     PT_ASSERT_EQ_INT(rtc_set_alarm(&alarm), 0);
@@ -787,7 +799,7 @@ PTEST(init_restores_the_default_status_and_clears_the_alarm)
 
 PTEST(reset_clears_the_alarm)
 {
-    struct rtc_datetime alarm = { 0, 0, 0, 0, 0x17, 0x30, 0 };
+    struct rtc_datetime alarm = {0, 0, 0, 0, 0x17, 0x30, 0};
     start_at(EPOCH_2000_01_01);
     PT_ASSERT_EQ_INT(rtc_set_alarm(&alarm), 0);
     PT_ASSERT_EQ_INT(rtc_reset(), 0);
@@ -798,7 +810,7 @@ PTEST(reset_clears_the_alarm)
 
 PTEST(alarm_hour_bit_6_is_rejected)
 {
-    struct rtc_datetime alarm = { 0, 0, 0, 0, 0x40, 0x00, 0 };
+    struct rtc_datetime alarm = {0, 0, 0, 0, 0x40, 0x00, 0};
     start_at(EPOCH_2000_01_01);
     PT_ASSERT_EQ_INT(rtc_set_alarm(&alarm), -1);
     rtc_shutdown();
@@ -833,7 +845,7 @@ PTEST(null_source_uses_the_system_clock)
 
 PTEST(failed_write_leaves_the_old_file_and_the_offset_intact)
 {
-    struct rtc_datetime first = sample(), second = { 0x25, 0x01, 0x01, 0, 0, 0, 0 }, out;
+    struct rtc_datetime first = sample(), second = {0x25, 0x01, 0x01, 0, 0, 0, 0}, out;
     char text[64];
     new_scratch();
     pin_utc();
@@ -854,7 +866,7 @@ PTEST(failed_write_leaves_the_old_file_and_the_offset_intact)
 
 PTEST(failed_rename_removes_the_temporary_file_and_reports_an_error)
 {
-    struct rtc_datetime first = sample(), second = { 0x25, 0x01, 0x01, 0, 0, 0, 0 };
+    struct rtc_datetime first = sample(), second = {0x25, 0x01, 0x01, 0, 0, 0, 0};
     new_scratch();
     pin_utc();
     g_now = EPOCH_2024_03_15_13_45_30;

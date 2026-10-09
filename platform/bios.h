@@ -282,8 +282,8 @@ void CpuFastSet(const void *src, void *dest, uint32_t control);
  * an odd output position reads the destination's old byte (the newest byte
  * is still held), and an odd size leaves the last byte unwritten. */
 enum bios_write_width {
-    BIOS_WRITE_8BIT,  /* the "Wram" variants */
-    BIOS_WRITE_16BIT  /* the "Vram" variants */
+    BIOS_WRITE_8BIT, /* the "Wram" variants */
+    BIOS_WRITE_16BIT /* the "Vram" variants */
 };
 
 /* SWI 11h/12h: LZ77. A back-reference reaching before dest is

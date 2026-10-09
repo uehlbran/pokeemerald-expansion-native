@@ -23,8 +23,8 @@
 
 /* The 32-bit data header. */
 struct bios_stream_header {
-    unsigned unit;  /* bits 0-3: reserved, or the unit size (Huffman bits, Diff bytes) */
-    uint32_t size;  /* bits 8-31: bytes after decompression */
+    unsigned unit; /* bits 0-3: reserved, or the unit size (Huffman bits, Diff bytes) */
+    uint32_t size; /* bits 8-31: bytes after decompression */
 };
 
 /* The compressed bytes, read front to back. */
@@ -38,8 +38,8 @@ struct bios_source {
  * header's 4 bytes are not readable; printed), BIOS_ERR_TRUNCATED (src_size
  * < 4) or BIOS_ERR_HEADER (bits 4-7 are not type). Leaves source at the
  * first byte after the header. */
-int bios_stream_open(struct bios_source *source, const char *function, const void *src, size_t src_size,
-                     unsigned type, struct bios_stream_header *header);
+int bios_stream_open(struct bios_source *source, const char *function, const void *src, size_t src_size, unsigned type,
+                     struct bios_stream_header *header);
 
 /* The next source byte; false (and no byte) past the source's bound. */
 bool bios_source_byte(struct bios_source *source, uint8_t *byte);
@@ -51,14 +51,13 @@ struct bios_sink {
     size_t size;     /* bytes to produce */
     size_t position; /* bytes produced so far */
     enum bios_write_width width;
-    uint8_t held;    /* 16-bit: the even byte, until its partner arrives */
+    uint8_t held; /* 16-bit: the even byte, until its partner arrives */
 };
 
 /* Starts a sink of size bytes at dest after validating [dest, dest + size)
  * for writing: BIOS_OK or BIOS_ERR_RANGE (printed). Size 0 is BIOS_OK and
  * touches nothing. */
-int bios_sink_open(struct bios_sink *sink, const char *function, void *dest, size_t size,
-                   enum bios_write_width width);
+int bios_sink_open(struct bios_sink *sink, const char *function, void *dest, size_t size, enum bios_write_width width);
 
 /* True once size bytes have been produced. */
 bool bios_sink_full(const struct bios_sink *sink);

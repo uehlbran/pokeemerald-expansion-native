@@ -27,7 +27,7 @@ static void use_dummy_driver(void)
 
 static struct video_config windowed_config(void)
 {
-    struct video_config cfg = { .headless = false, .scale = 2, .title = "video test" };
+    struct video_config cfg = {.headless = false, .scale = 2, .title = "video test"};
     return cfg;
 }
 
@@ -81,7 +81,7 @@ PTEST(events_reach_the_callback_with_ctx_and_quit_returns_false)
     use_dummy_driver();
     struct video_config cfg = windowed_config();
     PT_ASSERT_EQ_INT(video_init(&cfg), 0);
-    struct event_log log = { 0, 0 };
+    struct event_log log = {0, 0};
     SDL_Event user;
     SDL_zero(user);
     user.type = SDL_USEREVENT;
@@ -116,7 +116,7 @@ PTEST(events_reach_the_callback_with_ctx_and_quit_returns_false)
 PTEST(headless_presents_without_a_window)
 {
     /* No driver set on purpose: headless must not touch SDL's video. */
-    struct video_config cfg = { .headless = true, .scale = 3, .title = "headless" };
+    struct video_config cfg = {.headless = true, .scale = 3, .title = "headless"};
     PT_ASSERT_EQ_INT(video_init(&cfg), 0);
     Uint32 video_inited = SDL_WasInit(SDL_INIT_VIDEO);
     int present = video_present(frame_buffer);
@@ -152,9 +152,9 @@ PTEST(shutdown_twice_and_without_init_are_safe)
 PTEST(init_rejects_invalid_config_and_shutdown_after_is_safe)
 {
     use_dummy_driver();
-    struct video_config zero = { .headless = false, .scale = 0, .title = "t" };
-    struct video_config huge = { .headless = false, .scale = VIDEO_MAX_SCALE + 1, .title = "t" };
-    struct video_config no_title = { .headless = false, .scale = 1, .title = NULL };
+    struct video_config zero = {.headless = false, .scale = 0, .title = "t"};
+    struct video_config huge = {.headless = false, .scale = VIDEO_MAX_SCALE + 1, .title = "t"};
+    struct video_config no_title = {.headless = false, .scale = 1, .title = NULL};
     PT_ASSERT(video_init(&zero) != 0);
     video_shutdown();
     PT_ASSERT(video_init(&huge) != 0);
@@ -164,7 +164,7 @@ PTEST(init_rejects_invalid_config_and_shutdown_after_is_safe)
     PT_ASSERT(video_init(NULL) != 0);
     video_shutdown();
     /* Headless validates the scale too, so a bad config is never half accepted. */
-    struct video_config headless_zero = { .headless = true, .scale = 0, .title = "t" };
+    struct video_config headless_zero = {.headless = true, .scale = 0, .title = "t"};
     PT_ASSERT(video_init(&headless_zero) != 0);
     video_shutdown();
 }
@@ -207,10 +207,10 @@ PTEST(ppm_of_two_pixel_frame_has_exact_bytes)
     /* GBATEK colour: bits 0-4 red, 5-9 green, 10-14 blue. Each 5-bit value v
      * becomes (v << 3) | (v >> 2), so 0 -> 0 and 31 -> 255. */
     memset(frame_buffer, 0, sizeof frame_buffer);
-    frame_buffer[0] = 0x001F;                     /* pure red */
+    frame_buffer[0] = 0x001F;                                   /* pure red */
     frame_buffer[1] = (uint16_t)((1u << 10) | (16u << 5) | 8u); /* b=1 g=16 r=8 */
-    frame_buffer[LCD_WIDTH] = 0x0021;             /* row 1, column 0: r=1 g=1 b=0 */
-    frame_buffer[LCD_WIDTH * LCD_HEIGHT - 1u] = 0xFFFF; /* last pixel, bit 15 set */
+    frame_buffer[LCD_WIDTH] = 0x0021;                           /* row 1, column 0: r=1 g=1 b=0 */
+    frame_buffer[LCD_WIDTH * LCD_HEIGHT - 1u] = 0xFFFF;         /* last pixel, bit 15 set */
     char path[] = "/tmp/video_ppm_XXXXXX";
     int fd = mkstemp(path);
     PT_ASSERT(fd >= 0);
@@ -227,14 +227,14 @@ PTEST(ppm_of_two_pixel_frame_has_exact_bytes)
     const size_t header = sizeof TEST_PPM_HEADER - 1u;
     PT_ASSERT(size == header + LCD_WIDTH * LCD_HEIGHT * 3u);
     PT_ASSERT_MEM_EQ(bytes, TEST_PPM_HEADER, header);
-    const unsigned char expected[] = { 255, 0, 0, 66, 132, 8, 0, 0, 0 };
+    const unsigned char expected[] = {255, 0, 0, 66, 132, 8, 0, 0, 0};
     PT_ASSERT_MEM_EQ(bytes + header, expected, sizeof expected);
     /* 8 -> (64|2)=66, 16 -> (128|4)=132 */
-    const unsigned char row1[] = { 8, 8, 0 }; /* 1 -> (8|0)=8 */
+    const unsigned char row1[] = {8, 8, 0}; /* 1 -> (8|0)=8 */
     PT_ASSERT_MEM_EQ(bytes + header + LCD_WIDTH * 3u, row1, sizeof row1);
-    const unsigned char last[] = { 255, 255, 255 };
+    const unsigned char last[] = {255, 255, 255};
     PT_ASSERT_MEM_EQ(bytes + size - 3u, last, sizeof last);
-    const unsigned char before_last[] = { 0, 0, 0 };
+    const unsigned char before_last[] = {0, 0, 0};
     PT_ASSERT_MEM_EQ(bytes + size - 6u, before_last, sizeof before_last);
 }
 

@@ -23,16 +23,16 @@
 #define KEYINPUT_OFFSET UINT32_C(0x130)
 
 static const struct input_key_binding keyboard_bindings[] = {
-    { SDL_SCANCODE_Z,         INPUT_KEY_A,      "A" },
-    { SDL_SCANCODE_X,         INPUT_KEY_B,      "B" },
-    { SDL_SCANCODE_BACKSPACE, INPUT_KEY_SELECT, "Select" },
-    { SDL_SCANCODE_RETURN,    INPUT_KEY_START,  "Start" },
-    { SDL_SCANCODE_RIGHT,     INPUT_KEY_RIGHT,  "Right" },
-    { SDL_SCANCODE_LEFT,      INPUT_KEY_LEFT,   "Left" },
-    { SDL_SCANCODE_UP,        INPUT_KEY_UP,     "Up" },
-    { SDL_SCANCODE_DOWN,      INPUT_KEY_DOWN,   "Down" },
-    { SDL_SCANCODE_S,         INPUT_KEY_R,      "R" },
-    { SDL_SCANCODE_A,         INPUT_KEY_L,      "L" },
+    {SDL_SCANCODE_Z, INPUT_KEY_A, "A"},
+    {SDL_SCANCODE_X, INPUT_KEY_B, "B"},
+    {SDL_SCANCODE_BACKSPACE, INPUT_KEY_SELECT, "Select"},
+    {SDL_SCANCODE_RETURN, INPUT_KEY_START, "Start"},
+    {SDL_SCANCODE_RIGHT, INPUT_KEY_RIGHT, "Right"},
+    {SDL_SCANCODE_LEFT, INPUT_KEY_LEFT, "Left"},
+    {SDL_SCANCODE_UP, INPUT_KEY_UP, "Up"},
+    {SDL_SCANCODE_DOWN, INPUT_KEY_DOWN, "Down"},
+    {SDL_SCANCODE_S, INPUT_KEY_R, "R"},
+    {SDL_SCANCODE_A, INPUT_KEY_L, "L"},
 };
 
 static struct {
@@ -77,16 +77,26 @@ uint16_t input_pad_to_keys(const struct input_pad_state *pad)
     if (pad == NULL) {
         return 0;
     }
-    if (pad->a != 0) keys |= INPUT_KEY_A;
-    if (pad->b != 0) keys |= INPUT_KEY_B;
-    if (pad->back != 0) keys |= INPUT_KEY_SELECT;
-    if (pad->start != 0) keys |= INPUT_KEY_START;
-    if (pad->left_shoulder != 0) keys |= INPUT_KEY_L;
-    if (pad->right_shoulder != 0) keys |= INPUT_KEY_R;
-    if (pad->dpad_up != 0 || pad->left_y < -INPUT_STICK_DEADZONE) keys |= INPUT_KEY_UP;
-    if (pad->dpad_down != 0 || pad->left_y > INPUT_STICK_DEADZONE) keys |= INPUT_KEY_DOWN;
-    if (pad->dpad_left != 0 || pad->left_x < -INPUT_STICK_DEADZONE) keys |= INPUT_KEY_LEFT;
-    if (pad->dpad_right != 0 || pad->left_x > INPUT_STICK_DEADZONE) keys |= INPUT_KEY_RIGHT;
+    if (pad->a != 0)
+        keys |= INPUT_KEY_A;
+    if (pad->b != 0)
+        keys |= INPUT_KEY_B;
+    if (pad->back != 0)
+        keys |= INPUT_KEY_SELECT;
+    if (pad->start != 0)
+        keys |= INPUT_KEY_START;
+    if (pad->left_shoulder != 0)
+        keys |= INPUT_KEY_L;
+    if (pad->right_shoulder != 0)
+        keys |= INPUT_KEY_R;
+    if (pad->dpad_up != 0 || pad->left_y < -INPUT_STICK_DEADZONE)
+        keys |= INPUT_KEY_UP;
+    if (pad->dpad_down != 0 || pad->left_y > INPUT_STICK_DEADZONE)
+        keys |= INPUT_KEY_DOWN;
+    if (pad->dpad_left != 0 || pad->left_x < -INPUT_STICK_DEADZONE)
+        keys |= INPUT_KEY_LEFT;
+    if (pad->dpad_right != 0 || pad->left_x > INPUT_STICK_DEADZONE)
+        keys |= INPUT_KEY_RIGHT;
     return keys;
 }
 
@@ -98,7 +108,7 @@ static void write_keyinput(uint16_t keys_active_high)
 
 static struct input_pad_state read_pad(SDL_GameController *controller)
 {
-    struct input_pad_state pad = { 0 };
+    struct input_pad_state pad = {0};
     pad.a = SDL_GameControllerGetButton(controller, SDL_CONTROLLER_BUTTON_A);
     pad.b = SDL_GameControllerGetButton(controller, SDL_CONTROLLER_BUTTON_B);
     pad.start = SDL_GameControllerGetButton(controller, SDL_CONTROLLER_BUTTON_START);
@@ -162,8 +172,7 @@ static int open_controller(int device_index)
             return 0;
         }
     }
-    fprintf(stderr, "input: more than %d controllers; ignoring device %d\n", INPUT_MAX_CONTROLLERS,
-        device_index);
+    fprintf(stderr, "input: more than %d controllers; ignoring device %d\n", INPUT_MAX_CONTROLLERS, device_index);
     SDL_GameControllerClose(controller);
     return -1;
 }
@@ -206,8 +215,7 @@ static int init_host(void)
         return -1;
     }
     if (SDL_InitSubSystem(SDL_INIT_GAMECONTROLLER) != 0) {
-        fprintf(stderr, "input: SDL_InitSubSystem(GAMECONTROLLER) failed, keyboard only: %s\n",
-            SDL_GetError());
+        fprintf(stderr, "input: SDL_InitSubSystem(GAMECONTROLLER) failed, keyboard only: %s\n", SDL_GetError());
         return 0;
     }
     state.controller_subsystem = true;

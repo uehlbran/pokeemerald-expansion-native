@@ -20,8 +20,7 @@
 #define REPLAY_PRESS_FRAMES 1u
 #define REPLAY_PRESS_RELEASE_FRAMES 1u
 
-static void fail(struct replay *replay, uint32_t line, const char *format, ...)
-    __attribute__((format(printf, 3, 4)));
+static void fail(struct replay *replay, uint32_t line, const char *format, ...) __attribute__((format(printf, 3, 4)));
 
 static void fail(struct replay *replay, uint32_t line, const char *format, ...)
 {
@@ -38,7 +37,7 @@ static void fail(struct replay *replay, uint32_t line, const char *format, ...)
 int replay_start(struct replay *replay, const struct replay_script *script, const struct replay_host *host,
                  const char *out_dir, uint32_t resume_after_line)
 {
-    *replay = (struct replay){ .script = script, .status = REPLAY_RUNNING };
+    *replay = (struct replay){.script = script, .status = REPLAY_RUNNING};
     if (host == NULL || host->get_fact == NULL || host->fact_name == NULL || host->screenshot == NULL
         || host->set_keys == NULL || out_dir == NULL || strlen(out_dir) >= sizeof replay->out_dir) {
         fail(replay, 0, "replay_start: incomplete host or bad output directory");

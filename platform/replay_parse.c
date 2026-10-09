@@ -22,9 +22,9 @@ struct key_name {
 };
 
 static const struct key_name key_names[] = {
-    { "A", INPUT_KEY_A },       { "B", INPUT_KEY_B },       { "START", INPUT_KEY_START }, { "SELECT", INPUT_KEY_SELECT },
-    { "UP", INPUT_KEY_UP },     { "DOWN", INPUT_KEY_DOWN }, { "LEFT", INPUT_KEY_LEFT },   { "RIGHT", INPUT_KEY_RIGHT },
-    { "L", INPUT_KEY_L },       { "R", INPUT_KEY_R },
+    {"A", INPUT_KEY_A},   {"B", INPUT_KEY_B},       {"START", INPUT_KEY_START}, {"SELECT", INPUT_KEY_SELECT},
+    {"UP", INPUT_KEY_UP}, {"DOWN", INPUT_KEY_DOWN}, {"LEFT", INPUT_KEY_LEFT},   {"RIGHT", INPUT_KEY_RIGHT},
+    {"L", INPUT_KEY_L},   {"R", INPUT_KEY_R},
 };
 
 static void set_error(struct replay_parse_error *error, uint32_t line, const char *format, ...)
@@ -130,7 +130,8 @@ static bool valid_fact_name(const char *text)
     if (length == 0 || length > REPLAY_MAX_FACT_LENGTH)
         return false;
     for (size_t i = 0; i < length; i++) {
-        if (!((text[i] >= 'a' && text[i] <= 'z') || (text[i] >= '0' && text[i] <= '9') || text[i] == '_' || text[i] == ':'))
+        if (!((text[i] >= 'a' && text[i] <= 'z') || (text[i] >= '0' && text[i] <= '9') || text[i] == '_'
+              || text[i] == ':'))
             return false;
     }
     return true;
@@ -215,7 +216,8 @@ static bool parse_press(struct replay_command *command, char *rest, struct repla
         *times_at = '\0';
         if (!parse_number(trim(times_at + strlen(" times ")), 1u, &command->number)
             || command->number > REPLAY_MAX_PRESS_TIMES) {
-            set_error(error, command->line, "'press ... times' needs a whole number of presses, at least 1 and at most %u",
+            set_error(error, command->line,
+                      "'press ... times' needs a whole number of presses, at least 1 and at most %u",
                       REPLAY_MAX_PRESS_TIMES);
             return false;
         }
@@ -234,7 +236,8 @@ static bool parse_condition_and_max(struct replay_command *command, char *rest, 
     for (char *at = strstr(rest, " max "); at != NULL; at = strstr(at + 1, " max "))
         max_at = at;
     if (max_at == NULL) {
-        set_error(error, command->line, "%s needs 'max N' after the condition", command->kind == REPLAY_CMD_MASH ? "mash" : "wait-until");
+        set_error(error, command->line, "%s needs 'max N' after the condition",
+                  command->kind == REPLAY_CMD_MASH ? "mash" : "wait-until");
         return false;
     }
     *max_at = '\0';
@@ -352,11 +355,12 @@ int replay_parse(const char *text, struct replay_script *script, struct replay_p
             return -1;
         }
         struct replay_command *command = &script->commands[script->count];
-        *command = (struct replay_command){ .line = line_number };
+        *command = (struct replay_command){.line = line_number};
         if (!parse_command(body, command, error))
             return -1;
         if (command->kind == REPLAY_CMD_FRAME && restarted) {
-            set_error(error, line_number, "'frame' after 'restart': the frame count starts again in the new process; use wait");
+            set_error(error, line_number,
+                      "'frame' after 'restart': the frame count starts again in the new process; use wait");
             return -1;
         }
         restarted = restarted || command->kind == REPLAY_CMD_RESTART;

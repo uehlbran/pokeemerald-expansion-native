@@ -71,14 +71,14 @@ extern const unsigned char gba_linked_oam_start[], gba_linked_oam_end[];
 extern const unsigned char gba_linked_sram_start[], gba_linked_sram_end[];
 
 static const struct gba_region_info regions[GBA_REGION_COUNT] = {
-    [GBA_REGION_EWRAM] = { GBA_EWRAM_BASE, GBA_EWRAM_SIZE, "EWRAM" },
-    [GBA_REGION_IWRAM] = { GBA_IWRAM_BASE, GBA_IWRAM_SIZE, "IWRAM" },
-    [GBA_REGION_IO] = { GBA_IO_BASE, GBA_IO_SIZE, "I/O" },
-    [GBA_REGION_MGBA_DEBUG] = { GBA_MGBA_DEBUG_BASE, GBA_MGBA_DEBUG_SIZE, "mGBA debug" },
-    [GBA_REGION_PALETTE_RAM] = { GBA_PALETTE_RAM_BASE, GBA_PALETTE_RAM_SIZE, "palette RAM" },
-    [GBA_REGION_VRAM] = { GBA_VRAM_BASE, GBA_VRAM_SIZE, "VRAM" },
-    [GBA_REGION_OAM] = { GBA_OAM_BASE, GBA_OAM_SIZE, "OAM" },
-    [GBA_REGION_SRAM] = { GBA_SRAM_BASE, GBA_SRAM_SIZE, "SRAM" },
+    [GBA_REGION_EWRAM] = {GBA_EWRAM_BASE, GBA_EWRAM_SIZE, "EWRAM"},
+    [GBA_REGION_IWRAM] = {GBA_IWRAM_BASE, GBA_IWRAM_SIZE, "IWRAM"},
+    [GBA_REGION_IO] = {GBA_IO_BASE, GBA_IO_SIZE, "I/O"},
+    [GBA_REGION_MGBA_DEBUG] = {GBA_MGBA_DEBUG_BASE, GBA_MGBA_DEBUG_SIZE, "mGBA debug"},
+    [GBA_REGION_PALETTE_RAM] = {GBA_PALETTE_RAM_BASE, GBA_PALETTE_RAM_SIZE, "palette RAM"},
+    [GBA_REGION_VRAM] = {GBA_VRAM_BASE, GBA_VRAM_SIZE, "VRAM"},
+    [GBA_REGION_OAM] = {GBA_OAM_BASE, GBA_OAM_SIZE, "OAM"},
+    [GBA_REGION_SRAM] = {GBA_SRAM_BASE, GBA_SRAM_SIZE, "SRAM"},
 };
 
 struct linked_section {
@@ -87,14 +87,14 @@ struct linked_section {
 };
 
 static const struct linked_section linked_sections[GBA_REGION_COUNT] = {
-    [GBA_REGION_EWRAM] = { gba_linked_ewram_start, gba_linked_ewram_end },
-    [GBA_REGION_IWRAM] = { gba_linked_iwram_start, gba_linked_iwram_end },
-    [GBA_REGION_IO] = { gba_linked_io_start, gba_linked_io_end },
-    [GBA_REGION_MGBA_DEBUG] = { gba_linked_mgba_debug_start, gba_linked_mgba_debug_end },
-    [GBA_REGION_PALETTE_RAM] = { gba_linked_palette_ram_start, gba_linked_palette_ram_end },
-    [GBA_REGION_VRAM] = { gba_linked_vram_start, gba_linked_vram_end },
-    [GBA_REGION_OAM] = { gba_linked_oam_start, gba_linked_oam_end },
-    [GBA_REGION_SRAM] = { gba_linked_sram_start, gba_linked_sram_end },
+    [GBA_REGION_EWRAM] = {gba_linked_ewram_start, gba_linked_ewram_end},
+    [GBA_REGION_IWRAM] = {gba_linked_iwram_start, gba_linked_iwram_end},
+    [GBA_REGION_IO] = {gba_linked_io_start, gba_linked_io_end},
+    [GBA_REGION_MGBA_DEBUG] = {gba_linked_mgba_debug_start, gba_linked_mgba_debug_end},
+    [GBA_REGION_PALETTE_RAM] = {gba_linked_palette_ram_start, gba_linked_palette_ram_end},
+    [GBA_REGION_VRAM] = {gba_linked_vram_start, gba_linked_vram_end},
+    [GBA_REGION_OAM] = {gba_linked_oam_start, gba_linked_oam_end},
+    [GBA_REGION_SRAM] = {gba_linked_sram_start, gba_linked_sram_end},
 };
 
 /* gba_regions.ld gives each region whole pages of this size (the x86 page). */
@@ -115,19 +115,17 @@ static size_t linked_size(const struct gba_region_info *info)
  * gba_regions.ld must give region: at its base, linked_size() long. Otherwise
  * says which region and how on log, and returns GBA_MEMMAP_ERR_LAYOUT.
  * Tested directly by test/test_gba_memmap_layout.c. */
-static int check_linked_section(enum gba_region region, uintptr_t start, uintptr_t end,
-                                FILE *log)
+static int check_linked_section(enum gba_region region, uintptr_t start, uintptr_t end, FILE *log)
 {
     const struct gba_region_info *const info = &regions[region];
     const size_t expected_size = linked_size(info);
     if (start == info->base && end - start == expected_size)
         return GBA_MEMMAP_OK;
     (void)fprintf(log,
-                  "gba_memmap: %s is linked at 0x%08" PRIXPTR "-0x%08" PRIXPTR
-                  " but must be at 0x%08" PRIXPTR "-0x%08" PRIXPTR "; link with "
+                  "gba_memmap: %s is linked at 0x%08" PRIXPTR "-0x%08" PRIXPTR " but must be at 0x%08" PRIXPTR
+                  "-0x%08" PRIXPTR "; link with "
                   "platform/gba_regions.ld (see platform/Makefile)\n",
-                  info->name, start, end, info->base,
-                  info->base + expected_size); /* best-effort */
+                  info->name, start, end, info->base, info->base + expected_size); /* best-effort */
     return GBA_MEMMAP_ERR_LAYOUT;
 }
 

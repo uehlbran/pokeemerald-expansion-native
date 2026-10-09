@@ -25,25 +25,25 @@
 
 /* MPT_FLG_START: a starting track is cleared and given these defaults. */
 #define TRACK_START_BEND_RANGE 2
-#define TRACK_START_VOLX       64
-#define TRACK_START_LFO_SPEED  22
-#define TRACK_START_TONE_TYPE  1
+#define TRACK_START_VOLX 64
+#define TRACK_START_LFO_SPEED 22
+#define TRACK_START_TONE_TYPE 1
 
 /* The LFO is a triangle wave of the counter lfoSpeedC: bit 7 of
  * (counter - 64) picks the half that rises through 0 (the counter itself,
  * as a signed byte) or the half that falls (128 - counter). */
 #define LFO_PHASE_OFFSET 0x40u
-#define LFO_PHASE_BIT    0x80u
-#define LFO_FALL_BASE    0x80u
+#define LFO_PHASE_BIT 0x80u
+#define LFO_FALL_BASE 0x80u
 /* depth * wave >> 6 */
-#define LFO_DEPTH_SHIFT  6u
+#define LFO_DEPTH_SHIFT 6u
 
 /* ChnVolSetAsm: (0x80 + pan) and (0x7F - pan) weight the right and left
  * volumes; velocity * weight * volMR >> 14, saturated to 255. */
-#define PAN_RIGHT_BASE    0x80
-#define PAN_LEFT_BASE     0x7F
+#define PAN_RIGHT_BASE 0x80
+#define PAN_LEFT_BASE 0x7F
 #define CHANNEL_VOL_SHIFT 14u
-#define CHANNEL_VOL_MAX   0xFFu
+#define CHANNEL_VOL_MAX 0xFFu
 
 u32 umul3232H32(u32 multiplier, u32 multiplicand)
 {
@@ -93,10 +93,8 @@ void TrackStop(struct MusicPlayerInfo *mplayInfo, struct MusicPlayerTrack *track
 
     if (!(track->flags & MPT_FLG_EXIST))
         return;
-    for (void *chan = track->chan; chan != NULL; chan = ChanNext(chan))
-    {
-        if (ChanByte(chan, CHAN_STATUS_FLAGS) != 0)
-        {
+    for (void *chan = track->chan; chan != NULL; chan = ChanNext(chan)) {
+        if (ChanByte(chan, CHAN_STATUS_FLAGS) != 0) {
             u8 cgbChannel = ChanByte(chan, CHAN_TYPE) & TONEDATA_TYPE_CGB;
 
             if (cgbChannel != 0)
@@ -118,13 +116,11 @@ static u32 TracksToRun(const struct MusicPlayerInfo *mplayInfo)
  * channel leaves the chain. */
 static void CountDownGateTimes(const struct MusicPlayerTrack *track)
 {
-    for (void *chan = track->chan; chan != NULL; chan = ChanNext(chan))
-    {
+    for (void *chan = track->chan; chan != NULL; chan = ChanNext(chan)) {
         u8 status = ChanByte(chan, CHAN_STATUS_FLAGS);
         u8 gateTime;
 
-        if (!(status & SOUND_CHANNEL_SF_ON))
-        {
+        if (!(status & SOUND_CHANNEL_SF_ON)) {
             ClearChain(chan);
             continue;
         }
@@ -154,35 +150,28 @@ static void StartTrack(struct MusicPlayerTrack *track)
  * would index gClockTable 128 bytes before its start on the GBA; mid2agb
  * never writes one, and the C engine ends the track instead (README.md).
  */
-static bool RunCommand(struct SoundInfo *soundInfo, struct MusicPlayerInfo *mplayInfo,
-                       struct MusicPlayerTrack *track)
+static bool RunCommand(struct SoundInfo *soundInfo, struct MusicPlayerInfo *mplayInfo, struct MusicPlayerTrack *track)
 {
     u32 cmd = *track->cmdPtr;
 
-    if (cmd < MPLAY_CMD_FIRST)
-    {
+    if (cmd < MPLAY_CMD_FIRST) {
         cmd = track->runningStatus;
-    }
-    else
-    {
+    } else {
         track->cmdPtr++;
         if (cmd >= MPLAY_CMD_RUNNING_FIRST)
             track->runningStatus = (u8)cmd;
     }
 
-    if (cmd >= MPLAY_CMD_NOTE_FIRST)
-    {
+    if (cmd >= MPLAY_CMD_NOTE_FIRST) {
         soundInfo->plynote(cmd - MPLAY_CMD_NOTE_FIRST, mplayInfo, track);
         return true;
     }
-    if (cmd >= MPLAY_CMD_TABLE_FIRST)
-    {
+    if (cmd >= MPLAY_CMD_TABLE_FIRST) {
         mplayInfo->cmd = (u8)(cmd - MPLAY_CMD_TABLE_FIRST);
         soundInfo->MPlayJumpTable[cmd - MPLAY_CMD_TABLE_FIRST](mplayInfo, track);
         return track->flags != 0;
     }
-    if (cmd < MPLAY_CMD_FIRST)
-    {
+    if (cmd < MPLAY_CMD_FIRST) {
         ply_fine(mplayInfo, track);
         return false;
     }
@@ -199,8 +188,7 @@ static void StepLfo(struct MusicPlayerTrack *track)
 
     if (track->lfoSpeed == 0 || track->mod == 0)
         return;
-    if (track->lfoDelayC != 0)
-    {
+    if (track->lfoDelayC != 0) {
         track->lfoDelayC--;
         return;
     }
@@ -219,14 +207,12 @@ static void StepLfo(struct MusicPlayerTrack *track)
 }
 
 /* _081DD87C: one tick of one existing track. */
-static void TickTrack(struct SoundInfo *soundInfo, struct MusicPlayerInfo *mplayInfo,
-                      struct MusicPlayerTrack *track)
+static void TickTrack(struct SoundInfo *soundInfo, struct MusicPlayerInfo *mplayInfo, struct MusicPlayerTrack *track)
 {
     CountDownGateTimes(track);
     if (track->flags & MPT_FLG_START)
         StartTrack(track);
-    while (track->wait == 0)
-    {
+    while (track->wait == 0) {
         if (!RunCommand(soundInfo, mplayInfo, track))
             return;
     }
@@ -243,16 +229,14 @@ static bool Tick(struct SoundInfo *soundInfo, struct MusicPlayerInfo *mplayInfo)
     u32 bit = 1;
     u32 playing = 0;
 
-    for (u32 i = 0; i < tracks; i++, track++, bit <<= 1)
-    {
+    for (u32 i = 0; i < tracks; i++, track++, bit <<= 1) {
         if (!(track->flags & MPT_FLG_EXIST))
             continue;
         playing |= bit;
         TickTrack(soundInfo, mplayInfo, track);
     }
     mplayInfo->clock++;
-    if (playing == 0)
-    {
+    if (playing == 0) {
         mplayInfo->status = MUSICPLAYER_STATUS_PAUSE;
         return false;
     }
@@ -266,11 +250,9 @@ static void UpdateChannel(struct SoundInfo *soundInfo, struct MusicPlayerTrack *
     u8 cgbChannel = ChanByte(chan, CHAN_TYPE) & TONEDATA_TYPE_CGB;
     u8 key;
 
-    if (track->flags & MPT_FLG_VOLCHG)
-    {
+    if (track->flags & MPT_FLG_VOLCHG) {
         ChnVolSetAsm(chan, track);
-        if (cgbChannel != 0)
-        {
+        if (cgbChannel != 0) {
             struct CgbChannel *cgb = chan;
 
             cgb->modify |= CGB_CHANNEL_MO_VOL;
@@ -279,15 +261,12 @@ static void UpdateChannel(struct SoundInfo *soundInfo, struct MusicPlayerTrack *
     if (!(track->flags & MPT_FLG_PITCHG))
         return;
     key = SoundingKey(ChanByte(chan, CHAN_KEY), track->keyM);
-    if (cgbChannel != 0)
-    {
+    if (cgbChannel != 0) {
         struct CgbChannel *cgb = chan;
 
         cgb->frequency = soundInfo->MidiKeyToCgbFreq(cgbChannel, key, track->pitM);
         cgb->modify |= CGB_CHANNEL_MO_PIT;
-    }
-    else
-    {
+    } else {
         struct SoundChannel *direct = chan;
 
         direct->frequency = MidiKeyToFreq(direct->wav, key, track->pitM);
@@ -301,13 +280,11 @@ static void UpdateVolumeAndPitch(struct SoundInfo *soundInfo, struct MusicPlayer
     struct MusicPlayerTrack *track = mplayInfo->tracks;
     u32 tracks = TracksToRun(mplayInfo);
 
-    for (u32 i = 0; i < tracks; i++, track++)
-    {
+    for (u32 i = 0; i < tracks; i++, track++) {
         if (!(track->flags & MPT_FLG_EXIST) || !(track->flags & (MPT_FLG_VOLCHG | MPT_FLG_PITCHG)))
             continue;
         TrkVolPitSet(mplayInfo, track);
-        for (void *chan = track->chan; chan != NULL; chan = ChanNext(chan))
-        {
+        for (void *chan = track->chan; chan != NULL; chan = ChanNext(chan)) {
             if (!(ChanByte(chan, CHAN_STATUS_FLAGS) & SOUND_CHANNEL_SF_ON))
                 ClearChain(chan);
             else
@@ -324,8 +301,7 @@ static void RunPlayer(struct SoundInfo *soundInfo, struct MusicPlayerInfo *mplay
 {
     u32 tempo = (u32)mplayInfo->tempoC + mplayInfo->tempoI;
 
-    for (;;)
-    {
+    for (;;) {
         mplayInfo->tempoC = (u16)tempo;
         if (tempo < TEMPO_TICK)
             break;
@@ -345,8 +321,7 @@ void MPlayMain(struct MusicPlayerInfo *mplayInfo)
     if (mplayInfo->MPlayMainNext != NULL)
         mplayInfo->MPlayMainNext(mplayInfo->musicPlayerNext);
 
-    if (!(mplayInfo->status & MUSICPLAYER_STATUS_PAUSE))
-    {
+    if (!(mplayInfo->status & MUSICPLAYER_STATUS_PAUSE)) {
         struct SoundInfo *soundInfo = SOUND_INFO_PTR;
 
         FadeOutBody(mplayInfo);

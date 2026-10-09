@@ -154,7 +154,7 @@ PTEST(sqrt_every_square_boundary)
 PTEST(arctan_exact_points)
 {
     PT_ASSERT_EQ_INT(ArcTan(0), 0);
-    PT_ASSERT_EQ_INT(ArcTan(0x4000), 0x2000);   /* tan 1.0: 45 degrees */
+    PT_ASSERT_EQ_INT(ArcTan(0x4000), 0x2000); /* tan 1.0: 45 degrees */
     PT_ASSERT_EQ_INT(ArcTan(-0x4000), -0x2000);
 }
 
@@ -165,12 +165,12 @@ PTEST(arctan_accuracy_band)
         int16_t tan;
         int32_t angle;
     } points[] = {
-        { 0x0400, 651 },  /* atan(0.0625)  = 651.05 */
-        { 0x1000, 2555 }, /* atan(0.25)    = 2555.22 */
-        { 0x2000, 4836 }, /* atan(0.5)     = 4836.02 */
-        { 0x3000, 6712 }, /* atan(0.75)    = 6711.96 */
-        { 0x3800, 7498 }, /* atan(0.875)   = 7497.67 */
-        { 0x3FFF, 8192 }, /* atan(0.99994) = 8191.68 */
+        {0x0400, 651},  /* atan(0.0625)  = 651.05 */
+        {0x1000, 2555}, /* atan(0.25)    = 2555.22 */
+        {0x2000, 4836}, /* atan(0.5)     = 4836.02 */
+        {0x3000, 6712}, /* atan(0.75)    = 6711.96 */
+        {0x3800, 7498}, /* atan(0.875)   = 7497.67 */
+        {0x3FFF, 8192}, /* atan(0.99994) = 8191.68 */
     };
     for (size_t i = 0; i < sizeof points / sizeof points[0]; i++) {
         PT_ASSERT(distance(ArcTan(points[i].tan), points[i].angle) <= ARCTAN_TOLERANCE);
@@ -186,8 +186,8 @@ PTEST(arctan_inaccurate_beyond_45_degrees)
 {
     PT_ASSERT(distance(ArcTan(0x6000), 10251) > 1000); /* atan(1.5) = 10250.91 */
     PT_ASSERT_EQ_INT(ArcTan(0x6000), 8988);
-    PT_ASSERT_EQ_INT(ArcTan(0x5000), 9325);  /* atan(1.25) = 9346.20 */
-    PT_ASSERT_EQ_INT(ArcTan(0x7FFF), 5848);  /* atan(2.0) = 11547.85 */
+    PT_ASSERT_EQ_INT(ArcTan(0x5000), 9325); /* atan(1.25) = 9346.20 */
+    PT_ASSERT_EQ_INT(ArcTan(0x7FFF), 5848); /* atan(2.0) = 11547.85 */
     PT_ASSERT_EQ_INT(ArcTan(-0x8000), -5795);
 }
 
@@ -219,17 +219,17 @@ PTEST(arctan2_octants)
         int16_t x, y;
         int32_t angle;
     } points[] = {
-        { 0x2000, 0x1000, 4836 },    /* (2, 1):   4836.02 */
-        { 0x1000, 0x2000, 11548 },   /* (1, 2):   11547.98 */
-        { -0x1000, 0x2000, 21220 },  /* (-1, 2):  21220.02 */
-        { -0x2000, 0x1000, 27932 },  /* (-2, 1):  27931.98 */
-        { -0x2000, -0x1000, 37604 }, /* (-2, -1): 37604.02 */
-        { -0x1000, -0x2000, 44316 }, /* (-1, -2): 44315.98 */
-        { 0x1000, -0x2000, 53988 },  /* (1, -2):  53988.02 */
-        { 0x2000, -0x1000, 60700 },  /* (2, -1):  60699.98 */
-        { 3, 1, 3356 },              /* (3, 1):   3355.98, small magnitudes */
-        { INT16_MAX, INT16_MIN, 57344 }, /* 57343.84 */
-        { INT16_MIN, 1, 32768 },     /* 32767.68 */
+        {0x2000, 0x1000, 4836},        /* (2, 1):   4836.02 */
+        {0x1000, 0x2000, 11548},       /* (1, 2):   11547.98 */
+        {-0x1000, 0x2000, 21220},      /* (-1, 2):  21220.02 */
+        {-0x2000, 0x1000, 27932},      /* (-2, 1):  27931.98 */
+        {-0x2000, -0x1000, 37604},     /* (-2, -1): 37604.02 */
+        {-0x1000, -0x2000, 44316},     /* (-1, -2): 44315.98 */
+        {0x1000, -0x2000, 53988},      /* (1, -2):  53988.02 */
+        {0x2000, -0x1000, 60700},      /* (2, -1):  60699.98 */
+        {3, 1, 3356},                  /* (3, 1):   3355.98, small magnitudes */
+        {INT16_MAX, INT16_MIN, 57344}, /* 57343.84 */
+        {INT16_MIN, 1, 32768},         /* 32767.68 */
     };
     for (size_t i = 0; i < sizeof points / sizeof points[0]; i++) {
         uint16_t angle = ArcTan2(points[i].x, points[i].y);

@@ -29,7 +29,9 @@ struct result {
 static struct result div_register(uint32_t dividend, uint32_t divisor)
 {
     struct result r;
-    __asm__ volatile("xorl %%edx, %%edx\n\tdivl %%ecx" : "=a"(r.quotient), "=&d"(r.remainder) : "a"(dividend), "c"(divisor));
+    __asm__ volatile("xorl %%edx, %%edx\n\tdivl %%ecx"
+                     : "=a"(r.quotient), "=&d"(r.remainder)
+                     : "a"(dividend), "c"(divisor));
     return r;
 }
 
@@ -47,7 +49,10 @@ static uint32_t global_divisor;
 static struct result div_base(uint32_t dividend, const uint32_t *divisor)
 {
     struct result r;
-    __asm__ volatile("xorl %%edx, %%edx\n\tdivl (%%ecx)" : "=a"(r.quotient), "=&d"(r.remainder) : "a"(dividend), "c"(divisor) : "memory");
+    __asm__ volatile("xorl %%edx, %%edx\n\tdivl (%%ecx)"
+                     : "=a"(r.quotient), "=&d"(r.remainder)
+                     : "a"(dividend), "c"(divisor)
+                     : "memory");
     return r;
 }
 
@@ -55,7 +60,10 @@ static struct result div_base(uint32_t dividend, const uint32_t *divisor)
 static struct result div_disp8(uint32_t dividend, const uint32_t *divisor)
 {
     struct result r;
-    __asm__ volatile("xorl %%edx, %%edx\n\tdivl 4(%%ecx)" : "=a"(r.quotient), "=&d"(r.remainder) : "a"(dividend), "c"(divisor - 1) : "memory");
+    __asm__ volatile("xorl %%edx, %%edx\n\tdivl 4(%%ecx)"
+                     : "=a"(r.quotient), "=&d"(r.remainder)
+                     : "a"(dividend), "c"(divisor - 1)
+                     : "memory");
     return r;
 }
 
@@ -63,7 +71,10 @@ static struct result div_disp8(uint32_t dividend, const uint32_t *divisor)
 static struct result div_disp32(uint32_t dividend, const uint32_t *divisor)
 {
     struct result r;
-    __asm__ volatile("xorl %%edx, %%edx\n\tdivl 0x100(%%ecx)" : "=a"(r.quotient), "=&d"(r.remainder) : "a"(dividend), "c"((uintptr_t)divisor - 0x100) : "memory");
+    __asm__ volatile("xorl %%edx, %%edx\n\tdivl 0x100(%%ecx)"
+                     : "=a"(r.quotient), "=&d"(r.remainder)
+                     : "a"(dividend), "c"((uintptr_t)divisor - 0x100)
+                     : "memory");
     return r;
 }
 
@@ -71,7 +82,10 @@ static struct result div_disp32(uint32_t dividend, const uint32_t *divisor)
 static struct result div_absolute(uint32_t dividend)
 {
     struct result r;
-    __asm__ volatile("xorl %%edx, %%edx\n\tdivl %2" : "=a"(r.quotient), "=&d"(r.remainder) : "m"(global_divisor), "a"(dividend) : "memory");
+    __asm__ volatile("xorl %%edx, %%edx\n\tdivl %2"
+                     : "=a"(r.quotient), "=&d"(r.remainder)
+                     : "m"(global_divisor), "a"(dividend)
+                     : "memory");
     return r;
 }
 
@@ -79,7 +93,10 @@ static struct result div_absolute(uint32_t dividend)
 static struct result div_sib(uint32_t dividend, const uint32_t *array, uint32_t index)
 {
     struct result r;
-    __asm__ volatile("xorl %%edx, %%edx\n\tdivl 8(%%ecx,%%ebx,4)" : "=a"(r.quotient), "=&d"(r.remainder) : "a"(dividend), "c"(array - 2), "b"(index) : "memory");
+    __asm__ volatile("xorl %%edx, %%edx\n\tdivl 8(%%ecx,%%ebx,4)"
+                     : "=a"(r.quotient), "=&d"(r.remainder)
+                     : "a"(dividend), "c"(array - 2), "b"(index)
+                     : "memory");
     return r;
 }
 
@@ -87,7 +104,10 @@ static struct result div_sib(uint32_t dividend, const uint32_t *array, uint32_t 
 static struct result div_sib_no_base(uint32_t dividend)
 {
     struct result r;
-    __asm__ volatile("xorl %%edx, %%edx\n\tdivl %c2(,%%ebx,4)" : "=a"(r.quotient), "=&d"(r.remainder) : "i"(&global_divisor), "a"(dividend), "b"(0) : "memory");
+    __asm__ volatile("xorl %%edx, %%edx\n\tdivl %c2(,%%ebx,4)"
+                     : "=a"(r.quotient), "=&d"(r.remainder)
+                     : "i"(&global_divisor), "a"(dividend), "b"(0)
+                     : "memory");
     return r;
 }
 
@@ -95,7 +115,10 @@ static struct result div_sib_no_base(uint32_t dividend)
 static struct result idiv_stack(int32_t dividend, int32_t divisor)
 {
     struct result r;
-    __asm__ volatile("pushl %%ecx\n\tcltd\n\tidivl (%%esp)\n\taddl $4, %%esp" : "=a"(r.quotient), "=&d"(r.remainder) : "a"(dividend), "c"(divisor) : "memory");
+    __asm__ volatile("pushl %%ecx\n\tcltd\n\tidivl (%%esp)\n\taddl $4, %%esp"
+                     : "=a"(r.quotient), "=&d"(r.remainder)
+                     : "a"(dividend), "c"(divisor)
+                     : "memory");
     return r;
 }
 
@@ -103,7 +126,10 @@ static struct result idiv_stack(int32_t dividend, int32_t divisor)
 static struct result div_prefixed(uint32_t dividend, const uint32_t *divisor)
 {
     struct result r;
-    __asm__ volatile("xorl %%edx, %%edx\n\t.byte 0x3e\n\tdivl (%%ecx)" : "=a"(r.quotient), "=&d"(r.remainder) : "a"(dividend), "c"(divisor) : "memory");
+    __asm__ volatile("xorl %%edx, %%edx\n\t.byte 0x3e\n\tdivl (%%ecx)"
+                     : "=a"(r.quotient), "=&d"(r.remainder)
+                     : "a"(dividend), "c"(divisor)
+                     : "memory");
     return r;
 }
 
@@ -113,7 +139,9 @@ static struct result idiv_ebp_negative_disp8(int32_t dividend, const int32_t *di
 {
     struct result r;
     __asm__ volatile("pushl %%ebp\n\tleal 4(%%ecx), %%ebp\n\tcltd\n\tidivl -4(%%ebp)\n\tpopl %%ebp"
-                     : "=a"(r.quotient), "=&d"(r.remainder) : "a"(dividend), "c"(divisor) : "memory");
+                     : "=a"(r.quotient), "=&d"(r.remainder)
+                     : "a"(dividend), "c"(divisor)
+                     : "memory");
     return r;
 }
 
@@ -122,7 +150,9 @@ static struct result div_esp_disp8(uint32_t dividend, uint32_t divisor)
 {
     struct result r;
     __asm__ volatile("subl $12, %%esp\n\tmovl %%ecx, 8(%%esp)\n\txorl %%edx, %%edx\n\tdivl 8(%%esp)\n\taddl $12, %%esp"
-                     : "=a"(r.quotient), "=&d"(r.remainder) : "a"(dividend), "c"(divisor) : "memory");
+                     : "=a"(r.quotient), "=&d"(r.remainder)
+                     : "a"(dividend), "c"(divisor)
+                     : "memory");
     return r;
 }
 
@@ -146,8 +176,10 @@ static void aim(unsigned zero_slot)
 static struct result div_sib_scale1(uint32_t dividend, uintptr_t byte_offset)
 {
     struct result r;
-    __asm__ volatile("xorl %%edx, %%edx\n\tdivl (%%ecx,%%ebx,1)" : "=a"(r.quotient), "=&d"(r.remainder)
-                     : "a"(dividend), "c"(slots), "b"(byte_offset) : "memory");
+    __asm__ volatile("xorl %%edx, %%edx\n\tdivl (%%ecx,%%ebx,1)"
+                     : "=a"(r.quotient), "=&d"(r.remainder)
+                     : "a"(dividend), "c"(slots), "b"(byte_offset)
+                     : "memory");
     return r;
 }
 
@@ -155,8 +187,10 @@ static struct result div_sib_scale1(uint32_t dividend, uintptr_t byte_offset)
 static struct result div_sib_scale2(uint32_t dividend, uintptr_t index)
 {
     struct result r;
-    __asm__ volatile("xorl %%edx, %%edx\n\tdivl (%%ecx,%%ebx,2)" : "=a"(r.quotient), "=&d"(r.remainder)
-                     : "a"(dividend), "c"(slots), "b"(index) : "memory");
+    __asm__ volatile("xorl %%edx, %%edx\n\tdivl (%%ecx,%%ebx,2)"
+                     : "=a"(r.quotient), "=&d"(r.remainder)
+                     : "a"(dividend), "c"(slots), "b"(index)
+                     : "memory");
     return r;
 }
 
@@ -164,8 +198,10 @@ static struct result div_sib_scale2(uint32_t dividend, uintptr_t index)
 static struct result div_sib_scale8(uint32_t dividend, uintptr_t index)
 {
     struct result r;
-    __asm__ volatile("xorl %%edx, %%edx\n\tdivl (%%ecx,%%ebx,8)" : "=a"(r.quotient), "=&d"(r.remainder)
-                     : "a"(dividend), "c"(slots), "b"(index) : "memory");
+    __asm__ volatile("xorl %%edx, %%edx\n\tdivl (%%ecx,%%ebx,8)"
+                     : "=a"(r.quotient), "=&d"(r.remainder)
+                     : "a"(dividend), "c"(slots), "b"(index)
+                     : "memory");
     return r;
 }
 
@@ -176,7 +212,8 @@ static struct result div_sib_ebp_disp8(uint32_t dividend, const uint32_t *target
     struct result r;
     __asm__ volatile("pushl %%ebp\n\tmovl %%ecx, %%ebp\n\txorl %%edx, %%edx\n\tdivl 8(%%ebp,%%ebx,1)\n\tpopl %%ebp"
                      : "=a"(r.quotient), "=&d"(r.remainder)
-                     : "a"(dividend), "c"((uintptr_t)target - 8u), "b"(0) : "memory");
+                     : "a"(dividend), "c"((uintptr_t)target - 8u), "b"(0)
+                     : "memory");
     return r;
 }
 
@@ -186,7 +223,8 @@ static struct result div_sib_ebp_disp32(uint32_t dividend, const uint32_t *targe
     struct result r;
     __asm__ volatile("pushl %%ebp\n\tmovl %%ecx, %%ebp\n\txorl %%edx, %%edx\n\tdivl 0x100(%%ebp,%%ebx,1)\n\tpopl %%ebp"
                      : "=a"(r.quotient), "=&d"(r.remainder)
-                     : "a"(dividend), "c"((uintptr_t)target - 0x100u), "b"(0) : "memory");
+                     : "a"(dividend), "c"((uintptr_t)target - 0x100u), "b"(0)
+                     : "memory");
     return r;
 }
 
@@ -194,8 +232,11 @@ static struct result div_sib_ebp_disp32(uint32_t dividend, const uint32_t *targe
 static struct result div_esp_disp32(uint32_t dividend, uint32_t divisor)
 {
     struct result r;
-    __asm__ volatile("subl $0x104, %%esp\n\tmovl %%ecx, 0x100(%%esp)\n\txorl %%edx, %%edx\n\tdivl 0x100(%%esp)\n\taddl $0x104, %%esp"
-                     : "=a"(r.quotient), "=&d"(r.remainder) : "a"(dividend), "c"(divisor) : "memory");
+    __asm__ volatile(
+        "subl $0x104, %%esp\n\tmovl %%ecx, 0x100(%%esp)\n\txorl %%edx, %%edx\n\tdivl 0x100(%%esp)\n\taddl $0x104, %%esp"
+        : "=a"(r.quotient), "=&d"(r.remainder)
+        : "a"(dividend), "c"(divisor)
+        : "memory");
     return r;
 }
 
@@ -207,7 +248,9 @@ static struct result div_esp_disp32_scale_ignored(uint32_t dividend, uint32_t di
     struct result r;
     __asm__ volatile("subl $0x104, %%esp\n\tmovl %%ecx, 0x100(%%esp)\n\txorl %%edx, %%edx\n\t"
                      ".byte 0xf7, 0xb4, 0xe4, 0x00, 0x01, 0x00, 0x00\n\taddl $0x104, %%esp"
-                     : "=a"(r.quotient), "=&d"(r.remainder) : "a"(dividend), "c"(divisor) : "memory");
+                     : "=a"(r.quotient), "=&d"(r.remainder)
+                     : "a"(dividend), "c"(divisor)
+                     : "memory");
     return r;
 }
 
@@ -215,8 +258,10 @@ static struct result div_esp_disp32_scale_ignored(uint32_t dividend, uint32_t di
 static struct result div_two_prefixes(uint32_t dividend, const uint32_t *divisor)
 {
     struct result r;
-    __asm__ volatile("xorl %%edx, %%edx\n\t.byte 0x3e, 0x2e\n\tdivl (%%ecx)" : "=a"(r.quotient), "=&d"(r.remainder)
-                     : "a"(dividend), "c"(divisor) : "memory");
+    __asm__ volatile("xorl %%edx, %%edx\n\t.byte 0x3e, 0x2e\n\tdivl (%%ecx)"
+                     : "=a"(r.quotient), "=&d"(r.remainder)
+                     : "a"(dividend), "c"(divisor)
+                     : "memory");
     return r;
 }
 
@@ -382,7 +427,9 @@ static void wide_quotient(void)
 static void word_division_by_zero(void)
 {
     __asm__ volatile("movl $5, %%eax\n\txorl %%edx, %%edx\n\txorl %%ecx, %%ecx\n\t.byte 0x66, 0xF7, 0xF1"
-                     : : : "eax", "ecx", "edx");
+                     :
+                     :
+                     : "eax", "ecx", "edx");
 }
 
 /* 67h F7h F1h: an address-size prefix (meaningless with a register operand,
@@ -390,7 +437,9 @@ static void word_division_by_zero(void)
 static void address_size_prefixed_division_by_zero(void)
 {
     __asm__ volatile("movl $5, %%eax\n\txorl %%edx, %%edx\n\txorl %%ecx, %%ecx\n\t.byte 0x67, 0xF7, 0xF1"
-                     : : : "eax", "ecx", "edx");
+                     :
+                     :
+                     : "eax", "ecx", "edx");
 }
 
 /* An unsigned division by zero of a 64-bit dividend (EDX non-zero): not

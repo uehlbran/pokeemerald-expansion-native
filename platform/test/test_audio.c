@@ -54,7 +54,7 @@ PTEST(bound_skips_queuing_and_counts_the_drop)
     const size_t max = audio_max_queued_frames(TEST_RATE_HZ);
     PT_ASSERT_EQ_INT(audio_queue(samples, max), 0); /* exactly at the bound fits */
     uint32_t full = audio_queued_bytes();
-    PT_ASSERT_EQ_INT(audio_queue(samples, 1), 0);   /* one more does not */
+    PT_ASSERT_EQ_INT(audio_queue(samples, 1), 0); /* one more does not */
     uint32_t after_drop = audio_queued_bytes();
     uint64_t dropped = audio_dropped_frames();
     uint64_t total = audio_total_frames();

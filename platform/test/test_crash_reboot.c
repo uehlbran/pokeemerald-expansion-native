@@ -42,8 +42,14 @@ static volatile uint8_t *region(void)
     return (volatile uint8_t *)(uintptr_t)CRASH_REBOOT_PERSISTENT_ADDRESS;
 }
 
-static uint8_t pattern_a(size_t i) { return (uint8_t)(i ^ 0x5Au); }
-static uint8_t pattern_b(size_t i) { return (uint8_t)(i * 7u + 1u); }
+static uint8_t pattern_a(size_t i)
+{
+    return (uint8_t)(i ^ 0x5Au);
+}
+static uint8_t pattern_b(size_t i)
+{
+    return (uint8_t)(i * 7u + 1u);
+}
 
 static void fill(uint8_t (*pattern)(size_t))
 {
@@ -131,7 +137,7 @@ static int run_crashing_child(const char *mode, int signal_number)
     if (pid < 0)
         return -1;
     if (pid == 0) {
-        char *argv[] = { (char *)self_name, (char *)mode, NULL };
+        char *argv[] = {(char *)self_name, (char *)mode, NULL};
         (void)alarm(CHILD_TIME_LIMIT_SECONDS);
         if (gba_memmap_init() != GBA_MEMMAP_OK)
             _exit(CHILD_SETUP_FAILED);
@@ -166,7 +172,7 @@ PTEST(a_null_call_reboots_with_the_persistent_state)
 
 PTEST(every_crash_signal_reboots)
 {
-    static const int signals[] = { SIGBUS, SIGILL, SIGFPE, SIGABRT, SIGSEGV };
+    static const int signals[] = {SIGBUS, SIGILL, SIGFPE, SIGABRT, SIGSEGV};
     for (size_t i = 0; i < sizeof signals / sizeof signals[0]; i++) {
         int status = run_crashing_child(MODE_VERIFY, signals[i]);
         PT_ASSERT(status != -1);
@@ -246,7 +252,7 @@ PTEST(init_rejects_no_arguments_and_too_many)
     static char *many[CRASH_REBOOT_MAX_ARGS];
     for (size_t i = 0; i < CRASH_REBOOT_MAX_ARGS; i++)
         many[i] = (char *)self_name;
-    char *one[] = { (char *)self_name, NULL };
+    char *one[] = {(char *)self_name, NULL};
     PT_ASSERT_EQ_INT(crash_reboot_init(0, one), CRASH_REBOOT_ERR_ARGS);
     PT_ASSERT_EQ_INT(crash_reboot_init(1, NULL), CRASH_REBOOT_ERR_ARGS);
     /* The reboot adds two: CRASH_REBOOT_MAX_ARGS - 2 of the caller's fit. */
@@ -257,7 +263,7 @@ PTEST(init_rejects_no_arguments_and_too_many)
 
 PTEST(shutdown_restores_the_default_actions)
 {
-    char *argv[] = { (char *)self_name, NULL };
+    char *argv[] = {(char *)self_name, NULL};
     struct sigaction installed, restored;
     PT_ASSERT_EQ_INT(gba_memmap_init(), GBA_MEMMAP_OK);
     PT_ASSERT_EQ_INT(crash_reboot_init(1, argv), CRASH_REBOOT_OK);

@@ -241,25 +241,18 @@ static void arg_party_move(const uint32_t arguments[INSPECT_MAX_ARGUMENTS], char
 }
 
 const struct inspect_arg_reader inspect_menu_arg_readers[] = {
-    { INSPECT_ARG_PARTY_SPECIES, arg_party_species },
-    { INSPECT_ARG_PARTY_NAME, arg_party_name },
-    { INSPECT_ARG_PARTY_LEVEL, arg_party_level },
-    { INSPECT_ARG_PARTY_EXTRAS, arg_party_extras },
-    { INSPECT_ARG_PARTY_MOVE, arg_party_move },
-    { INSPECT_ARG_BAG_ITEM_COUNT, arg_bag_item_count },
-    { INSPECT_ARG_PC_BOX_COUNT, arg_pc_box_count },
-    { INSPECT_ARG_PC_BOX_SPECIES, arg_pc_box_species },
+    {INSPECT_ARG_PARTY_SPECIES, arg_party_species}, {INSPECT_ARG_PARTY_NAME, arg_party_name},
+    {INSPECT_ARG_PARTY_LEVEL, arg_party_level},     {INSPECT_ARG_PARTY_EXTRAS, arg_party_extras},
+    {INSPECT_ARG_PARTY_MOVE, arg_party_move},       {INSPECT_ARG_BAG_ITEM_COUNT, arg_bag_item_count},
+    {INSPECT_ARG_PC_BOX_COUNT, arg_pc_box_count},   {INSPECT_ARG_PC_BOX_SPECIES, arg_pc_box_species},
 };
 const size_t inspect_menu_arg_reader_count = sizeof inspect_menu_arg_readers / sizeof inspect_menu_arg_readers[0];
 
 /* In dump order, after the game-state facts. */
 const struct inspect_fact inspect_menu_facts[] = {
-    { "party_species", fact_party_species, NULL },
-    { "pc_box0_count", fact_pc_box0_count, NULL },
-    { "summary_species", fact_summary_species, NULL },
-    { "debug_menu_open", fact_debug_menu_open, NULL },
-    { "debug_input", fact_debug_input, NULL },
-    { "debug_step", fact_debug_step, NULL },
-    { "party_slot", fact_party_slot, NULL },
+    {"party_species", fact_party_species, NULL},     {"pc_box0_count", fact_pc_box0_count, NULL},
+    {"summary_species", fact_summary_species, NULL}, {"debug_menu_open", fact_debug_menu_open, NULL},
+    {"debug_input", fact_debug_input, NULL},         {"debug_step", fact_debug_step, NULL},
+    {"party_slot", fact_party_slot, NULL},
 };
 const size_t inspect_menu_fact_count = sizeof inspect_menu_facts / sizeof inspect_menu_facts[0];

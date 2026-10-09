@@ -20,7 +20,7 @@ static int parse(const char *text, struct replay_parse_error *error)
 
 static void assert_parse_error(const char *text, uint32_t line, const char *needle)
 {
-    struct replay_parse_error error = { 0 };
+    struct replay_parse_error error = {0};
     int result = parse(text, &error);
     PT_ASSERT(result == -1);
     PT_ASSERT_EQ_INT(error.line, line);

@@ -29,8 +29,7 @@ bool bios_range_ok(const char *function, const char *what, const void *start, si
     if (transfer_bounds_ok(address, length, access)) {
         return true;
     }
-    fprintf(stderr, "bios: %s: %s %#" PRIxPTR " + %#zx refused (transfer_bounds)\n", function, what,
-            address, length);
+    fprintf(stderr, "bios: %s: %s %#" PRIxPTR " + %#zx refused (transfer_bounds)\n", function, what, address, length);
     return false;
 }
 

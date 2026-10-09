@@ -42,25 +42,25 @@
 #include "m4a_layout.h"
 
 /* constants/m4a_constants.inc values that include/gba/m4a_internal.h lacks */
-#define TONEDATA_TYPE_REV        0x10 // play the sample backwards
-#define TONEDATA_TYPE_CMP        0x20 // the sample may be DPCM-compressed
+#define TONEDATA_TYPE_REV 0x10        // play the sample backwards
+#define TONEDATA_TYPE_CMP 0x20        // the sample may be DPCM-compressed
 #define SOUND_CHANNEL_SF_SPECIAL 0x20 // reversed/compressed playback initialised
-#define WAVE_DATA_FLAG_LOOP      0xC0 // in o_WaveData_flags, the high byte of WaveData.status
+#define WAVE_DATA_FLAG_LOOP 0xC0      // in o_WaveData_flags, the high byte of WaveData.status
 
 /* Track command bytes, as MPlayMain decodes them (sound/MPlayDef.s). */
-#define MPLAY_CMD_FIRST          0x80 // bytes below are arguments, or repeat the running status
-#define MPLAY_CMD_WAIT_LAST      0xB0 // 0x80..0xB0: wait gClockTable[cmd - 0x80] ticks
-#define MPLAY_CMD_TABLE_FIRST    0xB1 // 0xB1..0xCE: MPlayJumpTable[cmd - 0xB1] (FINE first)
-#define MPLAY_CMD_RUNNING_FIRST  0xBD // commands from VOICE on are remembered as running status
-#define MPLAY_CMD_NOTE_FIRST     0xCF // 0xCF..0xFF: plynote(cmd - 0xCF) (TIE first)
+#define MPLAY_CMD_FIRST 0x80         // bytes below are arguments, or repeat the running status
+#define MPLAY_CMD_WAIT_LAST 0xB0     // 0x80..0xB0: wait gClockTable[cmd - 0x80] ticks
+#define MPLAY_CMD_TABLE_FIRST 0xB1   // 0xB1..0xCE: MPlayJumpTable[cmd - 0xB1] (FINE first)
+#define MPLAY_CMD_RUNNING_FIRST 0xBD // commands from VOICE on are remembered as running status
+#define MPLAY_CMD_NOTE_FIRST 0xCF    // 0xCF..0xFF: plynote(cmd - 0xCF) (TIE first)
 /* gClockTable holds a length for each wait (0x80..0xB0) and note (0xCF..0xFF) command. */
-#define MPLAY_CLOCK_TABLE_SIZE   (MPLAY_CMD_WAIT_LAST - MPLAY_CMD_FIRST + 1)
+#define MPLAY_CLOCK_TABLE_SIZE (MPLAY_CMD_WAIT_LAST - MPLAY_CMD_FIRST + 1)
 
 /* The high nibble of MusicPlayerTrack.flags (EXIST, START) survives an update. */
-#define MPT_FLG_KEEP_MASK        0xF0
+#define MPT_FLG_KEEP_MASK 0xF0
 
 /* Number of PSG channels, gCgbChans[4] in src/m4a.c (GBATEK sound channels 1 to 4). */
-#define NUM_CGB_CHANNELS         4
+#define NUM_CGB_CHANNELS 4
 
 /*
  * Channel chains.
@@ -75,27 +75,26 @@
  * Once a node's type byte shows which struct it is (type & 7 is the PSG
  * channel, 0 for Direct Sound), the code uses that struct directly.
  */
-enum ChanByteField
-{
-    CHAN_STATUS_FLAGS        = offsetof(struct SoundChannel, statusFlags),
-    CHAN_TYPE                = offsetof(struct SoundChannel, type),
-    CHAN_RIGHT_VOLUME        = offsetof(struct SoundChannel, rightVolume),
-    CHAN_LEFT_VOLUME         = offsetof(struct SoundChannel, leftVolume),
-    CHAN_ATTACK              = offsetof(struct SoundChannel, attack),
-    CHAN_DECAY               = offsetof(struct SoundChannel, decay),
-    CHAN_SUSTAIN             = offsetof(struct SoundChannel, sustain),
-    CHAN_RELEASE             = offsetof(struct SoundChannel, release),
-    CHAN_KEY                 = offsetof(struct SoundChannel, key),
-    CHAN_PSEUDO_ECHO_VOLUME  = offsetof(struct SoundChannel, pseudoEchoVolume),
-    CHAN_PSEUDO_ECHO_LENGTH  = offsetof(struct SoundChannel, pseudoEchoLength),
-    CHAN_GATE_TIME           = offsetof(struct SoundChannel, gateTime),
-    CHAN_MIDI_KEY            = offsetof(struct SoundChannel, midiKey),
-    CHAN_VELOCITY            = offsetof(struct SoundChannel, velocity),
-    CHAN_PRIORITY            = offsetof(struct SoundChannel, priority),
-    CHAN_RHYTHM_PAN          = offsetof(struct SoundChannel, rhythmPan),
+enum ChanByteField {
+    CHAN_STATUS_FLAGS = offsetof(struct SoundChannel, statusFlags),
+    CHAN_TYPE = offsetof(struct SoundChannel, type),
+    CHAN_RIGHT_VOLUME = offsetof(struct SoundChannel, rightVolume),
+    CHAN_LEFT_VOLUME = offsetof(struct SoundChannel, leftVolume),
+    CHAN_ATTACK = offsetof(struct SoundChannel, attack),
+    CHAN_DECAY = offsetof(struct SoundChannel, decay),
+    CHAN_SUSTAIN = offsetof(struct SoundChannel, sustain),
+    CHAN_RELEASE = offsetof(struct SoundChannel, release),
+    CHAN_KEY = offsetof(struct SoundChannel, key),
+    CHAN_PSEUDO_ECHO_VOLUME = offsetof(struct SoundChannel, pseudoEchoVolume),
+    CHAN_PSEUDO_ECHO_LENGTH = offsetof(struct SoundChannel, pseudoEchoLength),
+    CHAN_GATE_TIME = offsetof(struct SoundChannel, gateTime),
+    CHAN_MIDI_KEY = offsetof(struct SoundChannel, midiKey),
+    CHAN_VELOCITY = offsetof(struct SoundChannel, velocity),
+    CHAN_PRIORITY = offsetof(struct SoundChannel, priority),
+    CHAN_RHYTHM_PAN = offsetof(struct SoundChannel, rhythmPan),
 };
 
-#define ASSERT_SHARED_CHAN_FIELD(field) \
+#define ASSERT_SHARED_CHAN_FIELD(field)                                                        \
     _Static_assert(offsetof(struct SoundChannel, field) == offsetof(struct CgbChannel, field), \
                    "chain nodes share " #field)
 ASSERT_SHARED_CHAN_FIELD(statusFlags);

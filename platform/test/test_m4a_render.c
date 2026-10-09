@@ -37,8 +37,7 @@ static uint32_t PointerField(const struct SoundChannel *chan)
 
 /* Reference interpolating player. */
 
-struct RefPlayer
-{
+struct RefPlayer {
     const int32_t *samples; // samples[-1] must exist for reverse play
     int64_t pos;
     int64_t count;
@@ -71,13 +70,11 @@ static void RefAdvance(struct RefPlayer *p)
     if (whole == 0)
         return;
     p->count -= whole;
-    if (p->count > 0)
-    {
+    if (p->count > 0) {
         p->pos += p->reverse ? -(int64_t)whole : (int64_t)whole;
         return;
     }
-    if (p->loopLen == 0)
-    {
+    if (p->loopLen == 0) {
         p->stopped = 1;
         return;
     }
@@ -89,8 +86,7 @@ static void RefAdvance(struct RefPlayer *p)
 /* Mixes one frame of the reference into sExpected at frame 0. */
 static void RefMixFrame(struct RefPlayer *p)
 {
-    for (uint32_t i = 0; i < SPV && !p->stopped; i++)
-    {
+    for (uint32_t i = 0; i < SPV && !p->stopped; i++) {
         int32_t out = RefOutput(p);
 
         sExpected[i] = (uint8_t)(sExpected[i] + M4aTestMixDelta(ENV_RIGHT, out));
@@ -106,16 +102,14 @@ static const int8_t kDpcmDeltas[16] = {0, 1, 4, 9, 16, 25, 36, 49, -64, -49, -36
 
 static void RefDecodeDpcm(const uint8_t *data, size_t numBlocks, int32_t *out)
 {
-    for (size_t b = 0; b < numBlocks; b++)
-    {
+    for (size_t b = 0; b < numBlocks; b++) {
         const uint8_t *block = data + b * 33;
         int64_t level = (int8_t)block[0];
 
         out[b * 64] = M4aTestWrapS8(level);
         level += kDpcmDeltas[block[1] & 0xF];
         out[b * 64 + 1] = M4aTestWrapS8(level);
-        for (size_t j = 2; j < 64; j++)
-        {
+        for (size_t j = 2; j < 64; j++) {
             uint8_t byte = block[j / 2 + 1];
 
             level += kDpcmDeltas[(j % 2 == 0) ? (byte >> 4) : (byte & 0xF)];
@@ -181,8 +175,7 @@ PTEST(Mixer_fixed_rate_loop_restarts_at_the_loop_start)
     si->maxChans = 1;
     M4aTestStartChannel(si, 0, &w.wave, TONEDATA_TYPE_FIX, STEP_ONE, 0);
     FillPcm(si, 0);
-    for (uint32_t i = 0; i < SPV; i++)
-    {
+    for (uint32_t i = 0; i < SPV; i++) {
         sExpected[i] = M4aTestMixDelta(ENV_RIGHT, kPlayed[i]);
         sExpected[PCM_DMA_BUF_SIZE + i] = M4aTestMixDelta(ENV_LEFT, kPlayed[i]);
     }
@@ -212,8 +205,7 @@ PTEST(Mixer_bytes_wrap_without_saturation)
 
     SoundMain();
 
-    for (uint32_t i = 0; i < SPV; i++)
-    {
+    for (uint32_t i = 0; i < SPV; i++) {
         PT_ASSERT_EQ_U32(PcmBytes(si)[i], 0xFC);
         PT_ASSERT_EQ_U32(PcmBytes(si)[PCM_DMA_BUF_SIZE + i], 126);
     }
@@ -245,8 +237,7 @@ static void FillRandomWave(union M4aTestWave *w, uint32_t count, uint32_t seed, 
 {
     uint32_t state = seed;
 
-    for (uint32_t i = 0; i < count; i++)
-    {
+    for (uint32_t i = 0; i < count; i++) {
         uint8_t byte = (uint8_t)M4aTestLcgNext(&state);
 
         M4aTestSetWaveByte(w, i, byte);
@@ -270,8 +261,7 @@ PTEST(Mixer_resamples_at_three_quarter_speed_across_frames)
     ref.count = 40;
     ref.step = STEP_3_QUARTERS;
 
-    for (int frame = 0; frame < 3; frame++)
-    {
+    for (int frame = 0; frame < 3; frame++) {
         FillPcm(si, 0);
         RefMixFrame(&ref);
         SoundMain();
@@ -327,8 +317,7 @@ PTEST(Mixer_step_is_divFreq_times_frequency_and_small_fractions_floor_negative_d
     SoundMain();
 
     PT_ASSERT_EQ_U32(PcmBytes(si)[0], M4aTestMixDelta(ENV_RIGHT, 100));
-    for (uint32_t i = 1; i < SPV; i++)
-    {
+    for (uint32_t i = 1; i < SPV; i++) {
         int32_t expected = (i % 2 == 0) ? 99 : -100;
 
         PT_ASSERT_EQ_U32(PcmBytes(si)[i], M4aTestMixDelta(ENV_RIGHT, expected));
@@ -343,8 +332,7 @@ PTEST(Mixer_loop_wrap_carries_the_overshoot_into_the_loop)
      * which overshoots the loop more than once */
     static const uint32_t kSteps[] = {0x1800000u, 0x3800000u};
 
-    for (size_t s = 0; s < sizeof(kSteps) / sizeof(kSteps[0]); s++)
-    {
+    for (size_t s = 0; s < sizeof(kSteps) / sizeof(kSteps[0]); s++) {
         static union M4aTestWave w;
         static int32_t samples[6];
         struct SoundInfo *si = M4aTestSetUp();
@@ -361,8 +349,7 @@ PTEST(Mixer_loop_wrap_carries_the_overshoot_into_the_loop)
         ref.loopStart = 2;
         ref.loopLen = 3;
 
-        for (int frame = 0; frame < 2; frame++)
-        {
+        for (int frame = 0; frame < 2; frame++) {
             FillPcm(si, 0);
             RefMixFrame(&ref);
             SoundMain();
@@ -387,8 +374,7 @@ PTEST(Mixer_resampled_channel_stops_at_the_end_and_keeps_its_last_position)
     si->maxChans = 1;
     M4aTestStartChannel(si, 0, &w.wave, 0, STEP_ONE, 0);
     FillPcm(si, 0);
-    for (uint32_t i = 0; i < 3; i++)
-    {
+    for (uint32_t i = 0; i < 3; i++) {
         sExpected[i] = M4aTestMixDelta(ENV_RIGHT, (int32_t)(10 * (i + 1)));
         sExpected[PCM_DMA_BUF_SIZE + i] = M4aTestMixDelta(ENV_LEFT, (int32_t)(10 * (i + 1)));
     }
@@ -419,8 +405,7 @@ PTEST(Mixer_reverse_plays_backwards_and_reads_the_header_byte_before_the_data)
     si->maxChans = 1;
     M4aTestStartChannel(si, 0, &w.wave, TYPE_REV, STEP_HALF, 0);
     FillPcm(si, 0);
-    for (uint32_t i = 0; i < SPV; i++)
-    {
+    for (uint32_t i = 0; i < SPV; i++) {
         int32_t out = 80 - 5 * (int32_t)i;
 
         sExpected[i] = M4aTestMixDelta(ENV_RIGHT, out);
@@ -455,8 +440,7 @@ PTEST(Mixer_reverse_keeps_its_position_one_past_the_current_sample)
     ref.step = STEP_3_QUARTERS;
     ref.reverse = 1;
 
-    for (int frame = 0; frame < 2; frame++)
-    {
+    for (int frame = 0; frame < 2; frame++) {
         FillPcm(si, 0);
         RefMixFrame(&ref);
         SoundMain();
@@ -479,8 +463,7 @@ static void MakeCompressedWave(union M4aTestWave *w, int32_t *decoded, uint32_t 
     uint32_t state = seed;
 
     M4aTestMakeWave(w, 1, 0, 0, 0, DPCM_SAMPLES);
-    for (size_t i = 0; i < sizeof(data); i++)
-    {
+    for (size_t i = 0; i < sizeof(data); i++) {
         data[i] = (uint8_t)M4aTestLcgNext(&state);
         M4aTestSetWaveByte(w, (uint32_t)i, data[i]);
     }
@@ -536,8 +519,7 @@ PTEST(Mixer_compressed_forward_interpolates_over_frames)
     ref.count = DPCM_SAMPLES;
     ref.step = STEP_3_QUARTERS;
 
-    for (int frame = 0; frame < 3; frame++)
-    {
+    for (int frame = 0; frame < 3; frame++) {
         FillPcm(si, 0);
         RefMixFrame(&ref);
         SoundMain();

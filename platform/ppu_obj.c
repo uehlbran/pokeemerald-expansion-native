@@ -111,9 +111,9 @@ enum obj_mode { MODE_NORMAL = 0, MODE_SEMI_TRANSPARENT = 1, MODE_OBJ_WINDOW = 2,
 #define DIMENSION_COUNT 2 /* width, height */
 #define DIMENSION_HEIGHT 1
 static const uint8_t obj_dimensions[OBJ_SHAPES][OBJ_SIZES][DIMENSION_COUNT] = {
-    { { 8, 8 }, { 16, 16 }, { 32, 32 }, { 64, 64 } }, /* square */
-    { { 16, 8 }, { 32, 8 }, { 32, 16 }, { 64, 32 } }, /* horizontal */
-    { { 8, 16 }, { 8, 32 }, { 16, 32 }, { 32, 64 } }, /* vertical */
+    {{8, 8}, {16, 16}, {32, 32}, {64, 64}}, /* square */
+    {{16, 8}, {32, 8}, {32, 16}, {64, 32}}, /* horizontal */
+    {{8, 16}, {8, 32}, {16, 32}, {32, 64}}, /* vertical */
 };
 
 /* One OBJ as the line needs it. */
@@ -123,7 +123,7 @@ struct obj {
     int32_t width, height;           /* the image, in dots */
     int32_t area_width, area_height; /* doubled for double size */
     bool affine;
-    int32_t pa, pb, pc, pd;          /* its rotation/scaling group, if affine */
+    int32_t pa, pb, pc, pd; /* its rotation/scaling group, if affine */
 };
 
 /* An OBJ on the current line and how many columns of its area to draw. */
@@ -191,8 +191,7 @@ static bool read_obj(uint32_t index, struct obj *obj)
 
 static int32_t cycle_cost(const struct obj *obj)
 {
-    return obj->affine ? AFFINE_SETUP_CYCLES + AFFINE_CYCLES_PER_DOT * obj->area_width
-                       : obj->area_width;
+    return obj->affine ? AFFINE_SETUP_CYCLES + AFFINE_CYCLES_PER_DOT * obj->area_width : obj->area_width;
 }
 
 /* Columns of obj's area that `cycles` pay for, at most all of them. */
@@ -255,14 +254,13 @@ static uint32_t colour_index(const struct obj *obj, enum obj_mapping mapping, ui
         const uint32_t first = mapping == OBJ_MAPPING_1D
                                    ? tile * TILE_NUMBER_BYTES
                                          + (tile_row * tiles_across + tile_col) * PPU_TILE_BYTES_8BPP
-                                   : (tile & TILE_8BPP_EVEN_MASK) * TILE_NUMBER_BYTES
-                                         + tile_row * MATRIX_ROW_BYTES + tile_col * PPU_TILE_BYTES_8BPP;
+                                   : (tile & TILE_8BPP_EVEN_MASK) * TILE_NUMBER_BYTES + tile_row * MATRIX_ROW_BYTES
+                                         + tile_col * PPU_TILE_BYTES_8BPP;
         return ppu_obj_vram_byte(first + dot_y * PPU_TILE_ROW_BYTES_8BPP + dot_x);
     }
     const uint32_t row_stride = mapping == OBJ_MAPPING_1D ? tiles_across * TILE_NUMBER_BYTES : MATRIX_ROW_BYTES;
     const uint32_t first = tile * TILE_NUMBER_BYTES + tile_row * row_stride + tile_col * PPU_TILE_BYTES_4BPP;
-    const uint8_t pair =
-        ppu_obj_vram_byte(first + dot_y * PPU_TILE_ROW_BYTES_4BPP + dot_x / PPU_DOTS_PER_BYTE_4BPP);
+    const uint8_t pair = ppu_obj_vram_byte(first + dot_y * PPU_TILE_ROW_BYTES_4BPP + dot_x / PPU_DOTS_PER_BYTE_4BPP);
     return ppu_4bpp_index(pair, dot_x);
 }
 
@@ -296,8 +294,7 @@ static void put_dot(const struct obj *obj, uint32_t index, int32_t x, struct ppu
     out->semi_transparent[x] = mode == MODE_SEMI_TRANSPARENT;
 }
 
-static void draw_obj(const struct ppu_regs *regs, const struct line_obj *entry, uint16_t line,
-                     struct ppu_obj_line *out)
+static void draw_obj(const struct ppu_regs *regs, const struct line_obj *entry, uint16_t line, struct ppu_obj_line *out)
 {
     const struct obj *obj = &entry->obj;
     const enum obj_mapping mapping = (regs->dispcnt & PPU_DISPCNT_OBJ_1D) ? OBJ_MAPPING_1D : OBJ_MAPPING_2D;

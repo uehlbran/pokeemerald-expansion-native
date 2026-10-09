@@ -87,7 +87,7 @@ static NO_ASAN void record_local(void *context)
 
 PTEST(call_with_stack_runs_entry_on_the_platform_stack)
 {
-    struct probe probe = { 0 };
+    struct probe probe = {0};
     volatile uint32_t here = 0;
     PlatformCallWithStack(record_local, &probe, NULL);
     PT_ASSERT_EQ_INT(probe.calls, 1);
@@ -99,7 +99,7 @@ PTEST(call_with_stack_runs_entry_on_the_platform_stack)
 
 PTEST(locals_stay_put_between_calls)
 {
-    struct probe probe = { 0 };
+    struct probe probe = {0};
     PlatformCallWithStack(record_local, &probe, NULL);
     volatile uint32_t *first = probe.local_address;
     /* After the call, the runner writes results into the function's locals
@@ -116,7 +116,7 @@ PTEST(call_with_stack_ignores_the_games_stack_top)
     /* The 1 KiB DATA.stack top the runner passes is not used (game_hooks.h). */
     unsigned char games_stack[64];
     memset(games_stack, 0xA5, sizeof games_stack);
-    struct probe probe = { 0 };
+    struct probe probe = {0};
     PlatformCallWithStack(record_local, &probe, &games_stack[sizeof games_stack]);
     PT_ASSERT_EQ_INT(probe.calls, 1);
     for (size_t i = 0; i < sizeof games_stack; i++)
@@ -218,7 +218,7 @@ static void exit_from_a_frame(void *context)
 PTEST(an_unwind_from_the_battle_stack_ends_the_call)
 {
     volatile int jumps = 0;
-    struct probe probe = { 0 };
+    struct probe probe = {0};
     if (setjmp(frame_exit_target) == FRAME_EXIT_JUMP)
         jumps++;
     if (jumps == 0)
@@ -290,10 +290,12 @@ static void timeout_handler(void)
     PlatformJumpToAgbMainLoop();
 }
 
-static void no_handler(void) {}
+static void no_handler(void)
+{
+}
 
 static interrupt_handler const timer2_table[INTERRUPT_TABLE_LENGTH] = {
-    no_handler, no_handler, no_handler, no_handler, no_handler, no_handler, no_handler,
+    no_handler,      no_handler, no_handler, no_handler, no_handler, no_handler, no_handler,
     timeout_handler, no_handler, no_handler, no_handler, no_handler, no_handler, no_handler,
 };
 
@@ -311,7 +313,7 @@ static void dispatch_on_the_battle_stack(void *context)
 PTEST(a_jump_from_an_interrupt_handler_leaves_the_dispatch_and_the_battle_stack)
 {
     volatile int arrivals = 0;
-    struct probe probe = { 0 };
+    struct probe probe = {0};
     PT_ASSERT_EQ_INT(gba_memmap_init(), GBA_MEMMAP_OK);
     PT_ASSERT_EQ_INT(game_hooks_init(&exit_target), 0);
     PT_ASSERT_EQ_INT(interrupt_init(timer2_table, INTERRUPT_TABLE_LENGTH), INTERRUPT_OK);
@@ -358,7 +360,7 @@ PTEST(debug_hooks_reach_the_debug_channel)
     string[1] = 'P';
     string[2] = '\0';
     PlatformDebugSend((uint16_t)(DEBUG_CHANNEL_FLAGS_SEND | 3u)); /* MGBA_LOG_INFO */
-    char captured[32] = { 0 };
+    char captured[32] = {0};
     rewind(out);
     size_t length = fread(captured, 1, sizeof captured - 1, out);
     debug_channel_shutdown();
@@ -397,10 +399,10 @@ static void check_fast_copy(uint32_t size, size_t expected_bytes, size_t dest_of
 
 PTEST(fast_unsafe_copy32_copies_whole_blocks)
 {
-    check_fast_copy(0, 32, 0);   /* a block before the count is tested */
+    check_fast_copy(0, 32, 0); /* a block before the count is tested */
     check_fast_copy(1, 32, 0);
     check_fast_copy(32, 32, 0);
-    check_fast_copy(33, 64, 0);  /* rounded up */
+    check_fast_copy(33, 64, 0); /* rounded up */
     check_fast_copy(96, 96, 0);
     check_fast_copy(97, 128, 0);
 }
@@ -437,7 +439,7 @@ static void lz_stream(uint32_t *stream, size_t words, uint32_t size, const uint8
 
 PTEST(lz77_literals)
 {
-    static const uint8_t payload[] = { 0x00, 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 0x00, 'I' };
+    static const uint8_t payload[] = {0x00, 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 0x00, 'I'};
     uint32_t stream[8];
     uint8_t out[16];
     lz_stream(stream, 8, 9, payload, sizeof payload);
@@ -451,7 +453,7 @@ PTEST(lz77_literals)
 PTEST(lz77_overlapping_back_reference_repeats)
 {
     /* 'x', then copy 18 bytes from 1 back: 19 'x'. Flags 0100 0000. */
-    static const uint8_t payload[] = { 0x40, 'x', 0xF0, 0x00 };
+    static const uint8_t payload[] = {0x40, 'x', 0xF0, 0x00};
     uint32_t stream[4];
     uint8_t out[24];
     lz_stream(stream, 4, 19, payload, sizeof payload);
@@ -465,7 +467,7 @@ PTEST(lz77_overlapping_back_reference_repeats)
 PTEST(lz77_back_reference_distance_and_count)
 {
     /* "abc", then copy 3 from 3 back ("abc"), then 4 from 2 back ("bcbc"). */
-    static const uint8_t payload[] = { 0x18, 'a', 'b', 'c', 0x00, 0x02, 0x10, 0x01 };
+    static const uint8_t payload[] = {0x18, 'a', 'b', 'c', 0x00, 0x02, 0x10, 0x01};
     uint32_t stream[4];
     uint8_t out[16];
     lz_stream(stream, 4, 10, payload, sizeof payload);
@@ -503,7 +505,7 @@ PTEST(lz77_stops_at_the_headers_size)
 {
     /* A last block of 18 bytes when only 5 remain: exactly the size is
      * written (the assembly would write all 18). */
-    static const uint8_t payload[] = { 0x40, 'z', 0xF0, 0x00 };
+    static const uint8_t payload[] = {0x40, 'z', 0xF0, 0x00};
     uint32_t stream[4];
     uint8_t out[24];
     lz_stream(stream, 4, 6, payload, sizeof payload);
@@ -516,7 +518,7 @@ PTEST(lz77_stops_at_the_headers_size)
 
 PTEST(lz77_zero_size_writes_nothing)
 {
-    static const uint8_t payload[] = { 0x00, 'q' };
+    static const uint8_t payload[] = {0x00, 'q'};
     uint32_t stream[4];
     uint8_t out[4];
     lz_stream(stream, 4, 0, payload, sizeof payload);
@@ -528,7 +530,7 @@ PTEST(lz77_zero_size_writes_nothing)
 PTEST(lz77_reference_before_the_output_stops)
 {
     /* 'a', then a copy from 2 back: before the first byte. */
-    static const uint8_t payload[] = { 0x40, 'a', 0x00, 0x01 };
+    static const uint8_t payload[] = {0x40, 'a', 0x00, 0x01};
     uint32_t stream[4];
     uint8_t out[8];
     lz_stream(stream, 4, 4, payload, sizeof payload);
@@ -541,7 +543,7 @@ PTEST(lz77_reference_before_the_output_stops)
 PTEST(lz77_type_bits_are_not_checked)
 {
     /* As the assembly: only bits 8-31 of the header are read. */
-    static const uint8_t payload[] = { 0x00, 'k' };
+    static const uint8_t payload[] = {0x00, 'k'};
     uint32_t stream[4];
     uint8_t out[4];
     lz_stream(stream, 4, 1, payload, sizeof payload);
@@ -553,7 +555,7 @@ PTEST(lz77_type_bits_are_not_checked)
 
 /* --- PlatformIsRomPointer (src/field_name_box.c SetSpeaker) ------------- */
 
-static const uint32_t rom_table[4] = { 1, 2, 3, 4 };
+static const uint32_t rom_table[4] = {1, 2, 3, 4};
 static uint32_t writable_word = 5;
 
 /* cppcheck-suppress constParameterPointer ; a function pointer has no const pointee to add */

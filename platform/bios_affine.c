@@ -79,15 +79,11 @@
 
 /* round(sin(2*pi*k/256) * 4000h), k = 0..64: sin from 0 to 90 degrees. */
 static const int16_t sine_quarter[SINE_QUARTER + 1] = {
-    0x0000, 0x0192, 0x0324, 0x04B5, 0x0646, 0x07D6, 0x0964, 0x0AF1,
-    0x0C7C, 0x0E06, 0x0F8D, 0x1112, 0x1294, 0x1413, 0x1590, 0x1709,
-    0x187E, 0x19EF, 0x1B5D, 0x1CC6, 0x1E2B, 0x1F8C, 0x20E7, 0x223D,
-    0x238E, 0x24DA, 0x2620, 0x2760, 0x289A, 0x29CE, 0x2AFB, 0x2C21,
-    0x2D41, 0x2E5A, 0x2F6C, 0x3076, 0x3179, 0x3274, 0x3368, 0x3453,
-    0x3537, 0x3612, 0x36E5, 0x37B0, 0x3871, 0x392B, 0x39DB, 0x3A82,
-    0x3B21, 0x3BB6, 0x3C42, 0x3CC5, 0x3D3F, 0x3DAF, 0x3E15, 0x3E72,
-    0x3EC5, 0x3F0F, 0x3F4F, 0x3F85, 0x3FB1, 0x3FD4, 0x3FEC, 0x3FFB,
-    0x4000,
+    0x0000, 0x0192, 0x0324, 0x04B5, 0x0646, 0x07D6, 0x0964, 0x0AF1, 0x0C7C, 0x0E06, 0x0F8D, 0x1112, 0x1294,
+    0x1413, 0x1590, 0x1709, 0x187E, 0x19EF, 0x1B5D, 0x1CC6, 0x1E2B, 0x1F8C, 0x20E7, 0x223D, 0x238E, 0x24DA,
+    0x2620, 0x2760, 0x289A, 0x29CE, 0x2AFB, 0x2C21, 0x2D41, 0x2E5A, 0x2F6C, 0x3076, 0x3179, 0x3274, 0x3368,
+    0x3453, 0x3537, 0x3612, 0x36E5, 0x37B0, 0x3871, 0x392B, 0x39DB, 0x3A82, 0x3B21, 0x3BB6, 0x3C42, 0x3CC5,
+    0x3D3F, 0x3DAF, 0x3E15, 0x3E72, 0x3EC5, 0x3F0F, 0x3F4F, 0x3F85, 0x3FB1, 0x3FD4, 0x3FEC, 0x3FFB, 0x4000,
 };
 
 struct affine_matrix {
@@ -157,8 +153,7 @@ void BgAffineSet(struct BgAffineSrcData *src, struct BgAffineDstData *dest, int3
         uint8_t *out = (uint8_t *)dest + i * BG_DST_STRIDE;
         int32_t scr_x = bios_load_s16(in + BG_SRC_SCR_X);
         int32_t scr_y = bios_load_s16(in + BG_SRC_SCR_Y);
-        struct affine_matrix m = rotation_scaling(bios_load_s16(in + BG_SRC_SX),
-                                                  bios_load_s16(in + BG_SRC_SY),
+        struct affine_matrix m = rotation_scaling(bios_load_s16(in + BG_SRC_SX), bios_load_s16(in + BG_SRC_SY),
                                                   bios_load16(in + BG_SRC_ALPHA));
         bios_store16(out + BG_DST_PA, bios_low16(m.pa));
         bios_store16(out + BG_DST_PB, bios_low16(m.pb));
@@ -190,10 +185,9 @@ void ObjAffineSet(struct ObjAffineSrcData *src, void *dest, int32_t count, int32
     }
     for (size_t i = 0; i < (size_t)count; i++) {
         const uint8_t *in = (const uint8_t *)src + i * OBJ_SRC_STRIDE;
-        struct affine_matrix m = rotation_scaling(bios_load_s16(in + OBJ_SRC_SX),
-                                                  bios_load_s16(in + OBJ_SRC_SY),
+        struct affine_matrix m = rotation_scaling(bios_load_s16(in + OBJ_SRC_SX), bios_load_s16(in + OBJ_SRC_SY),
                                                   bios_load16(in + OBJ_SRC_ALPHA));
-        const int32_t parameters[OBJ_PARAMETERS] = { m.pa, m.pb, m.pc, m.pd };
+        const int32_t parameters[OBJ_PARAMETERS] = {m.pa, m.pb, m.pc, m.pd};
         for (size_t p = 0; p < OBJ_PARAMETERS; p++) {
             bios_store16((uint8_t *)dest + (i * OBJ_PARAMETERS + p) * stride, bios_low16(parameters[p]));
         }

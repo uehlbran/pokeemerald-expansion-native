@@ -82,28 +82,28 @@ struct io_range {
  * read-only bits; POSTFLG/HALTCNT (300h) are left alone, as a write to
  * HALTCNT halts the CPU. */
 static const struct io_range other_registers[] = {
-    { 0x000, 0x004 }, /* DISPCNT, green swap */
-    { 0x008, 0x060 }, /* BG0CNT-BLDY and the unused 056h-05Fh */
-    { 0x0B0, 0x0E0 }, /* DMA0-DMA3 */
-    { 0x100, 0x110 }, /* TM0CNT-TM3CNT */
-    { 0x132, 0x134 }, /* KEYCNT */
-    { 0x200, 0x20C }, /* IE, IF, WAITCNT, IME (IF: see RegisterRamReset) */
+    {0x000, 0x004}, /* DISPCNT, green swap */
+    {0x008, 0x060}, /* BG0CNT-BLDY and the unused 056h-05Fh */
+    {0x0B0, 0x0E0}, /* DMA0-DMA3 */
+    {0x100, 0x110}, /* TM0CNT-TM3CNT */
+    {0x132, 0x134}, /* KEYCNT */
+    {0x200, 0x20C}, /* IE, IF, WAITCNT, IME (IF: see RegisterRamReset) */
 };
 
 /* RegisterRamReset bit 6: GBATEK "Sound Registers", 060h-0A7h, except
  * SOUNDBIAS (088h), which GBATEK marks as BIOS-owned and gives no reset
  * value for (SoundBias sets it). */
 static const struct io_range sound_registers[] = {
-    { 0x060, 0x088 }, /* SOUND1CNT_L-SOUNDCNT_X */
-    { 0x08A, 0x0A8 }, /* WAVE_RAM, FIFO_A, FIFO_B */
+    {0x060, 0x088}, /* SOUND1CNT_L-SOUNDCNT_X */
+    {0x08A, 0x0A8}, /* WAVE_RAM, FIFO_A, FIFO_B */
 };
 
 /* RegisterRamReset bit 5: GBATEK "Serial Communication (1)" and "(2)". */
 static const struct io_range sio_registers[] = {
-    { 0x120, 0x12C }, /* SIODATA32/SIOMULTI0-3, SIOCNT, SIOMLT_SEND/SIODATA8 */
-    { 0x134, 0x136 }, /* RCNT */
-    { 0x140, 0x142 }, /* JOYCNT */
-    { 0x150, 0x15A }, /* JOY_RECV, JOY_TRANS, JOYSTAT */
+    {0x120, 0x12C}, /* SIODATA32/SIOMULTI0-3, SIOCNT, SIOMLT_SEND/SIODATA8 */
+    {0x134, 0x136}, /* RCNT */
+    {0x140, 0x142}, /* JOYCNT */
+    {0x150, 0x15A}, /* JOY_RECV, JOY_TRANS, JOYSTAT */
 };
 
 static void (*frame_hook)(void);
@@ -187,7 +187,8 @@ void RegisterRamReset(uint32_t resetFlags)
 int bios_soft_reset(uint32_t resetFlags)
 {
     if (reset_target == NULL) {
-        fprintf(stderr, "bios: SoftReset: no reset target (bios_set_reset_target); nothing reset, returning to the caller\n");
+        fprintf(stderr,
+                "bios: SoftReset: no reset target (bios_set_reset_target); nothing reset, returning to the caller\n");
         return BIOS_ERR_NO_RESET_TARGET;
     }
     *gba_io_u16(IO_IME) = IME_DISABLED;

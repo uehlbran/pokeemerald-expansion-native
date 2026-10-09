@@ -33,7 +33,7 @@
 #define BGCNT_OVERFLOW_WRAP 0x2000u
 #define BGCNT_SIZE_SHIFT 14u
 #define BGCNT_SIZE_MASK 0x3u
-#define CHAR_BLOCK_BYTES 0x4000u  /* "in units of 16 KBytes" */
+#define CHAR_BLOCK_BYTES 0x4000u   /* "in units of 16 KBytes" */
 #define SCREEN_BLOCK_BYTES 0x0800u /* "in units of 2 KBytes" */
 
 /* GBATEK "LCD I/O BG Scrolling": "Offset (0-511)", bits 9-15 not used. */
@@ -79,8 +79,7 @@ void ppu_affine_reference_latch(struct ppu_affine_reference *ref, const struct p
     ref->written_y = regs->y;
 }
 
-void ppu_affine_reference_pick_up_writes(struct ppu_affine_reference *ref,
-                                         const struct ppu_affine_regs *regs)
+void ppu_affine_reference_pick_up_writes(struct ppu_affine_reference *ref, const struct ppu_affine_regs *regs)
 {
     if (regs->x != ref->written_x) {
         ref->x = ppu_affine_sign_extend(regs->x);
@@ -131,8 +130,7 @@ static uint32_t size_field(uint16_t bgcnt)
 /* The colour of 8bpp dot (col, row) of tile, or PPU_TRANSPARENT for index 0. */
 static uint16_t dot_8bpp(uint32_t chars, uint32_t tile, uint32_t col, uint32_t row)
 {
-    const uint8_t index =
-        ppu_bg_vram_byte(chars + tile * PPU_TILE_BYTES_8BPP + row * PPU_TILE_ROW_BYTES_8BPP + col);
+    const uint8_t index = ppu_bg_vram_byte(chars + tile * PPU_TILE_BYTES_8BPP + row * PPU_TILE_ROW_BYTES_8BPP + col);
     return index == 0 ? PPU_TRANSPARENT : ppu_palette_colour(index);
 }
 
@@ -176,16 +174,15 @@ static uint16_t text_dot(const struct text_layout *bg, uint32_t mx, uint32_t my)
         row = TILE_LAST_DOT - row;
     if (bg->eight_bpp) /* the entry's palette number is not used */
         return dot_8bpp(bg->chars, tile, col, row);
-    const uint8_t pair = ppu_bg_vram_byte(bg->chars + tile * PPU_TILE_BYTES_4BPP
-                                          + row * PPU_TILE_ROW_BYTES_4BPP + col / PPU_DOTS_PER_BYTE_4BPP);
+    const uint8_t pair = ppu_bg_vram_byte(bg->chars + tile * PPU_TILE_BYTES_4BPP + row * PPU_TILE_ROW_BYTES_4BPP
+                                          + col / PPU_DOTS_PER_BYTE_4BPP);
     const uint32_t index = ppu_4bpp_index(pair, col);
     if (index == 0)
         return PPU_TRANSPARENT;
     return ppu_palette_colour_4bpp(PPU_BACKDROP_COLOUR_INDEX, (uint32_t)(entry >> MAP_PALETTE_SHIFT), index);
 }
 
-void ppu_bg_render_text(const struct ppu_regs *regs, unsigned bg, uint16_t line,
-                        uint16_t out[PPU_SCREEN_WIDTH])
+void ppu_bg_render_text(const struct ppu_regs *regs, unsigned bg, uint16_t line, uint16_t out[PPU_SCREEN_WIDTH])
 {
     const uint16_t bgcnt = regs->bgcnt[bg];
     const struct text_layout layout = text_layout(bgcnt);
@@ -226,14 +223,12 @@ static uint16_t affine_dot(const struct affine_layout *bg, int32_t tx, int32_t t
             return PPU_TRANSPARENT;
     }
     const uint32_t tiles_across = bg->size / PPU_TILE_SIZE;
-    const uint8_t tile = ppu_bg_vram_byte(bg->screens + (my / PPU_TILE_SIZE) * tiles_across
-                                          + mx / PPU_TILE_SIZE);
+    const uint8_t tile = ppu_bg_vram_byte(bg->screens + (my / PPU_TILE_SIZE) * tiles_across + mx / PPU_TILE_SIZE);
     return dot_8bpp(bg->chars, tile, mx % PPU_TILE_SIZE, my % PPU_TILE_SIZE);
 }
 
-void ppu_bg_render_affine(const struct ppu_regs *regs, unsigned bg,
-                          const struct ppu_affine_reference *ref, uint16_t line,
-                          uint16_t out[PPU_SCREEN_WIDTH])
+void ppu_bg_render_affine(const struct ppu_regs *regs, unsigned bg, const struct ppu_affine_reference *ref,
+                          uint16_t line, uint16_t out[PPU_SCREEN_WIDTH])
 {
     const uint16_t bgcnt = regs->bgcnt[bg];
     const struct ppu_affine_regs *params = &regs->affine[bg - PPU_AFFINE_BG_FIRST];

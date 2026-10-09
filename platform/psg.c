@@ -141,13 +141,12 @@ _Static_assert(__BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__, "psg reads register by
 #define REG_NR51 0x081u /* SOUNDCNT_L, high byte */
 #define REG_SOUNDCNT_H GBA_SOUNDCNT_H_OFFSET
 #define REG_NR52 GBA_SOUNDCNT_X_OFFSET /* SOUNDCNT_X */
-#define REG_WAVE_RAM 0x090u /* WAVE_RAM0_L .. WAVE_RAM3_H */
+#define REG_WAVE_RAM 0x090u            /* WAVE_RAM0_L .. WAVE_RAM3_H */
 /* GBATEK SOUNDCNT_X: the registers master disable resets, 4000060h-4000081h. */
 #define REG_PSG_FIRST REG_NR10
 #define REG_PSG_END (REG_NR51 + 1u)
 
-_Static_assert(REG_WAVE_RAM + PSG_WAVE_BANK_BYTES <= GBA_IO_SIZE,
-               "every sound register lies inside the I/O region");
+_Static_assert(REG_WAVE_RAM + PSG_WAVE_BANK_BYTES <= GBA_IO_SIZE, "every sound register lies inside the I/O region");
 
 /* SOUNDCNT_X: bits 0-3 "Sound 1-4 ON flag (Read Only)", bit 7 "PSG/FIFO
  * Master Enable". */
@@ -170,22 +169,21 @@ _Static_assert(REG_WAVE_RAM + PSG_WAVE_BANK_BYTES <= GBA_IO_SIZE,
  * 3=Prohibited)", in quarters; 3 plays as 100% (see AMBIGUITIES). */
 #define SOUNDCNT_H_PSG_VOLUME_MASK 0x03u
 #define PSG_VOLUME_QUARTERS_FULL 4u
-static const uint8_t psg_volume_quarters[] = { 1, 2, 4, 4 };
+static const uint8_t psg_volume_quarters[] = {1, 2, 4, 4};
 
 /* OUTPUT SCALE, above. */
 #define GBA_UNITS_PER_LEVEL 16u /* 100h units over 16 levels */
 #define MASTER_VOLUME_STEPS 8u  /* NR50 n scales by (n+1)/8 */
 #define INT16_PER_GBA_UNIT 16u
 #define CHANNEL_COUNT 4u
-#define GBA_FIFO_UNITS 0x200u   /* one FIFO's full swing */
+#define GBA_FIFO_UNITS 0x200u /* one FIFO's full swing */
 #define GBA_FIFO_COUNT 2u
 
-_Static_assert(CHANNEL_COUNT * PSG_LEVEL_MAX * GBA_UNITS_PER_LEVEL * INT16_PER_GBA_UNIT ==
-                   PSG_MAX_OUTPUT_LEVEL,
+_Static_assert(CHANNEL_COUNT *PSG_LEVEL_MAX *GBA_UNITS_PER_LEVEL *INT16_PER_GBA_UNIT == PSG_MAX_OUTPUT_LEVEL,
                "PSG_MAX_OUTPUT_LEVEL follows from the scale");
-_Static_assert((GBA_FIFO_COUNT * GBA_FIFO_UNITS +
-                CHANNEL_COUNT * PSG_LEVEL_MAX * GBA_UNITS_PER_LEVEL) * INT16_PER_GBA_UNIT <=
-                   INT16_MAX,
+_Static_assert((GBA_FIFO_COUNT * GBA_FIFO_UNITS + CHANNEL_COUNT * PSG_LEVEL_MAX * GBA_UNITS_PER_LEVEL)
+                       * INT16_PER_GBA_UNIT
+                   <= INT16_MAX,
                "the whole GBA mix fits int16_t at this scale");
 
 struct frame_sequencer {
@@ -198,14 +196,14 @@ struct square_registers_at {
     uint32_t nrx1, nrx2, nrx3, nrx4;
 };
 
-static const struct square_registers_at channel_1_at = { REG_NR11, REG_NR12, REG_NR13, REG_NR14 };
-static const struct square_registers_at channel_2_at = { REG_NR21, REG_NR22, REG_NR23, REG_NR24 };
+static const struct square_registers_at channel_1_at = {REG_NR11, REG_NR12, REG_NR13, REG_NR14};
+static const struct square_registers_at channel_2_at = {REG_NR21, REG_NR22, REG_NR23, REG_NR24};
 
 static struct {
     bool initialised;
-    bool powered;               /* SOUNDCNT_X bit 7 as last seen */
+    bool powered; /* SOUNDCNT_X bit 7 as last seen */
     uint32_t output_rate_hz;
-    uint32_t cycle_remainder;   /* fraction of a cycle owed, in 1/output_rate_hz */
+    uint32_t cycle_remainder; /* fraction of a cycle owed, in 1/output_rate_hz */
     struct frame_sequencer sequencer;
     struct psg_square square_1, square_2;
     struct psg_sweep sweep;
@@ -250,17 +248,17 @@ static bool take_trigger(uint32_t nrx4)
 static void power_on(void)
 {
     psg.powered = true;
-    psg.sequencer = (struct frame_sequencer){ PSG_CYCLES_PER_SEQUENCER_STEP, 0 };
+    psg.sequencer = (struct frame_sequencer){PSG_CYCLES_PER_SEQUENCER_STEP, 0};
 }
 
 static void power_off(void)
 {
     psg.powered = false;
-    psg.square_1 = (struct psg_square){ 0 };
-    psg.square_2 = (struct psg_square){ 0 };
-    psg.sweep = (struct psg_sweep){ 0 };
+    psg.square_1 = (struct psg_square){0};
+    psg.square_2 = (struct psg_square){0};
+    psg.sweep = (struct psg_sweep){0};
     psg_wave_power_off(&psg.wave);
-    psg.noise = (struct psg_noise){ 0 };
+    psg.noise = (struct psg_noise){0};
     psg.nr50 = 0;
     psg.nr51 = 0;
     memset(io_register(REG_PSG_FIRST), 0, REG_PSG_END - REG_PSG_FIRST);
@@ -271,8 +269,10 @@ static bool apply_square(struct psg_square *square, const struct square_register
 {
     const bool trigger = take_trigger(at->nrx4);
     const struct psg_square_registers registers = {
-        read_register(at->nrx1), read_register(at->nrx2),
-        read_register(at->nrx3), read_register(at->nrx4),
+        read_register(at->nrx1),
+        read_register(at->nrx2),
+        read_register(at->nrx3),
+        read_register(at->nrx4),
     };
     psg_square_update(square, &registers);
     if (trigger)
@@ -293,7 +293,7 @@ static void apply_wave(void)
     const bool trigger = take_trigger(REG_NR34);
     struct psg_wave_registers registers = {
         read_register(REG_NR30), read_register(REG_NR31), read_register(REG_NR32),
-        read_register(REG_NR33), read_register(REG_NR34), { 0 },
+        read_register(REG_NR33), read_register(REG_NR34), {0},
     };
     memcpy(registers.window, io_register(REG_WAVE_RAM), PSG_WAVE_BANK_BYTES);
     psg_wave_update(&psg.wave, &registers);
@@ -305,8 +305,10 @@ static void apply_noise(void)
 {
     const bool trigger = take_trigger(REG_NR44);
     const struct psg_noise_registers registers = {
-        read_register(REG_NR41), read_register(REG_NR42),
-        read_register(REG_NR43), read_register(REG_NR44),
+        read_register(REG_NR41),
+        read_register(REG_NR42),
+        read_register(REG_NR43),
+        read_register(REG_NR44),
     };
     psg_noise_update(&psg.noise, &registers);
     if (trigger)
@@ -338,8 +340,8 @@ static void publish_registers(void)
     if (psg.powered && frequency != psg.channel_1_frequency_read) {
         write_register(REG_NR13, (uint8_t)(frequency & PSG_NRX3_FREQUENCY_LOW_MASK));
         const uint8_t nr14 = read_register(REG_NR14);
-        write_register(REG_NR14, (uint8_t)((nr14 & ~PSG_NRX4_FREQUENCY_HIGH_MASK) |
-                                           frequency >> PSG_NRX4_FREQUENCY_HIGH_SHIFT));
+        write_register(REG_NR14,
+                       (uint8_t)((nr14 & ~PSG_NRX4_FREQUENCY_HIGH_MASK) | frequency >> PSG_NRX4_FREQUENCY_HIGH_SHIFT));
     }
     uint8_t status = read_register(REG_NR52) & NR52_MASTER_ENABLE;
     if (psg.square_1.channel.on)
@@ -415,22 +417,22 @@ static int16_t mix_side(const uint8_t levels[CHANNEL_COUNT], unsigned enables, u
         if (enables >> channel & 1u)
             sum += levels[channel];
     const uint32_t quarters = psg_volume_quarters[psg.soundcnt_h & SOUNDCNT_H_PSG_VOLUME_MASK];
-    const uint32_t scaled = sum * GBA_UNITS_PER_LEVEL * INT16_PER_GBA_UNIT * (volume + 1u) *
-                            quarters / (MASTER_VOLUME_STEPS * PSG_VOLUME_QUARTERS_FULL);
+    const uint32_t scaled = sum * GBA_UNITS_PER_LEVEL * INT16_PER_GBA_UNIT * (volume + 1u) * quarters
+                            / (MASTER_VOLUME_STEPS * PSG_VOLUME_QUARTERS_FULL);
     return (int16_t)scaled; /* at most PSG_MAX_OUTPUT_LEVEL, asserted above */
 }
 
 static void mix_sample(int16_t *left, int16_t *right)
 {
     const uint8_t levels[CHANNEL_COUNT] = {
-        psg_square_level(&psg.square_1), psg_square_level(&psg.square_2),
-        psg_wave_level(&psg.wave), psg_noise_level(&psg.noise),
+        psg_square_level(&psg.square_1),
+        psg_square_level(&psg.square_2),
+        psg_wave_level(&psg.wave),
+        psg_noise_level(&psg.noise),
     };
     const unsigned nr50 = psg.nr50, nr51 = psg.nr51;
-    *left = mix_side(levels, nr51 >> NR51_LEFT_SHIFT & NR51_ENABLE_MASK,
-                     nr50 >> NR50_LEFT_SHIFT & NR50_VOLUME_MASK);
-    *right = mix_side(levels, nr51 >> NR51_RIGHT_SHIFT & NR51_ENABLE_MASK,
-                      nr50 >> NR50_RIGHT_SHIFT & NR50_VOLUME_MASK);
+    *left = mix_side(levels, nr51 >> NR51_LEFT_SHIFT & NR51_ENABLE_MASK, nr50 >> NR50_LEFT_SHIFT & NR50_VOLUME_MASK);
+    *right = mix_side(levels, nr51 >> NR51_RIGHT_SHIFT & NR51_ENABLE_MASK, nr50 >> NR50_RIGHT_SHIFT & NR50_VOLUME_MASK);
 }
 
 /* --- Public interface ------------------------------------------------------ */

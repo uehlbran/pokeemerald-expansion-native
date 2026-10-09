@@ -87,12 +87,12 @@ enum replay_command_kind {
 
 struct replay_command {
     enum replay_command_kind kind;
-    uint32_t line;                              /* 1-based line in the script */
-    uint32_t number;                            /* frame: N; wait: N; hold for: N; press: times N (at least 1); wait-until, mash: max N */
-    uint16_t keys;                              /* INPUT_KEY_* bits, for press/hold/release/hold for */
-    char fact[REPLAY_MAX_FACT_LENGTH + 1u];     /* expect, wait-until */
-    char value[REPLAY_MAX_VALUE_LENGTH + 1u];   /* expect, wait-until */
-    char name[REPLAY_MAX_NAME_LENGTH + 1u];     /* screenshot, dump */
+    uint32_t line;   /* 1-based line in the script */
+    uint32_t number; /* frame: N; wait: N; hold for: N; press: times N (at least 1); wait-until, mash: max N */
+    uint16_t keys;   /* INPUT_KEY_* bits, for press/hold/release/hold for */
+    char fact[REPLAY_MAX_FACT_LENGTH + 1u];   /* expect, wait-until */
+    char value[REPLAY_MAX_VALUE_LENGTH + 1u]; /* expect, wait-until */
+    char name[REPLAY_MAX_NAME_LENGTH + 1u];   /* screenshot, dump */
 };
 
 struct replay_script {
@@ -131,9 +131,9 @@ struct replay_host {
 
 enum replay_status {
     REPLAY_RUNNING,
-    REPLAY_DONE,    /* the script ended */
-    REPLAY_FAILED,  /* a command failed: replay_message */
-    REPLAY_RESTART  /* a `restart` command ran: replay_restart_line */
+    REPLAY_DONE,   /* the script ended */
+    REPLAY_FAILED, /* a command failed: replay_message */
+    REPLAY_RESTART /* a `restart` command ran: replay_restart_line */
 };
 
 enum replay_wait {

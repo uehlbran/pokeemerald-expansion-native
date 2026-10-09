@@ -23,7 +23,7 @@
 /* GBATEK "GBA Memory Map": the BIOS and the unused area below EWRAM end at
  * 0x02000000; the BIOS ROM itself is 16 KiB. */
 #define BIOS_REGION_END 0x02000000u
-#define BIOS_ROM_SIZE   0x4000u
+#define BIOS_ROM_SIZE 0x4000u
 
 /* MPlayJumpTableCopy copies the 36 entries of gMPlayJumpTableTemplate. */
 #define MPLAY_JUMP_TABLE_SIZE 36u
@@ -91,8 +91,7 @@ static void FlagChange(struct MusicPlayerTrack *track, u8 change)
 
 void MPlayJumpTableCopy(MPlayFunc *mplayJumpTable)
 {
-    for (u32 i = 0; i < MPLAY_JUMP_TABLE_SIZE; i++)
-    {
+    for (u32 i = 0; i < MPLAY_JUMP_TABLE_SIZE; i++) {
         void *const *entry = &gMPlayJumpTableTemplate[i];
 
         if (IsReadAllowed(entry))
@@ -107,8 +106,7 @@ void ply_fine(struct MusicPlayerInfo *mplayInfo, struct MusicPlayerTrack *track)
 {
     (void)mplayInfo;
 
-    for (void *chan = track->chan; chan != NULL; chan = ChanNext(chan))
-    {
+    for (void *chan = track->chan; chan != NULL; chan = ChanNext(chan)) {
         u8 status = ChanByte(chan, CHAN_STATUS_FLAGS);
 
         if (status & SOUND_CHANNEL_SF_ON)
@@ -127,8 +125,7 @@ void ply_goto(struct MusicPlayerInfo *mplayInfo, struct MusicPlayerTrack *track)
 /* PATT: calls a pattern, remembering where to return; a fourth level ends the track. */
 void ply_patt(struct MusicPlayerInfo *mplayInfo, struct MusicPlayerTrack *track)
 {
-    if (track->patternLevel >= PATTERN_STACK_DEPTH)
-    {
+    if (track->patternLevel >= PATTERN_STACK_DEPTH) {
         ply_fine(mplayInfo, track);
         return;
     }
@@ -156,16 +153,14 @@ void ply_rept(struct MusicPlayerInfo *mplayInfo, struct MusicPlayerTrack *track)
 
     (void)mplayInfo;
 
-    if (*args == 0)
-    {
+    if (*args == 0) {
         track->cmdPtr = args + 1;
         JumpToAddressAt(track);
         return;
     }
     repeats = (u32)track->repN + 1;
     track->repN = (u8)repeats;
-    if (repeats < ReadCheckedByte(track))
-    {
+    if (repeats < ReadCheckedByte(track)) {
         JumpToAddressAt(track);
         return;
     }
@@ -296,24 +291,18 @@ void ply_endtie(struct MusicPlayerInfo *mplayInfo, struct MusicPlayerTrack *trac
     u8 key = *track->cmdPtr;
 
     (void)mplayInfo;
-    if (key < MPLAY_CMD_FIRST)
-    {
+    if (key < MPLAY_CMD_FIRST) {
         track->key = key;
         track->cmdPtr++;
-    }
-    else
-    {
+    } else {
         key = track->key;
     }
 
-    for (void *chan = track->chan; chan != NULL; chan = ChanNext(chan))
-    {
+    for (void *chan = track->chan; chan != NULL; chan = ChanNext(chan)) {
         u8 status = ChanByte(chan, CHAN_STATUS_FLAGS);
 
-        if ((status & (SOUND_CHANNEL_SF_START | SOUND_CHANNEL_SF_ENV))
-            && !(status & SOUND_CHANNEL_SF_STOP)
-            && ChanByte(chan, CHAN_MIDI_KEY) == key)
-        {
+        if ((status & (SOUND_CHANNEL_SF_START | SOUND_CHANNEL_SF_ENV)) && !(status & SOUND_CHANNEL_SF_STOP)
+            && ChanByte(chan, CHAN_MIDI_KEY) == key) {
             ChanSetByte(chan, CHAN_STATUS_FLAGS, (u8)(status | SOUND_CHANNEL_SF_STOP));
             return;
         }

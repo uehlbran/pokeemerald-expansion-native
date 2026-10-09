@@ -52,7 +52,7 @@ static void teardown(void)
 
 static uint32_t rate(uint32_t freq, uint8_t mk, uint8_t fp)
 {
-    const struct WaveData wave = { .type = 0, .status = 0, .freq = freq, .loopStart = 0, .size = 0 };
+    const struct WaveData wave = {.type = 0, .status = 0, .freq = freq, .loopStart = 0, .size = 0};
     return MidiKey2Freq(&wave, mk, fp);
 }
 

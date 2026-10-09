@@ -9,8 +9,7 @@
 #include "m4a_engine.h"
 
 /* One channel's output: its frame in each half and its envelope volumes. */
-struct MixOutput
-{
+struct MixOutput {
     u8 *right;
     u8 *left;
     u32 samples;
@@ -19,8 +18,7 @@ struct MixOutput
 };
 
 /* The part of the sample the loop repeats; length 0 means no loop. */
-struct LoopRegion
-{
+struct LoopRegion {
     u32 start;
     u32 length;
 };

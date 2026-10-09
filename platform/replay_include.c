@@ -40,7 +40,7 @@ struct includer {
 
 void replay_source_map_init(struct replay_source_map *map)
 {
-    *map = (struct replay_source_map){ 0 };
+    *map = (struct replay_source_map){0};
 }
 
 void replay_source_map_free(struct replay_source_map *map)
@@ -49,7 +49,7 @@ void replay_source_map_free(struct replay_source_map *map)
         free(map->files[i]);
     free(map->files);
     free(map->lines);
-    *map = (struct replay_source_map){ 0 };
+    *map = (struct replay_source_map){0};
 }
 
 void replay_source_map_describe(const struct replay_source_map *map, uint32_t flat_line, char *out, size_t size)
@@ -96,7 +96,7 @@ static int map_add_line(struct replay_source_map *map, uint32_t file, unsigned l
         map->lines = grown;
         map->line_capacity = capacity;
     }
-    map->lines[map->line_count++] = (struct replay_line_origin){ file, line };
+    map->lines[map->line_count++] = (struct replay_line_origin){file, line};
     return 0;
 }
 
@@ -177,10 +177,10 @@ static char *read_file(struct expansion *expansion, const char *path, size_t *le
 }
 
 enum include_kind {
-    INCLUDE_NOT,       /* another command */
-    INCLUDE_NAMED,     /* `include FILE`; the name is in `name` */
-    INCLUDE_NO_NAME,   /* `include` and nothing (but a comment) after it */
-    INCLUDE_NAME_LONG  /* a name longer than REPLAY_INCLUDE_MAX_NAME */
+    INCLUDE_NOT,      /* another command */
+    INCLUDE_NAMED,    /* `include FILE`; the name is in `name` */
+    INCLUDE_NO_NAME,  /* `include` and nothing (but a comment) after it */
+    INCLUDE_NAME_LONG /* a name longer than REPLAY_INCLUDE_MAX_NAME */
 };
 
 /* Classifies the line (blanks around, an optional # comment) and, for INCLUDE_NAMED, copies the
@@ -269,7 +269,7 @@ static int expand_text(struct expansion *expansion, const char *path, const char
             report(expansion, path, line_number, "the include name is longer than the limit", includer);
             return -1;
         case INCLUDE_NAMED: {
-            struct includer here = { path, line_number };
+            struct includer here = {path, line_number};
             char target[PATH_SIZE];
             if (!sibling_path(path, name, target, sizeof target)) {
                 report(expansion, path, line_number, "the include path is too long", includer);
@@ -304,7 +304,7 @@ static int expand_file(struct expansion *expansion, const char *path, unsigned d
 int replay_include_expand(const char *path, char **text_out, size_t *length_out, bool *expanded_out,
                           struct replay_source_map *map, char *message, size_t message_size)
 {
-    struct expansion expansion = { .map = map, .message = message, .message_size = message_size };
+    struct expansion expansion = {.map = map, .message = message, .message_size = message_size};
     *text_out = NULL;
     *expanded_out = false;
     if (message_size > 0)

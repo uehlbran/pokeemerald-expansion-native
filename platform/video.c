@@ -128,8 +128,7 @@ bool video_poll_events(void (*on_event)(const union SDL_Event *event, void *ctx)
     while (SDL_PollEvent(&event) != 0) {
         if (on_event != NULL)
             on_event(&event, ctx);
-        if (event.type == SDL_QUIT ||
-            (event.type == SDL_WINDOWEVENT && event.window.event == SDL_WINDOWEVENT_CLOSE))
+        if (event.type == SDL_QUIT || (event.type == SDL_WINDOWEVENT && event.window.event == SDL_WINDOWEVENT_CLOSE))
             keep_running = false;
     }
     return keep_running;

@@ -56,13 +56,19 @@
 #include <string.h>
 #include <unistd.h>
 
-#define PTEST_MAX_TESTS 256    /* registry capacity of one test binary */
-#define PTEST_MESSAGE_SIZE 512 /* one failure line, with its terminator; longer ones are cut */
-#define PTEST_DEFAULT_TIMEOUT_SECONDS 60u /* wall-clock limit of one test */
+#define PTEST_MAX_TESTS 256                       /* registry capacity of one test binary */
+#define PTEST_MESSAGE_SIZE 512                    /* one failure line, with its terminator; longer ones are cut */
+#define PTEST_DEFAULT_TIMEOUT_SECONDS 60u         /* wall-clock limit of one test */
 #define PTEST_TIMEOUT_ENV "PTEST_TIMEOUT_SECONDS" /* overrides the limit, see the header comment */
 
-struct ptest_case { const char *name; void (*run)(void); };
-struct ptest_outcome { bool failed; char message[PTEST_MESSAGE_SIZE]; };
+struct ptest_case {
+    const char *name;
+    void (*run)(void);
+};
+struct ptest_outcome {
+    bool failed;
+    char message[PTEST_MESSAGE_SIZE];
+};
 struct ptest_registry {
     struct ptest_case cases[PTEST_MAX_TESTS];
     size_t count;
@@ -78,56 +84,49 @@ static struct {
     struct ptest_outcome outcome;
 } ptest_current;
 
-static inline void ptest_register_in(struct ptest_registry *registry, const char *name,
-                                     void (*run)(void))
+static inline void ptest_register_in(struct ptest_registry *registry, const char *name, void (*run)(void))
 {
     if (registry->count == PTEST_MAX_TESTS)
         registry->overflowed = true;
     else
-        registry->cases[registry->count++] = (struct ptest_case){ name, run };
+        registry->cases[registry->count++] = (struct ptest_case){name, run};
 }
 
-__attribute__((format(printf, 3, 4)))
-static inline void ptest_fail_at(const char *file, int line, const char *format, ...)
+__attribute__((format(printf, 3, 4))) static inline void ptest_fail_at(const char *file, int line, const char *format,
+                                                                       ...)
 {
     char *const text = ptest_current.outcome.message;
     if (ptest_current.outcome.failed)
         return; /* keep the test's first failure */
     ptest_current.outcome.failed = true;
-    const int prefix = snprintf(text, PTEST_MESSAGE_SIZE, "%s:%d: %s: ", file, line,
-                                ptest_current.name);
+    const int prefix = snprintf(text, PTEST_MESSAGE_SIZE, "%s:%d: %s: ", file, line, ptest_current.name);
     /* snprintf returns the length before truncation; the rest goes after what it stored. */
-    const size_t used = prefix < 0 ? 0
-                        : (size_t)prefix < PTEST_MESSAGE_SIZE ? (size_t)prefix
-                        : PTEST_MESSAGE_SIZE - 1;
+    const size_t used = prefix < 0 ? 0 : (size_t)prefix < PTEST_MESSAGE_SIZE ? (size_t)prefix : PTEST_MESSAGE_SIZE - 1;
     va_list args;
     va_start(args, format);
     if (vsnprintf(text + used, PTEST_MESSAGE_SIZE - used, format, args) < 0)
-        (void)snprintf(text + used, PTEST_MESSAGE_SIZE - used,
-                       "(unformattable message)"); /* best-effort */
+        (void)snprintf(text + used, PTEST_MESSAGE_SIZE - used, "(unformattable message)"); /* best-effort */
     va_end(args);
 }
 
-static inline bool ptest_check_u32(const char *file, int line, const char *a_text,
-                                   const char *e_text, uint32_t a, uint32_t e)
+static inline bool ptest_check_u32(const char *file, int line, const char *a_text, const char *e_text, uint32_t a,
+                                   uint32_t e)
 {
     if (a != e)
-        ptest_fail_at(file, line, "%s == %s: actual 0x%08" PRIX32 ", expected 0x%08" PRIX32,
-                      a_text, e_text, a, e);
+        ptest_fail_at(file, line, "%s == %s: actual 0x%08" PRIX32 ", expected 0x%08" PRIX32, a_text, e_text, a, e);
     return a == e;
 }
 
-static inline bool ptest_check_int(const char *file, int line, const char *a_text,
-                                   const char *e_text, intmax_t a, intmax_t e)
+static inline bool ptest_check_int(const char *file, int line, const char *a_text, const char *e_text, intmax_t a,
+                                   intmax_t e)
 {
     if (a != e)
-        ptest_fail_at(file, line, "%s == %s: actual %" PRIdMAX ", expected %" PRIdMAX,
-                      a_text, e_text, a, e);
+        ptest_fail_at(file, line, "%s == %s: actual %" PRIdMAX ", expected %" PRIdMAX, a_text, e_text, a, e);
     return a == e;
 }
 
-static inline bool ptest_check_ptr(const char *file, int line, const char *a_text,
-                                   const char *e_text, const void *a, const void *e)
+static inline bool ptest_check_ptr(const char *file, int line, const char *a_text, const char *e_text, const void *a,
+                                   const void *e)
 {
     if (a != e)
         ptest_fail_at(file, line, "%s == %s: actual %p, expected %p", a_text, e_text, a, e);
@@ -135,18 +134,18 @@ static inline bool ptest_check_ptr(const char *file, int line, const char *a_tex
 }
 
 /* Strings are equal when both are NULL or both have the same contents. */
-static inline bool ptest_check_str(const char *file, int line, const char *a_text,
-                                   const char *e_text, const char *a, const char *e)
+static inline bool ptest_check_str(const char *file, int line, const char *a_text, const char *e_text, const char *a,
+                                   const char *e)
 {
     const bool equal = a == NULL || e == NULL ? a == e : strcmp(a, e) == 0;
     if (!equal)
-        ptest_fail_at(file, line, "%s == %s: actual \"%s\", expected \"%s\"", a_text, e_text,
-                      a ? a : "(null)", e ? e : "(null)");
+        ptest_fail_at(file, line, "%s == %s: actual \"%s\", expected \"%s\"", a_text, e_text, a ? a : "(null)",
+                      e ? e : "(null)");
     return equal;
 }
 
-static inline bool ptest_check_mem(const char *file, int line, const char *a_text,
-                                   const char *e_text, const void *a, const void *e, size_t n)
+static inline bool ptest_check_mem(const char *file, int line, const char *a_text, const char *e_text, const void *a,
+                                   const void *e, size_t n)
 {
     if (n > 0 && (a == NULL || e == NULL)) {
         ptest_fail_at(file, line, "%s == %s over %zu bytes: null pointer", a_text, e_text, n);
@@ -157,15 +156,17 @@ static inline bool ptest_check_mem(const char *file, int line, const char *a_tex
     while (at < n && pa[at] == pe[at])
         at++;
     if (at < n)
-        ptest_fail_at(file, line, "%s == %s over %zu bytes: first difference at offset %zu: "
-                      "actual 0x%02X, expected 0x%02X", a_text, e_text, n, at, pa[at], pe[at]);
+        ptest_fail_at(file, line,
+                      "%s == %s over %zu bytes: first difference at offset %zu: "
+                      "actual 0x%02X, expected 0x%02X",
+                      a_text, e_text, n, at, pa[at], pe[at]);
     return at == n;
 }
 
 static inline struct ptest_outcome ptest_capture(void (*body)(void *), void *context)
 {
     const struct ptest_outcome outer = ptest_current.outcome;
-    ptest_current.outcome = (struct ptest_outcome){ .failed = false };
+    ptest_current.outcome = (struct ptest_outcome){.failed = false};
     body(context);
     const struct ptest_outcome captured = ptest_current.outcome;
     ptest_current.outcome = outer;
@@ -214,7 +215,7 @@ static inline int ptest_run_cases(const struct ptest_case *cases, size_t count, 
     const unsigned outer_timeout = ptest_timeout_seconds;
     sigjmp_buf *const outer_target = ptest_timeout_target;
     const unsigned outer_alarm = alarm(0); /* a run inside a test suspends that test's timer */
-    struct sigaction handler = { .sa_handler = ptest_on_alarm };
+    struct sigaction handler = {.sa_handler = ptest_on_alarm};
     struct sigaction outer_handler;
     (void)sigemptyset(&handler.sa_mask);
     const bool handled = sigaction(SIGALRM, &handler, &outer_handler) == 0;
@@ -223,7 +224,7 @@ static inline int ptest_run_cases(const struct ptest_case *cases, size_t count, 
     volatile size_t failed = 0;
     for (volatile size_t i = 0; i < count; i++) {
         ptest_current.name = cases[i].name;
-        ptest_current.outcome = (struct ptest_outcome){ .failed = false };
+        ptest_current.outcome = (struct ptest_outcome){.failed = false};
         ptest_timeout_seconds = ptest_default_timeout();
         if (sigsetjmp(jump, 1) == 0) {
             if (handled)
@@ -266,23 +267,39 @@ static inline int ptest_main_for(const struct ptest_registry *registry, FILE *ou
     return ptest_run_cases(registry->cases, registry->count, out);
 }
 
-#define PTEST(name)                                                       \
-    static void ptest_body_##name(void);                                  \
+#define PTEST(name)                                                      \
+    static void ptest_body_##name(void);                                 \
     __attribute__((constructor)) static void ptest_register_##name(void) \
-    {                                                                     \
-        ptest_register_in(&ptest_tests, #name, ptest_body_##name);        \
-    }                                                                     \
+    {                                                                    \
+        ptest_register_in(&ptest_tests, #name, ptest_body_##name);       \
+    }                                                                    \
     static void ptest_body_##name(void)
 
-#define PTEST_MAIN() int main(void) { return ptest_main_for(&ptest_tests, stdout); }
+#define PTEST_MAIN()                                 \
+    int main(void)                                   \
+    {                                                \
+        return ptest_main_for(&ptest_tests, stdout); \
+    }
 
 /* Returns from the test unless the check passed. */
-#define PTEST_REQUIRE_(check) do { if (!(check)) return; } while (0)
+#define PTEST_REQUIRE_(check) \
+    do {                      \
+        if (!(check))         \
+            return;           \
+    } while (0)
 
-#define PT_FAIL(message) \
-    do { ptest_fail_at(__FILE__, __LINE__, "PT_FAIL: %s", (message)); return; } while (0)
-#define PT_ASSERT(cond) \
-    do { if (!(cond)) { ptest_fail_at(__FILE__, __LINE__, "PT_ASSERT(%s)", #cond); return; } } while (0)
+#define PT_FAIL(message)                                             \
+    do {                                                             \
+        ptest_fail_at(__FILE__, __LINE__, "PT_FAIL: %s", (message)); \
+        return;                                                      \
+    } while (0)
+#define PT_ASSERT(cond)                                                \
+    do {                                                               \
+        if (!(cond)) {                                                 \
+            ptest_fail_at(__FILE__, __LINE__, "PT_ASSERT(%s)", #cond); \
+            return;                                                    \
+        }                                                              \
+    } while (0)
 #define PT_ASSERT_EQ_U32(actual, expected) \
     PTEST_REQUIRE_(ptest_check_u32(__FILE__, __LINE__, #actual, #expected, (actual), (expected)))
 #define PT_ASSERT_EQ_INT(actual, expected) \
@@ -291,8 +308,7 @@ static inline int ptest_main_for(const struct ptest_registry *registry, FILE *ou
     PTEST_REQUIRE_(ptest_check_ptr(__FILE__, __LINE__, #actual, #expected, (actual), (expected)))
 #define PT_ASSERT_EQ_STR(actual, expected) \
     PTEST_REQUIRE_(ptest_check_str(__FILE__, __LINE__, #actual, #expected, (actual), (expected)))
-#define PT_ASSERT_MEM_EQ(actual, expected, nbytes)                                      \
-    PTEST_REQUIRE_(ptest_check_mem(__FILE__, __LINE__, #actual, #expected, (actual), \
-                                   (expected), (nbytes)))
+#define PT_ASSERT_MEM_EQ(actual, expected, nbytes) \
+    PTEST_REQUIRE_(ptest_check_mem(__FILE__, __LINE__, #actual, #expected, (actual), (expected), (nbytes)))
 
 #endif /* PTEST_H */

@@ -197,18 +197,19 @@ const struct FlashSetupInfo NativeFlash = {
     .eraseFlashSector = erase_flash_sector,
     .WaitForFlashWrite = wait_for_flash_write,
     .maxTime = NULL, /* read only by WaitForFlashWrite_Common's timer */
-    .type = {
-        .romSize = FLASH_CHIP_SIZE,
-        .sector = {
-            .size = FLASH_SECTOR_SIZE,
-            .shift = FLASH_SECTOR_SHIFT,
-            .count = FLASH_SECTOR_COUNT,
-            .top = 0, /* unused by expansion */
+    .type =
+        {
+            .romSize = FLASH_CHIP_SIZE,
+            .sector =
+                {
+                    .size = FLASH_SECTOR_SIZE,
+                    .shift = FLASH_SECTOR_SHIFT,
+                    .count = FLASH_SECTOR_COUNT,
+                    .top = 0, /* unused by expansion */
+                },
+            .wait = {FLASH_WAIT_WRITE, FLASH_WAIT_READ},
+            .ids = {.separate = {.makerId = FLASH_NATIVE_MAKER_ID, .deviceId = FLASH_NATIVE_DEVICE_ID}},
         },
-        .wait = { FLASH_WAIT_WRITE, FLASH_WAIT_READ },
-        .ids = { .separate = { .makerId = FLASH_NATIVE_MAKER_ID,
-                               .deviceId = FLASH_NATIVE_DEVICE_ID } },
-    },
 };
 
 /* ---- link-time substitutes for agb_flash.c ---- */
@@ -220,14 +221,13 @@ u16 ReadFlashId(void)
 
 void ReadFlash(u16 sectorNum, u32 offset, u8 *dest, u32 size)
 {
-    if (!is_sector(sectorNum) || !is_range_in_sector(offset, size) || dest == NULL
-        || overlaps_chip(dest, size)) {
+    if (!is_sector(sectorNum) || !is_range_in_sector(offset, size) || dest == NULL || overlaps_chip(dest, size)) {
         (void)fprintf(stderr,
                       "flash: ReadFlash(sector %" PRIu16 ", offset %" PRIu32 ", %s, size %" PRIu32
                       "): rejected, a read is 1 to %u bytes inside one of the chip's %u "
                       "sectors into a buffer outside the chip; nothing read\n",
-                      sectorNum, offset, dest == NULL ? "NULL" : "dest", size,
-                      FLASH_SECTOR_SIZE, FLASH_SECTOR_COUNT); /* best-effort */
+                      sectorNum, offset, dest == NULL ? "NULL" : "dest", size, FLASH_SECTOR_SIZE,
+                      FLASH_SECTOR_COUNT); /* best-effort */
         return;
     }
     memcpy(dest, sector_bytes(sectorNum) + offset, size);

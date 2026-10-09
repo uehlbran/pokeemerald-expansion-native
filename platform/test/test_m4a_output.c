@@ -71,7 +71,7 @@ PTEST(the_locked_engine_still_plays)
 PTEST(nothing_to_play)
 {
     PT_ASSERT_EQ_INT(gba_memmap_init(), GBA_MEMMAP_OK);
-    struct m4a_output_frame frame = { NULL, NULL, 99 };
+    struct m4a_output_frame frame = {NULL, NULL, 99};
     SOUND_INFO_PTR = NULL;
     PT_ASSERT(!m4a_output_current_frame(&frame));
     PT_ASSERT_EQ_U32(m4a_output_sample_rate(), 0);

@@ -22,8 +22,8 @@ _Static_assert(DEBUG_CHANNEL_ENABLE_ADDRESS + sizeof(uint16_t) <= GBA_MGBA_DEBUG
                "ENABLE lies in the debug page");
 
 static struct {
-    FILE *out;          /* NULL: not initialised */
-    bool enabled;       /* the handshake was made (mGBA's gba->debug) */
+    FILE *out;    /* NULL: not initialised */
+    bool enabled; /* the handshake was made (mGBA's gba->debug) */
     bool reported_write_failure;
 } channel;
 
@@ -107,8 +107,7 @@ static void print_line(const char *message, size_t length)
 {
     static const char prefix[] = DEBUG_CHANNEL_LINE_PREFIX;
     bool written = fwrite(prefix, 1, sizeof prefix - 1, channel.out) == sizeof prefix - 1
-                   && fwrite(message, 1, length, channel.out) == length
-                   && fputc('\n', channel.out) != EOF;
+                   && fwrite(message, 1, length, channel.out) == length && fputc('\n', channel.out) != EOF;
     if (fflush(channel.out) != 0)
         written = false;
     if (!written && !channel.reported_write_failure) {

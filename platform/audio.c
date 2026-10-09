@@ -57,8 +57,7 @@ static int sdl_error(const char *call)
 size_t audio_max_queued_frames(uint32_t sample_rate_hz)
 {
     /* Frames per video frame, rounded up, times the allowed video frames. */
-    uint64_t per_video_frame =
-        ((uint64_t)sample_rate_hz * GBA_CYCLES_PER_FRAME + GBA_CPU_HZ - 1u) / GBA_CPU_HZ;
+    uint64_t per_video_frame = ((uint64_t)sample_rate_hz * GBA_CYCLES_PER_FRAME + GBA_CPU_HZ - 1u) / GBA_CPU_HZ;
     return (size_t)(per_video_frame * MAX_QUEUED_VIDEO_FRAMES);
 }
 
@@ -180,6 +179,15 @@ uint32_t audio_queued_bytes(void)
     return SDL_GetQueuedAudioSize(state.device);
 }
 
-uint64_t audio_dropped_frames(void) { return state.dropped_frames; }
-uint64_t audio_underruns(void) { return state.underruns; }
-uint64_t audio_total_frames(void) { return state.total_frames; }
+uint64_t audio_dropped_frames(void)
+{
+    return state.dropped_frames;
+}
+uint64_t audio_underruns(void)
+{
+    return state.underruns;
+}
+uint64_t audio_total_frames(void)
+{
+    return state.total_frames;
+}

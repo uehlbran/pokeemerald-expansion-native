@@ -45,8 +45,8 @@ static int32_t remove_dc(struct sound_mix_state *state, enum sound_mix_side side
     return output;
 }
 
-void sound_mix(struct sound_mix_state *state, const struct sound_mix_registers *registers,
-               const int8_t *fifo_a, const int8_t *fifo_b, const int16_t *psg, int16_t *out, size_t frames)
+void sound_mix(struct sound_mix_state *state, const struct sound_mix_registers *registers, const int8_t *fifo_a,
+               const int8_t *fifo_b, const int16_t *psg, int16_t *out, size_t frames)
 {
     uint16_t h = registers->soundcnt_h;
     bool enabled = (registers->soundcnt_x & SOUND_MIX_SOUNDCNT_X_MASTER_ENABLE) != 0;
@@ -54,7 +54,7 @@ void sound_mix(struct sound_mix_state *state, const struct sound_mix_registers *
     int32_t b_scale = fifo_scale(h, SOUND_MIX_SOUNDCNT_H_B_FULL);
 
     for (size_t i = 0; i < frames; i++) {
-        int32_t mix[2] = { 0, 0 };
+        int32_t mix[2] = {0, 0};
         if (enabled) {
             int32_t a = fifo_a != NULL ? fifo_a[i] * a_scale : 0;
             int32_t b = fifo_b != NULL ? fifo_b[i] * b_scale : 0;

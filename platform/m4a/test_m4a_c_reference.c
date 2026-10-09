@@ -14,8 +14,7 @@ static s32 FloorDiv256(s32 x)
 
 void M4aRefTrkVolPitSet(struct MusicPlayerTrack *track)
 {
-    if (track->flags & MPT_FLG_VOLSET)
-    {
+    if (track->flags & MPT_FLG_VOLSET) {
         s32 x = (s32)((u32)(track->vol * track->volX) >> 5);
         s32 y;
 
@@ -36,13 +35,9 @@ void M4aRefTrkVolPitSet(struct MusicPlayerTrack *track)
         track->volML = (u8)((u32)((127 - y) * x) >> 8);
     }
 
-    if (track->flags & MPT_FLG_PITSET)
-    {
+    if (track->flags & MPT_FLG_PITSET) {
         s32 bend = track->bend * track->bendRange;
-        s32 x = (track->tune + bend) * 4
-              + track->keyShift * 256
-              + track->keyShiftX * 256
-              + track->pitX;
+        s32 x = (track->tune + bend) * 4 + track->keyShift * 256 + track->keyShiftX * 256 + track->pitX;
 
         if (track->modT == 0)
             x += 16 * track->modM;
@@ -51,7 +46,7 @@ void M4aRefTrkVolPitSet(struct MusicPlayerTrack *track)
         track->pitM = (u8)x;
     }
 
-    track->flags &= (u8)~(MPT_FLG_PITSET | MPT_FLG_VOLSET);
+    track->flags &= (u8) ~(MPT_FLG_PITSET | MPT_FLG_VOLSET);
 }
 
 u32 M4aRefMidiKeyToFreq(const struct WaveData *wav, u8 key, u8 fineAdjust)
@@ -60,8 +55,7 @@ u32 M4aRefMidiKeyToFreq(const struct WaveData *wav, u8 key, u8 fineAdjust)
     u32 val2;
     u32 fineAdjustShifted = (u32)fineAdjust << 24;
 
-    if (key > 178)
-    {
+    if (key > 178) {
         key = 178;
         fineAdjustShifted = 255u << 24;
     }
@@ -77,11 +71,11 @@ u32 M4aRefMidiKeyToFreq(const struct WaveData *wav, u8 key, u8 fineAdjust)
 
 const struct ToneData voicegroup_dummy = {0};
 
-#define DEFINE_UNUSED_XCMD(name)                                               \
+#define DEFINE_UNUSED_XCMD(name)                                                 \
     void name(struct MusicPlayerInfo *mplayInfo, struct MusicPlayerTrack *track) \
-    {                                                                          \
-        (void)mplayInfo;                                                       \
-        (void)track;                                                           \
+    {                                                                            \
+        (void)mplayInfo;                                                         \
+        (void)track;                                                             \
     }
 
 DEFINE_UNUSED_XCMD(ply_xxx)

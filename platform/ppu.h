@@ -41,10 +41,10 @@
 
 enum ppu_error {
     PPU_OK = 0,
-    PPU_ERR_NOT_INITIALIZED = -1,  /* ppu_render_line() before ppu_init() or after ppu_shutdown() */
-    PPU_ERR_BAD_LINE = -2,         /* line >= PPU_SCREEN_HEIGHT; nothing is written */
-    PPU_ERR_NULL_OUTPUT = -3,      /* out is NULL; nothing is written */
-    PPU_ERR_UNSUPPORTED_MODE = -4  /* DISPCNT BG mode 2 to 7; the line is written black */
+    PPU_ERR_NOT_INITIALIZED = -1, /* ppu_render_line() before ppu_init() or after ppu_shutdown() */
+    PPU_ERR_BAD_LINE = -2,        /* line >= PPU_SCREEN_HEIGHT; nothing is written */
+    PPU_ERR_NULL_OUTPUT = -3,     /* out is NULL; nothing is written */
+    PPU_ERR_UNSUPPORTED_MODE = -4 /* DISPCNT BG mode 2 to 7; the line is written black */
 };
 
 /* Resets the module and latches the affine reference points from the

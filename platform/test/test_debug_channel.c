@@ -120,7 +120,7 @@ PTEST(bytes_above_ascii_pass_through)
 {
     FILE *out = open_channel();
     PT_ASSERT(out != NULL);
-    static const char message[] = { '\x1b', '[', '3', '1', 'm', '\xe9', '\x7f' };
+    static const char message[] = {'\x1b', '[', '3', '1', 'm', '\xe9', '\x7f'};
     put_message(message, sizeof message);
     debug_channel_send(SEND_INFO);
     char captured[CAPTURE_SIZE];

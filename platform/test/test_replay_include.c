@@ -423,14 +423,14 @@ PTEST(include_names_of_1023_and_1024_characters)
     write_file("main.replay", line);
     int result_1023 = expand("main.replay", &text, &expanded, message, sizeof message);
     bool named_1023 = strstr(message, "xxxxxxxx") != NULL && strstr(message, "longer than the limit") == NULL
-        && strstr(message, "path is too long") == NULL;
+                      && strstr(message, "path is too long") == NULL;
     /* 1024 characters: refused for its length, with the line */
     fill(name + 1, REPLAY_INCLUDE_MAX_NAME, 'x');
     snprintf(line, REPLAY_INCLUDE_MAX_NAME + 64u, "include %s\n", name);
     write_file("main.replay", line);
     int result_1024 = expand("main.replay", &text, &expanded, message, sizeof message);
     bool refused_1024 = strstr(message, "main.replay:1:") != NULL
-        && strstr(message, "include name is longer than the limit") != NULL;
+                        && strstr(message, "include name is longer than the limit") != NULL;
     /* a name of 1023 characters next to a file in a directory: the path does not fit, its own message */
     fill(name, REPLAY_INCLUDE_MAX_NAME, 'y');
     snprintf(line, REPLAY_INCLUDE_MAX_NAME + 64u, "include %s\n", name);

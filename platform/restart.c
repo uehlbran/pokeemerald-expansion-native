@@ -22,8 +22,7 @@ static bool push(struct restart_args *out, size_t *count, char *argument)
     return true;
 }
 
-int restart_build_args(int argc, char *const *argv, uint32_t resume_line, int64_t new_epoch,
-                       struct restart_args *out)
+int restart_build_args(int argc, char *const *argv, uint32_t resume_line, int64_t new_epoch, struct restart_args *out)
 {
     size_t count = 0;
     memset(out, 0, sizeof *out);

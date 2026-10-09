@@ -57,24 +57,24 @@ const char inspect_none_text[] = "none";
 /* Every callback the game declares in a header, by its own name. The rest
  * (most are static) come from the symbol table. */
 static const struct inspect_known_callback known_callbacks[] = {
-    { (uintptr_t)CB2_InitCopyrightScreenAfterBootup, "CB2_InitCopyrightScreenAfterBootup" },
-    { (uintptr_t)CB2_InitCopyrightScreenAfterTitleScreen, "CB2_InitCopyrightScreenAfterTitleScreen" },
-    { (uintptr_t)MainCB2_Intro, "MainCB2_Intro" },
-    { (uintptr_t)CB2_InitTitleScreen, "CB2_InitTitleScreen" },
-    { (uintptr_t)CB2_InitMainMenu, "CB2_InitMainMenu" },
-    { (uintptr_t)CB2_InitOptionMenu, "CB2_InitOptionMenu" },
-    { (uintptr_t)CB2_NewGame, "CB2_NewGame" },
-    { (uintptr_t)CB2_ContinueSavedGame, "CB2_ContinueSavedGame" },
-    { (uintptr_t)CB2_LoadMap, "CB2_LoadMap" },
-    { (uintptr_t)CB2_Overworld, "CB2_Overworld" },
-    { (uintptr_t)CB2_ReturnToField, "CB2_ReturnToField" },
-    { (uintptr_t)CB2_ReturnToFieldContinueScript, "CB2_ReturnToFieldContinueScript" },
-    { (uintptr_t)CB2_ReturnToFieldWithOpenMenu, "CB2_ReturnToFieldWithOpenMenu" },
-    { (uintptr_t)CB2_WhiteOut, "CB2_WhiteOut" },
-    { (uintptr_t)CB2_InitBattle, "CB2_InitBattle" },
-    { (uintptr_t)BattleMainCB2, "BattleMainCB2" },
-    { (uintptr_t)CB2_BagMenuFromStartMenu, "CB2_BagMenuFromStartMenu" },
-    { (uintptr_t)CB2_StartWallClock, "CB2_StartWallClock" },
+    {(uintptr_t)CB2_InitCopyrightScreenAfterBootup, "CB2_InitCopyrightScreenAfterBootup"},
+    {(uintptr_t)CB2_InitCopyrightScreenAfterTitleScreen, "CB2_InitCopyrightScreenAfterTitleScreen"},
+    {(uintptr_t)MainCB2_Intro, "MainCB2_Intro"},
+    {(uintptr_t)CB2_InitTitleScreen, "CB2_InitTitleScreen"},
+    {(uintptr_t)CB2_InitMainMenu, "CB2_InitMainMenu"},
+    {(uintptr_t)CB2_InitOptionMenu, "CB2_InitOptionMenu"},
+    {(uintptr_t)CB2_NewGame, "CB2_NewGame"},
+    {(uintptr_t)CB2_ContinueSavedGame, "CB2_ContinueSavedGame"},
+    {(uintptr_t)CB2_LoadMap, "CB2_LoadMap"},
+    {(uintptr_t)CB2_Overworld, "CB2_Overworld"},
+    {(uintptr_t)CB2_ReturnToField, "CB2_ReturnToField"},
+    {(uintptr_t)CB2_ReturnToFieldContinueScript, "CB2_ReturnToFieldContinueScript"},
+    {(uintptr_t)CB2_ReturnToFieldWithOpenMenu, "CB2_ReturnToFieldWithOpenMenu"},
+    {(uintptr_t)CB2_WhiteOut, "CB2_WhiteOut"},
+    {(uintptr_t)CB2_InitBattle, "CB2_InitBattle"},
+    {(uintptr_t)BattleMainCB2, "BattleMainCB2"},
+    {(uintptr_t)CB2_BagMenuFromStartMenu, "CB2_BagMenuFromStartMenu"},
+    {(uintptr_t)CB2_StartWallClock, "CB2_StartWallClock"},
 };
 
 /* A function pointer's name: known table, then symbol table, else unknown. */
@@ -230,16 +230,16 @@ struct known_map {
 };
 
 static const struct known_map known_maps[] = {
-    { MAP_INSIDE_OF_TRUCK, "MAP_INSIDE_OF_TRUCK" },
-    { MAP_LITTLEROOT_TOWN, "MAP_LITTLEROOT_TOWN" },
-    { MAP_LITTLEROOT_TOWN_BRENDANS_HOUSE_1F, "MAP_LITTLEROOT_TOWN_BRENDANS_HOUSE_1F" },
-    { MAP_LITTLEROOT_TOWN_BRENDANS_HOUSE_2F, "MAP_LITTLEROOT_TOWN_BRENDANS_HOUSE_2F" },
-    { MAP_LITTLEROOT_TOWN_MAYS_HOUSE_1F, "MAP_LITTLEROOT_TOWN_MAYS_HOUSE_1F" },
-    { MAP_LITTLEROOT_TOWN_MAYS_HOUSE_2F, "MAP_LITTLEROOT_TOWN_MAYS_HOUSE_2F" },
-    { MAP_ROUTE101, "MAP_ROUTE101" },
-    { MAP_ROUTE102, "MAP_ROUTE102" },
-    { MAP_OLDALE_TOWN, "MAP_OLDALE_TOWN" },
-    { MAP_LITTLEROOT_TOWN_PROFESSOR_BIRCHS_LAB, "MAP_LITTLEROOT_TOWN_PROFESSOR_BIRCHS_LAB" },
+    {MAP_INSIDE_OF_TRUCK, "MAP_INSIDE_OF_TRUCK"},
+    {MAP_LITTLEROOT_TOWN, "MAP_LITTLEROOT_TOWN"},
+    {MAP_LITTLEROOT_TOWN_BRENDANS_HOUSE_1F, "MAP_LITTLEROOT_TOWN_BRENDANS_HOUSE_1F"},
+    {MAP_LITTLEROOT_TOWN_BRENDANS_HOUSE_2F, "MAP_LITTLEROOT_TOWN_BRENDANS_HOUSE_2F"},
+    {MAP_LITTLEROOT_TOWN_MAYS_HOUSE_1F, "MAP_LITTLEROOT_TOWN_MAYS_HOUSE_1F"},
+    {MAP_LITTLEROOT_TOWN_MAYS_HOUSE_2F, "MAP_LITTLEROOT_TOWN_MAYS_HOUSE_2F"},
+    {MAP_ROUTE101, "MAP_ROUTE101"},
+    {MAP_ROUTE102, "MAP_ROUTE102"},
+    {MAP_OLDALE_TOWN, "MAP_OLDALE_TOWN"},
+    {MAP_LITTLEROOT_TOWN_PROFESSOR_BIRCHS_LAB, "MAP_LITTLEROOT_TOWN_PROFESSOR_BIRCHS_LAB"},
 };
 
 static void fact_map_name(char *out, size_t size)
@@ -340,38 +340,38 @@ static void arg_var(const uint32_t arguments[INSPECT_MAX_ARGUMENTS], char *out, 
 }
 
 static const struct inspect_arg_reader state_arg_readers[] = {
-    { INSPECT_ARG_FLAG, arg_flag },
-    { INSPECT_ARG_VAR, arg_var },
+    {INSPECT_ARG_FLAG, arg_flag},
+    {INSPECT_ARG_VAR, arg_var},
 };
 
 static const struct inspect_fact facts[] = {
-    { "frame", fact_frame, NULL },
-    { "callback2", fact_callback2, NULL },
-    { "task_count", fact_task_count, NULL },
-    { "task_first", fact_task_first, NULL },
-    { "task_last", fact_task_last, NULL },
-    { "tasks", fact_tasks, NULL },
-    { "fade_active", fact_fade_active, NULL },
-    { "intro_state", fact_intro_state, "0" },
-    { "town_state", fact_town_state, "0" },
-    { "rival_state", fact_rival_state, "0" },
-    { "keys_held", fact_keys_held, NULL },
-    { "keys_new", fact_keys_new, NULL },
-    { "player_name", fact_player_name, inspect_none_text },
-    { "player_gender", fact_player_gender, inspect_none_text },
-    { "map", fact_map, inspect_none_text },
-    { "map_name", fact_map_name, inspect_none_text },
-    { "pos", fact_pos, inspect_none_text },
-    { "party_count", fact_party_count, NULL },
-    { "party0_species", fact_party0_species, NULL },
-    { "party0_name", fact_party0_name, NULL },
-    { "in_battle", fact_in_battle, NULL },
-    { "battle_main", fact_battle_main, NULL },
-    { "script_running", fact_script_running, NULL },
-    { "controls_locked", fact_controls_locked, NULL },
-    { "save_counter", fact_save_counter, NULL },
-    { "save_status", fact_save_status, NULL },
-    { "flash_dirty_writes", fact_flash_dirty_writes, NULL },
+    {"frame", fact_frame, NULL},
+    {"callback2", fact_callback2, NULL},
+    {"task_count", fact_task_count, NULL},
+    {"task_first", fact_task_first, NULL},
+    {"task_last", fact_task_last, NULL},
+    {"tasks", fact_tasks, NULL},
+    {"fade_active", fact_fade_active, NULL},
+    {"intro_state", fact_intro_state, "0"},
+    {"town_state", fact_town_state, "0"},
+    {"rival_state", fact_rival_state, "0"},
+    {"keys_held", fact_keys_held, NULL},
+    {"keys_new", fact_keys_new, NULL},
+    {"player_name", fact_player_name, inspect_none_text},
+    {"player_gender", fact_player_gender, inspect_none_text},
+    {"map", fact_map, inspect_none_text},
+    {"map_name", fact_map_name, inspect_none_text},
+    {"pos", fact_pos, inspect_none_text},
+    {"party_count", fact_party_count, NULL},
+    {"party0_species", fact_party0_species, NULL},
+    {"party0_name", fact_party0_name, NULL},
+    {"in_battle", fact_in_battle, NULL},
+    {"battle_main", fact_battle_main, NULL},
+    {"script_running", fact_script_running, NULL},
+    {"controls_locked", fact_controls_locked, NULL},
+    {"save_counter", fact_save_counter, NULL},
+    {"save_status", fact_save_status, NULL},
+    {"flash_dirty_writes", fact_flash_dirty_writes, NULL},
 };
 #define STATE_FACT_COUNT (sizeof facts / sizeof facts[0])
 
@@ -399,12 +399,12 @@ static const struct inspect_arg_reader *find_reader(const struct inspect_arg_rea
 static int read_argument_fact(const char *name, size_t name_length, const char *argument, char *out, size_t size)
 {
     const struct inspect_arg_spec *spec = inspect_arg_find(name, name_length);
-    uint32_t values[INSPECT_MAX_ARGUMENTS] = { 0 };
+    uint32_t values[INSPECT_MAX_ARGUMENTS] = {0};
     if (spec == NULL || inspect_arg_parse(spec, argument, values) != 0)
         return -1;
     const enum inspect_arg_fact fact = inspect_arg_id(spec);
-    const struct inspect_arg_reader *reader =
-        find_reader(state_arg_readers, sizeof state_arg_readers / sizeof state_arg_readers[0], fact);
+    const struct inspect_arg_reader *reader = find_reader(state_arg_readers,
+                                                          sizeof state_arg_readers / sizeof state_arg_readers[0], fact);
     if (reader == NULL)
         reader = find_reader(inspect_menu_arg_readers, inspect_menu_arg_reader_count, fact);
     if (reader == NULL)

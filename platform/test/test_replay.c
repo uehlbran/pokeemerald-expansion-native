@@ -72,7 +72,7 @@ static void fake_set_keys(void *context, uint16_t keys)
 
 static void fake_init(struct fake *fake)
 {
-    *fake = (struct fake){ 0 };
+    *fake = (struct fake){0};
     strcpy(fake->names[0], "alpha");
     strcpy(fake->names[1], "beta");
     strcpy(fake->names[2], "gamma");
@@ -83,11 +83,11 @@ static void fake_init(struct fake *fake)
 
 static struct replay_host host_for(struct fake *fake)
 {
-    return (struct replay_host){ .context = fake,
-                                 .get_fact = fake_get_fact,
-                                 .fact_name = fake_fact_name,
-                                 .screenshot = fake_screenshot,
-                                 .set_keys = fake_set_keys };
+    return (struct replay_host){.context = fake,
+                                .get_fact = fake_get_fact,
+                                .fact_name = fake_fact_name,
+                                .screenshot = fake_screenshot,
+                                .set_keys = fake_set_keys};
 }
 
 /* Steps until the status is not RUNNING or `limit` steps passed, recording
@@ -315,7 +315,9 @@ PTEST(mash_presses_in_cycles_until_the_fact_holds_then_releases)
     PT_ASSERT_EQ_INT(start(&replay, &fake, "mash A until alpha=go max 100\nrestart", 0), 0);
     PT_ASSERT_EQ_INT(run(&replay, &fake, 12), REPLAY_RUNNING);
     for (size_t step = 0; step < 12; step++) {
-        uint16_t expected = step % (REPLAY_MASH_DOWN_FRAMES + REPLAY_MASH_UP_FRAMES) < REPLAY_MASH_DOWN_FRAMES ? INPUT_KEY_A : 0;
+        uint16_t expected = step % (REPLAY_MASH_DOWN_FRAMES + REPLAY_MASH_UP_FRAMES) < REPLAY_MASH_DOWN_FRAMES
+                                ? INPUT_KEY_A
+                                : 0;
         PT_ASSERT_EQ_U32(fake.keys_at[step], expected);
     }
     strcpy(fake.values[0], "go");
@@ -419,7 +421,8 @@ PTEST(resume_skips_commands_up_to_the_restart_line)
 {
     struct replay replay;
     struct fake fake;
-    PT_ASSERT_EQ_INT(start(&replay, &fake, "expect alpha=bad\n# c\nrestart\nexpect alpha=one\nwait 2\nexpect beta=two", 3), 0);
+    PT_ASSERT_EQ_INT(
+        start(&replay, &fake, "expect alpha=bad\n# c\nrestart\nexpect alpha=one\nwait 2\nexpect beta=two", 3), 0);
     PT_ASSERT_EQ_INT(run(&replay, &fake, 100), REPLAY_DONE);
     PT_ASSERT(fake.steps == 3);
     PT_ASSERT_EQ_INT(start(&replay, &fake, "restart\nrestart\nwait 1", 99), 0);
@@ -524,8 +527,8 @@ PTEST(a_too_long_output_path_is_reported)
 PTEST(start_rejects_an_incomplete_host_and_a_huge_directory)
 {
     struct replay replay;
-    struct replay_script empty = { .count = 0 };
-    struct replay_host host = { 0 };
+    struct replay_script empty = {.count = 0};
+    struct replay_host host = {0};
     PT_ASSERT_EQ_INT(replay_start(&replay, &empty, &host, ".", 0), -1);
     PT_ASSERT_EQ_INT(replay_step(&replay), REPLAY_FAILED);
     struct fake fake;

@@ -16,10 +16,10 @@
 #include <unistd.h>
 
 #define TEMP_SUFFIX ".tmp"
-#define FILE_MODE   0644
+#define FILE_MODE 0644
 /* "-" + 16 digits + newline fits in 32; the longest valid file is shorter. */
 #define FILE_BUFFER_SIZE 32
-#define DECIMAL_BASE     10
+#define DECIMAL_BASE 10
 
 void rtc_report_call_failure(const char *call)
 {

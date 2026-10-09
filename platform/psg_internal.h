@@ -90,10 +90,7 @@ struct psg_channel {
 };
 
 /* Whether a channel's DAC is on; a channel with its DAC off cannot play. */
-enum psg_dac {
-    PSG_DAC_OFF,
-    PSG_DAC_ON
-};
+enum psg_dac { PSG_DAC_OFF, PSG_DAC_ON };
 
 /* The common part of a trigger. While the DAC is off it does nothing and
  * returns false; otherwise it switches the channel on, loads the length
@@ -143,10 +140,10 @@ struct psg_square_registers {
 
 struct psg_square {
     struct psg_channel channel;
-    uint8_t duty;          /* NRx1 bits 6-7 */
-    uint8_t duty_step;     /* 0-7, position in the duty pattern */
-    uint16_t frequency;    /* 11 bits from NRx3 and NRx4 */
-    uint32_t countdown;    /* cycles until the next duty step */
+    uint8_t duty;       /* NRx1 bits 6-7 */
+    uint8_t duty_step;  /* 0-7, position in the duty pattern */
+    uint16_t frequency; /* 11 bits from NRx3 and NRx4 */
+    uint32_t countdown; /* cycles until the next duty step */
     struct psg_envelope envelope;
 };
 
@@ -165,9 +162,9 @@ uint8_t psg_square_level(const struct psg_square *square);
 
 /* Channel 1's frequency sweep (NR10). */
 struct psg_sweep {
-    uint8_t nr10;      /* as of the last update */
-    uint16_t shadow;   /* the frequency the sweep computes from */
-    uint8_t timer;     /* 128 Hz ticks until the next sweep step */
+    uint8_t nr10;    /* as of the last update */
+    uint16_t shadow; /* the frequency the sweep computes from */
+    uint8_t timer;   /* 128 Hz ticks until the next sweep step */
     bool enabled;
 };
 
@@ -195,11 +192,11 @@ struct psg_wave_registers {
 
 struct psg_wave {
     struct psg_channel channel;
-    uint8_t nr30;          /* dimension, bank, DAC; as of the last update */
-    uint8_t nr32;          /* volume; as of the last update */
+    uint8_t nr30; /* dimension, bank, DAC; as of the last update */
+    uint8_t nr32; /* volume; as of the last update */
     uint16_t frequency;
-    uint32_t countdown;    /* cycles until the next sample */
-    uint8_t position;      /* sample index, 0-31, or 0-63 in two-bank mode */
+    uint32_t countdown; /* cycles until the next sample */
+    uint8_t position;   /* sample index, 0-31, or 0-63 in two-bank mode */
     uint8_t banks[PSG_WAVE_BANK_COUNT][PSG_WAVE_BANK_BYTES];
     uint8_t window_seen[PSG_WAVE_BANK_BYTES]; /* the window at the last update */
 };
@@ -219,10 +216,7 @@ void psg_wave_power_off(struct psg_wave *wave);
 /* --- Channel 4: noise (psg_noise.c) -------------------------------------- */
 
 /* NR43 bit 3, "Counter Step/Width (0=15 bits, 1=7 bits)". */
-enum psg_lfsr_width {
-    PSG_LFSR_15_BIT,
-    PSG_LFSR_7_BIT
-};
+enum psg_lfsr_width { PSG_LFSR_15_BIT, PSG_LFSR_7_BIT };
 
 /* GBATEK "GBA Sound Channel 4 - Noise": "The initial value when
  * (re-)starting the sound is X=40h (7bit) or X=4000h (15bit)." */
@@ -239,10 +233,10 @@ struct psg_noise_registers {
 
 struct psg_noise {
     struct psg_channel channel;
-    uint8_t nr43;          /* divider, width, shift; as of the last update */
+    uint8_t nr43; /* divider, width, shift; as of the last update */
     uint16_t lfsr;
-    bool high;             /* the last bit shifted out */
-    uint32_t countdown;    /* cycles until the next LFSR clock */
+    bool high;          /* the last bit shifted out */
+    uint32_t countdown; /* cycles until the next LFSR clock */
     struct psg_envelope envelope;
 };
 

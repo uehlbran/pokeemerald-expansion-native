@@ -36,14 +36,14 @@ struct expected_region {
 };
 
 static const struct expected_region expected_regions[] = {
-    { GBA_REGION_EWRAM, 0x02000000u, 256 * KIB, "EWRAM" },
-    { GBA_REGION_IWRAM, 0x03000000u, 32 * KIB, "IWRAM" },
-    { GBA_REGION_IO, 0x04000000u, 1 * KIB, "I/O" },
-    { GBA_REGION_MGBA_DEBUG, 0x04FFF000u, 4 * KIB, "mGBA debug" },
-    { GBA_REGION_PALETTE_RAM, 0x05000000u, 1 * KIB, "palette RAM" },
-    { GBA_REGION_VRAM, 0x06000000u, 96 * KIB, "VRAM" },
-    { GBA_REGION_OAM, 0x07000000u, 1 * KIB, "OAM" },
-    { GBA_REGION_SRAM, 0x0E000000u, 128 * KIB, "SRAM" },
+    {GBA_REGION_EWRAM, 0x02000000u, 256 * KIB, "EWRAM"},
+    {GBA_REGION_IWRAM, 0x03000000u, 32 * KIB, "IWRAM"},
+    {GBA_REGION_IO, 0x04000000u, 1 * KIB, "I/O"},
+    {GBA_REGION_MGBA_DEBUG, 0x04FFF000u, 4 * KIB, "mGBA debug"},
+    {GBA_REGION_PALETTE_RAM, 0x05000000u, 1 * KIB, "palette RAM"},
+    {GBA_REGION_VRAM, 0x06000000u, 96 * KIB, "VRAM"},
+    {GBA_REGION_OAM, 0x07000000u, 1 * KIB, "OAM"},
+    {GBA_REGION_SRAM, 0x0E000000u, 128 * KIB, "SRAM"},
 };
 #define EXPECTED_REGION_COUNT (sizeof expected_regions / sizeof expected_regions[0])
 _Static_assert(EXPECTED_REGION_COUNT == GBA_REGION_COUNT - 1, "a region has no expected entry");
@@ -187,50 +187,170 @@ static void check_info(enum gba_region id)
     PT_ASSERT_EQ_STR(info->name, region->name);
 }
 
-PTEST(ewram_is_writable_at_both_ends) { check_writable_at_both_ends(GBA_REGION_EWRAM); }
-PTEST(iwram_is_writable_at_both_ends) { check_writable_at_both_ends(GBA_REGION_IWRAM); }
-PTEST(io_is_writable_at_both_ends) { check_writable_at_both_ends(GBA_REGION_IO); }
-PTEST(mgba_debug_is_writable_at_both_ends) { check_writable_at_both_ends(GBA_REGION_MGBA_DEBUG); }
-PTEST(palette_ram_is_writable_at_both_ends) { check_writable_at_both_ends(GBA_REGION_PALETTE_RAM); }
-PTEST(vram_is_writable_at_both_ends) { check_writable_at_both_ends(GBA_REGION_VRAM); }
-PTEST(oam_is_writable_at_both_ends) { check_writable_at_both_ends(GBA_REGION_OAM); }
-PTEST(sram_is_writable_at_both_ends) { check_writable_at_both_ends(GBA_REGION_SRAM); }
+PTEST(ewram_is_writable_at_both_ends)
+{
+    check_writable_at_both_ends(GBA_REGION_EWRAM);
+}
+PTEST(iwram_is_writable_at_both_ends)
+{
+    check_writable_at_both_ends(GBA_REGION_IWRAM);
+}
+PTEST(io_is_writable_at_both_ends)
+{
+    check_writable_at_both_ends(GBA_REGION_IO);
+}
+PTEST(mgba_debug_is_writable_at_both_ends)
+{
+    check_writable_at_both_ends(GBA_REGION_MGBA_DEBUG);
+}
+PTEST(palette_ram_is_writable_at_both_ends)
+{
+    check_writable_at_both_ends(GBA_REGION_PALETTE_RAM);
+}
+PTEST(vram_is_writable_at_both_ends)
+{
+    check_writable_at_both_ends(GBA_REGION_VRAM);
+}
+PTEST(oam_is_writable_at_both_ends)
+{
+    check_writable_at_both_ends(GBA_REGION_OAM);
+}
+PTEST(sram_is_writable_at_both_ends)
+{
+    check_writable_at_both_ends(GBA_REGION_SRAM);
+}
 
-PTEST(ewram_is_zero_filled) { check_zero_filled(GBA_REGION_EWRAM); }
-PTEST(iwram_is_zero_filled) { check_zero_filled(GBA_REGION_IWRAM); }
-PTEST(io_is_zero_filled) { check_zero_filled(GBA_REGION_IO); }
-PTEST(mgba_debug_is_zero_filled) { check_zero_filled(GBA_REGION_MGBA_DEBUG); }
-PTEST(palette_ram_is_zero_filled) { check_zero_filled(GBA_REGION_PALETTE_RAM); }
-PTEST(vram_is_zero_filled) { check_zero_filled(GBA_REGION_VRAM); }
-PTEST(oam_is_zero_filled) { check_zero_filled(GBA_REGION_OAM); }
-PTEST(sram_is_zero_filled) { check_zero_filled(GBA_REGION_SRAM); }
+PTEST(ewram_is_zero_filled)
+{
+    check_zero_filled(GBA_REGION_EWRAM);
+}
+PTEST(iwram_is_zero_filled)
+{
+    check_zero_filled(GBA_REGION_IWRAM);
+}
+PTEST(io_is_zero_filled)
+{
+    check_zero_filled(GBA_REGION_IO);
+}
+PTEST(mgba_debug_is_zero_filled)
+{
+    check_zero_filled(GBA_REGION_MGBA_DEBUG);
+}
+PTEST(palette_ram_is_zero_filled)
+{
+    check_zero_filled(GBA_REGION_PALETTE_RAM);
+}
+PTEST(vram_is_zero_filled)
+{
+    check_zero_filled(GBA_REGION_VRAM);
+}
+PTEST(oam_is_zero_filled)
+{
+    check_zero_filled(GBA_REGION_OAM);
+}
+PTEST(sram_is_zero_filled)
+{
+    check_zero_filled(GBA_REGION_SRAM);
+}
 
-PTEST(ewram_contains_bounds) { check_contains_bounds(GBA_REGION_EWRAM); }
-PTEST(iwram_contains_bounds) { check_contains_bounds(GBA_REGION_IWRAM); }
-PTEST(io_contains_bounds) { check_contains_bounds(GBA_REGION_IO); }
-PTEST(mgba_debug_contains_bounds) { check_contains_bounds(GBA_REGION_MGBA_DEBUG); }
-PTEST(palette_ram_contains_bounds) { check_contains_bounds(GBA_REGION_PALETTE_RAM); }
-PTEST(vram_contains_bounds) { check_contains_bounds(GBA_REGION_VRAM); }
-PTEST(oam_contains_bounds) { check_contains_bounds(GBA_REGION_OAM); }
-PTEST(sram_contains_bounds) { check_contains_bounds(GBA_REGION_SRAM); }
+PTEST(ewram_contains_bounds)
+{
+    check_contains_bounds(GBA_REGION_EWRAM);
+}
+PTEST(iwram_contains_bounds)
+{
+    check_contains_bounds(GBA_REGION_IWRAM);
+}
+PTEST(io_contains_bounds)
+{
+    check_contains_bounds(GBA_REGION_IO);
+}
+PTEST(mgba_debug_contains_bounds)
+{
+    check_contains_bounds(GBA_REGION_MGBA_DEBUG);
+}
+PTEST(palette_ram_contains_bounds)
+{
+    check_contains_bounds(GBA_REGION_PALETTE_RAM);
+}
+PTEST(vram_contains_bounds)
+{
+    check_contains_bounds(GBA_REGION_VRAM);
+}
+PTEST(oam_contains_bounds)
+{
+    check_contains_bounds(GBA_REGION_OAM);
+}
+PTEST(sram_contains_bounds)
+{
+    check_contains_bounds(GBA_REGION_SRAM);
+}
 
-PTEST(ewram_region_of) { check_region_of(GBA_REGION_EWRAM); }
-PTEST(iwram_region_of) { check_region_of(GBA_REGION_IWRAM); }
-PTEST(io_region_of) { check_region_of(GBA_REGION_IO); }
-PTEST(mgba_debug_region_of) { check_region_of(GBA_REGION_MGBA_DEBUG); }
-PTEST(palette_ram_region_of) { check_region_of(GBA_REGION_PALETTE_RAM); }
-PTEST(vram_region_of) { check_region_of(GBA_REGION_VRAM); }
-PTEST(oam_region_of) { check_region_of(GBA_REGION_OAM); }
-PTEST(sram_region_of) { check_region_of(GBA_REGION_SRAM); }
+PTEST(ewram_region_of)
+{
+    check_region_of(GBA_REGION_EWRAM);
+}
+PTEST(iwram_region_of)
+{
+    check_region_of(GBA_REGION_IWRAM);
+}
+PTEST(io_region_of)
+{
+    check_region_of(GBA_REGION_IO);
+}
+PTEST(mgba_debug_region_of)
+{
+    check_region_of(GBA_REGION_MGBA_DEBUG);
+}
+PTEST(palette_ram_region_of)
+{
+    check_region_of(GBA_REGION_PALETTE_RAM);
+}
+PTEST(vram_region_of)
+{
+    check_region_of(GBA_REGION_VRAM);
+}
+PTEST(oam_region_of)
+{
+    check_region_of(GBA_REGION_OAM);
+}
+PTEST(sram_region_of)
+{
+    check_region_of(GBA_REGION_SRAM);
+}
 
-PTEST(ewram_info) { check_info(GBA_REGION_EWRAM); }
-PTEST(iwram_info) { check_info(GBA_REGION_IWRAM); }
-PTEST(io_info) { check_info(GBA_REGION_IO); }
-PTEST(mgba_debug_info) { check_info(GBA_REGION_MGBA_DEBUG); }
-PTEST(palette_ram_info) { check_info(GBA_REGION_PALETTE_RAM); }
-PTEST(vram_info) { check_info(GBA_REGION_VRAM); }
-PTEST(oam_info) { check_info(GBA_REGION_OAM); }
-PTEST(sram_info) { check_info(GBA_REGION_SRAM); }
+PTEST(ewram_info)
+{
+    check_info(GBA_REGION_EWRAM);
+}
+PTEST(iwram_info)
+{
+    check_info(GBA_REGION_IWRAM);
+}
+PTEST(io_info)
+{
+    check_info(GBA_REGION_IO);
+}
+PTEST(mgba_debug_info)
+{
+    check_info(GBA_REGION_MGBA_DEBUG);
+}
+PTEST(palette_ram_info)
+{
+    check_info(GBA_REGION_PALETTE_RAM);
+}
+PTEST(vram_info)
+{
+    check_info(GBA_REGION_VRAM);
+}
+PTEST(oam_info)
+{
+    check_info(GBA_REGION_OAM);
+}
+PTEST(sram_info)
+{
+    check_info(GBA_REGION_SRAM);
+}
 
 /* ---- init and shutdown ---- */
 
@@ -356,8 +476,7 @@ PTEST(last_io_register_is_in_io)
 
 PTEST(mgba_debug_registers_are_in_the_debug_page_not_io)
 {
-    PT_ASSERT_EQ_INT(gba_memmap_region_of(MGBA_REG_DEBUG_STRING, MGBA_REG_DEBUG_STRING_SIZE),
-                     GBA_REGION_MGBA_DEBUG);
+    PT_ASSERT_EQ_INT(gba_memmap_region_of(MGBA_REG_DEBUG_STRING, MGBA_REG_DEBUG_STRING_SIZE), GBA_REGION_MGBA_DEBUG);
     PT_ASSERT_EQ_INT(gba_memmap_region_of(MGBA_REG_DEBUG_FLAGS, 2), GBA_REGION_MGBA_DEBUG);
     PT_ASSERT_EQ_INT(gba_memmap_region_of(MGBA_REG_DEBUG_ENABLE, 2), GBA_REGION_MGBA_DEBUG);
     PT_ASSERT(!gba_memmap_contains(MGBA_REG_DEBUG_ENABLE, 2, GBA_REGION_IO));
@@ -386,8 +505,8 @@ PTEST(fixed_iwram_addresses_are_in_iwram)
     PT_ASSERT_EQ_INT(gba_memmap_region_of(SOUND_INFO_PTR_ADDRESS, 4), GBA_REGION_IWRAM);
     PT_ASSERT_EQ_INT(gba_memmap_region_of(INTR_CHECK_ADDRESS, 2), GBA_REGION_IWRAM);
     PT_ASSERT_EQ_INT(gba_memmap_region_of(INTR_VECTOR_ADDRESS, 4), GBA_REGION_IWRAM);
-    PT_ASSERT_EQ_INT(gba_memmap_region_of(TEST_RUNNER_PERSISTENT_ADDRESS,
-                                          TEST_RUNNER_PERSISTENT_SIZE), GBA_REGION_IWRAM);
+    PT_ASSERT_EQ_INT(gba_memmap_region_of(TEST_RUNNER_PERSISTENT_ADDRESS, TEST_RUNNER_PERSISTENT_SIZE),
+                     GBA_REGION_IWRAM);
 }
 
 /* EWRAM_DATA is section ".sbss" (include/gba/defines.h); gba_regions.ld puts

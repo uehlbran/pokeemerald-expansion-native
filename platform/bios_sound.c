@@ -42,13 +42,13 @@
 #define WAVE_FREQ_SIZE 4u
 
 #define HALFTONES_PER_OCTAVE 12u
-#define HIGHEST_KEY 178u        /* the factor of key 179 is the last below 2^32 */
+#define HIGHEST_KEY 178u /* the factor of key 179 is the last below 2^32 */
 #define HIGHEST_FINE 255u
 /* Key 168 is the top octave's first key: 168 / 12 = 14 octaves above key 0,
  * whose factor is 2^31 >> 14. */
 #define TOP_OCTAVE 14u
-#define FINE_STEPS_SHIFT 8u     /* fp is in 1/256 halftones */
-#define FACTOR_SHIFT 32u        /* the factor is a 0.32 fraction of 2 */
+#define FINE_STEPS_SHIFT 8u /* fp is in 1/256 halftones */
+#define FACTOR_SHIFT 32u    /* the factor is a 0.32 fraction of 2 */
 
 /* round(2^31 * 2^(n/12)), n = 0..11. */
 static const uint32_t halftone_factor[HALFTONES_PER_OCTAVE] = {

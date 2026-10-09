@@ -78,8 +78,7 @@ static struct {
 
 static uint32_t io_word(uint32_t offset)
 {
-    return (uint32_t)ppu_io_halfword(offset)
-           | (uint32_t)ppu_io_halfword(offset + REG_HIGH_HALF) << HALFWORD_BITS;
+    return (uint32_t)ppu_io_halfword(offset) | (uint32_t)ppu_io_halfword(offset + REG_HIGH_HALF) << HALFWORD_BITS;
 }
 
 static void read_regs(struct ppu_regs *regs)
@@ -143,8 +142,7 @@ static void draw_bg(const struct ppu_regs *regs, enum bg_mode mode, unsigned bg,
 
 /* Draws the enabled BGs and lists them front to back: by priority, then by
  * BG number (the insertion keeps equal priorities in BG order). */
-static void draw_bgs(const struct ppu_regs *regs, enum bg_mode mode, uint16_t line,
-                     struct line_layers *layers)
+static void draw_bgs(const struct ppu_regs *regs, enum bg_mode mode, uint16_t line, struct line_layers *layers)
 {
     layers->bg_count = 0;
     for (unsigned bg = 0; bg < PPU_BG_COUNT; bg++) {
@@ -175,16 +173,15 @@ struct dot_stack {
 static void stack_push(struct dot_stack *stack, uint16_t colour, enum ppu_layer layer)
 {
     if (stack->count < DOT_TARGETS)
-        stack->pixel[stack->count++] = (struct ppu_target){ colour, layer };
+        stack->pixel[stack->count++] = (struct ppu_target){colour, layer};
 }
 
-static struct ppu_pixel_targets dot_targets(const struct line_layers *layers, unsigned x,
-                                            uint16_t backdrop)
+static struct ppu_pixel_targets dot_targets(const struct line_layers *layers, unsigned x, uint16_t backdrop)
 {
     const uint8_t window = layers->window[x];
     const struct ppu_obj_line *obj = &layers->obj;
     bool obj_pending = (window & (1u << PPU_LAYER_OBJ)) && obj->colour[x] != PPU_TRANSPARENT;
-    struct dot_stack stack = { .count = 0 };
+    struct dot_stack stack = {.count = 0};
     for (unsigned i = 0; i < layers->bg_count && stack.count < DOT_TARGETS; i++) {
         const unsigned bg = layers->order[i];
         if (obj_pending && obj->priority[x] <= layers->bg_priority[bg]) {

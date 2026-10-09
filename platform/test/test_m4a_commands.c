@@ -93,8 +93,7 @@ PTEST(ply_patt_calls_a_pattern_and_ply_pend_returns)
 PTEST(ply_patt_nests_three_deep_and_a_fourth_ends_the_track)
 {
     PT_ASSERT(SetUpCommand());
-    for (int level = 0; level < 3; level++)
-    {
+    for (int level = 0; level < 3; level++) {
         PT_ASSERT(M4aTestPutPointer(sSong + 8 * level, sSong + 8 * (level + 1)));
         ply_patt(&sPlayer, &sTracks[0]);
         PT_ASSERT_EQ_U32(sTracks[0].patternLevel, (uint32_t)(level + 1));

@@ -39,18 +39,18 @@
 
 /* GBATEK "GBA Keypad Input": KEYINPUT bits 0-9. The values are active high
  * here ("pressed"), the inverse of the register. */
-#define INPUT_KEY_A      UINT16_C(0x0001)
-#define INPUT_KEY_B      UINT16_C(0x0002)
+#define INPUT_KEY_A UINT16_C(0x0001)
+#define INPUT_KEY_B UINT16_C(0x0002)
 #define INPUT_KEY_SELECT UINT16_C(0x0004)
-#define INPUT_KEY_START  UINT16_C(0x0008)
-#define INPUT_KEY_RIGHT  UINT16_C(0x0010)
-#define INPUT_KEY_LEFT   UINT16_C(0x0020)
-#define INPUT_KEY_UP     UINT16_C(0x0040)
-#define INPUT_KEY_DOWN   UINT16_C(0x0080)
-#define INPUT_KEY_R      UINT16_C(0x0100)
-#define INPUT_KEY_L      UINT16_C(0x0200)
+#define INPUT_KEY_START UINT16_C(0x0008)
+#define INPUT_KEY_RIGHT UINT16_C(0x0010)
+#define INPUT_KEY_LEFT UINT16_C(0x0020)
+#define INPUT_KEY_UP UINT16_C(0x0040)
+#define INPUT_KEY_DOWN UINT16_C(0x0080)
+#define INPUT_KEY_R UINT16_C(0x0100)
+#define INPUT_KEY_L UINT16_C(0x0200)
 /* The ten key bits; bits 10-15 of KEYINPUT are unused. */
-#define INPUT_KEYS_MASK  UINT16_C(0x03FF)
+#define INPUT_KEYS_MASK UINT16_C(0x03FF)
 
 /* The left stick counts as a direction when its axis (SDL: -32768..32767, +y
  * down) is beyond this magnitude, about half travel. */
@@ -122,7 +122,6 @@ const struct input_key_binding *input_keyboard_bindings(size_t *count);
  * scancode past numkeys reads as not pressed. */
 uint16_t input_keyboard_to_keys(const uint8_t *state, int numkeys);
 uint16_t input_pad_to_keys(const struct input_pad_state *pad);
-
 
 
 #endif /* INPUT_H */

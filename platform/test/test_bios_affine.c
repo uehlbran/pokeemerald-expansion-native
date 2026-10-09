@@ -39,7 +39,7 @@ static void teardown(void)
 
 static struct BgAffineDstData bg(s32 texX, s32 texY, s16 scrX, s16 scrY, s16 sx, s16 sy, u16 alpha)
 {
-    struct BgAffineSrcData src = { texX, texY, scrX, scrY, sx, sy, alpha };
+    struct BgAffineSrcData src = {texX, texY, scrX, scrY, sx, sy, alpha};
     struct BgAffineDstData dst;
     memset(&dst, 0x5A, sizeof dst);
     BgAffineSet(&src, &dst, 1);
@@ -50,8 +50,8 @@ static struct BgAffineDstData bg(s32 texX, s32 texY, s16 scrX, s16 scrY, s16 sx,
  * ObjAffineSet. */
 static void table_entry(unsigned k, int32_t *sine, int32_t *cosine)
 {
-    struct ObjAffineSrcData src = { TABLE_SCALE, TABLE_SCALE, (u16)(k << 8) };
-    s16 m[4] = { 0 };
+    struct ObjAffineSrcData src = {TABLE_SCALE, TABLE_SCALE, (u16)(k << 8)};
+    s16 m[4] = {0};
     ObjAffineSet(&src, m, 1, 2);
     *cosine = m[0];
     *sine = m[2];
@@ -92,7 +92,7 @@ PTEST(bg_rotation_90)
     PT_ASSERT_EQ_INT(d.pb, -0x100);
     PT_ASSERT_EQ_INT(d.pc, 0x100);
     PT_ASSERT_EQ_INT(d.pd, 0);
-    PT_ASSERT_EQ_INT(d.dx, 0x8000 + 0x100 * 80); /* texX - (pb * scrY) = 53248 */
+    PT_ASSERT_EQ_INT(d.dx, 0x8000 + 0x100 * 80);  /* texX - (pb * scrY) = 53248 */
     PT_ASSERT_EQ_INT(d.dy, 0x8000 - 0x100 * 120); /* texY - (pc * scrX) = 2048 */
     teardown();
 }
@@ -164,8 +164,8 @@ PTEST(bg_count_two_and_zero)
 {
     setup();
     struct BgAffineSrcData src[2] = {
-        { 0x8000, 0x8000, 120, 80, ONE_8_8, ONE_8_8, 0 },
-        { 0, 0, 0, 0, 0x200, 0x300, ANGLE_90 },
+        {0x8000, 0x8000, 120, 80, ONE_8_8, ONE_8_8, 0},
+        {0, 0, 0, 0, 0x200, 0x300, ANGLE_90},
     };
     struct BgAffineDstData dst[3];
     memset(dst, 0x5A, sizeof dst);
@@ -186,8 +186,8 @@ PTEST(bg_count_two_and_zero)
 PTEST(bg_destination_must_be_writable)
 {
     setup();
-    static const struct BgAffineDstData rodata = { 1, 2, 3, 4, 5, 6 };
-    struct BgAffineSrcData src = { 0, 0, 0, 0, ONE_8_8, ONE_8_8, 0 };
+    static const struct BgAffineDstData rodata = {1, 2, 3, 4, 5, 6};
+    struct BgAffineSrcData src = {0, 0, 0, 0, ONE_8_8, ONE_8_8, 0};
     /* The game can name any address; here, read-only data. */
     BgAffineSet(&src, (struct BgAffineDstData *)(uintptr_t)&rodata, 1);
     PT_ASSERT_EQ_INT(rodata.pa, 1);
@@ -197,7 +197,7 @@ PTEST(bg_destination_must_be_writable)
 PTEST(obj_contiguous_offset_2)
 {
     setup();
-    struct ObjAffineSrcData src = { 0x100, 0x200, ANGLE_90 };
+    struct ObjAffineSrcData src = {0x100, 0x200, ANGLE_90};
     s16 m[6];
     memset(m, 0x5A, sizeof m);
     ObjAffineSet(&src, m, 1, 2);
@@ -215,7 +215,7 @@ PTEST(obj_oam_stride_offset_8_count_2)
 {
     setup();
     /* Two source entries 8 bytes apart (the BIOS's word-aligned stride). */
-    u16 src[8] = { 0x100, 0x100, 0, 0, 0x200, 0x300, ANGLE_180, 0 };
+    u16 src[8] = {0x100, 0x100, 0, 0, 0x200, 0x300, ANGLE_180, 0};
     s16 oam[36];
     memset(oam, 0x5A, sizeof oam);
     ObjAffineSet((struct ObjAffineSrcData *)(void *)src, oam, 2, 8);
@@ -235,8 +235,8 @@ PTEST(obj_oam_stride_offset_8_count_2)
 PTEST(obj_offset_zero_overwrites_one_halfword)
 {
     setup();
-    struct ObjAffineSrcData src = { 0x100, 0x200, 0 };
-    s16 m[2] = { 0x5A5A, 0x5A5A };
+    struct ObjAffineSrcData src = {0x100, 0x200, 0};
+    s16 m[2] = {0x5A5A, 0x5A5A};
     ObjAffineSet(&src, m, 1, 0);
     PT_ASSERT_EQ_INT(m[0], 0x200); /* pd, written last */
     PT_ASSERT_EQ_INT(m[1], 0x5A5A);
@@ -246,7 +246,7 @@ PTEST(obj_offset_zero_overwrites_one_halfword)
 PTEST(obj_negative_offset_and_count_do_nothing)
 {
     setup();
-    struct ObjAffineSrcData src = { 0x100, 0x100, 0 };
+    struct ObjAffineSrcData src = {0x100, 0x100, 0};
     s16 m[8];
     memset(m, 0x5A, sizeof m);
     ObjAffineSet(&src, &m[4], 1, -2);
@@ -261,7 +261,7 @@ PTEST(obj_negative_offset_and_count_do_nothing)
 PTEST(obj_unaligned_destination)
 {
     setup();
-    struct ObjAffineSrcData src = { 0x100, 0x100, 0 };
+    struct ObjAffineSrcData src = {0x100, 0x100, 0};
     u8 bytes[10];
     memset(bytes, 0x5A, sizeof bytes);
     ObjAffineSet(&src, bytes + 1, 1, 2);
@@ -281,15 +281,12 @@ PTEST(sine_table_known_entries)
         unsigned k;
         int32_t sine;
     } known[] = {
-        { 0, 0 },
-        { 1, 0x0192 },  /* 402.08 */
-        { 8, 0x0C7C },  /* sin(pi/16)  = 0.195090: 3196.36 */
-        { 16, 0x187E }, /* sin(pi/8)   = 0.382683: 6269.89 */
-        { 32, 0x2D41 }, /* sin(pi/4)   = 0.707107: 11585.24 */
-        { 48, 0x3B21 }, /* sin(3pi/8)  = 0.923880: 15136.84 */
-        { 64, 0x4000 },
-        { 128, 0 },
-        { 192, -0x4000 },
+        {0, 0},       {1, 0x0192}, /* 402.08 */
+        {8, 0x0C7C},               /* sin(pi/16)  = 0.195090: 3196.36 */
+        {16, 0x187E},              /* sin(pi/8)   = 0.382683: 6269.89 */
+        {32, 0x2D41},              /* sin(pi/4)   = 0.707107: 11585.24 */
+        {48, 0x3B21},              /* sin(3pi/8)  = 0.923880: 15136.84 */
+        {64, 0x4000}, {128, 0},    {192, -0x4000},
     };
     for (size_t i = 0; i < sizeof known / sizeof known[0]; i++) {
         int32_t s, c;

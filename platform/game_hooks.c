@@ -154,7 +154,7 @@ void PlatformJumpToAgbMainLoop(void)
 {
     if (!hooks.agb_main_loop_captured) {
         fprintf(stderr, "game_hooks: JumpToAgbMainLoop with no AgbMainLoop target "
-                "(src/main.c captures it only when TESTING)\n");
+                        "(src/main.c captures it only when TESTING)\n");
         PlatformTestRunnerExit(GAME_HOOKS_EXIT_INTERNAL_ERROR);
         return;
     }

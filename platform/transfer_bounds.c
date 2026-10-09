@@ -64,8 +64,8 @@
 #define TRANSFER_FIRST_PAGE_SIZE ((uintptr_t)0x1000)
 #define TRANSFER_ERR_STACK (-1)
 
-extern char __executable_start[], __data_start[], _end[]; /* GNU ld / glibc crt1 */
-extern char game_data_start[], game_data_end[];             /* gba_game.ld */
+extern char __executable_start[], __data_start[], _end[];           /* GNU ld / glibc crt1 */
+extern char game_data_start[], game_data_end[];                     /* gba_game.ld */
 extern char platform_call_stack_start[], platform_call_stack_end[]; /* gba_regions.ld */
 
 struct transfer_range {
@@ -103,7 +103,7 @@ static bool in_fake_stack(uintptr_t address, size_t length)
     void *begin = NULL;
     void *end = NULL;
     if (fake != NULL && __asan_addr_is_in_fake_stack(fake, (void *)address, &begin, &end) != NULL) {
-        struct transfer_range frame = { address_of(begin), address_of(end) };
+        struct transfer_range frame = {address_of(begin), address_of(end)};
         return range_holds(&frame, address, length);
     }
 #else
