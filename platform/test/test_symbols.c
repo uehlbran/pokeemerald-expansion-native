@@ -81,14 +81,14 @@ static bool damaged_copy(char *path, size_t path_size, size_t keep, void (*patch
         return false;
     unsigned char *bytes = malloc(keep);
     size_t got = bytes != NULL ? fread(bytes, 1, keep, source) : 0;
-    fclose(source);
+    (void)fclose(source);
     if (bytes == NULL || got != keep) {
         free(bytes);
         return false;
     }
     if (patch != NULL)
         patch(bytes, keep);
-    snprintf(path, path_size, "/tmp/test_symbols_XXXXXX");
+    (void)snprintf(path, path_size, "/tmp/test_symbols_XXXXXX");
     int fd = mkstemp(path);
     bool ok = fd >= 0 && write(fd, bytes, keep) == (ssize_t)keep;
     if (fd >= 0)

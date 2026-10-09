@@ -6,6 +6,11 @@
 #   make -C platform lib           build build/<bits>/libplatform.a
 #   make -C platform lib NOSAN=1   the same without sanitizers, in
 #                                  build/<bits>-nosan/ (Makefile.native SANITIZE=0)
+#   make -C platform format        apply clang-format (../.clang-format) to every file below
+#   make -C platform format-check  fail, naming the files, if any would change
+#   make -C platform lint          clang-tidy (../.clang-tidy) and cppcheck over every .c file;
+#                                  any finding fails
+#   make -C platform gate          the platform gate: format-check, lint and test for both widths
 #   make -C platform clean         remove build/
 #
 # Layout: every platform/*.c is a module and goes into libplatform.a, so a new
@@ -116,7 +121,7 @@ TEST_NAMES  := $(TEST_SRCS:test/%.c=%)
 TEST_BINS   := $(TEST_NAMES:%=$(BUILD_DIR)/%)
 LIB         := $(BUILD_DIR)/libplatform.a
 
-.PHONY: all lib test clean
+.PHONY: all lib test clean format format-check lint lint-tidy lint-cppcheck gate
 all: lib test
 
 lib: $(LIB)
@@ -173,5 +178,69 @@ test: $(TEST_BINS)
 
 clean:
 	rm -rf build
+
+# ---- style and static analysis (docs/C-RULES.md) ----------------------------
+
+# Every C file the platform layer owns: modules, the m4a engine and its
+# difftest, tests and their headers. The build's own output is not ours.
+FORMAT_FILES := $(shell find . -path ./build -prune -o \( -name '*.c' -o -name '*.h' \) -print | sort)
+LINT_SRCS    := $(wildcard *.c) $(wildcard m4a/*.c) $(wildcard test/*.c)
+
+format:
+	@clang-format -i $(FORMAT_FILES)
+	@echo "format: $(words $(FORMAT_FILES)) files"
+
+# --dry-run -Werror reports every violation and exits non-zero; the file list
+# comes first so a failure says which files to `make format`.
+format-check:
+	@bad=$$(for f in $(FORMAT_FILES); do clang-format --dry-run -Werror $$f >/dev/null 2>&1 || echo $$f; done); \
+	if [ -n "$$bad" ]; then echo "format-check: these files need 'make -C platform format':"; \
+		echo "$$bad"; exit 1; fi; \
+	echo "format-check: $(words $(FORMAT_FILES)) files clean"
+
+# clang-tidy reads a compilation database with the build's flags (without the
+# sanitizers and -Werror, which say nothing about the source): -m$(BITS), the
+# same -I and -idirafter as the build, and the game's defines for the files
+# that include expansion's headers as the game does. Expansion's headers are
+# not ours: ../.clang-tidy's HeaderFilterRegex keeps findings to platform/.
+LINT_DIR := $(BUILD_DIR)/lint
+LINT_GAME_FILES := inspect.c inspect_menu.c inspect_args.c test/test_inspect_args.c
+lint_flags = -m$(BITS) -std=gnu17 $(INCLUDES) $(SDL_CFLAGS) $(if $(filter $(1),$(LINT_GAME_FILES)),$(GAME_DEFINES) -DTESTING=0 -DEMERALD $(GAME_CHAR_FLAGS))
+LINT_JOBS ?= $(shell nproc)
+
+$(LINT_DIR)/compile_commands.json: Makefile game_flags.mk $(LINT_SRCS)
+	@mkdir -p $(@D)
+	@{ echo '['; \
+	first=1; \
+	$(foreach f,$(LINT_SRCS),[ $$first = 1 ] || echo ','; first=0; \
+		printf '{"directory": "%s", "file": "%s", "command": "cc %s -c %s"}' "$(CURDIR)" "$(f)" "$(call lint_flags,$(f))" "$(f)"; ) \
+	echo; echo ']'; } > $@
+
+# One clang-tidy process per file, LINT_JOBS at a time, each with its own log
+# (parallel output would interleave); findings in headers repeat in every file
+# that includes them, so the combined report is sorted and de-duplicated.
+lint-tidy: $(LINT_DIR)/compile_commands.json
+	@echo "clang-tidy: $(words $(LINT_SRCS)) files"
+	@rm -rf $(LINT_DIR)/logs && mkdir -p $(LINT_DIR)/logs
+	@printf '%s\n' $(LINT_SRCS) | xargs -P $(LINT_JOBS) -I{} sh -c \
+		'clang-tidy -quiet -p $(LINT_DIR) {} > $(LINT_DIR)/logs/$$(echo {} | tr / _).log 2>&1; true'
+	@cat $(LINT_DIR)/logs/*.log | grep -E '^[^ ]+:[0-9]+:[0-9]+: (warning|error): ' | sort -u > $(LINT_DIR)/clang-tidy.log; \
+	if [ -s $(LINT_DIR)/clang-tidy.log ]; then cat $(LINT_DIR)/clang-tidy.log; \
+		echo "clang-tidy: $$(wc -l < $(LINT_DIR)/clang-tidy.log) findings (full text in $(LINT_DIR)/logs)"; exit 1; fi; \
+	echo "clang-tidy: clean"
+
+lint-cppcheck:
+	cppcheck --std=c11 --enable=warning,style,performance,portability --inline-suppr -I . -I .. \
+		--suppress='*:../include/*' --suppress=missingIncludeSystem --error-exitcode=1 -q -j $(LINT_JOBS) $(LINT_SRCS)
+
+lint: lint-tidy lint-cppcheck
+
+# The platform gate: style, analysis, then the sanitized unit tests at both widths.
+gate:
+	$(MAKE) format-check
+	$(MAKE) lint BITS=32
+	$(MAKE) lint BITS=64
+	$(MAKE) test BITS=32
+	$(MAKE) test BITS=64
 
 -include $(wildcard $(OBJ_DIR)/*.d $(OBJ_DIR)/test/*.d $(OBJ_DIR)/m4a/*.d)

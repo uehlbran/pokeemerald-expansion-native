@@ -361,10 +361,10 @@ PTEST(debug_hooks_reach_the_debug_channel)
     string[2] = '\0';
     PlatformDebugSend((uint16_t)(DEBUG_CHANNEL_FLAGS_SEND | 3u)); /* MGBA_LOG_INFO */
     char captured[32] = {0};
-    rewind(out);
+    PT_ASSERT_EQ_INT(fseek(out, 0, SEEK_SET), 0);
     size_t length = fread(captured, 1, sizeof captured - 1, out);
     debug_channel_shutdown();
-    fclose(out);
+    (void)fclose(out);
     PT_ASSERT(!closed);
     PT_ASSERT(opened);
     PT_ASSERT_EQ_INT((intmax_t)length, 14);
@@ -578,11 +578,12 @@ PTEST(rom_pointers_exclude_writable_data_stacks_heap_regions_and_indexes)
 {
     uint32_t local = writable_word;
     void *heap = malloc(16);
-    PT_ASSERT(heap != NULL);
+    const uintptr_t heap_address = address_of(heap);
+    free(heap);
+    PT_ASSERT(heap_address != 0);
     PT_ASSERT(!PlatformIsRomPointer(address_of(&writable_word)));
     PT_ASSERT(!PlatformIsRomPointer(address_of(&local)));
-    PT_ASSERT(!PlatformIsRomPointer(address_of(heap)));
-    free(heap);
+    PT_ASSERT(!PlatformIsRomPointer(heap_address));
     PT_ASSERT(!PlatformIsRomPointer(0));
     PT_ASSERT(!PlatformIsRomPointer(16)); /* a speaker index (SP_NAME_COUNT) */
     PT_ASSERT(!PlatformIsRomPointer(GBA_EWRAM_BASE));

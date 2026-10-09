@@ -74,7 +74,7 @@ void BitUnPack(const void *src, void *dest, const struct BitUnPackArgs *info)
     unsigned to = args[UNPACK_DEST_WIDTH];
     uint32_t offset_word = bios_load32(args + UNPACK_OFFSET);
     if (!supported_source_width(from) || !supported_dest_width(to)) {
-        fprintf(stderr, "bios: BitUnPack: unsupported widths %u to %u bits; nothing written\n", from, to);
+        (void)fprintf(stderr, "bios: BitUnPack: unsupported widths %u to %u bits; nothing written\n", from, to);
         return;
     }
     /* length <= FFFFh, so the bit count fits easily. */

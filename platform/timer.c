@@ -95,7 +95,7 @@ void timer_shutdown(void)
 static uint32_t count_ticks(struct timer *t, uint64_t ticks)
 {
     uint64_t to_overflow = TIMER_COUNTER_RANGE - t->counter;
-    uint64_t period = TIMER_COUNTER_RANGE - t->reload;
+    uint64_t period = TIMER_COUNTER_RANGE - (uint64_t)t->reload;
 
     if (ticks < to_overflow) {
         t->counter = (uint16_t)(t->counter + ticks);

@@ -97,7 +97,7 @@ static bool DpcmBlockInWave(const struct WaveData *wav, u32 block)
 /* SoundMainRAM_Unk2's decoder: one 64-sample block into sDecodingBuffer. */
 static void DecodeDpcmBlock(const struct WaveData *wav, u32 block)
 {
-    const u8 *src = (const u8 *)(const void *)wav + offsetof(struct WaveData, data) + block * DPCM_BLOCK_BYTES;
+    const u8 *src = (const u8 *)(const void *)wav + offsetof(struct WaveData, data) + (size_t)block * DPCM_BLOCK_BYTES;
     u8 level = src[0];
 
     sDecodingBuffer[0] = level;

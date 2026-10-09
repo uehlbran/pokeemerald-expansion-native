@@ -24,8 +24,8 @@ __attribute__((constructor)) static void act_as_the_restarted_process(int argc, 
     if (file == NULL)
         _exit(2);
     for (int i = 0; i < argc; i++)
-        fprintf(file, "%s\n", argv[i]);
-    fclose(file);
+        (void)fprintf(file, "%s\n", argv[i]);
+    (void)fclose(file);
     _exit(0);
 }
 
@@ -108,7 +108,7 @@ PTEST(exec_runs_this_executable_again_with_the_arguments)
     int fd = mkstemp(path);
     PT_ASSERT(fd >= 0);
     close(fd);
-    fflush(NULL);
+    (void)fflush(NULL);
     pid_t pid = fork();
     if (pid == 0) {
         char *const argv[] = {"child-name", "--one", "two"};
@@ -124,7 +124,7 @@ PTEST(exec_runs_this_executable_again_with_the_arguments)
     FILE *file = fopen(path, "r");
     size_t length = file != NULL ? fread(content, 1, sizeof content - 1, file) : 0;
     if (file != NULL)
-        fclose(file);
+        (void)fclose(file);
     content[length] = '\0';
     unlink(path);
     PT_ASSERT(WIFEXITED(status) && WEXITSTATUS(status) == 0);

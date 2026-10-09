@@ -702,7 +702,7 @@ PTEST(the_screenshot_is_the_last_frame)
 {
     char dir[256], path[300];
     PT_ASSERT(temp_dir(dir, sizeof dir));
-    snprintf(path, sizeof path, "%s/last.ppm", dir);
+    (void)snprintf(path, sizeof path, "%s/last.ppm", dir);
     PT_ASSERT(start(2, path, NULL));
     PT_ASSERT_EQ_INT(frame_run(), FRAME_CONTINUE);
     struct stat info;
@@ -728,7 +728,7 @@ PTEST(a_flash_write_is_stored_at_the_frame_boundary)
 {
     char dir[256], path[300];
     PT_ASSERT(temp_dir(dir, sizeof dir));
-    snprintf(path, sizeof path, "%s/game.sav", dir);
+    (void)snprintf(path, sizeof path, "%s/game.sav", dir);
     PT_ASSERT(start(0, NULL, path));
     struct stat info;
     PT_ASSERT_EQ_INT(frame_run(), FRAME_CONTINUE);
@@ -746,8 +746,8 @@ PTEST(a_failed_save_store_is_retried_after_the_retry_wait_and_flush_reports_it)
 {
     char dir[256], path[300], missing[320];
     PT_ASSERT(temp_dir(dir, sizeof dir));
-    snprintf(missing, sizeof missing, "%s/later", dir);
-    snprintf(path, sizeof path, "%s/later/game.sav", dir);
+    (void)snprintf(missing, sizeof missing, "%s/later", dir);
+    (void)snprintf(path, sizeof path, "%s/later/game.sav", dir);
     PT_ASSERT(start(0, NULL, path));
     struct stat info;
     PT_ASSERT_EQ_U32(NativeFlash.eraseFlashSector(0), FLASH_STATUS_OK);
@@ -770,7 +770,7 @@ PTEST(flush_stores_a_pending_write_without_running_a_frame)
 {
     char dir[256], path[300];
     PT_ASSERT(temp_dir(dir, sizeof dir));
-    snprintf(path, sizeof path, "%s/game.sav", dir);
+    (void)snprintf(path, sizeof path, "%s/game.sav", dir);
     PT_ASSERT(start(0, NULL, path));
     struct stat info;
     PT_ASSERT_EQ_INT(frame_flush_save(), 0); /* nothing written, nothing to store */
@@ -815,7 +815,7 @@ PTEST(each_frame_queues_one_frame_of_sound)
     install_engine(FRAME_AUDIO_SAMPLES_PER_FRAME);
     PT_ASSERT_EQ_INT(frame_run(), FRAME_CONTINUE);
     PT_ASSERT_EQ_INT(frame_run(), FRAME_CONTINUE);
-    PT_ASSERT(audio_total_frames() == 2u * FRAME_AUDIO_SAMPLES_PER_FRAME);
+    PT_ASSERT(audio_total_frames() == UINT64_C(2) * FRAME_AUDIO_SAMPLES_PER_FRAME);
     PT_ASSERT(!frame_sound_rate_mismatch());
     SOUND_INFO_PTR = NULL;
     stop();
@@ -830,7 +830,7 @@ PTEST(an_engine_at_another_rate_is_left_out)
     PT_ASSERT_EQ_INT(frame_run(), FRAME_CONTINUE);
     PT_ASSERT(frame_sound_rate_mismatch());
     PT_ASSERT_EQ_INT(frame_run(), FRAME_CONTINUE); /* reported once, still left out */
-    PT_ASSERT(audio_total_frames() == 2u * FRAME_AUDIO_SAMPLES_PER_FRAME);
+    PT_ASSERT(audio_total_frames() == UINT64_C(2) * FRAME_AUDIO_SAMPLES_PER_FRAME);
     PT_ASSERT_EQ_INT(frame_exit_status(), 0);
     SOUND_INFO_PTR = NULL;
     stop();

@@ -43,7 +43,7 @@ static int fake_get_fact(void *context, const char *name, char *out, size_t size
     const struct fake *fake = context;
     for (size_t i = 0; i < FAKE_FACTS; i++) {
         if (strcmp(fake->names[i], name) == 0) {
-            snprintf(out, size, "%s", fake->values[i]);
+            (void)snprintf(out, size, "%s", fake->values[i]);
             return 0;
         }
     }
@@ -60,7 +60,7 @@ static int fake_screenshot(void *context, const char *path)
 {
     struct fake *fake = context;
     fake->screenshots++;
-    snprintf(fake->last_screenshot, sizeof fake->last_screenshot, "%s", path);
+    (void)snprintf(fake->last_screenshot, sizeof fake->last_screenshot, "%s", path);
     return fake->screenshot_result;
 }
 
@@ -445,14 +445,14 @@ static char out_dir[128];
 
 static void make_out_dir(void)
 {
-    snprintf(out_dir, sizeof out_dir, "/tmp/test_replay_XXXXXX");
+    (void)snprintf(out_dir, sizeof out_dir, "/tmp/test_replay_XXXXXX");
     PT_ASSERT(mkdtemp(out_dir) != NULL);
 }
 
 static void remove_out_dir(void)
 {
     char path[REPLAY_PATH_SIZE];
-    snprintf(path, sizeof path, "%s/d1.txt", out_dir);
+    (void)snprintf(path, sizeof path, "%s/d1.txt", out_dir);
     (void)unlink(path);
     (void)rmdir(out_dir);
 }
@@ -470,17 +470,17 @@ PTEST(dump_writes_every_fact_and_screenshot_names_the_path)
     struct replay_host host = host_for(&fake);
     PT_ASSERT_EQ_INT(replay_start(&replay, &script, &host, out_dir, 0), 0);
     enum replay_status status = run(&replay, &fake, 10);
-    snprintf(path, sizeof path, "%s/d1.txt", out_dir);
+    (void)snprintf(path, sizeof path, "%s/d1.txt", out_dir);
     FILE *file = fopen(path, "r");
     size_t length = file != NULL ? fread(content, 1, sizeof content - 1, file) : 0;
     if (file != NULL)
-        fclose(file);
+        (void)fclose(file);
     content[length] = '\0';
     remove_out_dir();
     PT_ASSERT_EQ_INT(status, REPLAY_RESTART);
     PT_ASSERT_EQ_STR(content, "alpha=one\nbeta=two\ngamma=three\n");
     PT_ASSERT_EQ_INT(fake.screenshots, 1);
-    snprintf(path, sizeof path, "%s/s1.ppm", out_dir);
+    (void)snprintf(path, sizeof path, "%s/s1.ppm", out_dir);
     PT_ASSERT_EQ_STR(fake.last_screenshot, path);
 }
 

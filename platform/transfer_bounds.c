@@ -117,7 +117,7 @@ bool transfer_bounds_ok(uintptr_t address, size_t length, enum transfer_access a
 {
     if (!state.ready) {
         if (!state.warned) {
-            fprintf(stderr, "transfer_bounds: not initialised, refusing every transfer\n");
+            (void)fprintf(stderr, "transfer_bounds: not initialised, refusing every transfer\n");
             state.warned = true;
         }
         return false;
@@ -147,22 +147,22 @@ static int record_stack(struct transfer_range *stack)
     size_t size = 0;
     int error = pthread_getattr_np(pthread_self(), &attributes);
     if (error != 0) {
-        fprintf(stderr, "transfer_bounds: pthread_getattr_np failed: %s\n", strerror(error));
+        (void)fprintf(stderr, "transfer_bounds: pthread_getattr_np failed: %s\n", strerror(error));
         return TRANSFER_ERR_STACK;
     }
     error = pthread_attr_getstack(&attributes, &low, &size);
     if (error != 0) {
-        fprintf(stderr, "transfer_bounds: pthread_attr_getstack failed: %s\n", strerror(error));
+        (void)fprintf(stderr, "transfer_bounds: pthread_attr_getstack failed: %s\n", strerror(error));
     }
     int destroy_error = pthread_attr_destroy(&attributes);
     if (destroy_error != 0) {
-        fprintf(stderr, "transfer_bounds: pthread_attr_destroy failed: %s\n", strerror(destroy_error));
+        (void)fprintf(stderr, "transfer_bounds: pthread_attr_destroy failed: %s\n", strerror(destroy_error));
     }
     if (error != 0 || destroy_error != 0) {
         return TRANSFER_ERR_STACK;
     }
     if (size == 0 || size > UINTPTR_MAX - address_of(low)) {
-        fprintf(stderr, "transfer_bounds: pthread_attr_getstack returned an unusable stack\n");
+        (void)fprintf(stderr, "transfer_bounds: pthread_attr_getstack returned an unusable stack\n");
         return TRANSFER_ERR_STACK;
     }
     stack->start = address_of(low);

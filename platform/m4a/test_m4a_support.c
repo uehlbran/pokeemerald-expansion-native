@@ -69,8 +69,8 @@ extern char gba_linked_io_start[];
 static bool GbaRegionsLinked(void)
 {
     if ((uintptr_t)gba_linked_iwram_start != TEST_IWRAM_ADDR || (uintptr_t)gba_linked_io_start != TEST_IO_PAGE_ADDR) {
-        fprintf(stderr, "test_m4a_support: GBA regions linked at %p and %p, not at their GBA addresses\n",
-                (void *)gba_linked_iwram_start, (void *)gba_linked_io_start);
+        (void)fprintf(stderr, "test_m4a_support: GBA regions linked at %p and %p, not at their GBA addresses\n",
+                      (void *)gba_linked_iwram_start, (void *)gba_linked_io_start);
         return false;
     }
     return true;
@@ -83,13 +83,14 @@ static int MapLowPage(void)
                      -1, 0);
 
     if (got == MAP_FAILED) {
-        fprintf(stderr, "test_m4a_support: mmap at 0x%08x failed: %s\n", (unsigned)TEST_LOW_PAGE_ADDR, strerror(errno));
+        (void)fprintf(stderr, "test_m4a_support: mmap at 0x%08x failed: %s\n", (unsigned)TEST_LOW_PAGE_ADDR,
+                      strerror(errno));
         return -1;
     }
     if (got != wanted) {
-        fprintf(stderr, "test_m4a_support: mmap at 0x%08x returned %p\n", (unsigned)TEST_LOW_PAGE_ADDR, got);
+        (void)fprintf(stderr, "test_m4a_support: mmap at 0x%08x returned %p\n", (unsigned)TEST_LOW_PAGE_ADDR, got);
         if (munmap(got, TEST_PAGE_SIZE) != 0)
-            fprintf(stderr, "test_m4a_support: munmap failed: %s\n", strerror(errno));
+            (void)fprintf(stderr, "test_m4a_support: munmap failed: %s\n", strerror(errno));
         return -1;
     }
     return 0;
@@ -100,8 +101,8 @@ __attribute__((destructor)) static void UnmapLowPage(void)
     if (!sLowPageMapped)
         return;
     if (munmap((void *)(uintptr_t)TEST_LOW_PAGE_ADDR, TEST_PAGE_SIZE) != 0)
-        fprintf(stderr, "test_m4a_support: munmap at 0x%08x failed: %s\n", (unsigned)TEST_LOW_PAGE_ADDR,
-                strerror(errno));
+        (void)fprintf(stderr, "test_m4a_support: munmap at 0x%08x failed: %s\n", (unsigned)TEST_LOW_PAGE_ADDR,
+                      strerror(errno));
     sLowPageMapped = 0;
 }
 
@@ -246,13 +247,13 @@ void ClearChain(void *x)
         func(x);
 }
 
-void Clear64byte(void *x)
+void Clear64byte(void *addr)
 {
     void (*func)(void *) = gMPlayJumpTable[35];
 
-    LogCall(CALL_CLEAR_64_BYTE, x, NULL, 0, 0, 0, 0);
+    LogCall(CALL_CLEAR_64_BYTE, addr, NULL, 0, 0, 0, 0);
     if (func != NULL)
-        func(x);
+        func(addr);
 }
 
 /* src/m4a.c's TrkVolPitSet and MidiKeyToFreq, logged, then as m4a.c computes them. */
@@ -287,7 +288,7 @@ struct WaveData *M4aTestMakeWave(union M4aTestWave *w, uint16_t type, uint16_t s
 void M4aTestSetWaveByte(union M4aTestWave *w, uint32_t dataIndex, uint8_t value)
 {
     if (dataIndex >= TEST_WAVE_MAX_DATA) {
-        fprintf(stderr, "test_m4a_support: wave byte %u out of range\n", (unsigned)dataIndex);
+        (void)fprintf(stderr, "test_m4a_support: wave byte %u out of range\n", (unsigned)dataIndex);
         return;
     }
     w->bytes[TEST_WAVE_HEADER_SIZE + dataIndex] = value;

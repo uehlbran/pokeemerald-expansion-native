@@ -172,7 +172,7 @@ void ObjAffineSet(struct ObjAffineSrcData *src, void *dest, int32_t count, int32
         return;
     }
     if (offset < 0) {
-        fprintf(stderr, "bios: ObjAffineSet: negative offset %" PRId32 " refused\n", offset);
+        (void)fprintf(stderr, "bios: ObjAffineSet: negative offset %" PRId32 " refused\n", offset);
         return;
     }
     size_t stride = (size_t)offset;

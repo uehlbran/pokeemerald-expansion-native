@@ -130,7 +130,7 @@ static int start_debug_channel(const struct options *o)
     if (!o->test_runner)
         return 0;
     if (setvbuf(stdout, NULL, _IOLBF, 0) != 0) {
-        fprintf(stderr, "main: setvbuf(stdout, line-buffered) failed\n");
+        (void)fprintf(stderr, "main: setvbuf(stdout, line-buffered) failed\n");
         return -1;
     }
     return debug_channel_init(stdout);
@@ -238,19 +238,20 @@ static int start_save_file(const struct options *o)
     case SAVE_FILE_NEW:
         return 0;
     case SAVE_FILE_LEGACY:
-        fprintf(stderr, "main: %s has no header (an emulator's .sav or an older build's); loading it\n", o->save_path);
+        (void)fprintf(stderr, "main: %s has no header (an emulator's .sav or an older build's); loading it\n",
+                      o->save_path);
         return 0;
     case SAVE_FILE_FOREIGN_LAYOUT:
-        fprintf(stderr,
-                "main: %s was written by a build with another save layout, which this build cannot "
-                "read yet; not starting, so it is not overwritten\n",
-                o->save_path);
+        (void)fprintf(stderr,
+                      "main: %s was written by a build with another save layout, which this build cannot "
+                      "read yet; not starting, so it is not overwritten\n",
+                      o->save_path);
         return -1;
     default:
-        fprintf(stderr,
-                "main: %s cannot be used (above); not starting, so it is not overwritten. Move it "
-                "away to start without a save\n",
-                o->save_path);
+        (void)fprintf(stderr,
+                      "main: %s cannot be used (above); not starting, so it is not overwritten. Move it "
+                      "away to start without a save\n",
+                      o->save_path);
         return -1;
     }
 }
@@ -325,7 +326,7 @@ static bool start_modules(const struct options *options)
 {
     for (size_t i = 0; i < MODULE_STEP_COUNT; i++) {
         if (module_steps[i].start(options) != 0) {
-            fprintf(stderr, "main: starting %s failed\n", module_steps[i].name);
+            (void)fprintf(stderr, "main: starting %s failed\n", module_steps[i].name);
             stop_modules(i + 1);
             return false;
         }
@@ -369,7 +370,7 @@ static int restart_after_soft_reset(void)
     if (interrupt_init(gIntrTable, INTERRUPT_TABLE_LENGTH) != INTERRUPT_OK || timer_init(interrupt_raise) != TIMER_OK
         || dma_init(interrupt_raise) != DMA_OK || ppu_init() != PPU_OK
         || psg_init(FRAME_AUDIO_SAMPLE_RATE_HZ) != PSG_OK) {
-        fprintf(stderr, "main: restarting the hardware modules after SoftReset failed\n");
+        (void)fprintf(stderr, "main: restarting the hardware modules after SoftReset failed\n");
         return -1;
     }
     return 0;
@@ -387,7 +388,7 @@ static int run_game(void)
     case MAIN_JUMP_FRAME_EXIT:
         return frame_exit_status();
     default:
-        fprintf(stderr, "main: unknown jump to the exit target\n");
+        (void)fprintf(stderr, "main: unknown jump to the exit target\n");
         return MAIN_EXIT_FAILURE;
     }
 
@@ -398,7 +399,7 @@ static int run_game(void)
     frame_power_on();
     game_hooks_forget_agb_main_loop();
     AgbMain();
-    fprintf(stderr, "main: AgbMain returned, which it never does on the GBA\n");
+    (void)fprintf(stderr, "main: AgbMain returned, which it never does on the GBA\n");
     return MAIN_EXIT_FAILURE;
 }
 
@@ -413,12 +414,12 @@ static int settle_replay(int status, bool *restart)
         *restart = true;
         return status;
     case REPLAY_FAILED:
-        fprintf(stderr, "replay: FAILED: %s\n", replay_session_message());
+        (void)fprintf(stderr, "replay: FAILED: %s\n", replay_session_message());
         return MAIN_EXIT_FAILURE;
     case REPLAY_RUNNING:
     default:
         if (status == MAIN_EXIT_OK)
-            fprintf(stderr, "replay: FAILED: the game ended before the script did\n");
+            (void)fprintf(stderr, "replay: FAILED: the game ended before the script did\n");
         return MAIN_EXIT_FAILURE;
     }
 }

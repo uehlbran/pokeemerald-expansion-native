@@ -150,7 +150,7 @@ struct rtc_calendar_time rtc_calendar_time_from_seconds(int64_t chip_seconds)
     for (t.month = 1; remaining >= rtc_calendar_days_in_month(t.year, t.month); t.month++)
         remaining -= rtc_calendar_days_in_month(t.year, t.month);
     t.day = remaining + 1;
-    t.hour = (int)(second_of_day / (RTC_MINUTES_PER_HOUR * RTC_SECONDS_PER_MINUTE));
+    t.hour = (int)(second_of_day / ((int64_t)RTC_MINUTES_PER_HOUR * RTC_SECONDS_PER_MINUTE));
     t.minute = (int)(second_of_day / RTC_SECONDS_PER_MINUTE % RTC_MINUTES_PER_HOUR);
     t.second = (int)(second_of_day % RTC_SECONDS_PER_MINUTE);
     return t;

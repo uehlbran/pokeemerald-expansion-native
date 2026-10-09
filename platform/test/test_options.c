@@ -18,7 +18,7 @@
  * text is checked directly in the last test. */
 static enum options_error parse(struct options *out, const char *const *args)
 {
-    fflush(stderr);
+    (void)fflush(stderr);
     const int saved_stderr = dup(STDERR_FILENO);
     const int null_fd = open("/dev/null", O_WRONLY);
     if (saved_stderr >= 0 && null_fd >= 0)
@@ -27,13 +27,13 @@ static enum options_error parse(struct options *out, const char *const *args)
     int argc = 1;
     for (; *args != NULL; args++) {
         if (argc > OPTIONS_TEST_MAX_ARGS) {
-            fprintf(stderr, "test_options: too many arguments for the helper\n");
+            (void)fprintf(stderr, "test_options: too many arguments for the helper\n");
             abort();
         }
         argv[argc++] = (char *)(uintptr_t)*args;
     }
     const enum options_error result = options_parse(argc, argv, out);
-    fflush(stderr);
+    (void)fflush(stderr);
     if (saved_stderr >= 0) {
         dup2(saved_stderr, STDERR_FILENO);
         close(saved_stderr);
@@ -211,7 +211,7 @@ PTEST(the_usage_text_names_every_option_and_the_defaults)
     FILE *memory = open_memstream(&text, &size);
     PT_ASSERT(memory != NULL);
     options_print_usage(memory);
-    fclose(memory);
+    (void)fclose(memory);
     static const char *const expected[] = {
         "--headless",  "--silent",     "--save",        "--rtc-offset",       "--scale",         "--unthrottled",
         "--frames",    "--screenshot", "--test-runner", "--persistent-state", "--replay",        "--out",

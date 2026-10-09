@@ -50,6 +50,20 @@ make -C platform test BITS=32
 make -C platform test BITS=64
 ```
 
+The platform gate, which a change to anything under `platform/` passes before
+it merges, runs the style check, the static analysis and those tests at both
+widths (about a minute on 32 cores):
+
+```
+make -C platform gate              # format-check, lint (BITS=32, 64), test (BITS=32, 64)
+make -C platform format            # apply clang-format (../.clang-format) to platform/
+make -C platform format-check      # fail, naming the files, if any would change
+make -C platform lint BITS=64      # clang-tidy (../.clang-tidy) and cppcheck; any finding fails
+```
+
+`lint` needs clang-tidy and cppcheck (the prerequisites above install them) and
+clang-format 18 for the style; other major versions format differently.
+
 Expansion's test suite against the native build, through expansion's own
 hydra (as `make check` runs it against mgba-rom-test; about 40 seconds on
 32 cores, about 75 with `SANITIZE=1`, which runs the sanitized build;

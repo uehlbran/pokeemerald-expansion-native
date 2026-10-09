@@ -60,13 +60,13 @@ static void new_scratch(void)
 {
     const char *base = getenv("TMPDIR");
     remove_scratch();
-    snprintf(g_dir, sizeof g_dir, "%s/ptest_rtc_XXXXXX", base != NULL ? base : "/tmp");
+    (void)snprintf(g_dir, sizeof g_dir, "%s/ptest_rtc_XXXXXX", base != NULL ? base : "/tmp");
     if (mkdtemp(g_dir) == NULL) {
         perror("test_rtc: mkdtemp");
         exit(2);
     }
-    snprintf(g_path, sizeof g_path, "%s/offset", g_dir);
-    snprintf(g_tmp_path, sizeof g_tmp_path, "%s/offset.tmp", g_dir);
+    (void)snprintf(g_path, sizeof g_path, "%s/offset", g_dir);
+    (void)snprintf(g_tmp_path, sizeof g_tmp_path, "%s/offset.tmp", g_dir);
 }
 
 static void write_file(const char *path, const char *text)
@@ -88,7 +88,7 @@ static void read_file(const char *path, char *buf, size_t size)
     }
     n = fread(buf, 1, size - 1, f);
     buf[n] = '\0';
-    fclose(f);
+    (void)fclose(f);
 }
 
 static int file_exists(const char *path)
@@ -411,7 +411,7 @@ PTEST(dst_change_does_not_move_the_chip_time)
     PT_ASSERT_EQ_INT(rtc_init(fake_source, NULL), 0);
     PT_ASSERT_EQ_INT(rtc_get_datetime(&out), 0);
     assert_dt(&out, 0x24, 0x03, 0x09, 0x06, 0x07, 0x00, 0x00);
-    g_now += 2 * 86400; /* the host zone is now EDT; the chip must not follow */
+    g_now += INT64_C(2) * 86400; /* the host zone is now EDT; the chip must not follow */
     PT_ASSERT_EQ_INT(rtc_get_datetime(&out), 0);
     assert_dt(&out, 0x24, 0x03, 0x11, 0x01, 0x07, 0x00, 0x00);
     rtc_shutdown();
@@ -508,7 +508,7 @@ PTEST(invalid_bcd_and_ranges_are_rejected_without_changing_the_offset)
     for (i = 0; i < sizeof bad / sizeof bad[0]; i++) {
         struct rtc_datetime d = bad[i];
         char label[32];
-        snprintf(label, sizeof label, "bad datetime %zu", i);
+        (void)snprintf(label, sizeof label, "bad datetime %zu", i);
         if (rtc_set_datetime(&d) != -1)
             PT_FAIL(label);
     }

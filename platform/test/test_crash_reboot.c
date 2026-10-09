@@ -132,7 +132,7 @@ static const char *self_name = "test_crash_reboot";
  * crash(signal). Returns the child's wait status, or -1. */
 static int run_crashing_child(const char *mode, int signal_number)
 {
-    fflush(stdout);
+    (void)fflush(stdout);
     pid_t pid = fork();
     if (pid < 0)
         return -1;

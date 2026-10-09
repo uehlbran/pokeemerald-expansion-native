@@ -84,7 +84,7 @@ static bool read_header(FILE *file, uint64_t file_size, elf_header *header)
         return false;
     if (header->e_type != ET_EXEC) {
         /* A PIE (ET_DYN) has load-bias-relative symbol values; not supported. */
-        fprintf(stderr, "symbols: the executable is not ET_EXEC (a PIE?); the native build links with -no-pie\n");
+        (void)fprintf(stderr, "symbols: the executable is not ET_EXEC (a PIE?); the native build links with -no-pie\n");
         return false;
     }
     return true;
@@ -165,7 +165,7 @@ int symbols_load(const char *path)
     symbols_unload();
     FILE *file = fopen(path, "rb");
     if (file == NULL) {
-        fprintf(stderr, "symbols: cannot open %s\n", path);
+        (void)fprintf(stderr, "symbols: cannot open %s\n", path);
         return -1;
     }
     elf_header header;
@@ -174,10 +174,10 @@ int symbols_load(const char *path)
     bool ok = file_length(file, &file_size) && read_header(file, file_size, &header)
               && find_symtab(file, file_size, &header, &symtab, &strtab) && load_names(file, file_size, &strtab)
               && load_symbols(file, file_size, &symtab);
-    fclose(file);
+    (void)fclose(file);
     if (!ok) {
-        fprintf(stderr, "symbols: %s is not an ELF executable of this build's width with a usable symbol table\n",
-                path);
+        (void)fprintf(stderr, "symbols: %s is not an ELF executable of this build's width with a usable symbol table\n",
+                      path);
         symbols_unload();
         return -1;
     }

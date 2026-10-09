@@ -81,7 +81,7 @@ static const struct inspect_known_callback known_callbacks[] = {
 static void name_function(uintptr_t address, char *out, size_t size)
 {
     if (address == 0) {
-        snprintf(out, size, "%s", inspect_none_text);
+        (void)snprintf(out, size, "%s", inspect_none_text);
         return;
     }
     const char *name = inspect_find_known_callback(known_callbacks, sizeof known_callbacks / sizeof known_callbacks[0],
@@ -89,14 +89,14 @@ static void name_function(uintptr_t address, char *out, size_t size)
     if (name == NULL)
         name = symbols_name_at(address);
     if (name != NULL)
-        snprintf(out, size, "%s", name);
+        (void)snprintf(out, size, "%s", name);
     else
         inspect_format_unknown_callback(address, out, size);
 }
 
 static void fact_frame(char *out, size_t size)
 {
-    snprintf(out, size, "%u", (unsigned)frame_count());
+    (void)snprintf(out, size, "%u", (unsigned)frame_count());
 }
 
 static void fact_callback2(char *out, size_t size)
@@ -109,7 +109,7 @@ static void fact_task_count(char *out, size_t size)
     unsigned count = 0;
     for (size_t i = 0; i < NUM_TASKS; i++)
         count += gTasks[i].isActive ? 1u : 0u;
-    snprintf(out, size, "%u", count);
+    (void)snprintf(out, size, "%u", count);
 }
 
 static void fact_task_first(char *out, size_t size)
@@ -120,7 +120,7 @@ static void fact_task_first(char *out, size_t size)
             return;
         }
     }
-    snprintf(out, size, "%s", inspect_none_text);
+    (void)snprintf(out, size, "%s", inspect_none_text);
 }
 
 static void fact_task_last(char *out, size_t size)
@@ -131,7 +131,7 @@ static void fact_task_last(char *out, size_t size)
             return;
         }
     }
-    snprintf(out, size, "%s", inspect_none_text);
+    (void)snprintf(out, size, "%s", inspect_none_text);
 }
 
 /* Every active task's function, by task id, comma separated; cut at the end
@@ -147,13 +147,13 @@ static void fact_tasks(char *out, size_t size)
         name_function((uintptr_t)gTasks[i].func, name, sizeof name);
         int written = snprintf(out + used, size - used, "%s%s", used > 0 ? "," : "", name);
         if (written < 0 || (size_t)written >= size - used) {
-            snprintf(out + (size > 4 ? size - 4 : 0), size > 4 ? 4 : size, "...");
+            (void)snprintf(out + (size > 4 ? size - 4 : 0), size > 4 ? 4 : size, "...");
             return;
         }
         used += (size_t)written;
     }
     if (used == 0)
-        snprintf(out, size, "%s", inspect_none_text);
+        (void)snprintf(out, size, "%s", inspect_none_text);
 }
 
 /* The save blocks do not exist before the game's boot has set them up (a script's first
@@ -177,32 +177,32 @@ static unsigned var_value(uint32_t var)
  * describes their states). */
 static void fact_intro_state(char *out, size_t size)
 {
-    snprintf(out, size, "%u", (unsigned)VarGet(VAR_LITTLEROOT_INTRO_STATE));
+    (void)snprintf(out, size, "%u", (unsigned)VarGet(VAR_LITTLEROOT_INTRO_STATE));
 }
 
 static void fact_town_state(char *out, size_t size)
 {
-    snprintf(out, size, "%u", (unsigned)VarGet(VAR_LITTLEROOT_TOWN_STATE));
+    (void)snprintf(out, size, "%u", (unsigned)VarGet(VAR_LITTLEROOT_TOWN_STATE));
 }
 
 static void fact_rival_state(char *out, size_t size)
 {
-    snprintf(out, size, "%u", (unsigned)VarGet(VAR_LITTLEROOT_RIVAL_STATE));
+    (void)snprintf(out, size, "%u", (unsigned)VarGet(VAR_LITTLEROOT_RIVAL_STATE));
 }
 
 static void fact_keys_held(char *out, size_t size)
 {
-    snprintf(out, size, "0x%04X", (unsigned)gMain.heldKeysRaw);
+    (void)snprintf(out, size, "0x%04X", (unsigned)gMain.heldKeysRaw);
 }
 
 static void fact_keys_new(char *out, size_t size)
 {
-    snprintf(out, size, "0x%04X", (unsigned)gMain.newKeysRaw);
+    (void)snprintf(out, size, "0x%04X", (unsigned)gMain.newKeysRaw);
 }
 
 static void fact_fade_active(char *out, size_t size)
 {
-    snprintf(out, size, "%u", gPaletteFade.active ? 1u : 0u);
+    (void)snprintf(out, size, "%u", gPaletteFade.active ? 1u : 0u);
 }
 
 static void fact_player_name(char *out, size_t size)
@@ -214,12 +214,12 @@ static void fact_player_name(char *out, size_t size)
 
 static void fact_player_gender(char *out, size_t size)
 {
-    snprintf(out, size, "%s", gSaveBlock2Ptr->playerGender == MALE ? "MALE" : "FEMALE");
+    (void)snprintf(out, size, "%s", gSaveBlock2Ptr->playerGender == MALE ? "MALE" : "FEMALE");
 }
 
 static void fact_map(char *out, size_t size)
 {
-    snprintf(out, size, "%d.%d", gSaveBlock1Ptr->location.mapGroup, gSaveBlock1Ptr->location.mapNum);
+    (void)snprintf(out, size, "%d.%d", gSaveBlock1Ptr->location.mapGroup, gSaveBlock1Ptr->location.mapNum);
 }
 
 /* The maps the replay passes through, by their constants (the game has no
@@ -247,16 +247,16 @@ static void fact_map_name(char *out, size_t size)
     const unsigned id = ((unsigned)gSaveBlock1Ptr->location.mapGroup << 8) | (unsigned)gSaveBlock1Ptr->location.mapNum;
     for (size_t i = 0; i < sizeof known_maps / sizeof known_maps[0]; i++) {
         if (known_maps[i].id == id) {
-            snprintf(out, size, "%s", known_maps[i].name);
+            (void)snprintf(out, size, "%s", known_maps[i].name);
             return;
         }
     }
-    snprintf(out, size, "unknown");
+    (void)snprintf(out, size, "unknown");
 }
 
 static void fact_pos(char *out, size_t size)
 {
-    snprintf(out, size, "%d,%d", gSaveBlock1Ptr->pos.x, gSaveBlock1Ptr->pos.y);
+    (void)snprintf(out, size, "%d,%d", gSaveBlock1Ptr->pos.x, gSaveBlock1Ptr->pos.y);
 }
 
 unsigned inspect_party_count(void)
@@ -266,7 +266,7 @@ unsigned inspect_party_count(void)
 
 static void fact_party_count(char *out, size_t size)
 {
-    snprintf(out, size, "%u", inspect_party_count());
+    (void)snprintf(out, size, "%u", inspect_party_count());
 }
 
 /* The first party Pokemon's species, 0 without one. */
@@ -279,14 +279,14 @@ static unsigned party0_species(void)
 
 static void fact_party0_species(char *out, size_t size)
 {
-    snprintf(out, size, "%u", party0_species());
+    (void)snprintf(out, size, "%u", party0_species());
 }
 
 static void fact_party0_name(char *out, size_t size)
 {
     unsigned species = party0_species();
     if (species == SPECIES_NONE || species >= NUM_SPECIES) {
-        snprintf(out, size, "%s", inspect_none_text);
+        (void)snprintf(out, size, "%s", inspect_none_text);
         return;
     }
     (void)inspect_decode_text(gSpeciesInfo[species].speciesName, sizeof gSpeciesInfo[species].speciesName, out, size);
@@ -294,7 +294,7 @@ static void fact_party0_name(char *out, size_t size)
 
 static void fact_in_battle(char *out, size_t size)
 {
-    snprintf(out, size, "%u", gMain.inBattle ? 1u : 0u);
+    (void)snprintf(out, size, "%u", gMain.inBattle ? 1u : 0u);
 }
 
 /* gBattleMainFunc by name: the battle's own state machine (DoBattleIntro, ...,
@@ -306,37 +306,37 @@ static void fact_battle_main(char *out, size_t size)
 
 static void fact_script_running(char *out, size_t size)
 {
-    snprintf(out, size, "%u", ScriptContext_IsEnabled() ? 1u : 0u);
+    (void)snprintf(out, size, "%u", ScriptContext_IsEnabled() ? 1u : 0u);
 }
 
 static void fact_controls_locked(char *out, size_t size)
 {
-    snprintf(out, size, "%u", ArePlayerFieldControlsLocked() ? 1u : 0u);
+    (void)snprintf(out, size, "%u", ArePlayerFieldControlsLocked() ? 1u : 0u);
 }
 
 static void fact_save_counter(char *out, size_t size)
 {
-    snprintf(out, size, "%u", (unsigned)gSaveCounter);
+    (void)snprintf(out, size, "%u", (unsigned)gSaveCounter);
 }
 
 static void fact_save_status(char *out, size_t size)
 {
-    snprintf(out, size, "%u", (unsigned)gSaveFileStatus);
+    (void)snprintf(out, size, "%u", (unsigned)gSaveFileStatus);
 }
 
 static void fact_flash_dirty_writes(char *out, size_t size)
 {
-    snprintf(out, size, "%u", (unsigned)flash_write_count());
+    (void)snprintf(out, size, "%u", (unsigned)flash_write_count());
 }
 
 static void arg_flag(const uint32_t arguments[INSPECT_MAX_ARGUMENTS], char *out, size_t size)
 {
-    snprintf(out, size, "%u", (inspect_save_blocks_ready() && FlagGet((u16)arguments[0])) ? 1u : 0u);
+    (void)snprintf(out, size, "%u", (inspect_save_blocks_ready() && FlagGet((u16)arguments[0])) ? 1u : 0u);
 }
 
 static void arg_var(const uint32_t arguments[INSPECT_MAX_ARGUMENTS], char *out, size_t size)
 {
-    snprintf(out, size, "%u", var_value(arguments[0]));
+    (void)snprintf(out, size, "%u", var_value(arguments[0]));
 }
 
 static const struct inspect_arg_reader state_arg_readers[] = {
@@ -417,7 +417,7 @@ static int read_argument_fact(const char *name, size_t name_length, const char *
 static void read_fact(const struct inspect_fact *fact, char *out, size_t size)
 {
     if (fact->value_without_save_blocks != NULL && !inspect_save_blocks_ready())
-        snprintf(out, size, "%s", fact->value_without_save_blocks);
+        (void)snprintf(out, size, "%s", fact->value_without_save_blocks);
     else
         fact->read(out, size);
 }

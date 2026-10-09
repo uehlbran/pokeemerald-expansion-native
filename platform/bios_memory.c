@@ -33,7 +33,7 @@
 #define HALFWORD_SIZE 2u
 #define WORD_SIZE 4u
 #define FAST_BLOCK_WORDS 8u
-#define FAST_BLOCK_SIZE (FAST_BLOCK_WORDS * WORD_SIZE)
+#define FAST_BLOCK_SIZE ((size_t)FAST_BLOCK_WORDS * WORD_SIZE)
 
 /* Validates the ranges a copy or fill of count units touches. */
 static bool ranges_ok(const char *function, const void *src, const void *dest, size_t count, size_t unit, bool fill)

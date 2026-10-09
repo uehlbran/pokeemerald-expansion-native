@@ -232,10 +232,10 @@ static bool range_allowed(unsigned channel, const char *what, struct dma_range r
 {
     if (!range.below_zero && transfer_bounds_ok(range.first, range.length, access))
         return true;
-    fprintf(stderr,
-            "dma: channel %u: %s: %zu bytes from 0x%" PRIxPTR " are not %s; "
-            "transfer refused\n",
-            channel, what, range.length, range.first, access == TRANSFER_READ ? "readable" : "writable");
+    (void)fprintf(stderr,
+                  "dma: channel %u: %s: %zu bytes from 0x%" PRIxPTR " are not %s; "
+                  "transfer refused\n",
+                  channel, what, range.length, range.first, access == TRANSFER_READ ? "readable" : "writable");
     return false;
 }
 
@@ -318,10 +318,10 @@ static void note_special_timing(unsigned channel)
     if (state.special_noted)
         return;
     state.special_noted = true;
-    fprintf(stderr,
-            "dma: channel %u: start timing \"special\" (sound FIFO, video capture) is not "
-            "emulated; registers recorded, transfer never runs (reported once)\n",
-            channel);
+    (void)fprintf(stderr,
+                  "dma: channel %u: start timing \"special\" (sound FIFO, video capture) is not "
+                  "emulated; registers recorded, transfer never runs (reported once)\n",
+                  channel);
 }
 
 /* ---- public ---- */
@@ -347,7 +347,7 @@ static int start_channel(unsigned channel)
     struct dma_channel *c = &state.channels[channel];
 
     if (state.raise == NULL) {
-        fprintf(stderr, "dma: channel %u: dma_set before dma_init; transfer refused\n", channel);
+        (void)fprintf(stderr, "dma: channel %u: dma_set before dma_init; transfer refused\n", channel);
         return DMA_ERR_NOT_INITIALISED;
     }
     if (start_timing(c->cnt_h) == DMA_TIMING_SPECIAL) {
@@ -355,7 +355,7 @@ static int start_channel(unsigned channel)
         return DMA_ERR_TIMING;
     }
     if (source_control(c->cnt_h) == DMA_ADDRESS_PROHIBITED) {
-        fprintf(stderr, "dma: channel %u: source address control 3 is prohibited; transfer refused\n", channel);
+        (void)fprintf(stderr, "dma: channel %u: source address control 3 is prohibited; transfer refused\n", channel);
         return DMA_ERR_SOURCE_CONTROL;
     }
     if (start_timing(c->cnt_h) == DMA_TIMING_IMMEDIATE)
@@ -369,7 +369,7 @@ static int start_channel(unsigned channel)
 int dma_set(unsigned channel, const void *src, void *dest, uint32_t control)
 {
     if (channel >= DMA_CHANNEL_COUNT) {
-        fprintf(stderr, "dma: dma_set: there is no channel %u (0 to 3); nothing written\n", channel);
+        (void)fprintf(stderr, "dma: dma_set: there is no channel %u (0 to 3); nothing written\n", channel);
         return DMA_ERR_CHANNEL;
     }
     uintptr_t sad = (uintptr_t)src;
@@ -398,7 +398,7 @@ int dma_set(unsigned channel, const void *src, void *dest, uint32_t control)
 void dma_stop(unsigned channel)
 {
     if (channel >= DMA_CHANNEL_COUNT) {
-        fprintf(stderr, "dma: dma_stop: there is no channel %u (0 to 3)\n", channel);
+        (void)fprintf(stderr, "dma: dma_stop: there is no channel %u (0 to 3)\n", channel);
         return;
     }
     /* Expansion's DmaStop clears start timing, DRQ and repeat, then enable. */

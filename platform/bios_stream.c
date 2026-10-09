@@ -100,13 +100,13 @@ void bios_stream_report(const char *function, int error)
 {
     switch (error) {
     case BIOS_ERR_HEADER:
-        fprintf(stderr, "bios: %s: the header names another format; nothing written\n", function);
+        (void)fprintf(stderr, "bios: %s: the header names another format; nothing written\n", function);
         break;
     case BIOS_ERR_STREAM:
-        fprintf(stderr, "bios: %s: malformed stream; output stopped\n", function);
+        (void)fprintf(stderr, "bios: %s: malformed stream; output stopped\n", function);
         break;
     case BIOS_ERR_TRUNCATED:
-        fprintf(stderr, "bios: %s: stream ended early; output stopped\n", function);
+        (void)fprintf(stderr, "bios: %s: stream ended early; output stopped\n", function);
         break;
     default:
         break;

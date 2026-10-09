@@ -9,7 +9,7 @@
  * module's source rather than widening its public header; it is therefore
  * not linked with gba_memmap.o (no test is named after gba_memmap_layout.c).
  */
-#include "gba_memmap.c"
+#include "gba_memmap.c" // NOLINT(bugprone-suspicious-include): tests the unit's static functions
 
 #include "ptest.h"
 

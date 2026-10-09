@@ -236,6 +236,7 @@ void ReadFlash(u16 sectorNum, u32 offset, u8 *dest, u32 size)
 /* src is non-const only to match the declaration agb_flash.c's
  * ProgramFlashSectorAndVerify sees. */
 // cppcheck-suppress constParameterPointer ; must match expansion's declaration, which has a non-const src
+// NOLINTNEXTLINE(readability-non-const-parameter): must match expansion's declaration
 u32 VerifyFlashSector(u16 sectorNum, u8 *src)
 {
     if (!is_sector(sectorNum))

@@ -53,11 +53,11 @@ int debug_channel_init(FILE *out)
 {
     debug_channel_shutdown();
     if (out == NULL) {
-        fprintf(stderr, "debug_channel: debug_channel_init: no output stream\n");
+        (void)fprintf(stderr, "debug_channel: debug_channel_init: no output stream\n");
         return DEBUG_CHANNEL_ERR_NO_STREAM;
     }
     if (gba_memmap_init() != GBA_MEMMAP_OK) {
-        fprintf(stderr, "debug_channel: debug_channel_init: the mGBA debug page is not mapped\n");
+        (void)fprintf(stderr, "debug_channel: debug_channel_init: the mGBA debug page is not mapped\n");
         return DEBUG_CHANNEL_ERR_LAYOUT;
     }
     clear_string();

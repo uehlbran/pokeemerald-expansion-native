@@ -202,6 +202,7 @@ static void SetNoteFields(void *chan, const struct MusicPlayerTrack *track, cons
     ChanSetByte(chan, CHAN_RHYTHM_PAN, voice->rhythmPan);
     ChanSetByte(chan, CHAN_TYPE, tone->type);
     /* SoundChannel.wav or CgbChannel.wavePointer: the voice's word as it is */
+    // NOLINTNEXTLINE(bugprone-sizeof-expression): the pointer word is what is copied
     memcpy((u8 *)chan + offsetof(struct SoundChannel, wav), &tone->wav, sizeof(tone->wav));
     ChanSetByte(chan, CHAN_ATTACK, tone->attack);
     ChanSetByte(chan, CHAN_DECAY, tone->decay);
@@ -218,7 +219,7 @@ static u8 PsgSweep(u8 panSweep)
     return panSweep;
 }
 
-void ply_note(u32 noteCmd, struct MusicPlayerInfo *mplayInfo, struct MusicPlayerTrack *track)
+void ply_note(u32 note_cmd, struct MusicPlayerInfo *mplayInfo, struct MusicPlayerTrack *track)
 {
     struct SoundInfo *soundInfo = SOUND_INFO_PTR;
     struct NoteVoice voice;
@@ -228,9 +229,9 @@ void ply_note(u32 noteCmd, struct MusicPlayerInfo *mplayInfo, struct MusicPlayer
     u8 key;
 
     /* MPlayMain passes 0..48; gClockTable has a length for each */
-    if (noteCmd >= MPLAY_CLOCK_TABLE_SIZE)
+    if (note_cmd >= MPLAY_CLOCK_TABLE_SIZE)
         return;
-    track->gateTime = gClockTable[noteCmd];
+    track->gateTime = gClockTable[note_cmd];
     ReadNoteArguments(track);
     if (!SelectVoice(track, &voice))
         return;

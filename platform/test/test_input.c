@@ -266,19 +266,17 @@ PTEST(a_state_ending_exactly_at_a_bound_scancode_is_not_read_at_that_scancode)
     const struct input_key_binding *table = input_keyboard_bindings(&count);
     for (size_t i = 0; i < count; i++) {
         const int numkeys = table[i].scancode;
-        uint8_t *state = malloc((size_t)numkeys);
+        uint8_t *state = calloc((size_t)numkeys, 1);
         PT_ASSERT(state != NULL);
-        for (int k = 0; k < numkeys; k++)
-            state[k] = 0;
-        PT_ASSERT_EQ_U32(input_keyboard_to_keys(state, numkeys), 0u);
+        const uint16_t before = input_keyboard_to_keys(state, numkeys);
         free(state);
-        state = malloc((size_t)numkeys + 1u);
+        state = calloc((size_t)numkeys + 1u, 1);
         PT_ASSERT(state != NULL);
-        for (int k = 0; k <= numkeys; k++)
-            state[k] = 0;
         state[numkeys] = 1;
-        PT_ASSERT_EQ_U32(input_keyboard_to_keys(state, numkeys + 1), table[i].key);
+        const uint16_t at_bound = input_keyboard_to_keys(state, numkeys + 1);
         free(state);
+        PT_ASSERT_EQ_U32(before, 0u);
+        PT_ASSERT_EQ_U32(at_bound, table[i].key);
     }
 }
 

@@ -69,7 +69,7 @@ static FILE *open_channel(void)
         return NULL;
     clear_registers();
     if (gba_memmap_init() != GBA_MEMMAP_OK || debug_channel_init(out) != DEBUG_CHANNEL_OK || !debug_channel_open()) {
-        fclose(out);
+        (void)fclose(out);
         return NULL;
     }
     return out;
@@ -91,7 +91,7 @@ static void close_channel(FILE *out)
     debug_channel_shutdown();
     clear_registers();
     if (out != NULL)
-        fclose(out);
+        (void)fclose(out);
 }
 
 static bool buffer_is_zero(void)
@@ -383,7 +383,7 @@ PTEST(a_failed_write_drops_the_message_and_carries_on)
     bool zero = buffer_is_zero();
     debug_channel_shutdown();
     clearerr(out);
-    fclose(out);
+    (void)fclose(out);
     clear_registers();
     PT_ASSERT(zero);
 }

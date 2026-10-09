@@ -186,7 +186,11 @@ static bool libgcc_result(const struct division_instruction *instruction, uint32
     if (edx != (dividend < 0 ? UINT32_MAX : 0)) /* not a sign-extended 32-bit dividend */
         return false;
     if (instruction->divisor == 0) {
-        int32_t result = dividend > 0 ? INT32_MAX : dividend < 0 ? INT32_MIN : 0;
+        int32_t result = 0;
+        if (dividend > 0)
+            result = INT32_MAX;
+        else if (dividend < 0)
+            result = INT32_MIN;
         *quotient = *remainder = (uint32_t)result;
         return true;
     }
@@ -288,8 +292,8 @@ int arm_division_init(void)
 int arm_division_init(void)
 {
     arm_division_shutdown();
-    fprintf(stderr, "arm_division: only the 32-bit build decodes x86 division; the 64-bit build stops here until "
-                    "the decoder is redone for x86-64 (arm_division.h)\n");
+    (void)fprintf(stderr, "arm_division: only the 32-bit build decodes x86 division; the 64-bit build stops here until "
+                          "the decoder is redone for x86-64 (arm_division.h)\n");
     return ARM_DIVISION_ERR_64_BIT;
 }
 

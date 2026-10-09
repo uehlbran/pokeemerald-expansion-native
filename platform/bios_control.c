@@ -187,8 +187,9 @@ void RegisterRamReset(uint32_t resetFlags)
 int bios_soft_reset(uint32_t resetFlags)
 {
     if (reset_target == NULL) {
-        fprintf(stderr,
-                "bios: SoftReset: no reset target (bios_set_reset_target); nothing reset, returning to the caller\n");
+        (void)fprintf(
+            stderr,
+            "bios: SoftReset: no reset target (bios_set_reset_target); nothing reset, returning to the caller\n");
         return BIOS_ERR_NO_RESET_TARGET;
     }
     *gba_io_u16(IO_IME) = IME_DISABLED;

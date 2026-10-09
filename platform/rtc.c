@@ -98,7 +98,7 @@ static int host_utc_seconds(int64_t *out)
     int64_t utc = chip.source();
 
     if (utc < -RTC_OFFSET_LIMIT || utc > RTC_OFFSET_LIMIT) {
-        fprintf(stderr, "rtc: time source returned %lld, out of range\n", (long long)utc);
+        (void)fprintf(stderr, "rtc: time source returned %lld, out of range\n", (long long)utc);
         return -1;
     }
     *out = utc;
@@ -138,7 +138,7 @@ static int set_chip_seconds_at(int64_t chip_seconds, int64_t utc)
 
     new_offset = chip_seconds - utc;
     if (new_offset < -RTC_OFFSET_LIMIT || new_offset > RTC_OFFSET_LIMIT) {
-        fprintf(stderr, "rtc: offset %lld out of range\n", (long long)new_offset);
+        (void)fprintf(stderr, "rtc: offset %lld out of range\n", (long long)new_offset);
         return -1;
     }
     if (chip.offset_path[0] != '\0' && rtc_offset_store_save(chip.offset_path, new_offset) != 0)
@@ -230,12 +230,12 @@ static int init_with_seed(rtc_time_source source, const char *offset_file_path, 
     rtc_shutdown();
     if (offset_file_path != NULL) {
         if (strlen(offset_file_path) >= sizeof chip.offset_path) {
-            fprintf(stderr, "rtc: offset file path is longer than %zu bytes\n", sizeof chip.offset_path - 1);
+            (void)fprintf(stderr, "rtc: offset file path is longer than %zu bytes\n", sizeof chip.offset_path - 1);
             return -1;
         }
         if (rtc_offset_store_load(offset_file_path, &offset, &found) != 0)
             return -1;
-        strcpy(chip.offset_path, offset_file_path);
+        (void)snprintf(chip.offset_path, sizeof chip.offset_path, "%s", offset_file_path); /* fits: checked above */
     }
     chip.source = source != NULL ? source : system_clock;
     if (!found) {

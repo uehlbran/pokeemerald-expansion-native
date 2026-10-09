@@ -301,9 +301,9 @@ static inline int ptest_main_for(const struct ptest_registry *registry, FILE *ou
         }                                                              \
     } while (0)
 #define PT_ASSERT_EQ_U32(actual, expected) \
-    PTEST_REQUIRE_(ptest_check_u32(__FILE__, __LINE__, #actual, #expected, (actual), (expected)))
+    PTEST_REQUIRE_(ptest_check_u32(__FILE__, __LINE__, #actual, #expected, (uint32_t)(actual), (uint32_t)(expected)))
 #define PT_ASSERT_EQ_INT(actual, expected) \
-    PTEST_REQUIRE_(ptest_check_int(__FILE__, __LINE__, #actual, #expected, (actual), (expected)))
+    PTEST_REQUIRE_(ptest_check_int(__FILE__, __LINE__, #actual, #expected, (intmax_t)(actual), (intmax_t)(expected)))
 #define PT_ASSERT_EQ_PTR(actual, expected) \
     PTEST_REQUIRE_(ptest_check_ptr(__FILE__, __LINE__, #actual, #expected, (actual), (expected)))
 #define PT_ASSERT_EQ_STR(actual, expected) \

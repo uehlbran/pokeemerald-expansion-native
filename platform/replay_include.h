@@ -25,7 +25,7 @@
 #define REPLAY_INCLUDE_MAX_DEPTH 4u
 /* The largest file read, and the largest total expansion (a newline is supplied after a
  * last line that has none), in bytes. */
-#define REPLAY_INCLUDE_MAX_BYTES (1024u * 1024u)
+#define REPLAY_INCLUDE_MAX_BYTES ((size_t)1024u * 1024u)
 #define REPLAY_INCLUDE_MESSAGE_SIZE 512u
 /* The longest include name, in characters (the buffer is one more, for the NUL); a path
  * made of the including file's directory and the name must fit this too. */

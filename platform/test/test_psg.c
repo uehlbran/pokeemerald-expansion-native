@@ -964,8 +964,8 @@ PTEST(left_and_right_enables_route_each_channel)
             PT_ASSERT(run(256));
             int16_t max_on = 0, max_off = 0, min_both = 0;
             for (size_t k = 0; k < 256; k++) {
-                const int16_t on = side ? left(k) : right(k);
-                const int16_t off = side ? right(k) : left(k);
+                const int16_t on = (int16_t)(side ? left(k) : right(k));
+                const int16_t off = (int16_t)(side ? right(k) : left(k));
                 if (on > max_on)
                     max_on = on;
                 if (off > max_off)

@@ -236,10 +236,10 @@ static int read_versioned(FILE *file, intmax_t file_size, const struct header_by
                        SAVE_FILE_FORMAT_VERSION);
     if (image_size != FLASH_CHIP_SIZE)
         return corrupt("the header gives an image of %" PRIu32 " bytes, but the 1 Mbit chip is "
-                       "%u bytes",
-                       image_size, FLASH_CHIP_SIZE);
-    if (file_size != (intmax_t)SAVE_FILE_HEADER_SIZE + FLASH_CHIP_SIZE)
-        return corrupt("the file is %jd bytes, but a version %u save is %u", file_size, SAVE_FILE_FORMAT_VERSION,
+                       "%zu bytes",
+                       image_size, (size_t)FLASH_CHIP_SIZE);
+    if (file_size != (intmax_t)SAVE_FILE_HEADER_SIZE + (intmax_t)FLASH_CHIP_SIZE)
+        return corrupt("the file is %jd bytes, but a version %u save is %zu", file_size, SAVE_FILE_FORMAT_VERSION,
                        SAVE_FILE_HEADER_SIZE + FLASH_CHIP_SIZE);
     if (layout.pointer_bits != POINTER_BITS_32 && layout.pointer_bits != POINTER_BITS_64)
         return corrupt("the header gives a pointer width of %" PRIu32 " bits, not 32 or 64", layout.pointer_bits);
@@ -269,10 +269,10 @@ static int read_legacy(FILE *file, intmax_t file_size)
 {
     if (file_size == FLASH_512K_CHIP_SIZE)
         return corrupt("%u bytes is a save from a 512 Kbit flash cartridge, but Emerald's chip "
-                       "is 1 Mbit (%u bytes)",
+                       "is 1 Mbit (%zu bytes)",
                        FLASH_512K_CHIP_SIZE, FLASH_CHIP_SIZE);
-    if (file_size != FLASH_CHIP_SIZE)
-        return corrupt("%jd bytes, with no header, but a bare 1 Mbit flash image is %u bytes", file_size,
+    if (file_size != (intmax_t)FLASH_CHIP_SIZE)
+        return corrupt("%jd bytes, with no header, but a bare 1 Mbit flash image is %zu bytes", file_size,
                        FLASH_CHIP_SIZE);
     if (!read_exactly(file, flash_image(), FLASH_CHIP_SIZE))
         return SAVE_FILE_CORRUPT;

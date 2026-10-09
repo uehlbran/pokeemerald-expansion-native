@@ -49,8 +49,8 @@ int frame_pacer_init(enum frame_pacer_mode mode)
 {
     uint64_t hz = SDL_GetPerformanceFrequency();
     if (hz == 0u || hz > FRAME_PACER_MAX_COUNTER_HZ) {
-        fprintf(stderr, MODULE ": SDL_GetPerformanceFrequency returned %llu, outside 1..%llu\n", (unsigned long long)hz,
-                (unsigned long long)FRAME_PACER_MAX_COUNTER_HZ);
+        (void)fprintf(stderr, MODULE ": SDL_GetPerformanceFrequency returned %llu, outside 1..%llu\n",
+                      (unsigned long long)hz, (unsigned long long)FRAME_PACER_MAX_COUNTER_HZ);
         return -1;
     }
     state.counter_hz = hz;

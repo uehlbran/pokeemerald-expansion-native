@@ -25,8 +25,6 @@ _Static_assert(CRASH_REBOOT_PERSISTENT_ADDRESS >= GBA_IWRAM_BASE
                    && CRASH_REBOOT_PERSISTENT_ADDRESS + CRASH_REBOOT_PERSISTENT_SIZE <= GBA_IWRAM_BASE + GBA_IWRAM_SIZE,
                "the persistent state lies in IWRAM");
 
-extern char **environ;
-
 /* The signals that mean the game crashed (crash_reboot.h). */
 static const int crash_signals[] = {SIGSEGV, SIGBUS, SIGILL, SIGFPE, SIGABRT};
 #define CRASH_SIGNAL_COUNT (sizeof crash_signals / sizeof crash_signals[0])
@@ -245,8 +243,8 @@ int crash_reboot_init(int argc, char *const argv[])
 {
     crash_reboot_shutdown();
     if (argc < 1 || argv == NULL || !build_args(argc, argv)) {
-        fprintf(stderr, "crash_reboot: crash_reboot_init: need 1 to %u arguments, with the reboot's two\n",
-                CRASH_REBOOT_MAX_ARGS);
+        (void)fprintf(stderr, "crash_reboot: crash_reboot_init: need 1 to %u arguments, with the reboot's two\n",
+                      CRASH_REBOOT_MAX_ARGS);
         return CRASH_REBOOT_ERR_ARGS;
     }
     const volatile uint8_t *bytes = persistent_bytes();
@@ -270,15 +268,16 @@ int crash_reboot_restore(const char *state_hex)
 {
     uint8_t bytes[CRASH_REBOOT_PERSISTENT_SIZE];
     if (state_hex == NULL || strlen(state_hex) != CRASH_REBOOT_STATE_HEX_LENGTH) {
-        fprintf(stderr, "crash_reboot: %s needs %u hex digits\n", CRASH_REBOOT_OPTION, CRASH_REBOOT_STATE_HEX_LENGTH);
+        (void)fprintf(stderr, "crash_reboot: %s needs %zu hex digits\n", CRASH_REBOOT_OPTION,
+                      CRASH_REBOOT_STATE_HEX_LENGTH);
         return CRASH_REBOOT_ERR_STATE;
     }
     for (size_t i = 0; i < CRASH_REBOOT_PERSISTENT_SIZE; i++) {
         int high = hex_value(state_hex[2 * i]);
         int low = hex_value(state_hex[2 * i + 1]);
         if (high < 0 || low < 0) {
-            fprintf(stderr, "crash_reboot: %s: '%.2s' at %zu is not a lower-case hex byte\n", CRASH_REBOOT_OPTION,
-                    &state_hex[2 * i], 2 * i);
+            (void)fprintf(stderr, "crash_reboot: %s: '%.2s' at %zu is not a lower-case hex byte\n", CRASH_REBOOT_OPTION,
+                          &state_hex[2 * i], 2 * i);
             return CRASH_REBOOT_ERR_STATE;
         }
         bytes[i] = (uint8_t)(high << 4 | low);

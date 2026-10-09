@@ -35,7 +35,7 @@ static void set_error(struct replay_parse_error *error, uint32_t line, const cha
     va_list arguments;
     error->line = line;
     va_start(arguments, format);
-    vsnprintf(error->message, sizeof error->message, format, arguments);
+    (void)vsnprintf(error->message, sizeof error->message, format, arguments);
     va_end(arguments);
 }
 
@@ -168,8 +168,9 @@ static bool parse_condition(char *text, struct replay_command *command, struct r
         set_error(error, command->line, "the value of '%s' is empty or too long", fact);
         return false;
     }
-    strcpy(command->fact, fact);
-    strcpy(command->value, value);
+    /* both fit: valid_fact_name and the length check above */
+    (void)snprintf(command->fact, sizeof command->fact, "%s", fact);
+    (void)snprintf(command->value, sizeof command->value, "%s", value);
     return true;
 }
 
@@ -271,7 +272,7 @@ static bool parse_name_command(struct replay_command *command, char *rest, struc
         set_error(error, command->line, "bad name '%s' (letters, digits, '_', '-')", rest);
         return false;
     }
-    strcpy(command->name, rest);
+    (void)snprintf(command->name, sizeof command->name, "%s", rest); /* fits: valid_file_name */
     return true;
 }
 
@@ -342,8 +343,10 @@ int replay_parse(const char *text, struct replay_script *script, struct replay_p
         line[length] = '\0';
         text += length + (text[length] == '\n' ? 1u : 0u);
 
-        for (char *c = line; *c != '\0'; c++)
-            *c = *c == '\t' ? ' ' : *c; /* a tab is a blank everywhere, including inside " max " and " for " */
+        for (char *c = line; *c != '\0'; c++) {
+            if (*c == '\t') /* a tab is a blank everywhere, including inside " max " and " for " */
+                *c = ' ';
+        }
         char *hash = strchr(line, '#');
         if (hash != NULL)
             *hash = '\0';

@@ -220,7 +220,7 @@ PTEST(ppm_of_two_pixel_frame_has_exact_bytes)
     static unsigned char bytes[sizeof TEST_PPM_HEADER + LCD_WIDTH * LCD_HEIGHT * 3u + 16u];
     size_t size = 0;
     int read = read_file(path, bytes, sizeof bytes, &size);
-    remove(path);
+    (void)remove(path);
 
     PT_ASSERT_EQ_INT(written, 0);
     PT_ASSERT_EQ_INT(read, 0);

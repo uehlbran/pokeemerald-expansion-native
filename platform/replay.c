@@ -28,7 +28,7 @@ static void fail(struct replay *replay, uint32_t line, const char *format, ...)
     int used = snprintf(replay->message, sizeof replay->message, "line %u: ", (unsigned)line);
     va_start(arguments, format);
     if (used > 0 && (size_t)used < sizeof replay->message)
-        vsnprintf(replay->message + used, sizeof replay->message - (size_t)used, format, arguments);
+        (void)vsnprintf(replay->message + used, sizeof replay->message - (size_t)used, format, arguments);
     va_end(arguments);
     replay->failed_line = line;
     replay->status = REPLAY_FAILED;
@@ -44,7 +44,7 @@ int replay_start(struct replay *replay, const struct replay_script *script, cons
         return -1;
     }
     replay->host = *host;
-    strcpy(replay->out_dir, out_dir);
+    (void)snprintf(replay->out_dir, sizeof replay->out_dir, "%s", out_dir); /* fits: checked above */
     while (replay->next < script->count && script->commands[replay->next].line <= resume_after_line)
         replay->next++;
     return 0;
@@ -194,7 +194,7 @@ static void run_write(struct replay *replay, const struct replay_command *comman
             fail(replay, command->line, "dump: fact '%s' is listed but cannot be read", name);
             break;
         }
-        fprintf(file, "%s=%s\n", name, value);
+        (void)fprintf(file, "%s=%s\n", name, value);
     }
     if (fclose(file) != 0 && replay->status != REPLAY_FAILED)
         fail(replay, command->line, "dump: could not write %s", path);

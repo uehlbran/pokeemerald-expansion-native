@@ -176,10 +176,10 @@ static bool read_obj(uint32_t index, struct obj *obj)
     const int32_t scale = obj->affine && (obj->attr0 & ATTR0_DOUBLE_SIZE) ? 2 : 1;
     obj->area_width = obj->width * scale;
     obj->area_height = obj->height * scale;
-    obj->y = obj->attr0 & ATTR0_Y_MASK;
+    obj->y = (int32_t)(obj->attr0 & ATTR0_Y_MASK);
     if (obj->y + obj->area_height > Y_RANGE)
         obj->y -= Y_RANGE;
-    obj->x = obj->attr1 & ATTR1_X_MASK;
+    obj->x = (int32_t)(obj->attr1 & ATTR1_X_MASK);
     if (obj->x >= X_FIRST_NEGATIVE)
         obj->x -= X_RANGE;
     if (obj->affine)

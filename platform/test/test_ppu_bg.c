@@ -263,7 +263,11 @@ PTEST(vertical_scroll_wraps_at_256_on_a_256_tall_map)
     io_write16(IO_DISPCNT, DISP_MODE_0 | DISP_BG0);
     for (uint16_t line = 0; line < 20; line++) {
         PT_ASSERT_EQ_INT(ppu_render_line(line, out), PPU_OK);
-        const uint16_t expected = line < 4 ? bank3(2) : line < 12 ? bank3(1) : BACKDROP;
+        uint16_t expected = BACKDROP;
+        if (line < 4)
+            expected = bank3(2);
+        else if (line < 12)
+            expected = bank3(1);
         PT_ASSERT_EQ_U32(out[0], expected);
         PT_ASSERT_EQ_U32(out[7], expected);
         PT_ASSERT_EQ_U32(out[8], BACKDROP);

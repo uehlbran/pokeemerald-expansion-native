@@ -516,7 +516,7 @@ PTEST(Mixer_compressed_forward_interpolates_over_frames)
     si->maxChans = 1;
     M4aTestStartChannel(si, 0, &w.wave, TYPE_CMP, STEP_3_QUARTERS, 0);
     ref.samples = decoded;
-    ref.count = DPCM_SAMPLES;
+    ref.count = (int64_t)DPCM_SAMPLES;
     ref.step = STEP_3_QUARTERS;
 
     for (int frame = 0; frame < 3; frame++) {
@@ -543,7 +543,7 @@ PTEST(Mixer_compressed_reverse_plays_backwards)
     M4aTestStartChannel(si, 0, &w.wave, TYPE_CMP | TYPE_REV, STEP_ONE, 0);
     ref.samples = decoded + 1;
     ref.pos = DPCM_SAMPLES - 1;
-    ref.count = DPCM_SAMPLES;
+    ref.count = (int64_t)DPCM_SAMPLES;
     ref.step = STEP_ONE;
     ref.reverse = 1;
     FillPcm(si, 0);

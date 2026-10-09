@@ -32,7 +32,6 @@ struct BitUnPackArgs {
     u32 dataOffset : 31;
     u32 offsetZeros : 1;
 };
-extern void BitUnPack(const void *src, void *dest, const struct BitUnPackArgs *);
 
 /* syscall.h's RESET_* and CPU_SET_* are the BIOS's bits. */
 _Static_assert(RESET_EWRAM == BIOS_RESET_EWRAM && RESET_IWRAM == BIOS_RESET_IWRAM && RESET_PALETTE == BIOS_RESET_PALETTE
@@ -40,9 +39,9 @@ _Static_assert(RESET_EWRAM == BIOS_RESET_EWRAM && RESET_IWRAM == BIOS_RESET_IWRA
                    && RESET_SIO_REGS == BIOS_RESET_SIO_REGS && RESET_SOUND_REGS == BIOS_RESET_SOUND_REGS
                    && RESET_REGS == BIOS_RESET_REGS,
                "RESET_* flags");
-_Static_assert(CPU_SET_SRC_FIXED == BIOS_CPU_SET_SRC_FIXED && CPU_SET_32BIT == BIOS_CPU_SET_32BIT
-                   && CPU_FAST_SET_SRC_FIXED == BIOS_CPU_SET_SRC_FIXED,
+_Static_assert(CPU_SET_SRC_FIXED == BIOS_CPU_SET_SRC_FIXED && CPU_SET_32BIT == BIOS_CPU_SET_32BIT,
                "CpuSet control bits");
+_Static_assert(CPU_FAST_SET_SRC_FIXED == BIOS_CPU_SET_SRC_FIXED, "CpuFastSet control bit");
 
 /* GBATEK BgAffineSet source: s32, s32, s16 x5 (u16 last), 20 bytes each
  * (word-aligned entries). */

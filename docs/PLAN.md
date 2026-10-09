@@ -111,3 +111,10 @@ else, then the orchestrator reads the platform layer end to end once and
 records in `STATUS.md` that the pass happened and what it changed.
 Milestone 6 also adds a checked-in `.clang-format` applied to our
 directories only, enforced in the gate.
+
+Platform gate (every change under `platform/`): `make -C platform gate`,
+which is `format-check` (clang-format, `.clang-format`), `lint` at both
+widths (clang-tidy with `.clang-tidy`, cppcheck; any finding fails) and
+the sanitized unit tests at both widths. It comes before the native
+build, the two replays, the sanitized replays and `make check` that the
+other gates run.

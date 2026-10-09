@@ -120,7 +120,7 @@ uint16_t input_keys_to_keyinput(uint16_t keys_active_high);
 const struct input_key_binding *input_keyboard_bindings(size_t *count);
 /* state is SDL_GetKeyboardState's array of numkeys entries. NULL or a
  * scancode past numkeys reads as not pressed. */
-uint16_t input_keyboard_to_keys(const uint8_t *state, int numkeys);
+uint16_t input_keyboard_to_keys(const uint8_t *keyboard, int numkeys);
 uint16_t input_pad_to_keys(const struct input_pad_state *pad);
 
 

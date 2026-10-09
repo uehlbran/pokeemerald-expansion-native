@@ -58,9 +58,9 @@ void replay_source_map_describe(const struct replay_source_map *map, uint32_t fl
         return;
     if (flat_line >= 1u && flat_line <= map->line_count) {
         const struct replay_line_origin *origin = &map->lines[flat_line - 1u];
-        snprintf(out, size, "%s:%u", map->files[origin->file], (unsigned)origin->line);
+        (void)snprintf(out, size, "%s:%u", map->files[origin->file], (unsigned)origin->line);
     } else {
-        snprintf(out, size, "line %u", (unsigned)flat_line);
+        (void)snprintf(out, size, "line %u", (unsigned)flat_line);
     }
 }
 
@@ -106,14 +106,14 @@ static void report(struct expansion *expansion, const char *path, unsigned line,
 {
     char where[PATH_SIZE + 32u];
     if (line > 0)
-        snprintf(where, sizeof where, "%s:%u", path, line);
+        (void)snprintf(where, sizeof where, "%s:%u", path, line);
     else
-        snprintf(where, sizeof where, "%s", path);
+        (void)snprintf(where, sizeof where, "%s", path);
     if (includer != NULL)
-        snprintf(expansion->message, expansion->message_size, "%s: %s (included at %s:%u)", where, reason,
-                 includer->path, includer->line);
+        (void)snprintf(expansion->message, expansion->message_size, "%s: %s (included at %s:%u)", where, reason,
+                       includer->path, includer->line);
     else
-        snprintf(expansion->message, expansion->message_size, "%s: %s", where, reason);
+        (void)snprintf(expansion->message, expansion->message_size, "%s: %s", where, reason);
 }
 
 static int append(struct expansion *expansion, const char *path, const char *text, size_t length,
@@ -149,14 +149,14 @@ static char *read_file(struct expansion *expansion, const char *path, size_t *le
     FILE *file = fopen(path, "rb");
     if (file == NULL) {
         char reason[REASON_SIZE];
-        snprintf(reason, sizeof reason, "cannot open: %s", strerror(errno));
+        (void)snprintf(reason, sizeof reason, "cannot open: %s", strerror(errno));
         report(expansion, path, 0, reason, includer);
         return NULL;
     }
     char *text = malloc(REPLAY_INCLUDE_MAX_BYTES + 1u);
     size_t length = text != NULL ? fread(text, 1, REPLAY_INCLUDE_MAX_BYTES + 1u, file) : 0;
     bool failed = text == NULL || ferror(file) != 0 || length > REPLAY_INCLUDE_MAX_BYTES;
-    fclose(file);
+    (void)fclose(file);
     if (failed) {
         report(expansion, path, 0, "cannot read it, or it is larger than the limit", includer);
         free(text);
@@ -167,7 +167,7 @@ static char *read_file(struct expansion *expansion, const char *path, size_t *le
     const char *nul = memchr(text, '\0', length);
     if (nul != NULL) {
         char reason[REASON_SIZE];
-        snprintf(reason, sizeof reason, "contains a NUL byte at offset %zu", (size_t)(nul - text));
+        (void)snprintf(reason, sizeof reason, "contains a NUL byte at offset %zu", (size_t)(nul - text));
         report(expansion, path, 0, reason, includer);
         free(text);
         return NULL;
@@ -239,6 +239,7 @@ static int emit_line(struct expansion *expansion, const char *path, uint32_t fil
     return 0;
 }
 
+// NOLINTNEXTLINE(misc-no-recursion): include depth is capped by REPLAY_INCLUDE_MAX_DEPTH
 static int expand_text(struct expansion *expansion, const char *path, const char *text, unsigned depth,
                        const struct includer *includer)
 {
@@ -286,6 +287,7 @@ static int expand_text(struct expansion *expansion, const char *path, const char
     return 0;
 }
 
+// NOLINTNEXTLINE(misc-no-recursion): include depth is capped by REPLAY_INCLUDE_MAX_DEPTH
 static int expand_file(struct expansion *expansion, const char *path, unsigned depth, const struct includer *includer)
 {
     size_t length;

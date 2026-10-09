@@ -61,7 +61,7 @@ const char *inspect_find_known_callback(const struct inspect_known_callback *tab
 
 void inspect_format_unknown_callback(uintptr_t address, char *out, size_t size)
 {
-    snprintf(out, size, "unknown:0x%" PRIxPTR, address);
+    (void)snprintf(out, size, "unknown:0x%" PRIxPTR, address);
 }
 
 size_t inspect_split_name(const char *text, const char **argument)

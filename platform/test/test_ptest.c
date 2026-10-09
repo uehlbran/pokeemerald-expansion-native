@@ -558,7 +558,7 @@ PTEST(timeout_comes_from_the_environment_when_it_is_a_positive_number)
     const char *const saved = getenv(PTEST_TIMEOUT_ENV);
     char previous[32] = "";
     if (saved != NULL)
-        snprintf(previous, sizeof previous, "%s", saved);
+        (void)snprintf(previous, sizeof previous, "%s", saved);
     unsigned seen[5];
     const char *const values[5] = {"7", "0", "abc", "5x", ""};
     for (size_t i = 0; i < 5; i++) {
