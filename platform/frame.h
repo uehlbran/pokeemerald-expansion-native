@@ -38,8 +38,9 @@
  *  8. The pacer holds the GBA frame rate (frame_pacer_wait).
  *  9. The frame count; with a frame limit, the last frame ends the loop;
  *     at the end of the loop the screenshot, if asked for, is written.
- * After every dispatch, game_hooks_take_irq_return honours a handler that
- * redirected its return (the test runner's timeout).
+ * A handler may leave the frame by a jump (the test runner's timeout,
+ * PlatformJumpToAgbMainLoop): the rest of the frame is not run, and the next
+ * frame_run starts a new frame from line 0.
  *
  * Not simulated: lines 162..227 one by one, so their H-Blank interrupts and
  * a V-Counter setting of 162..227 never fire (expansion sets 150, and its
@@ -91,6 +92,17 @@ enum frame_result {
 struct frame_config {
     uint32_t frame_limit;        /* 0: no limit; otherwise end after this many frames */
     const char *screenshot_path; /* NULL: none; otherwise the last frame as a PPM, at the end */
+    /* true: the PPU draws nothing (step 1 leaves the frame buffer alone).
+     * Only the PPU's line drawing is skipped: step 6's video_present still
+     * runs (a no-op when headless) and shows the buffer as it is.
+     * main sets it only in --test-runner mode without a replay or a
+     * screenshot, where nobody sees the frames. Everything the game can
+     * observe still happens: the lines' VCOUNT and DISPSTAT, H-Blank DMA,
+     * the H-Blank, VCount and V-Blank interrupts, V-Blank DMA. A frame drawn
+     * after undrawn ones shows the current state: the only state drawing
+     * advances, the affine reference points, is reloaded at every V-Blank,
+     * drawn or not. */
+    bool skip_drawing;
 };
 
 /* Keeps the configuration (the path is not copied: it must outlive the

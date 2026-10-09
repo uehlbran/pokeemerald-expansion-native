@@ -122,7 +122,10 @@ than `mmap` at run time: the header comment of `gba_memmap.c` and
 
 Sizes are what the hardware decodes, and are what `contains()` checks
 against; the 4 KiB pages are only the native mapping granularity. The
-executable itself starts at 0x40000000, above every region.
+executable itself starts at 0x40000000, above every region. At 0x01800000
+(GBATEK's unused area), `gba_regions.ld` also places the 1 MiB stack
+`game_hooks` runs the battle test runner's functions on, low enough for the
+runner's 27-bit address fields.
 
 ## The flash chip (`flash`) and the save file (`save_file`)
 
@@ -324,7 +327,8 @@ make -f Makefile.native -j$(nproc) native TEST=1        # build/native32-test/po
 make -f Makefile.native -j$(nproc) native SANITIZE=1    # build/native32-san/, ASan and UBSan throughout
 ./build/native32/pokeemerald-native [--headless] [--silent] [--save PATH] [--rtc-offset PATH]
         [--scale N] [--unthrottled] [--frames N] [--screenshot PATH]
-        [--replay SCRIPT [--out DIR]] [--rtc-fixed EPOCH] [--help]
+        [--replay SCRIPT [--out DIR]] [--rtc-fixed EPOCH] [--test-runner] [--help]
+make -f Makefile.native -j32 check [SANITIZE=1] [TESTS=filter]   # expansion's suite, below
 ```
 
 The defaults are `pokeemerald.sav` and `pokeemerald.rtc` in the current
@@ -372,6 +376,64 @@ output capacitor removes.
 `build_glue/LINK-NEEDS.md` maps every symbol and section the link needed to
 its provider; `build_glue/BOOT-LOG.md` records what failed on the way to
 the first boot, and the sanitizer findings in expansion's code.
+
+## The test runner (`debug_channel`, `crash_reboot`, `test_runner/`)
+
+`make -f Makefile.native -j32 check` runs expansion's test suite against
+the TEST=1 executable through expansion's own hydra
+(`tools/mgba-rom-test-hydra`), unchanged, as expansion's `make check` runs
+it against mgba-rom-test: the executable is copied to
+`build/native32-test/pokeemerald-native-test-headless`, `tools/patchelf`
+patches `gTestRunnerArgv` (from `TESTS`, a trailing `*` removed, as
+expansion does), `gTestRunnerHeadless` and `gTestRunnerSkipIsFail` into the
+copy, and the hydra forks one runner per `-jN` (at most 32), patching
+`gTestRunnerN`/`gTestRunnerI` into its own copy (they are `.rodata`
+constants with `.symtab` entries, which is all patchelf needs).
+
+The hydra runs `stdbuf -oL <mgba-rom-test> -l15 -ClogLevel.gba.dma=16 -Rr0
+<copy>`; `test_runner/native-rom-test` takes mgba-rom-test's place. It
+ignores mGBA's options, makes the copy executable, closes the descriptor the
+hydra leaves open on it (Linux will not exec a file open for writing), drops
+stdbuf's 64-bit preload, and execs the copy with `--headless --silent
+--unthrottled --test-runner`.
+
+`--test-runner` makes `main`:
+
+- start `debug_channel` on stdout: mGBA's debug registers (STRING
+  0x04FFF600, FLAGS 0x04FFF700, ENABLE 0x04FFF780). The runner's
+  `MgbaOpen_` (and `src/libisagbprn.c`'s) call `PlatformDebugOpen`, its
+  sends `PlatformDebugSend`; each send prints `GBA Debug: <buffer>\n` if
+  its level passes the hydra's `-l15`, flushes, and zeroes the buffer, as
+  mGBA's `GBADebug` does. stdout is line-buffered and carries nothing else.
+- return the runner's exit code (`PlatformTestRunnerExit`: 0 all as
+  expected, 1 a test failed, 2 no debug channel).
+- keep the save and the clock's offset in memory: parallel runners share no
+  file.
+- start `crash_reboot`: a SIGSEGV, SIGBUS, SIGILL, SIGFPE (one
+  `arm_division` cannot complete) or SIGABRT runs a handler on an alternate
+  stack that writes `crash_reboot: signal N at <pc>, fault address <addr>`
+  to stderr and execs `/proc/self/exe` with the same arguments plus
+  `--persistent-state <512 hex digits>`, the 0x100 bytes at 0x3007F00. The
+  new process restores them before `AgbMain`, so the runner reports the test
+  that crashed as CRASH and carries on, as after mGBA's reboot (IWRAM's last
+  0x200 bytes survive `RegisterRamReset`). A crash with those bytes as the
+  process started with them would loop and ends the process instead. The
+  runner stores the crashed test as its index in `.tests` plus one, not its
+  address (the 28-bit field cannot hold a native address).
+
+The timeout works as on the GBA: Timer 2 counts emulated seconds and the
+runner's handler calls `PlatformJumpToAgbMainLoop` from inside the
+interrupt dispatch (the GBA patched the BIOS's IRQ return address); a test
+stuck in a loop that never waits for a frame is not timed out (no emulated
+time passes), as there is no wall-clock watchdog.
+
+`make -f Makefile.native -j32 check SANITIZE=1` runs the suite on the
+sanitized build: the recipe sets `ASAN_OPTIONS=halt_on_error=0:abort_on_error=1`
+(reports carry on; one that stops aborts, so `crash_reboot` turns it into one
+CRASH instead of a lost runner) and `UBSAN_OPTIONS=print_stacktrace=1`.
+
+What the suite needed natively, test by test, how it compares with the GBA
+baseline, and every sanitizer finding: `test_runner/SUITE-LOG.md`.
 
 ## The input replay (`replay`, `inspect`, `restart`, ...)
 

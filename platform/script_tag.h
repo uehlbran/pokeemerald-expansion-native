@@ -20,8 +20,12 @@
  * script_tag_is_set and removed with script_tag_strip before the pointer is
  * called or compared with an untagged one. Each place expansion's code does
  * that is a guarded change (docs/UPSTREAM_MODIFICATIONS.md). Linking the
- * executable above 0x42000000 would break this; Makefile.native's link
- * address and the text size (3 MiB) are well below it.
+ * executable above 0x42000000 would break this, and so would code that
+ * reaches it (gba_regions.ld asserts etext < 0x42000000). Measured
+ * 2026-10-08, the code ends at 0x4031C2B8 (3 MiB, plain), 0x4078E498
+ * (7.6 MiB, TEST=1), 0x40EF3518 (14.9 MiB, SANITIZE=1) and 0x41BB1358
+ * (27.7 MiB, TEST=1 SANITIZE=1, which only fits because Makefile.native
+ * makes AddressSanitizer's checks calls; inline they are about 40 MB).
  *
  * (Mapping the code a second time at +0x02000000 was tried: it works for
  * code compiled without position-dependent data references, which is only

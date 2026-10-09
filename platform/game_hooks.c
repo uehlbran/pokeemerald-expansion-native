@@ -3,11 +3,10 @@
  * in place of its control-flow assembly (game_hooks.h says which, and why
  * each behaves as it does).
  *
- * Stands in for ARM and Thumb routines, not hardware, except the IRQ return
- * slot: GBATEK "BIOS RAM Usage" puts the BIOS's IRQ stack at the top of
- * IWRAM, where the test runner rewrites the saved return address. Followed:
- * expansion's own sources (test/test_runner.c, test/test_runner_battle.c,
- * src/main.c, src/multiboot.c); no reference port does these.
+ * Stands in for ARM and Thumb routines, not hardware; the debug registers
+ * the two debug hooks reach are debug_channel's. Followed: expansion's own
+ * sources (test/test_runner.c, test/test_runner_battle.c, src/main.c,
+ * src/multiboot.c); no reference port does these.
  *
  * Stack switching uses POSIX ucontext (getcontext, makecontext,
  * swapcontext, setcontext), which glibc provides on both widths, with
@@ -17,20 +16,19 @@
  */
 #include "game_hooks.h"
 
+#include "debug_channel.h"
+
+#include <link.h> /* ElfW */
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdio.h>
 #include <string.h>
+#include <sys/auxv.h>
 #include <ucontext.h>
 
 #ifdef __SANITIZE_ADDRESS__
 #include <sanitizer/common_interface_defs.h>
 #endif
-
-/* GBATEK "BIOS RAM Usage": 3007FA0h is the IRQ stack top; the BIOS IRQ
- * handler pushes r0-r3, r12 and lr below it, so the saved lr is at 3007F9Ch.
- * test/test_runner.c names it IRQ_LR. */
-#define GAME_HOOKS_IRQ_LR_ADDRESS UINT32_C(0x03007F9C)
 
 /* x86-64's ABI wants the stack 16-byte aligned (i386's GCC also keeps 16). */
 #define GAME_HOOKS_STACK_ALIGNMENT 16
@@ -65,7 +63,8 @@ static struct {
     size_t caller_stack_size;
 } call;
 
-static _Alignas(GAME_HOOKS_STACK_ALIGNMENT) unsigned char call_stack[GAME_HOOKS_CALL_STACK_SIZE];
+/* gba_regions.ld's .platform_call_stack (game_hooks.h says why there). */
+extern unsigned char platform_call_stack_start[], platform_call_stack_end[];
 
 /* AddressSanitizer's fiber annotations, or nothing without it. */
 static void fiber_start_switch(void **fake_stack_save, const void *bottom, size_t size)
@@ -162,13 +161,14 @@ void PlatformJumpToAgbMainLoop(void)
     game_hooks_unwind(&hooks.agb_main_loop, 1);
 }
 
-void game_hooks_take_irq_return(void)
+bool PlatformDebugOpen(void)
 {
-    volatile uint32_t *irq_lr = (volatile uint32_t *)(uintptr_t)GAME_HOOKS_IRQ_LR_ADDRESS;
-    if (*irq_lr == 0)
-        return;
-    *irq_lr = 0;
-    PlatformJumpToAgbMainLoop();
+    return debug_channel_open();
+}
+
+void PlatformDebugSend(uint16_t flags)
+{
+    debug_channel_send(flags);
 }
 
 /* Calls entry below GAME_HOOKS_CALL_STACK_GAP bytes of its own frame. Not
@@ -193,6 +193,16 @@ static void run_entry(void)
     fiber_start_switch(NULL, call.caller_stack_bottom, call.caller_stack_size);
 }
 
+/* The section's place and size are the linker script's; this checks they
+ * are what the header says. Flagged 64-bit: addresses compared as integers. */
+static bool call_stack_is_linked(void)
+{
+    uintptr_t start = (uintptr_t)platform_call_stack_start;
+    uintptr_t end = (uintptr_t)platform_call_stack_end;
+    return start == GAME_HOOKS_CALL_STACK_ADDRESS && end - start == GAME_HOOKS_CALL_STACK_SIZE
+           && start % GAME_HOOKS_STACK_ALIGNMENT == 0;
+}
+
 void PlatformCallWithStack(void (*entry)(void *context), void *context, void *stackTop)
 {
     (void)stackTop; /* why: game_hooks.h */
@@ -205,12 +215,17 @@ void PlatformCallWithStack(void (*entry)(void *context), void *context, void *st
         entry(context);
         return;
     }
+    if (!call_stack_is_linked()) {
+        fprintf(stderr, "game_hooks: the call stack is not linked at %#x with %u bytes (gba_regions.ld)\n",
+                GAME_HOOKS_CALL_STACK_ADDRESS, GAME_HOOKS_CALL_STACK_SIZE);
+        return;
+    }
     if (getcontext(&call.callee) != 0) {
         perror("game_hooks: getcontext");
         return;
     }
-    call.callee.uc_stack.ss_sp = call_stack;
-    call.callee.uc_stack.ss_size = sizeof call_stack;
+    call.callee.uc_stack.ss_sp = platform_call_stack_start;
+    call.callee.uc_stack.ss_size = GAME_HOOKS_CALL_STACK_SIZE;
     call.callee.uc_link = &call.caller;
     makecontext(&call.callee, run_entry, 0);
     call.entry = entry;
@@ -218,7 +233,7 @@ void PlatformCallWithStack(void (*entry)(void *context), void *context, void *st
     call.unwind_target = NULL;
     call.active = true;
 
-    fiber_start_switch(&call.caller_fake_stack, call_stack, sizeof call_stack);
+    fiber_start_switch(&call.caller_fake_stack, platform_call_stack_start, GAME_HOOKS_CALL_STACK_SIZE);
     int swapped = swapcontext(&call.caller, &call.callee);
     fiber_finish_switch(call.caller_fake_stack, NULL, NULL);
     call.active = false;
@@ -231,4 +246,29 @@ void PlatformCallWithStack(void (*entry)(void *context), void *context, void *st
         call.unwind_target = NULL;
         longjmp(*target, call.unwind_value);
     }
+}
+
+/* --- PlatformIsRomPointer -------------------------------------------------- */
+
+bool PlatformIsRomPointer(uintptr_t address)
+{
+    const ElfW(Phdr) *headers = (const ElfW(Phdr) *)(uintptr_t)getauxval(AT_PHDR);
+    size_t count = (size_t)getauxval(AT_PHNUM);
+    if (headers == NULL) /* getauxval gives 0 when the kernel passed no AT_PHDR: then nothing reads as ROM */
+        return false;
+    /* The executable is non-PIE (load bias 0); PT_PHDR gives the bias anyway. */
+    uintptr_t bias = 0;
+    for (size_t i = 0; i < count; i++) {
+        if (headers[i].p_type == PT_PHDR)
+            bias = (uintptr_t)headers - (uintptr_t)headers[i].p_vaddr;
+    }
+    for (size_t i = 0; i < count; i++) {
+        const ElfW(Phdr) *header = &headers[i];
+        if (header->p_type != PT_LOAD || (header->p_flags & PF_W) != 0)
+            continue;
+        uintptr_t start = bias + (uintptr_t)header->p_vaddr;
+        if (address >= start && address - start < (uintptr_t)header->p_memsz)
+            return true;
+    }
+    return false;
 }

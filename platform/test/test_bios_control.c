@@ -1,4 +1,4 @@
-// deps: bios_internal.c transfer_bounds.c gba_memmap.c game_hooks.c
+// deps: bios_internal.c transfer_bounds.c gba_memmap.c game_hooks.c debug_channel.c
 /*
  * Tests of the BIOS control functions, from GBATEK "BIOS Halt Functions"
  * (IntrWait's discard argument and the BIOS Interrupt Flags at 3007FF8h,

@@ -9,19 +9,23 @@
  * arguments) for the rest; the LZ77 format from GBATEK "BIOS Decompression
  * Functions".
  */
-// deps: crt0.c decompress_asm.c gcn_multiboot.c rom_header.c gba_memmap.c
+// deps: crt0.c decompress_asm.c gcn_multiboot.c rom_header.c gba_memmap.c debug_channel.c interrupt.c
 #include <setjmp.h>
 #include <stdbool.h>
 #include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "crt0.h"
+#include "debug_channel.h"
 #include "decompress_asm.h"
 #include "game_hooks.h"
 #include "gba_memmap.h"
+#include "interrupt.h"
 #include "ptest.h"
 
-extern char __executable_start[], _end[];
+
 extern const uint8_t RomHeaderGameCode[4];
 extern const uint8_t RomHeaderSoftwareVersion;
 void GameCubeMultiBoot_Init(void *mb);
@@ -30,8 +34,11 @@ void GameCubeMultiBoot_ExecuteProgram(void *mb);
 void GameCubeMultiBoot_HandleSerialInterrupt(void *mb);
 void GameCubeMultiBoot_Quit(void);
 
-/* test/test_runner.c IRQ_LR. */
-#define IRQ_LR_ADDRESS UINT32_C(0x03007F9C)
+/* IE/IF bit and gIntrTable slot of Timer 2 (GBATEK "GBA Interrupt Control";
+ * src/main.c gIntrTableTemplate, where test/test_runner.c installs
+ * Intr_Timer2 at gIntrTable[7]). */
+#define IE_TIMER2 UINT16_C(0x0020)
+#define TIMER2_SLOT 7u
 
 static uintptr_t address_of(const volatile void *pointer)
 {
@@ -40,9 +47,16 @@ static uintptr_t address_of(const volatile void *pointer)
     return address;
 }
 
-static bool in_image(uintptr_t address)
+/* On the platform's call stack, which gba_regions.ld puts below 2^27 so that
+ * the battle runner's 27-bit address fields hold its locals' addresses
+ * (include/test/battle.h, QueuedSubHitEvent). */
+#define BATTLE_RUNNER_ADDRESS_LIMIT (UINT32_C(1) << 27)
+
+static bool on_call_stack(uintptr_t address)
 {
-    return address >= address_of(__executable_start) && address < address_of(_end);
+    return address >= GAME_HOOKS_CALL_STACK_ADDRESS
+           && address < GAME_HOOKS_CALL_STACK_ADDRESS + GAME_HOOKS_CALL_STACK_SIZE
+           && address < BATTLE_RUNNER_ADDRESS_LIMIT;
 }
 
 /* --- PlatformCallWithStack ----------------------------------------------- */
@@ -78,10 +92,10 @@ PTEST(call_with_stack_runs_entry_on_the_platform_stack)
     volatile uint32_t here = 0;
     PlatformCallWithStack(record_local, &probe, NULL);
     PT_ASSERT_EQ_INT(probe.calls, 1);
-    /* The platform's stack is a static buffer in the image, not the
-     * caller's stack. */
-    PT_ASSERT(in_image(address_of(probe.local_address)));
-    PT_ASSERT(!in_image(address_of(&here)));
+    /* The platform's stack, not the caller's, and low enough for the
+     * runner's 27-bit address fields. */
+    PT_ASSERT(on_call_stack(address_of(probe.local_address)));
+    PT_ASSERT(!on_call_stack(address_of(&here)));
 }
 
 PTEST(locals_stay_put_between_calls)
@@ -201,7 +215,7 @@ PTEST(an_unwind_from_the_battle_stack_ends_the_call)
     /* The next call is a normal one: on the platform stack, not nested. */
     PlatformCallWithStack(record_local, &probe, NULL);
     PT_ASSERT_EQ_INT(probe.calls, 1);
-    PT_ASSERT(in_image(address_of(probe.local_address)));
+    PT_ASSERT(on_call_stack(address_of(probe.local_address)));
 }
 
 PTEST(an_unwind_outside_a_call_is_a_longjmp)
@@ -257,23 +271,90 @@ PTEST(jump_to_agb_main_loop_without_a_target_exits_with_an_error)
     game_hooks_shutdown();
 }
 
-PTEST(irq_return_slot_redirects_to_agb_main_loop)
+/* The runner's Timer 2 handler on a timeout (Intr_Timer2): natively it
+ * jumps to AgbMainLoop from inside the interrupt dispatch. */
+static void timeout_handler(void)
 {
-    volatile uint32_t *irq_lr = (volatile uint32_t *)(uintptr_t)IRQ_LR_ADDRESS;
+    PlatformJumpToAgbMainLoop();
+}
+
+static void no_handler(void) {}
+
+static interrupt_handler const timer2_table[INTERRUPT_TABLE_LENGTH] = {
+    no_handler, no_handler, no_handler, no_handler, no_handler, no_handler, no_handler,
+    timeout_handler, no_handler, no_handler, no_handler, no_handler, no_handler, no_handler,
+};
+
+static volatile uint16_t *io_register(uint32_t offset)
+{
+    return (volatile uint16_t *)(uintptr_t)(GBA_IO_BASE + offset);
+}
+
+static void dispatch_on_the_battle_stack(void *context)
+{
+    (void)context;
+    (void)interrupt_dispatch();
+}
+
+PTEST(a_jump_from_an_interrupt_handler_leaves_the_dispatch_and_the_battle_stack)
+{
     volatile int arrivals = 0;
+    struct probe probe = { 0 };
     PT_ASSERT_EQ_INT(gba_memmap_init(), GBA_MEMMAP_OK);
     PT_ASSERT_EQ_INT(game_hooks_init(&exit_target), 0);
+    PT_ASSERT_EQ_INT(interrupt_init(timer2_table, INTERRUPT_TABLE_LENGTH), INTERRUPT_OK);
+    *io_register(GBA_IE_OFFSET) = IE_TIMER2;
+    *io_register(GBA_IME_OFFSET) = GBA_IME_ENABLE;
     setjmp(*PlatformAgbMainLoopTarget());
     arrivals++;
     if (arrivals == 1) {
-        *irq_lr = 0;
-        game_hooks_take_irq_return(); /* nothing written: returns */
-        *irq_lr = UINT32_C(0x08001235); /* what Intr_Timer2 writes, any non-zero value */
-        game_hooks_take_irq_return();
+        interrupt_raise(GBA_IRQ_TIMER2);
+        (void)interrupt_dispatch(); /* on the game's stack */
+    } else if (arrivals == 2) {
+        interrupt_raise(GBA_IRQ_TIMER2);
+        PlatformCallWithStack(dispatch_on_the_battle_stack, NULL, NULL);
     }
-    PT_ASSERT_EQ_INT(arrivals, 2);
-    PT_ASSERT_EQ_U32(*irq_lr, 0);
+    /* The request was acknowledged before the handler ran, IE and IME are as
+     * the handler left them (as IntrMain's restore would have made them),
+     * nothing is pending, and the battle runner's call is over. */
+    uint16_t ie = *io_register(GBA_IE_OFFSET);
+    uint16_t ime = *io_register(GBA_IME_OFFSET);
+    unsigned handlers = interrupt_dispatch();
+    PlatformCallWithStack(record_local, &probe, NULL);
+    interrupt_shutdown();
     game_hooks_shutdown();
+    PT_ASSERT_EQ_INT(arrivals, 3);
+    PT_ASSERT_EQ_U32(ie, IE_TIMER2);
+    PT_ASSERT_EQ_U32(ime, GBA_IME_ENABLE);
+    PT_ASSERT_EQ_INT(handlers, 0);
+    PT_ASSERT_EQ_INT(probe.calls, 1);
+    PT_ASSERT(on_call_stack(address_of(probe.local_address)));
+}
+
+/* --- PlatformDebugOpen, PlatformDebugSend -------------------------------- */
+
+PTEST(debug_hooks_reach_the_debug_channel)
+{
+    FILE *out = tmpfile();
+    PT_ASSERT(out != NULL);
+    PT_ASSERT_EQ_INT(gba_memmap_init(), GBA_MEMMAP_OK);
+    bool closed = PlatformDebugOpen(); /* no channel: a GBA without mGBA */
+    PT_ASSERT_EQ_INT(debug_channel_init(out), DEBUG_CHANNEL_OK);
+    bool opened = PlatformDebugOpen();
+    volatile char *string = (volatile char *)(uintptr_t)DEBUG_CHANNEL_STRING_ADDRESS;
+    string[0] = ':';
+    string[1] = 'P';
+    string[2] = '\0';
+    PlatformDebugSend((uint16_t)(DEBUG_CHANNEL_FLAGS_SEND | 3u)); /* MGBA_LOG_INFO */
+    char captured[32] = { 0 };
+    rewind(out);
+    size_t length = fread(captured, 1, sizeof captured - 1, out);
+    debug_channel_shutdown();
+    fclose(out);
+    PT_ASSERT(!closed);
+    PT_ASSERT(opened);
+    PT_ASSERT_EQ_INT((intmax_t)length, 14);
+    PT_ASSERT_EQ_STR(captured, "GBA Debug: :P\n");
 }
 
 PTEST(wait_cycles_returns)
@@ -526,6 +607,42 @@ PTEST(lz77_type_bits_are_not_checked)
     memset(out, COPY_GUARD, sizeof out);
     LZ77UnCompWRAMOptimized(stream, out);
     PT_ASSERT_EQ_INT(out[0], 'k');
+}
+
+/* --- PlatformIsRomPointer (src/field_name_box.c SetSpeaker) ------------- */
+
+static const uint32_t rom_table[4] = { 1, 2, 3, 4 };
+static uint32_t writable_word = 5;
+
+static uintptr_t address_of_code(void (*function)(void))
+{
+    uintptr_t address = 0;
+    memcpy(&address, &function, sizeof address);
+    return address;
+}
+
+PTEST(rom_pointers_are_the_executables_code_and_read_only_data)
+{
+    PT_ASSERT(PlatformIsRomPointer(address_of(rom_table)));
+    PT_ASSERT(PlatformIsRomPointer(address_of(&rom_table[3])));
+    PT_ASSERT(PlatformIsRomPointer(address_of("BRENDAN")));
+    PT_ASSERT(PlatformIsRomPointer(address_of_code(GameCubeMultiBoot_Quit)));
+}
+
+PTEST(rom_pointers_exclude_writable_data_stacks_heap_regions_and_indexes)
+{
+    uint32_t local = writable_word;
+    void *heap = malloc(16);
+    PT_ASSERT(heap != NULL);
+    PT_ASSERT(!PlatformIsRomPointer(address_of(&writable_word)));
+    PT_ASSERT(!PlatformIsRomPointer(address_of(&local)));
+    PT_ASSERT(!PlatformIsRomPointer(address_of(heap)));
+    free(heap);
+    PT_ASSERT(!PlatformIsRomPointer(0));
+    PT_ASSERT(!PlatformIsRomPointer(16)); /* a speaker index (SP_NAME_COUNT) */
+    PT_ASSERT(!PlatformIsRomPointer(GBA_EWRAM_BASE));
+    PT_ASSERT(!PlatformIsRomPointer(UINT32_C(0x08000000))); /* the GBA's ROM: nothing natively */
+    PT_ASSERT(!PlatformIsRomPointer(UINTPTR_MAX));
 }
 
 /* --- GameCube multiboot and the ROM header ------------------------------- */

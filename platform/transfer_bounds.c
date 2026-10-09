@@ -21,6 +21,10 @@
  *    /proc/self/maps because it needs no text parsing. It must be called on
  *    the main thread: glibc then derives the bounds from the stack limit.
  *
+ *  - the stack the battle test runner's functions run on (game_hooks.h,
+ *    PlatformCallWithStack; gba_regions.ld .platform_call_stack): read and
+ *    write, like the main thread's.
+ *
  *  - under AddressSanitizer, the fake stack: its use-after-return detection
  *    moves locals to a heap-allocated "fake stack" frame, and the game copies
  *    from local buffers, so a range inside one fake-stack frame counts as
@@ -62,6 +66,7 @@
 
 extern char __executable_start[], __data_start[], _end[]; /* GNU ld / glibc crt1 */
 extern char game_data_start[], game_data_end[];             /* gba_game.ld */
+extern char platform_call_stack_start[], platform_call_stack_end[]; /* gba_regions.ld */
 
 struct transfer_range {
     uintptr_t start;
@@ -74,6 +79,7 @@ static struct {
     struct transfer_range image;
     struct transfer_range writable_image;
     struct transfer_range stack;
+    struct transfer_range call_stack;
 } state;
 
 static uintptr_t address_of(const void *pointer)
@@ -124,7 +130,8 @@ bool transfer_bounds_ok(uintptr_t address, size_t length, enum transfer_access a
     if (gba_memmap_region_of(address, length) != GBA_REGION_NONE) {
         return true;
     }
-    if (range_holds(&state.stack, address, length) || in_fake_stack(address, length)) {
+    if (range_holds(&state.stack, address, length) || range_holds(&state.call_stack, address, length)
+        || in_fake_stack(address, length)) {
         return true;
     }
     if (access == TRANSFER_WRITE) {
@@ -172,6 +179,8 @@ int transfer_bounds_init(void)
         return error;
     }
     state.stack = stack;
+    state.call_stack.start = address_of(platform_call_stack_start);
+    state.call_stack.end = address_of(platform_call_stack_end);
     state.image.start = address_of(__executable_start);
     state.image.end = address_of(_end);
     /* game_data, when the link has one (not in the unit tests), lies just

@@ -129,6 +129,12 @@ $(OBJ_DIR)/%.o: %.c
 	@mkdir -p $(@D)
 	$(CC) $(CFLAGS_ALL) -c $< -o $@
 
+# test_arm_division divides by a global through an absolute address with an
+# index and no base register (divl sym(,%ebx,4)), an operand form the game's
+# -fno-pie code (Makefile.native) uses for its tables and that the SIGFPE
+# decoder must handle; position-independent code cannot encode it.
+$(OBJ_DIR)/test/test_arm_division.o: CFLAGS_ALL += -fno-pie
+
 # inspect.c reads expansion's variables through its headers, so it is compiled
 # as the game is (Makefile.native CPPFLAGS and ARCH_FLAGS), or the structure
 # layouts could differ.

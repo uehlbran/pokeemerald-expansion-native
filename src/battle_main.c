@@ -560,8 +560,21 @@ static void CB2_InitBattleInternal(void)
     gBattle_BG3_X = 0;
     gBattle_BG3_Y = 0;
 
+#if PLATFORM_NATIVE
+    // A recorded battle (every test battle) takes BATTLE_ENVIRONMENT_BUILDING
+    // below whatever the map says, so the map is not read for it: with no
+    // map loaded (the test runner) BattleSetup_GetEnvironmentId reads through
+    // gMapHeader.mapLayout, NULL, which the GBA reads as its BIOS and which
+    // natively is unmapped.
+    if ((!DEBUG_OVERWORLD_MENU || (DEBUG_OVERWORLD_MENU && !gIsDebugBattle))
+     && !(gBattleTypeFlags & BATTLE_TYPE_RECORDED))
+        gBattleEnvironment = BattleSetup_GetEnvironmentId();
+#else
+#line 563
     if (!DEBUG_OVERWORLD_MENU || (DEBUG_OVERWORLD_MENU && !gIsDebugBattle))
         gBattleEnvironment = BattleSetup_GetEnvironmentId();
+#endif
+#line 565
     if (gBattleTypeFlags & BATTLE_TYPE_RECORDED)
         gBattleEnvironment = BATTLE_ENVIRONMENT_BUILDING;
     if (TestRunner_Battle_GetForcedEnvironment())
