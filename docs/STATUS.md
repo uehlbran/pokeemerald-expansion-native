@@ -65,12 +65,12 @@ Nothing yet; nothing exists to be broken.
 
 ## For the repository owner
 
-- No `origin` remote exists. To publish, run
-  `git remote add origin <your-github-url>` and `git push -u origin main`;
-  the orchestrator will push at each milestone once it exists.
-- GitHub description to set: "Native PC build of pokeemerald-expansion:
-  SDL2 platform layer, no emulator". Topics: `pokeemerald`,
-  `pokeemerald-expansion`, `decomp`, `sdl2`, `pokemon`.
+- Published at https://github.com/uehlbran/pokeemerald-expansion-native
+  (private for now); `origin` is that repository and main is pushed at
+  every milestone, never force-pushed.
+- GitHub description and topics are set as the brief asked ("Native PC
+  build of pokeemerald-expansion: SDL2 platform layer, no emulator";
+  `pokeemerald`, `pokeemerald-expansion`, `decomp`, `sdl2`, `pokemon`).
 - The brief asked for DeepSeek 4.1 Flash coding workers; this session's
   agent runtime offers Sonnet, Opus, Haiku and Fable only (checked again
   2026-10-08 evening), so the fallback applies: coding workers default to
