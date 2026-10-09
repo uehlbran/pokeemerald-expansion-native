@@ -107,10 +107,9 @@ void ppu_affine_reference_step(struct ppu_affine_reference *ref, const struct pp
 
 /* ---- shared ---- */
 
-/* The mosaic block size along one axis for a BG: 1 unless BGxCNT enables it. */
 static uint32_t mosaic_size(uint16_t bgcnt, uint16_t mosaic, unsigned shift)
 {
-    return (bgcnt & BGCNT_MOSAIC) ? ppu_mosaic_block(mosaic, shift) : 1u;
+    return ppu_mosaic_size((bgcnt & BGCNT_MOSAIC) != 0, mosaic, shift);
 }
 
 static uint32_t char_base(uint16_t bgcnt)
@@ -178,10 +177,10 @@ static uint16_t text_dot(const struct text_layout *bg, uint32_t mx, uint32_t my)
         return dot_8bpp(bg->chars, tile, col, row);
     const uint8_t pair = ppu_bg_vram_byte(bg->chars + tile * PPU_TILE_BYTES_4BPP
                                           + row * PPU_TILE_ROW_BYTES_4BPP + col / PPU_DOTS_PER_BYTE_4BPP);
-    const uint32_t index = (col & 1u) ? (uint32_t)pair >> PPU_NIBBLE_BITS : pair & PPU_NIBBLE_MASK;
+    const uint32_t index = ppu_4bpp_index(pair, col);
     if (index == 0)
         return PPU_TRANSPARENT;
-    return ppu_palette_colour((uint32_t)(entry >> MAP_PALETTE_SHIFT) * PPU_PALETTE_BANK_COLOURS + index);
+    return ppu_palette_colour_4bpp(PPU_BACKDROP_COLOUR_INDEX, (uint32_t)(entry >> MAP_PALETTE_SHIFT), index);
 }
 
 void ppu_bg_render_text(const struct ppu_regs *regs, unsigned bg, uint16_t line,

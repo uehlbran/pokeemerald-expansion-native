@@ -40,19 +40,29 @@ bool ppu_window_span_contains(uint16_t span, uint16_t coordinate)
     return coordinate >= first || coordinate < end; /* wraps around */
 }
 
-static uint8_t control_byte(uint16_t reg, bool high)
+/* The low byte of WININ (Window 0) or WINOUT (outside), and the high byte
+ * (Window 1, the OBJ window), each masked to its six used bits. */
+static uint8_t low_control_byte(uint16_t reg)
 {
-    return (uint8_t)((high ? reg >> CONTROL_HIGH_SHIFT : reg) & PPU_WINDOW_ALL_ENABLED);
+    return (uint8_t)(reg & PPU_WINDOW_ALL_ENABLED);
 }
+
+static uint8_t high_control_byte(uint16_t reg)
+{
+    return (uint8_t)((reg >> CONTROL_HIGH_SHIFT) & PPU_WINDOW_ALL_ENABLED);
+}
+
+enum window_number { WINDOW_0 = 0, WINDOW_1 = 1 };
 
 /* Marks the dots of window (0 or 1) on line with its WININ byte, if the
  * window covers the line. */
-static void apply_rectangle(const struct ppu_regs *regs, unsigned window, uint16_t line,
+static void apply_rectangle(const struct ppu_regs *regs, enum window_number window, uint16_t line,
                             uint8_t control[PPU_SCREEN_WIDTH])
 {
     if (!ppu_window_span_contains(regs->winv[window], line))
         return;
-    const uint8_t inside = control_byte(regs->winin, window == 1);
+    const uint8_t inside = window == WINDOW_1 ? high_control_byte(regs->winin)
+                                              : low_control_byte(regs->winin);
     for (uint16_t x = 0; x < PPU_SCREEN_WIDTH; x++)
         if (ppu_window_span_contains(regs->winh[window], x))
             control[x] = inside;
@@ -67,15 +77,15 @@ void ppu_window_render_line(const struct ppu_regs *regs, uint16_t line,
         return;
     }
     /* From the lowest priority region up, so a higher one overwrites. */
-    memset(control, control_byte(regs->winout, false), PPU_SCREEN_WIDTH);
+    memset(control, low_control_byte(regs->winout), PPU_SCREEN_WIDTH);
     if (enabled & PPU_DISPCNT_OBJWIN_ON) {
-        const uint8_t obj_window = control_byte(regs->winout, true);
+        const uint8_t obj_window = high_control_byte(regs->winout);
         for (unsigned x = 0; x < PPU_SCREEN_WIDTH; x++)
             if (obj->in_obj_window[x])
                 control[x] = obj_window;
     }
     if (enabled & PPU_DISPCNT_WIN1_ON)
-        apply_rectangle(regs, 1, line, control);
+        apply_rectangle(regs, WINDOW_1, line, control);
     if (enabled & PPU_DISPCNT_WIN0_ON)
-        apply_rectangle(regs, 0, line, control);
+        apply_rectangle(regs, WINDOW_0, line, control);
 }

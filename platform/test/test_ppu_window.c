@@ -227,6 +227,23 @@ PTEST(the_obj_window_needs_dispcnt_obj_and_objwin)
     check_front_span(0, 0, SCREEN_W); /* no window enabled at all */
 }
 
+PTEST(a_rotation_scaling_obj_in_obj_window_mode_marks_its_transformed_dots)
+{
+    /* PA = PD = 2.0: the 8x8 image covers the middle 4x4 of its 8x8 area. */
+    window_scene(DISP_OBJ | DISP_OBJWIN);
+    tile_pixels pixels;
+    solid_tile(pixels, 3);
+    put_tile_4bpp(OBJ_VRAM, pixels);
+    obj_palette_set(0, 3, rgb(31, 31, 31));
+    obj_affine_set(0, 512, 0, 0, 512);
+    obj_set(0, (uint16_t)(A0_OBJWIN | A0_AFFINE), 60, a2(0, 0, 0));
+    io_write16(IO_WINOUT, (uint16_t)((SHOW_BG0 | SHOW_BG1) << 8 | SHOW_BG1));
+    check_front_span(0, 0, 0);
+    check_front_span(2, 62, 66);
+    check_front_span(5, 62, 66);
+    check_front_span(6, 0, 0);
+}
+
 PTEST(win0_and_win1_have_priority_over_the_obj_window)
 {
     window_scene(DISP_OBJ | DISP_OBJWIN | DISP_WIN1);

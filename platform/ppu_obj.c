@@ -72,7 +72,6 @@ enum obj_mode { MODE_NORMAL = 0, MODE_SEMI_TRANSPARENT = 1, MODE_OBJ_WINDOW = 2,
 
 #define ATTR2_TILE_MASK 0x03FFu
 #define ATTR2_PRIORITY_SHIFT 10u
-#define ATTR2_PRIORITY_MASK 0x3u
 #define ATTR2_PALETTE_SHIFT 12u
 
 /* Y is 8 bits, wrapping at 256; X is 9 bits, 256-511 being negative. */
@@ -84,7 +83,9 @@ enum obj_mode { MODE_NORMAL = 0, MODE_SEMI_TRANSPARENT = 1, MODE_OBJ_WINDOW = 2,
  * 6 + 32n, PB, PC, PD 8 bytes apart. */
 #define GROUP_BYTES 32u
 #define GROUP_PA_OFFSET 6u
-#define GROUP_PARAM_STRIDE 8u
+#define GROUP_PB_OFFSET 8u  /* from PA */
+#define GROUP_PC_OFFSET 16u
+#define GROUP_PD_OFFSET 24u
 
 /* GBATEK "LCD OBJ - VRAM Character (Tile) Mapping": tile numbers count 32
  * bytes; in 2D mapping a row of the 32x32 tile matrix is 32 tiles. 8bpp tiles
@@ -104,7 +105,11 @@ enum obj_mode { MODE_NORMAL = 0, MODE_SEMI_TRANSPARENT = 1, MODE_OBJ_WINDOW = 2,
 #define HALF_IN_FIXED_POINT 7u /* n << 7 is n / 2 in 8.8 fixed point */
 
 /* GBATEK "LCD OBJ - OAM Attributes": [shape][size] = { width, height }. */
-static const uint8_t obj_dimensions[3][4][2] = {
+#define OBJ_SHAPES 3 /* shape 3 is prohibited */
+#define OBJ_SIZES 4
+#define DIMENSION_WIDTH 0
+#define DIMENSION_HEIGHT 1
+static const uint8_t obj_dimensions[OBJ_SHAPES][OBJ_SIZES][2] = {
     { { 8, 8 }, { 16, 16 }, { 32, 32 }, { 64, 64 } }, /* square */
     { { 16, 8 }, { 32, 8 }, { 32, 16 }, { 64, 32 } }, /* horizontal */
     { { 8, 16 }, { 8, 32 }, { 16, 32 }, { 32, 64 } }, /* vertical */
@@ -147,9 +152,9 @@ static void read_affine_group(struct obj *obj)
     const uint32_t group = ((uint32_t)obj->attr1 >> ATTR1_GROUP_SHIFT) & ATTR1_GROUP_MASK;
     const uint32_t base = group * GROUP_BYTES + GROUP_PA_OFFSET;
     obj->pa = ppu_signed_halfword(ppu_oam_halfword(base));
-    obj->pb = ppu_signed_halfword(ppu_oam_halfword(base + GROUP_PARAM_STRIDE));
-    obj->pc = ppu_signed_halfword(ppu_oam_halfword(base + 2 * GROUP_PARAM_STRIDE));
-    obj->pd = ppu_signed_halfword(ppu_oam_halfword(base + 3 * GROUP_PARAM_STRIDE));
+    obj->pb = ppu_signed_halfword(ppu_oam_halfword(base + GROUP_PB_OFFSET));
+    obj->pc = ppu_signed_halfword(ppu_oam_halfword(base + GROUP_PC_OFFSET));
+    obj->pd = ppu_signed_halfword(ppu_oam_halfword(base + GROUP_PD_OFFSET));
 }
 
 /* Reads OBJ index from OAM; false if it is not displayed at all. */
@@ -165,8 +170,8 @@ static bool read_obj(uint32_t index, struct obj *obj)
         || mode_of(obj->attr0) == MODE_PROHIBITED)
         return false;
     const unsigned size = (unsigned)(obj->attr1 >> ATTR1_SIZE_SHIFT);
-    obj->width = obj_dimensions[shape][size][0];
-    obj->height = obj_dimensions[shape][size][1];
+    obj->width = obj_dimensions[shape][size][DIMENSION_WIDTH];
+    obj->height = obj_dimensions[shape][size][DIMENSION_HEIGHT];
     const int32_t scale = obj->affine && (obj->attr0 & ATTR0_DOUBLE_SIZE) ? 2 : 1;
     obj->area_width = obj->width * scale;
     obj->area_height = obj->height * scale;
@@ -254,7 +259,7 @@ static uint32_t colour_index(const struct obj *obj, bool one_dimensional, uint32
     const uint32_t first = tile * TILE_NUMBER_BYTES + tile_row * row_stride + tile_col * PPU_TILE_BYTES_4BPP;
     const uint8_t pair =
         ppu_obj_vram_byte(first + dot_y * PPU_TILE_ROW_BYTES_4BPP + dot_x / PPU_DOTS_PER_BYTE_4BPP);
-    return (dot_x & 1u) ? (uint32_t)pair >> PPU_NIBBLE_BITS : pair & PPU_NIBBLE_MASK;
+    return ppu_4bpp_index(pair, dot_x);
 }
 
 static uint16_t obj_colour(const struct obj *obj, uint32_t index)
@@ -262,13 +267,12 @@ static uint16_t obj_colour(const struct obj *obj, uint32_t index)
     if (obj->attr0 & ATTR0_8BPP)
         return ppu_palette_colour(PPU_OBJ_PALETTE_FIRST + index);
     const uint32_t bank = (uint32_t)(obj->attr2 >> ATTR2_PALETTE_SHIFT);
-    return ppu_palette_colour(PPU_OBJ_PALETTE_FIRST + bank * PPU_PALETTE_BANK_COLOURS + index);
+    return ppu_palette_colour_4bpp(PPU_OBJ_PALETTE_FIRST, bank, index);
 }
 
-/* The mosaic block size along one axis for obj: 1 unless it has mosaic on. */
 static int32_t mosaic_size(const struct obj *obj, uint16_t mosaic, unsigned shift)
 {
-    return (obj->attr0 & ATTR0_MOSAIC) ? (int32_t)ppu_mosaic_block(mosaic, shift) : 1;
+    return (int32_t)ppu_mosaic_size((obj->attr0 & ATTR0_MOSAIC) != 0, mosaic, shift);
 }
 
 /* Writes one dot of obj at screen x, if it wins against what is there. */
@@ -279,7 +283,7 @@ static void put_dot(const struct obj *obj, uint32_t index, int32_t x, struct ppu
         out->in_obj_window[x] = true;
         return;
     }
-    const uint8_t priority = (uint8_t)((obj->attr2 >> ATTR2_PRIORITY_SHIFT) & ATTR2_PRIORITY_MASK);
+    const uint8_t priority = (uint8_t)((obj->attr2 >> ATTR2_PRIORITY_SHIFT) & PPU_PRIORITY_MASK);
     if (out->colour[x] != PPU_TRANSPARENT && out->priority[x] <= priority)
         return; /* drawn earlier (lower OAM index) at the same or a better priority */
     out->colour[x] = obj_colour(obj, index);
