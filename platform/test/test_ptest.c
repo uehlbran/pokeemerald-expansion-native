@@ -534,4 +534,49 @@ PTEST(registry_contains_this_test)
     PT_ASSERT(!ptest_tests.overflowed);
 }
 
+/* ---- timeout ---- */
+
+static void runner_hanging_case(void)
+{
+    ptest_set_timeout(1); /* a short limit for this test only */
+    sleep(PTEST_DEFAULT_TIMEOUT_SECONDS);
+}
+
+PTEST(runner_fails_a_hanging_test_and_runs_the_next)
+{
+    struct ptest_registry registry = { .count = 0 };
+    ptest_register_in(&registry, "runner_hanging_case", runner_hanging_case);
+    ptest_register_in(&registry, "runner_passing_case", runner_passing_case);
+    const struct run run = run_registry(&registry);
+    PT_ASSERT(run.text_complete);
+    PT_ASSERT_EQ_INT(run.status, 1);
+    PT_ASSERT(has_text(run.text, ": runner_hanging_case: timed out after 1 seconds\n"));
+    PT_ASSERT(count_text(run.text, "FAIL ") == 1);
+    PT_ASSERT(has_text(run.text, "1 passed, 1 failed\n"));
+    PT_ASSERT_EQ_STR(ptest_current.name, "runner_fails_a_hanging_test_and_runs_the_next");
+    PT_ASSERT(!ptest_current.outcome.failed);
+}
+
+PTEST(timeout_comes_from_the_environment_when_it_is_a_positive_number)
+{
+    const char *const saved = getenv(PTEST_TIMEOUT_ENV);
+    char previous[32] = "";
+    if (saved != NULL)
+        snprintf(previous, sizeof previous, "%s", saved);
+    unsigned seen[5];
+    const char *const values[5] = { "7", "0", "abc", "5x", "" };
+    for (size_t i = 0; i < 5; i++) {
+        setenv(PTEST_TIMEOUT_ENV, values[i], 1);
+        seen[i] = ptest_default_timeout();
+    }
+    unsetenv(PTEST_TIMEOUT_ENV);
+    const unsigned unset = ptest_default_timeout();
+    if (saved != NULL)
+        setenv(PTEST_TIMEOUT_ENV, previous, 1);
+    PT_ASSERT_EQ_INT(seen[0], 7);
+    for (size_t i = 1; i < 5; i++)
+        PT_ASSERT_EQ_INT(seen[i], PTEST_DEFAULT_TIMEOUT_SECONDS);
+    PT_ASSERT_EQ_INT(unset, PTEST_DEFAULT_TIMEOUT_SECONDS);
+}
+
 PTEST_MAIN()
