@@ -1,6 +1,6 @@
 # Status
 
-Last updated 2026-10-09 (milestone 6 done: **32-bit done**, every gate green and recorded below; milestone 7, the 64-bit build, started).
+Last updated 2026-10-09 (milestone 7 done: **64-bit done**; every gate green at both widths on main at 94f3c70f62 and recorded below; milestone 8 not started).
 
 This file is the honest ledger. A thing is listed as verified only with
 the gate that proved it. Anything without a gate is unverified, whatever
@@ -23,23 +23,22 @@ sequence after the last merge and recorded in the table below. Seven
 upstream issues were filed (rh-hideout #10892 to #10898, approved text) and
 closed by the maintainer. Every commit is authored by uehlbran.
 
-**In flight.** Milestone 7, the 64-bit build, is in its last stretch.
-Merged on 2026-10-09, each by a worker in its own worktree, reviewed by a
-Sonnet reviewer with mutation testing and gated by the orchestrator:
-m7-seed, m7-link, m7-testtable, m7-armdiv, m7-data, m7-bscript, m7-crit,
-m7-align, m7-san and m7-save (what each did: the "Milestone 7" rows in
-"Verified by a gate" and the merge messages). **The 64-bit build plays
-both replays plain and sanitized, expansion's suite at 64 bits matches
-32 test for test (5409 passed at both widths), the sanitized suites
-report the same accesses at both widths, and a 32-bit save loads in the
-64-bit build and back (gate h, the cross-width script, plain and
-sanitized).** m7-anim and m7-docs merged after that (99d36a6290,
-5c17faf576). Running now: the milestone 7 refactoring pass in three
-groups (refactor7-platform: the platform C added in M7; refactor7-glue:
-the build glue, checkers and scripts; refactor7-expansion: the audit of
-M7's guarded expansion blocks). Then the orchestrator's end-to-end read
-of the milestone 7 changes, every gate once more on main, "64-bit done",
-push. The "Milestone 7" section below is the ledger.
+**Finished, continued.** Milestone 7, the 64-bit build: **64-bit is
+done**. Twelve worker branches (each in its own worktree, reviewed by a
+Sonnet reviewer with mutation testing, gated by the orchestrator) and the
+refactoring pass in three reviewed groups were merged on 2026-10-09, then
+the orchestrator read every milestone 7 change in `platform/` and the
+build glue end to end (no defect; three comments corrected), then every
+gate ran once more on main at 94f3c70f62 in one sequence and was green:
+the platform gate; at 32 bits the build, both replays plain and
+sanitized, both suites (5409 passed) and the GBA ROM (sha1 unchanged); at
+64 bits the build with its three link-time data checks, both replays
+plain and sanitized, both suites (5409 passed, test for test the 32-bit
+results); and the cross-width save gate (h) in both directions, plain and
+sanitized. The "Milestone 7" section and the table below are the ledger.
+
+**In flight.** Nothing. Milestone 8 (CI for both targets, Windows, macOS)
+is not started; PLAN.md has its row.
 
 **Broke and fixed.** Milestone 7: the 64-bit plain debug-menu replay
 failed on main right after the alignment merge while the sanitized one
@@ -246,12 +245,13 @@ order (531011a558).
 | GBA memory regions can be mapped at their addresses in a native process on 32-bit and 64-bit, with ASan and UBSan | `research/memory-map-experiment.md` | works |
 | The platform gate: clang-format (`.clang-format`) finds nothing to change, clang-tidy (`.clang-tidy`) and cppcheck report nothing at both widths, every unit test passes under ASan+UBSan at both widths | `make -C platform gate` | green 2026-10-09, 79 s, on main at 61ae8181f7 (and again after the end-to-end read's five cleanups) |
 | Every gate in one sequence on main after the last milestone 6 merge (61ae8181f7): the platform gate, the 32-bit build, the opening and debug-menu replays plain (27 dumps, 26 screenshots; 20 dumps, 32 screenshots; both save round trips) and sanitized (identical), `make check` plain and sanitized (5862 tests: 5405 passed, 18 known failing, 9 expected failing, 421 to-do, 9 assumption failures, 0 failed), the GBA ROM rebuilt | the ten steps in order, each exit 0 | green 2026-10-09; 79 s, 2 s, 29 s, 28 s, 3 s, 75 s, 73 s, 38 s, 116 s, 1 s; ROM sha1 e2d4600d4e7b1269ac50c28bc96ece2b758ded9e |
-| 64-bit, gate (a): the 64-bit native executable links from main with the relocation, layout and battle-script operand checks passing | `make -f Makefile.native -j32 native BITS=64` | green 2026-10-09 on main at b66dbd4385 |
-| 64-bit, gate (d): the opening replay on the 64-bit build, every dump and screenshot equal to the 32-bit expectations, the save round trip | `tests/smoke/run.sh build/native64/pokeemerald-native out/` | green 2026-10-09 (27 dumps, 26 screenshots) |
-| 64-bit, gate (e): the debug-menu replay on the 64-bit build | `tests/smoke/run_debug_menu.sh build/native64/pokeemerald-native out/` | green 2026-10-09 (20 dumps, 32 screenshots) |
-| 64-bit, gate (b): expansion's suite against the 64-bit build: 5866 tests, 5408 passed, 1 failed, 18 known failing, 9 expected failing, 421 to-do, 9 assumption failures; per test equal to the 32-bit run except `SaveBlock1 is backwards compatible` (sizeof 15768 vs 15496: the layout difference gate h converts; the test is expansion's sizeof comparison and stays red at 64 by design unless the owner wants it guarded) | `make -f Makefile.native -j32 check BITS=64` | 2026-10-09, 125 s: red by that one test, which is the expected 64-bit layout |
-| 64-bit, gates (d) and (e) sanitized: both replays on the 64-bit sanitized build, identical dumps and screenshots, no sanitizer report | `tests/smoke/run.sh` and `run_debug_menu.sh` with `build/native64-san/pokeemerald-native`, `ASAN_OPTIONS=halt_on_error=0` | green 2026-10-09 on main at 7280370c21 (69 s, 55 s) |
-| 64-bit, gate (b) sanitized: the suite on the 64-bit sanitized build gives the same per-test results as the plain 64-bit run (red by the save-layout test only); the UndefinedBehaviorSanitizer report set is identical to the 32-bit run's (42 sites); the AddressSanitizer reports differ at several sites (recorded-battle controllers, SetBoxMonData, animation tasks), under investigation by m7-san | `make -f Makefile.native -j32 check BITS=64 SANITIZE=1` | 2026-10-09: per-test results as plain; the report comparison is in flight |
+| 64-bit, gate (a): the 64-bit native executable links from main with the three link-time data checks passing (the relocation check against `data_address_words.txt` and the 4-byte reference, the layout check against the probe, the battle script operand check) | `make -f Makefile.native -j32 native BITS=64` (and `SANITIZE=1`) | green 2026-10-09 on main at 94f3c70f62, 16 s and 24 s |
+| 64-bit, gates (d) and (e): the opening and debug-menu replays on the 64-bit build, every dump and screenshot equal to the 32-bit expectations, both save round trips | `tests/smoke/run.sh` and `run_debug_menu.sh` with `build/native64/pokeemerald-native` | green 2026-10-09 on main at 94f3c70f62 (27 dumps, 26 screenshots; 20 dumps, 32 screenshots), 24 s and 23 s |
+| 64-bit, gates (d) and (e) sanitized: both replays on the 64-bit sanitized build, identical dumps and screenshots, no sanitizer report | the same with `build/native64-san/pokeemerald-native`, `ASAN_OPTIONS=halt_on_error=0` | green 2026-10-09 on main at 94f3c70f62, 57 s and 55 s |
+| 64-bit, gate (b): expansion's suite against the 64-bit build: 5866 tests, 5409 passed, 0 failed, 18 known failing, 9 expected failing, 421 to-do, 9 assumption failures (the benchmarks), exit 0; test for test the 32-bit results (`test/save.c` expects the 64-bit SaveBlock1 size under the guard) | `make -f Makefile.native -j32 check BITS=64` | green 2026-10-09 on main at 94f3c70f62, 64 s |
+| 64-bit, gate (b) sanitized: the same suite on the 64-bit sanitized build, the same per-test results; the sanitizer reports are the 32-bit run's, access by access, when compared with `ASAN_OPTIONS=suppress_equal_pcs=0` (SUITE-LOG.md, "The sanitized run at 64 bits"); nothing new at 64 bits | `make -f Makefile.native -j32 check BITS=64 SANITIZE=1` | green 2026-10-09 on main at 94f3c70f62, 104 s |
+| Gate (h): a save written by the 32-bit build loads in the 64-bit build and back: the opening up to the save by one width, Continue by the other (the dumps and screenshots after the restart as expected, the loaded state equal to the saved one, the file unchanged until the game saves), the bare image (an older 32-bit build's), a refused foreign layout id, and a save made by the second build loaded again by it; both directions, plain and sanitized | `tests/smoke/run_cross_width.sh build/native32/pokeemerald-native build/native64/pokeemerald-native out/` and the reverse, then the `-san` builds | green 2026-10-09 on main at 94f3c70f62: 39 s, 34 s, 99 s, 84 s |
+| Every gate in one sequence on main after the last milestone 7 merge (94f3c70f62): the platform gate (format, lint at both widths, the sanitized unit tests at both widths, tools-test, glue-test); at 32 bits the build, the two replays plain and sanitized, `make check` plain and sanitized (5409 passed), the GBA ROM rebuilt; at 64 bits the build plain and sanitized, the two replays plain and sanitized, `make check` plain and sanitized (5409 passed); the cross-width script both ways, plain and sanitized | the 22 steps in order, each exit 0 | green 2026-10-09; the 32-bit half 11 min, the 64-bit half 6 min, the cross-width runs 4 min; ROM sha1 e2d4600d4e7b1269ac50c28bc96ece2b758ded9e |
 | Every platform module is merged: `gba_memmap` (region layout via linker script), `ptest.h` self-test, `timer`, `transfer_bounds`, `input`, `rtc`, `video`, `audio`, `frame_pacer`, `interrupt`, `psg`, `ppu`, `dma`, `flash`, `save_file`, `bios`, `lcd_status`, `m4a_output`, `sound_mix`, `replay`, `inspect`, `restart`, `symbols`, `debug_channel`, `crash_reboot`, `arm_division`, and the `m4a` engine translation (also proven by a differential test against the ARM original under qemu-arm, run by hand) | `make -C platform test BITS=32` and `BITS=64`, every test under ASan+UBSan with leak detection, after a Sonnet first-pass review and orchestrator merge | green on both widths at merge time |
 
 ## Not verified
@@ -288,17 +288,19 @@ Nothing yet; nothing exists to be broken.
 
 | Gate | State |
 |---|---|
-| (a) native build from a clean clone with documented prerequisites | green for 32-bit (`docs/BUILDING.md`); 64-bit links and runs from main (clean-clone run not yet recorded) |
-| (platform) `make -C platform gate`: format, lint, sanitized unit tests at both widths | green |
-| (b) expansion's test suite against the native binary, same results as GBA | green on 32-bit, plain and sanitized: per test the GBA baseline but for the 9 benchmarks (assumption failures by decision); at 64-bit plain the same but for `SaveBlock1 is backwards compatible` (the layout test; gate h) |
-| (h) a save written by the 32-bit native build loads correctly in the 64-bit native build (cross-width round-trip; the save container is versioned so this stays true) | milestone 7, not started |
+| (a) native build from a clean clone with documented prerequisites | green at both widths (`docs/BUILDING.md`; the 64-bit build runs its three link-time data checks) |
+| (platform) `make -C platform gate`: format, lint, sanitized unit tests at both widths, tools-test, glue-test | green |
+| (b) expansion's test suite against the native binary, same results as GBA | green at both widths, plain and sanitized: per test the GBA baseline but for the 9 benchmarks (assumption failures by decision) |
+| (h) a save written by the 32-bit native build loads correctly in the 64-bit native build (cross-width round-trip; the save container is versioned so this stays true) | green, both directions, plain and sanitized |
 | (c) GBA target builds and passes the suite | green (above) |
-| (d) deterministic input-replay smoke test through the opening | green on 32-bit, plain and sanitized; green on 64-bit plain (sanitized: m7-align in flight) |
-| (e) debug-menu gate | green on 32-bit, plain and sanitized; green on 64-bit plain |
-| (f) unit tests and smoke boot clean under sanitizers | unit tests green under ASan+UBSan on 32 and 64-bit; the opening replay and the full suite are clean under ASan+UBSan on 32-bit |
+| (d) deterministic input-replay smoke test through the opening | green at both widths, plain and sanitized |
+| (e) debug-menu gate | green at both widths, plain and sanitized |
+| (f) unit tests and smoke boot clean under sanitizers | green: the unit tests, both replays and the full suite are clean under ASan+UBSan at both widths (the suite's known reports are listed with their root causes in SUITE-LOG.md) |
 | (g) this file | current |
 
 **32-bit done** (2026-10-09): every gate above that applies to 32-bit is green on main and recorded in "Verified by a gate"; the refactoring pass and the end-to-end read are recorded in "Milestone 6".
+
+**64-bit done** (2026-10-09): every gate above is green at 64 bits on main at 94f3c70f62 and recorded in "Verified by a gate"; the milestone 7 refactoring pass and the end-to-end read are recorded in "Milestone 7".
 
 ## For the repository owner
 
@@ -353,6 +355,10 @@ Nothing yet; nothing exists to be broken.
 | docs (milestone 6: CONTRIBUTING, UPGRADING, ARCHITECTURE, README) | Sonnet | orchestrator |
 | the end-to-end read of platform/ and its five cleanups (milestone 6) | Fable (orchestrator) | the full gate |
 | m7-inventory (milestone 7: the 64-bit inventory, no code) | Opus | orchestrator |
+| m7-seed, m7-link, m7-testtable, m7-armdiv, m7-data, m7-bscript, m7-crit, m7-align, m7-san, m7-save, m7-anim (milestone 7, the 64-bit build) | Sonnet; Opus for m7-data and m7-bscript (one worker), m7-armdiv, m7-san and m7-save | Sonnet (mutation testing), orchestrator merge gate |
+| m7-docs (milestone 7: BUILDING, ARCHITECTURE, CONTRIBUTING, the platform comments at 64 bits) | Sonnet | orchestrator |
+| refactor7-platform, refactor7-glue, refactor7-expansion (milestone 7 refactoring pass) | Sonnet | Sonnet (mutation testing), orchestrator merge gate |
+| the end-to-end read of the milestone 7 changes and its three comment corrections | Fable (orchestrator) | the full gate at both widths |
 | battle-glyph (milestone 6: the trainer party seed and the nickname padding, root cause of the screenshot flake) | Opus | orchestrator |
 | upstream-report (seven issues drafted, triaged against upstream) | Sonnet | Fable (orchestrator) |
 | Research, synthesis, decisions, merges | Fable (orchestrator) | |

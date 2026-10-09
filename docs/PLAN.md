@@ -14,7 +14,7 @@ resumes by reading both and first posting what it believes is in flight.
 | 4 | Native test-runner integration; suite matches the GBA baseline | done 2026-10-09 (per test the GBA baseline but for the 9 benchmarks; sanitized run clean) |
 | 5 | Debug-menu gate | done 2026-10-09 |
 | 6 | Unit tests under sanitizers, clang-tidy, cppcheck, `.clang-format` enforced in the gate, docs, the refactoring pass (below); 32-bit done | done 2026-10-09 (every gate green on main at 61ae8181f7 and recorded in STATUS.md) |
-| 7 | 64-bit audit and build; every gate again, plus the cross-width save round-trip gate (h); the refactoring pass again; 64-bit done | in progress 2026-10-09 (inventory first, see "Milestone 7 plan") |
+| 7 | 64-bit audit and build; every gate again, plus the cross-width save round-trip gate (h); the refactoring pass again; 64-bit done | done 2026-10-09 (every gate green at both widths on main at 94f3c70f62; STATUS.md "Milestone 7") |
 | 8 | CI for both targets; Windows (MinGW) and macOS | later |
 
 ## Milestone 2 work breakdown
@@ -120,6 +120,12 @@ build, the two replays, the sanitized replays and `make check` that the
 other gates run.
 
 ## Milestone 7 plan: the 64-bit build (started 2026-10-09)
+
+Done 2026-10-09: the order below was followed (the inventory, then
+twelve worker branches, gate (h) as a platform-side converter, every
+gate at 64 bits, the refactoring pass in three groups, the end-to-end
+read); STATUS.md "Milestone 7" is the record and DECISIONS.md has the
+decisions taken on the way. The plan is kept as written for the record.
 
 Order of work. First an inventory, no code (an Opus worker, written to
 the session scratchpad and then summarised here): every place the 32-bit
