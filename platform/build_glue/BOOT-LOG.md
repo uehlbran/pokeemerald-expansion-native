@@ -172,3 +172,62 @@ recorded battle no longer fits its save sector). Every other object
 compiles, and a trial link without those two fails only on the symbols they
 define (no relocation or layout error). 64-bit milestone work, not looked
 at further.
+
+## Replay bring-up (milestone 3): playing the opening
+
+Everything that stopped `tests/smoke/opening.replay` (or that the sanitized
+run reported along it), with its root cause. The opening now runs from boot
+through the first battle, a save, a cold restart and Continue, plain and
+sanitized, with the same dumps and screenshots and an empty stderr.
+
+13. **SEGV in `Task_HandleMonAnimation` during Birch's speech** (the Lotad's
+    animation). `src/pokemon_animation.c` reads
+    `gBattleStruct->battlerKOAnimsRunning` after every animation; outside a
+    battle `gBattleStruct` is NULL and the GBA read the BIOS region at 0x1E8
+    (open bus) instead of faulting. Guarded NULL check.
+14. **SEGV in `SpriteCB_Cursor`, then `VBlankCB_NamingScreen`, when the name
+    is confirmed.** `MainState_Exit` frees `sNamingScreen` from inside
+    `RunTasks`; the same frame's `AnimateSprites` (the sprite callbacks) and
+    the next V-Blank callback still read it, through NULL, which the GBA also
+    read from the BIOS region. Two guarded early returns.
+15. **SEGV at the first script command (`NewGameInitData`).** Expansion lists
+    a script command, native or special that is instrumented for effect
+    analysis as its function's address plus `ROM_SIZE` (0x02000000), which on
+    the GBA is the ROM's wait-state mirror and so also callable
+    (`platform/script_tag.h`). Natively nothing is mapped there. The tag is
+    now kept as bit 25 and removed where the pointers are called (guarded
+    changes in `src/script.c`, `src/scrcmd.c`, `include/script.h`). A second
+    mapping of the code at +0x02000000 was tried and dropped: it works only for
+    code without program-counter-relative data access, which is the 32-bit build.
+16. **Hang in `DoMapLoadLoop`** (`CB2_NewGame`). `FreeTempTileDataBuffersIfPossible`
+    waits for the DMA3 manager, whose queue the V-Blank interrupt drains; the
+    loop never waits for a frame, and natively time passes only in
+    `VBlankIntrWait`. Guarded: the loop waits a frame per iteration.
+17. **Text drawn with a ghost glyph** ("ye e", "So,, ,"). `GLYPH_COPY`
+    (`src/text.c`) shifts by `32 - shift0`, which is 32 for a glyph that
+    starts on a tile boundary: 0 on ARM, but x86 masks the count to 5 bits, so
+    the glyph was also copied into the next tile. The same file's
+    `1 << (width * 4)` is 32 for a full-width glyph. Guarded.
+18. **Sanitizer findings along the opening** (all benign on the GBA):
+    `BuildDoorTiles` (`src/field_door.c`) reads 8 palette entries at offsets
+    4, 8 and 12 of 8-entry tables (reads of the next object; tile 0, so
+    invisible); `sMegaIndicatorPal` (`src/data/graphics/gimmicks.h`) has 15
+    colours and is loaded as 16 (the same pattern as the quickstart palette
+    before); `GetBattlerPartyStateByPokemon` (`src/pokemon.c`) takes the address of
+    a member of NULL `gBattleStruct` outside a battle; and `if_comptime`
+    (`include/metaprogram.h`) puts `*(int *)0` in the arm of a `?:` that UBSan
+    checks when the compiler has not folded it (a false report for every
+    `RandomPercentage` with a run-time argument).
+19. **Keys lost.** Not a bug: a press in the frame a screen becomes ready is
+    ignored by the game (the naming screen's input is enabled the frame after
+    its fade ends; a map's arrival script locks the controls a few frames
+    after the map is up; a turn on the spot swallows an A). The script settles
+    with a `wait N` at those points, commented in `opening.replay`.
+20. **The save file's bytes differ between two runs** (dumps and screenshots
+    do not). Nine bytes of the first party Pokemon in SaveBlock1 (the last
+    byte of the nickname, and encrypted fields with the checksum that
+    follows) hold uninitialised stack contents that depend on the stack's
+    address, which ASLR changes; `setarch -R` makes two runs byte-identical.
+    The values are never read by the game. Not fixed: it needs the
+    expansion's mon creation to initialise its locals; matters only if the save's
+    bytes are ever compared (the cross-width gate (h) compares facts).

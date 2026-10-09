@@ -250,6 +250,19 @@ PTEST(first_run_chip_time_is_host_local_time)
     assert_dt(&d, 0x24, 0x03, 0x15, 0x05, 0x95, 0x45, 0x30); /* 15:45:30 */
 }
 
+PTEST(rtc_init_utc_first_run_ignores_the_host_zone)
+{
+    struct rtc_datetime d;
+    setenv("TZ", "XXX-2", 1);
+    tzset();
+    g_now = EPOCH_2024_03_15_13_45_30;
+    PT_ASSERT_EQ_INT(rtc_init_utc(fake_source, NULL), 0);
+    PT_ASSERT_EQ_INT(rtc_get_datetime(&d), 0);
+    rtc_shutdown();
+    pin_utc();
+    assert_dt(&d, 0x24, 0x03, 0x15, 0x05, 0x93, 0x45, 0x30); /* 13:45:30 UTC (PM flag), not 15:45:30 */
+}
+
 PTEST(source_out_of_range_is_an_error)
 {
     struct rtc_datetime d;

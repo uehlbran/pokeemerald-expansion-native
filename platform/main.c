@@ -32,6 +32,7 @@
 #include "bios.h"
 #include "crt0.h"
 #include "dma.h"
+#include "fixed_clock.h"
 #include "flash.h"
 #include "frame.h"
 #include "frame_pacer.h"
@@ -41,6 +42,8 @@
 #include "interrupt.h"
 #include "ppu.h"
 #include "psg.h"
+#include "replay_session.h"
+#include "restart.h"
 #include "rtc.h"
 #include "save_file.h"
 #include "timer.h"
@@ -56,6 +59,7 @@ extern void (*gIntrTable[])(void);
 #define MAIN_DEFAULT_RTC_OFFSET_PATH "pokeemerald.rtc"
 #define MAIN_DEFAULT_SCALE VIDEO_DEFAULT_SCALE
 #define MAIN_DEFAULT_FRAME_LIMIT 0u /* none */
+#define MAIN_DEFAULT_OUT_DIR "."
 #define MAIN_WINDOW_TITLE "pokeemerald-expansion"
 
 /* Exit codes besides the game's own: 0 for a normal end, sysexits.h's
@@ -81,6 +85,11 @@ struct options {
     const char *save_path;
     const char *rtc_offset_path;
     const char *screenshot_path;
+    const char *replay_path;  /* NULL: play normally */
+    const char *out_dir;
+    uint32_t resume_after_line; /* --resume-at, set by a restart */
+    bool rtc_fixed;
+    int64_t rtc_fixed_epoch;
 };
 
 static void print_usage(FILE *out)
@@ -95,8 +104,15 @@ static void print_usage(FILE *out)
             "  --unthrottled      do not hold the GBA frame rate\n"
             "  --frames N         exit after N frames (exit status 0)\n"
             "  --screenshot PATH  write the last frame to PATH as a PPM when the game ends\n"
+            "  --replay SCRIPT    play a replay script (tests/smoke/README.md): the keypad reads the script, not the\n"
+            "                     keyboard; exit 0 when the script ends, 1 on the first failed command\n"
+            "  --out DIR          where the replay's screenshots and dumps go (default %s)\n"
+            "  --rtc-fixed EPOCH  the clock starts at EPOCH (Unix seconds) and advances with the frame count,\n"
+            "                     so a replay sees the same time every run\n"
+            "  --resume-at LINE   (a restart adds it) continue the replay after script line LINE\n"
             "  --help             this text\n",
-            MAIN_DEFAULT_SAVE_PATH, MAIN_DEFAULT_RTC_OFFSET_PATH, VIDEO_MAX_SCALE, MAIN_DEFAULT_SCALE);
+            MAIN_DEFAULT_SAVE_PATH, MAIN_DEFAULT_RTC_OFFSET_PATH, VIDEO_MAX_SCALE, MAIN_DEFAULT_SCALE,
+            MAIN_DEFAULT_OUT_DIR);
 }
 
 /* main's two jump targets: the end of the game, and SoftReset. */
@@ -116,6 +132,20 @@ static bool parse_unsigned(const char *text, unsigned long max, unsigned long *o
     return true;
 }
 
+/* A Unix time in seconds: decimal digits, at most INT64_MAX. */
+static bool parse_epoch(const char *text, int64_t *out)
+{
+    char *end;
+    if (text == NULL || text[0] < '0' || text[0] > '9')
+        return false;
+    errno = 0;
+    long long value = strtoll(text, &end, 10);
+    if (errno != 0 || *end != '\0')
+        return false;
+    *out = value;
+    return true;
+}
+
 /* Returns 0, or MAIN_EXIT_USAGE after printing what is wrong. */
 static int parse_options(int argc, char **argv, struct options *out)
 {
@@ -124,6 +154,7 @@ static int parse_options(int argc, char **argv, struct options *out)
         .frame_limit = MAIN_DEFAULT_FRAME_LIMIT,
         .save_path = MAIN_DEFAULT_SAVE_PATH,
         .rtc_offset_path = MAIN_DEFAULT_RTC_OFFSET_PATH,
+        .out_dir = MAIN_DEFAULT_OUT_DIR,
     };
     for (int i = 1; i < argc; i++) {
         const char *arg = argv[i];
@@ -145,6 +176,18 @@ static int parse_options(int argc, char **argv, struct options *out)
             i++;
         } else if (strcmp(arg, "--screenshot") == 0 && value != NULL) {
             out->screenshot_path = value;
+            i++;
+        } else if (strcmp(arg, "--replay") == 0 && value != NULL) {
+            out->replay_path = value;
+            i++;
+        } else if (strcmp(arg, "--out") == 0 && value != NULL) {
+            out->out_dir = value;
+            i++;
+        } else if (strcmp(arg, "--rtc-fixed") == 0 && parse_epoch(value, &out->rtc_fixed_epoch)) {
+            out->rtc_fixed = true;
+            i++;
+        } else if (strcmp(arg, "--resume-at") == 0 && parse_unsigned(value, UINT32_MAX, &number)) {
+            out->resume_after_line = (uint32_t)number;
             i++;
         } else if (strcmp(arg, "--scale") == 0 && parse_unsigned(value, VIDEO_MAX_SCALE, &number) && number >= 1) {
             out->scale = (int)number;
@@ -174,7 +217,23 @@ static int start_ppu(const struct options *o) { (void)o; return ppu_init(); }
 static int start_psg(const struct options *o) { (void)o; return psg_init(FRAME_AUDIO_SAMPLE_RATE_HZ); }
 static int start_sdl(const struct options *o) { (void)o; return 0; }
 static int start_audio(const struct options *o) { return audio_init(FRAME_AUDIO_SAMPLE_RATE_HZ, o->silent); }
-static int start_rtc(const struct options *o) { return rtc_init(NULL, o->rtc_offset_path); }
+
+/* --rtc-fixed: the clock's base time (fixed_clock.h); the source reads the
+ * frame count, so it is the same on every run of the same script. */
+static int64_t fixed_clock_base;
+
+static int64_t read_fixed_clock(void)
+{
+    return fixed_clock_at(fixed_clock_base, frame_count());
+}
+
+static int start_rtc(const struct options *o)
+{
+    fixed_clock_base = o->rtc_fixed_epoch;
+    if (o->rtc_fixed) /* no host time zone in a deterministic run */
+        return rtc_init_utc(read_fixed_clock, o->rtc_offset_path);
+    return rtc_init(NULL, o->rtc_offset_path);
+}
 static int start_frame_pacer(const struct options *o) { return frame_pacer_init(o->unthrottled); }
 
 static void run_frame(void);
@@ -196,9 +255,9 @@ static int start_video(const struct options *o)
 
 static int start_input(const struct options *o)
 {
-    /* Headless there is no window to take keys from; the script source
-     * reads "no key pressed" until a replay sets it. */
-    return input_init(o->headless ? INPUT_SOURCE_SCRIPT : INPUT_SOURCE_HOST);
+    /* Headless there is no window to take keys from, and a replay supplies
+     * them; the script source reads "no key pressed" until a replay sets it. */
+    return input_init(o->headless || o->replay_path != NULL ? INPUT_SOURCE_SCRIPT : INPUT_SOURCE_HOST);
 }
 
 static int start_flash(const struct options *o)
@@ -240,6 +299,13 @@ static int start_frame(const struct options *o)
     return frame_init(&config);
 }
 
+static int start_replay(const struct options *o)
+{
+    if (o->replay_path == NULL)
+        return 0;
+    return replay_session_start(o->replay_path, o->out_dir, o->resume_after_line);
+}
+
 struct module_step {
     const char *name;
     int (*start)(const struct options *options);
@@ -269,6 +335,7 @@ static const struct module_step module_steps[] = {
     { "save_file", start_save_file, save_file_shutdown },
     { "frame", start_frame, frame_shutdown },
     { "frame_pacer", start_frame_pacer, frame_pacer_shutdown },
+    { "replay", start_replay, replay_session_stop },
 };
 #define MODULE_STEP_COUNT (sizeof module_steps / sizeof module_steps[0])
 
@@ -362,6 +429,37 @@ static int run_game(void)
     return MAIN_EXIT_FAILURE;
 }
 
+/* How the replay ended, folded into the exit status. Sets *restart when the
+ * script asked for a restart. */
+static int settle_replay(int status, bool *restart)
+{
+    switch (replay_session_status()) {
+    case REPLAY_DONE:
+        return status;
+    case REPLAY_RESTART:
+        *restart = true;
+        return status;
+    case REPLAY_FAILED:
+        fprintf(stderr, "replay: FAILED: %s\n", replay_session_message());
+        return MAIN_EXIT_FAILURE;
+    case REPLAY_RUNNING:
+    default:
+        if (status == MAIN_EXIT_OK)
+            fprintf(stderr, "replay: FAILED: the game ended before the script did\n");
+        return MAIN_EXIT_FAILURE;
+    }
+}
+
+/* The cold restart (restart.h), after everything is shut down: this does not
+ * return unless the exec failed. */
+static int restart_process(int argc, char **argv, int64_t epoch, uint32_t line)
+{
+    struct restart_args args;
+    if (restart_build_args(argc, argv, line, epoch, &args) == 0)
+        (void)restart_exec(&args); /* reports its failure */
+    return MAIN_EXIT_FAILURE;
+}
+
 int main(int argc, char **argv)
 {
     struct options options;
@@ -380,6 +478,13 @@ int main(int argc, char **argv)
     if (frame_flush_save() != 0 && status == MAIN_EXIT_OK)
         status = MAIN_EXIT_FAILURE;
     printf("main: %u frames\n", frame_count());
+    bool restart = false;
+    if (options.replay_path != NULL)
+        status = settle_replay(status, &restart);
+    const int64_t restart_epoch = fixed_clock_at(options.rtc_fixed_epoch, frame_count());
+    const uint32_t restart_line = replay_session_restart_line();
     stop_modules(MODULE_STEP_COUNT);
+    if (restart && status == MAIN_EXIT_OK)
+        return restart_process(argc, argv, restart_epoch, restart_line);
     return status;
 }

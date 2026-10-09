@@ -6271,7 +6271,16 @@ static struct PartyState *GetBattlerPartyStateByPokemon(struct Pokemon *partyMon
 {
     struct Pokemon *party = GetTrainerParty(trainer);
 
+#if PLATFORM_NATIVE
+    // Outside a battle gBattleStruct is NULL. Natively this returns NULL where the GBA handed the caller a pointer
+    // near address 0 (a deliberate divergence: callers test for NULL before using it).
+    if (gBattleStruct == NULL)
+        return NULL;
     for (int i = 0; i < PARTY_SIZE; i++)
+#else
+    for (int i = 0; i < PARTY_SIZE; i++)
+#endif
+#line 6275
     {
         struct Pokemon *mon = &party[i];
         if (partyMon == mon)

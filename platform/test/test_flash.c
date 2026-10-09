@@ -245,6 +245,21 @@ PTEST(program_byte_writes_one_byte_within_the_sector)
     PT_ASSERT(count_bytes_not(chip(), CHIP_BYTES, ERASED) == 2);
 }
 
+PTEST(write_count_counts_accepted_programs_and_erases_only)
+{
+    flash_init();
+    PT_ASSERT_EQ_U32(flash_write_count(), 0);
+    PT_ASSERT_EQ_U32(NativeFlash.programFlashByte(2, 100, 0x0F), FLASH_STATUS_OK);
+    PT_ASSERT_EQ_U32(NativeFlash.programFlashByte(2, 100, 0xF0), TIME_LIMIT_PROGRAM_BYTE); /* refused */
+    PT_ASSERT_EQ_U32(NativeFlash.programFlashByte(FLASH_SECTOR_COUNT, 0, 0), FLASH_STATUS_BAD_SECTOR); /* refused */
+    PT_ASSERT_EQ_U32(NativeFlash.eraseFlashSector(3), FLASH_STATUS_OK);
+    PT_ASSERT_EQ_U32(flash_write_count(), 2);
+    (void)flash_take_dirty(); /* taking the dirty flag does not reset the count */
+    PT_ASSERT_EQ_U32(flash_write_count(), 2);
+    flash_init();
+    PT_ASSERT_EQ_U32(flash_write_count(), 0);
+}
+
 PTEST(program_byte_cannot_turn_a_0_bit_into_a_1)
 {
     flash_init();

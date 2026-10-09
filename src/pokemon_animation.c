@@ -527,7 +527,15 @@ static void Task_HandleMonAnimation(u8 taskId)
         // Task_HandleMonAnimation handles more than just KO animations,
         // but if the counter is non-zero then only KO animations are running.
         // This assumption is not checked.
+#if PLATFORM_NATIVE
+        // Outside a battle (the new game speech animates a Lotad) gBattleStruct is NULL; the GBA read address
+        // 0x1E8 there (a read of the BIOS from outside it returns the last BIOS opcode fetched, and the write
+        // is ignored), natively that is a NULL dereference.
+        if (gBattleStruct != NULL && gBattleStruct->battlerKOAnimsRunning > 0)
+#else
         if (gBattleStruct->battlerKOAnimsRunning > 0)
+#endif
+#line 531
             gBattleStruct->battlerKOAnimsRunning--;
         DestroyTask(taskId);
     }

@@ -20,6 +20,8 @@
 #     (a leading "#" after the slashes, "// # deps:", is accepted too).
 # Tests include "ptest.h" (platform/test/ptest.h) and their module's header.
 
+include game_flags.mk
+
 BITS ?= 32
 ifeq ($(filter $(BITS),32 64),)
 $(error BITS must be 32 or 64, not '$(BITS)')
@@ -126,6 +128,11 @@ $(LIB): $(MODULE_OBJS)
 $(OBJ_DIR)/%.o: %.c
 	@mkdir -p $(@D)
 	$(CC) $(CFLAGS_ALL) -c $< -o $@
+
+# inspect.c reads expansion's variables through its headers, so it is compiled
+# as the game is (Makefile.native CPPFLAGS and ARCH_FLAGS), or the structure
+# layouts could differ.
+$(OBJ_DIR)/inspect.o: CFLAGS_ALL += $(GAME_DEFINES) -DTESTING=0 -DEMERALD $(GAME_CHAR_FLAGS)
 
 # The files a test names on its "// deps:" line.
 test_deps = $(shell sed -n -E 's@^//[[:space:]]*\#?[[:space:]]*deps:@@p' test/$(1).c)

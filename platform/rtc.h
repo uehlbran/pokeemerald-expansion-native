@@ -55,6 +55,11 @@ typedef int64_t (*rtc_time_source)(void);
  * one is an error. Calling it again while initialised replaces the state. */
 int rtc_init(rtc_time_source source, const char *offset_file_path);
 
+/* As rtc_init, but a first run (no offset file, or none given) starts with
+ * offset zero, so the chip reads the source's UTC: independent of the host's
+ * time zone. For a deterministic source (--rtc-fixed). */
+int rtc_init_utc(rtc_time_source source, const char *offset_file_path);
+
 /* Releases the module. Safe without a prior successful rtc_init. */
 void rtc_shutdown(void);
 

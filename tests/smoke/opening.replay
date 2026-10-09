@@ -1,0 +1,303 @@
+# The opening of Pokemon Emerald, played through the normal New Game path, a
+# save, a cold restart and Continue (gate (d); tests/smoke/README.md).
+# Boy, name "Ab" typed on the naming screen, Treecko from Birch's bag.
+#
+# Every step waits for a fact of the game, never for a frame count, except for
+# the `wait N` lines, each with its reason after a `#` (tests/smoke/README.md,
+# "The script": a state the facts do not show; "settle" is a press that would be
+# lost in the frame a screen becomes ready).
+
+# ---- 1. Boot: copyright screen, intro, title screen ------------------------
+wait-until callback2=MainCB2_Intro max 1000
+wait-until callback2=MainCB2 max 20000
+wait-until task_first=Task_TitleScreenPhase3 max 600
+dump 01_title
+screenshot 01_title
+
+# ---- 2. Title -> main menu (a fresh save has New Game and Options only) -----
+press START
+wait-until task_first=Task_HandleMainMenuInput max 600
+dump 02_main_menu
+screenshot 02_main_menu
+
+# ---- 3. New Game: Birch's speech, boy, name ---------------------------------
+press A
+mash A until task_first=Task_NewGameBirchSpeech_ChooseGender max 3000
+dump 03_gender
+screenshot 03_gender
+press A
+mash A until task_first=Task_NewGameBirchSpeech_WaitPressBeforeNameChoice max 600
+press A
+wait-until callback2=CB2_NamingScreen max 300
+wait-until fade_active=1 max 300
+wait-until fade_active=0 max 300
+wait 8  # settle
+# settle; "A" typed on the upper-case page makes the keyboard swap to the lower-case page
+press A
+wait 40  # keyboard swap
+# the swap is over; RIGHT moves the cursor from "a" to "b"
+press RIGHT
+wait 8  # turn on the spot
+press A
+wait 8  # settle
+dump 04_naming
+screenshot 04_naming
+# START moves the cursor to OK, A confirms
+press START
+wait 8  # settle
+press A
+# "So you're Ab?" Yes; then the speech ends and the game starts
+mash A until callback2=CB2_NewGame max 3000
+wait-until callback2=CB2_Overworld max 3000
+expect player_name=Ab
+expect map_name=MAP_INSIDE_OF_TRUCK
+dump 05_truck
+screenshot 05_truck
+
+# ---- 4. The truck: wait for the controls, walk out --------------------------
+wait-until controls_locked=0 max 3000
+hold RIGHT
+wait-until map_name=MAP_LITTLEROOT_TOWN max 600
+release RIGHT
+# the arrival scene in Littleroot: Mom speaks, walks into the house; Mom's house 1F
+wait-until script_running=1 max 600
+mash A until map_name=MAP_LITTLEROOT_TOWN_BRENDANS_HOUSE_1F max 3000
+wait-until script_running=1 max 600
+mash A until controls_locked=0 max 3000
+wait 20  # settle
+dump 06_house
+screenshot 06_house
+# upstairs: the stairs are at (8,2) -> 2F (7,1)
+hold UP
+wait-until map_name=MAP_LITTLEROOT_TOWN_BRENDANS_HOUSE_2F max 600
+release UP
+# settle: the map's arrival script locks the controls a few frames after the map is up
+wait-until callback2=CB2_Overworld max 600
+wait 10  # settle
+wait-until controls_locked=0 max 600
+# the clock is on the wall at (5,1): stand at (5,2), face up, A
+hold LEFT
+wait-until pos=5,2 max 100
+release LEFT
+wait 20  # step finishes
+press UP
+wait 6  # turn on the spot
+press A
+mash A until callback2=CB2_WallClock max 600
+wait-until task_first=Task_SetClock_HandleInput max 300
+wait 20  # settle
+press A
+wait-until task_first=Task_SetClock_HandleConfirmInput max 300
+wait 20  # settle
+press UP
+wait 6  # turn on the spot
+press A
+wait-until callback2=CB2_Overworld max 600
+wait-until script_running=1 max 600
+mash A until controls_locked=0 max 3000
+wait 20  # settle
+dump 07_clock_set
+screenshot 07_clock_set
+# ---- 6. Downstairs: Mom shows the TV, then out of the house ------------------
+hold RIGHT
+wait-until pos=7,2 max 100
+release RIGHT
+hold UP
+wait-until map_name=MAP_LITTLEROOT_TOWN_BRENDANS_HOUSE_1F max 200
+release UP
+wait-until script_running=1 max 300
+mash A until controls_locked=0 max 3000
+wait 20  # settle
+dump 08_mom_tv
+hold RIGHT
+wait-until pos=8,5 max 200
+release RIGHT
+hold DOWN
+wait-until map_name=MAP_LITTLEROOT_TOWN max 300
+release DOWN
+wait-until controls_locked=0 max 600
+wait 20  # settle
+dump 09_outside
+screenshot 09_outside
+
+# ---- 7. The neighbour's house: go upstairs; May's room ----------------------
+hold RIGHT
+wait-until pos=14,9 max 400
+release RIGHT
+hold UP
+wait-until map_name=MAP_LITTLEROOT_TOWN_MAYS_HOUSE_1F max 300
+release UP
+wait-until script_running=1 max 300
+mash A until controls_locked=0 max 3000
+wait 20  # settle
+hold UP
+wait-until map_name=MAP_LITTLEROOT_TOWN_MAYS_HOUSE_2F max 600
+release UP
+# settle: the map's arrival script locks the controls a few frames after the map is up
+wait-until callback2=CB2_Overworld max 600
+wait 10  # settle
+wait-until controls_locked=0 max 600
+dump 10_may_2f
+screenshot 10_may_2f
+# May's pokeball at (5,4) triggers the meeting with her: walk to (4,4), face it, A
+hold DOWN
+wait-until pos=1,4 max 100
+release DOWN
+hold RIGHT
+wait-until pos=4,4 max 100
+release RIGHT
+wait 10  # step finishes
+# face the ball (the step into it is blocked)
+press RIGHT
+wait 10  # turn on the spot
+press A
+wait-until script_running=1 max 300
+mash A until controls_locked=0 max 3000
+wait 20  # settle
+dump 11_met_may
+screenshot 11_met_may
+# ---- 8. Leave May's house, walk north out of Littleroot: Birch needs help ---
+hold LEFT
+wait-until pos=1,4 max 100
+release LEFT
+hold UP
+wait-until map_name=MAP_LITTLEROOT_TOWN_MAYS_HOUSE_1F max 300
+release UP
+wait-until callback2=CB2_Overworld max 600
+wait 10  # settle
+wait-until controls_locked=0 max 600
+dump 12_may_1f
+hold DOWN
+wait-until map_name=MAP_LITTLEROOT_TOWN max 600
+release DOWN
+wait-until callback2=CB2_Overworld max 600
+wait 10  # settle
+wait-until controls_locked=0 max 600
+dump 13_outside_again
+screenshot 13_outside_again
+# ---- 9. North exit: the little girl warns of POKeMON; Route 101 -------------
+hold LEFT
+wait-until pos=11,9 max 100
+release LEFT
+hold UP
+wait-until script_running=1 max 400
+release UP
+mash A until controls_locked=0 max 3000
+wait 20  # settle
+dump 14_warned
+screenshot 14_warned
+expect town_state=2
+hold UP
+wait-until map_name=MAP_ROUTE101 max 600
+release UP
+wait-until callback2=CB2_Overworld max 600
+wait 10  # settle
+dump 15_route101
+screenshot 15_route101
+# ---- 10. Route 101: Birch is chased; his bag has the starters ---------------
+wait-until script_running=1 max 300
+mash A until controls_locked=0 max 3000
+wait 20  # settle
+dump 16_birch_chase
+screenshot 16_birch_chase
+# Birch's bag lies at (7,14): stand at (7,15), face it, A; the starter screen opens
+hold LEFT
+wait-until pos=7,15 max 200
+release LEFT
+wait 20  # step finishes
+press UP
+wait 20  # turn on the spot
+press A
+wait-until callback2=CB2_StarterChoose max 600
+wait-until task_first=Task_HandleStarterChooseInput max 600
+wait 20  # settle
+dump 17_starter_screen
+screenshot 17_starter_screen
+# the cursor starts on the middle ball (Torchic); LEFT is Treecko
+press LEFT
+wait 30  # cursor move
+press A
+wait-until task_first=Task_HandleConfirmStarterInput max 600
+wait 20  # settle
+dump 18_starter_confirm
+screenshot 18_starter_confirm
+press A
+wait-until in_battle=1 max 1200
+dump 19_battle_start
+screenshot 19_battle_start
+wait 300  # the battle intro, past the transition's fade
+screenshot 19b_battle
+# ---- 11. The first battle (Treecko against Poochyena): FIGHT with the first move
+mash A until in_battle=0 max 6000
+dump 20_battle_end
+screenshot 20_battle_end
+# ---- 12. Birch thanks the player and the scene moves to his lab -------------
+mash A until map_name=MAP_LITTLEROOT_TOWN_PROFESSOR_BIRCHS_LAB max 3000
+wait-until callback2=CB2_Overworld max 600
+wait 10  # settle
+dump 21_lab
+screenshot 21_lab
+# "Why not give a nickname to Treecko?": No (B)
+mash A until task_last=Task_HandleYesNoInput max 3000
+wait 20  # settle
+dump 22_nickname_question
+screenshot 22_nickname_question
+press B
+# "Might be a good idea to go see the rival?": Yes (A)
+mash A until task_last=Task_HandleYesNoInput max 3000
+wait 20  # settle
+press A
+mash A until controls_locked=0 max 3000
+wait 20  # settle
+dump 23_lab_free
+screenshot 23_lab_free
+# ---- 13. Save from the Start menu --------------------------------------------
+expect flash_dirty_writes=0
+expect save_counter=0
+press START
+wait-until task_last=Task_ShowStartMenu max 300
+wait 10  # settle
+dump 24_start_menu
+screenshot 24_start_menu
+# POKeMON, BAG, the player, SAVE: three down
+press DOWN
+wait 8  # turn on the spot
+press DOWN
+wait 8  # turn on the spot
+press DOWN
+wait 8  # turn on the spot
+press A
+# "Would you like to save the game?" Yes; the save runs; the menu closes
+mash A until controls_locked=0 max 3000
+wait 20  # settle
+dump 25_saved
+screenshot 25_saved
+expect save_counter=1
+expect player_name=Ab
+expect party0_species=252
+expect map_name=MAP_LITTLEROOT_TOWN_PROFESSOR_BIRCHS_LAB
+
+# ---- 14. Cold restart: a new process, the same save file --------------------
+restart
+
+# ---- 15. Boot again, title, Continue ------------------------------------------
+wait-until callback2=MainCB2_Intro max 1000
+wait-until callback2=MainCB2 max 20000
+wait-until task_first=Task_TitleScreenPhase3 max 600
+press START
+wait-until task_first=Task_HandleMainMenuInput max 600
+dump 26_continue_menu
+screenshot 26_continue_menu
+# a saved game: CONTINUE is the first entry
+press A
+wait-until callback2=CB2_Overworld max 1200
+wait 10  # settle
+wait-until controls_locked=0 max 600
+dump 27_continued
+screenshot 27_continued
+expect player_name=Ab
+expect party_count=1
+expect party0_species=252
+expect party0_name=Treecko
+expect map_name=MAP_LITTLEROOT_TOWN_PROFESSOR_BIRCHS_LAB
+expect save_counter=1

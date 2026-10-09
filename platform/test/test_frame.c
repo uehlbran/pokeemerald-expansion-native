@@ -427,6 +427,79 @@ PTEST(keyinput_is_written_every_frame)
     stop();
 }
 
+/* --- the step hook ------------------------------------------------------- */
+
+struct hook_log {
+    int calls;
+    uint16_t keyinput_seen;
+    enum frame_step_result answer_at_third;
+};
+
+static enum frame_step_result step_hook(void *context)
+{
+    struct hook_log *log = context;
+    log->calls++;
+    log->keyinput_seen = *io(KEYINPUT_OFFSET);
+    input_script_set(INPUT_KEY_B);
+    return log->calls == 3 ? log->answer_at_third : FRAME_STEP_CONTINUE;
+}
+
+PTEST(the_step_hook_runs_once_a_frame_before_keyinput_is_written)
+{
+    struct hook_log log = { .answer_at_third = FRAME_STEP_CONTINUE };
+    PT_ASSERT(start(0, NULL, NULL));
+    frame_set_step_hook(step_hook, &log);
+    *io(KEYINPUT_OFFSET) = KEYINPUT_NONE;
+    input_script_set(INPUT_KEY_A);
+    PT_ASSERT_EQ_INT(frame_run(), FRAME_CONTINUE);
+    PT_ASSERT_EQ_INT(log.calls, 1);
+    PT_ASSERT_EQ_U32(log.keyinput_seen, KEYINPUT_NONE); /* KEYINPUT not written yet this frame */
+    PT_ASSERT_EQ_U32(*io(KEYINPUT_OFFSET), KEYINPUT_NONE & ~INPUT_KEY_B); /* what the hook set */
+    PT_ASSERT_EQ_INT(frame_run(), FRAME_CONTINUE);
+    PT_ASSERT_EQ_INT(log.calls, 2);
+    stop();
+}
+
+PTEST(a_step_hook_stop_ends_the_game_with_status_0_after_the_frame)
+{
+    struct hook_log log = { .answer_at_third = FRAME_STEP_STOP };
+    PT_ASSERT(start(0, NULL, NULL));
+    frame_set_step_hook(step_hook, &log);
+    PT_ASSERT_EQ_INT(frame_run(), FRAME_CONTINUE);
+    PT_ASSERT_EQ_INT(frame_run(), FRAME_CONTINUE);
+    PT_ASSERT_EQ_INT(frame_run(), FRAME_EXIT);
+    PT_ASSERT_EQ_INT(frame_count(), 3);
+    PT_ASSERT_EQ_INT(frame_exit_status(), 0);
+    stop();
+}
+
+PTEST(a_step_hook_fail_ends_the_game_with_status_1)
+{
+    struct hook_log log = { .answer_at_third = FRAME_STEP_FAIL };
+    PT_ASSERT(start(0, NULL, NULL));
+    frame_set_step_hook(step_hook, &log);
+    for (int i = 0; i < 2; i++)
+        PT_ASSERT_EQ_INT(frame_run(), FRAME_CONTINUE);
+    PT_ASSERT_EQ_INT(frame_run(), FRAME_EXIT);
+    PT_ASSERT_EQ_INT(frame_exit_status(), 1);
+    stop();
+}
+
+PTEST(removing_the_step_hook_and_frame_init_both_clear_it)
+{
+    struct hook_log log = { .answer_at_third = FRAME_STEP_CONTINUE };
+    PT_ASSERT(start(0, NULL, NULL));
+    frame_set_step_hook(step_hook, &log);
+    frame_set_step_hook(NULL, NULL);
+    PT_ASSERT_EQ_INT(frame_run(), FRAME_CONTINUE);
+    PT_ASSERT_EQ_INT(log.calls, 0);
+    stop();
+    PT_ASSERT(start(0, NULL, NULL)); /* frame_init clears a hook left from before */
+    PT_ASSERT_EQ_INT(frame_run(), FRAME_CONTINUE);
+    PT_ASSERT_EQ_INT(log.calls, 0);
+    stop();
+}
+
 /* A fresh directory for files, under $TMPDIR or /tmp. */
 static bool temp_dir(char *path, size_t size)
 {
