@@ -497,6 +497,34 @@ PTEST(wave_length_counts_256_minus_n)
     PT_ASSERT_EQ_U32(peek(NR52), MASTER_ENABLE);
 }
 
+/* n = 0 is the longest, 256 ticks: the 256th at 511/512 s = 65408 samples. */
+PTEST(wave_length_zero_means_256_ticks)
+{
+    PT_ASSERT(start(RATE_EXACT));
+    poke(NR31, 0);
+    poke(NR30, WAVE_DAC_ON);
+    poke(NR32, WAVE_VOLUME_100);
+    poke(NR33, WAVE_ONE_PER_SAMPLE & 0xFFu);
+    poke(NR34, (uint8_t)(INITIAL | LENGTH_ENABLE | WAVE_ONE_PER_SAMPLE >> 8));
+    PT_ASSERT(run(65407));
+    PT_ASSERT_EQ_U32(peek(NR52), MASTER_ENABLE | 0x04u);
+    PT_ASSERT(run(1));
+    PT_ASSERT_EQ_U32(peek(NR52), MASTER_ENABLE);
+}
+
+/* n = 0 is the longest, 64 ticks: the 64th at 127/512 s = 16256 samples. */
+PTEST(noise_length_zero_means_64_ticks)
+{
+    PT_ASSERT(start(RATE_EXACT));
+    poke(NR41, 0);
+    poke(NR42, NRX2_FULL_STEADY);
+    poke(NR44, INITIAL | LENGTH_ENABLE);
+    PT_ASSERT(run(16255));
+    PT_ASSERT_EQ_U32(peek(NR52), MASTER_ENABLE | 0x08u);
+    PT_ASSERT(run(1));
+    PT_ASSERT_EQ_U32(peek(NR52), MASTER_ENABLE);
+}
+
 /* GBATEK NR41 "units of (64-n)/256s": n = 63 is one tick, at 1/512 s =
  * 128 samples. */
 PTEST(noise_length_counts_64_minus_n)
@@ -665,6 +693,33 @@ PTEST(sweep_overflow_past_2047_disables_the_channel)
     PT_ASSERT(all_zero(64));
 }
 
+/* A sweep tick whose new frequency is exactly 2047 is written (the channel
+ * then stops, because the next step would overflow); one that would give 2048
+ * or more is not. The game changes NR10 after the trigger, so the trigger-time
+ * check (shift 7: 8 more) passes: 1365 with shift 1 gives 1365 + 682 = 2047;
+ * 1639 with shift 2 gives 1639 + 409 = 2048. The first tick comes at 384
+ * samples (sweep_time 1). */
+static void check_sweep_tick_landing(uint16_t frequency, uint8_t nr10_at_tick, uint16_t expected)
+{
+    PT_ASSERT(start(RATE_EXACT));
+    poke(NR10, 0x17);
+    square(1, duty(2), NRX2_FULL_STEADY, frequency, INITIAL);
+    PT_ASSERT(run(1));
+    poke(NR10, nr10_at_tick);
+    PT_ASSERT(run(382));
+    PT_ASSERT_EQ_U32(channel1_frequency(), frequency);
+    PT_ASSERT_EQ_U32(peek(NR52), MASTER_ENABLE | 0x01u);
+    PT_ASSERT(run(1));
+    PT_ASSERT_EQ_U32(channel1_frequency(), expected);
+    PT_ASSERT_EQ_U32(peek(NR52), MASTER_ENABLE);
+}
+
+PTEST(sweep_tick_landing_on_2047_is_written_and_on_2048_is_refused)
+{
+    check_sweep_tick_landing(1365, 0x11, 2047);
+    check_sweep_tick_landing(1639, 0x12, 1639);
+}
+
 /* The trigger runs the overflow check at once: 1366 + 1366/2 = 2049 stops
  * the channel before it plays; 1365 + 682 = 2047 does not. */
 PTEST(sweep_overflow_check_runs_at_trigger)
@@ -745,6 +800,33 @@ PTEST(wave_two_bank_mode_walks_both_banks_from_the_selected_one)
     PT_ASSERT(run(64));
     for (unsigned k = 0; k < 31; k++)
         PT_ASSERT_EQ_INT(left(k), inverted_triangle_nibble(k + 1) * LEVEL_STEP);
+}
+
+/* psg_wave.c documents that the bank bit of NR30 is taken from the register
+ * as the call sees it: changing it while the channel plays moves the output
+ * to the other bank at the next call, at the current position, without a
+ * restart (GBATEK would also route the window to the other bank). Bank 0
+ * holds the triangle, bank 1 its inverse. */
+PTEST(wave_bank_bit_change_while_playing_switches_bank_at_the_same_position)
+{
+    PT_ASSERT(start(RATE_EXACT));
+    uint8_t bytes[WAVE_RAM_BYTES];
+    pack_nibbles(bytes, triangle_nibble);
+    poke(NR30, 0);
+    write_wave_ram(bytes);
+    PT_ASSERT(psg_generate(buffer, 0) == 0);
+    pack_nibbles(bytes, inverted_triangle_nibble);
+    poke(NR30, WAVE_BANK_1);
+    write_wave_ram(bytes);
+    PT_ASSERT(psg_generate(buffer, 0) == 0);
+    wave_trigger(WAVE_DAC_ON | WAVE_BANK_1, WAVE_VOLUME_100, WAVE_ONE_PER_SAMPLE);
+    PT_ASSERT(run(10));
+    for (unsigned k = 0; k < 10; k++)
+        PT_ASSERT_EQ_INT(left(k), inverted_triangle_nibble((k + 1) % 32) * LEVEL_STEP);
+    poke(NR30, WAVE_DAC_ON); /* bank 0 again, no trigger */
+    PT_ASSERT(run(10));
+    for (unsigned k = 0; k < 10; k++)
+        PT_ASSERT_EQ_INT(left(k), triangle_nibble((10 + k + 1) % 32) * LEVEL_STEP);
 }
 
 /* GBATEK NR32 bits 5-6 "Sound Volume (0=Mute/Zero, 1=100%, 2=50%, 3=25%)"

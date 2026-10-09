@@ -11,6 +11,10 @@
  * already scaled by its own volume bits and at the scale its header derives;
  * the FIFO samples are added at that scale. Pure: no register access, so
  * the frame loop passes the register values in.
+ *
+ * GBATEK: https://problemkaputt.de/gbatek.htm#gbasoundcontroller and
+ * https://problemkaputt.de/gbatek.htm#gbasoundcontrolregisters (SOUNDCNT_H,
+ * SOUNDCNT_X, Max Output Levels).
  */
 #ifndef SOUND_MIX_H
 #define SOUND_MIX_H

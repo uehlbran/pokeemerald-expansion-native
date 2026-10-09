@@ -75,13 +75,13 @@ void psg_square_update(struct psg_square *square, const struct psg_square_regist
 {
     square->duty = (uint8_t)(registers->nrx1 >> NRX1_DUTY_SHIFT);
     square->frequency = frequency_of(registers);
-    psg_channel_update(&square->channel, registers->nrx4, psg_dac_enabled(registers->nrx2));
+    psg_channel_update(&square->channel, registers->nrx4, psg_dac_from_nrx2(registers->nrx2));
 }
 
 void psg_square_trigger(struct psg_square *square, const struct psg_square_registers *registers)
 {
     const uint16_t length = (uint16_t)(SQUARE_LENGTH_UNITS - (registers->nrx1 & NRX1_LENGTH_MASK));
-    if (!psg_channel_start(&square->channel, psg_dac_enabled(registers->nrx2), length))
+    if (!psg_channel_start(&square->channel, psg_dac_from_nrx2(registers->nrx2), length))
         return;
     square->countdown = step_period(square->frequency);
     psg_envelope_trigger(&square->envelope, registers->nrx2);

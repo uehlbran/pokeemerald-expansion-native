@@ -89,15 +89,21 @@ struct psg_channel {
     struct psg_length length;
 };
 
+/* Whether a channel's DAC is on; a channel with its DAC off cannot play. */
+enum psg_dac {
+    PSG_DAC_OFF,
+    PSG_DAC_ON
+};
+
 /* The common part of a trigger. While the DAC is off it does nothing and
  * returns false; otherwise it switches the channel on, loads the length
  * counter with length_ticks and returns true, and the caller restarts the
  * rest of the channel. */
-bool psg_channel_start(struct psg_channel *channel, bool dac_enabled, uint16_t length_ticks);
+bool psg_channel_start(struct psg_channel *channel, enum psg_dac dac, uint16_t length_ticks);
 
 /* Takes NRx4's length enable, which acts at once, and the DAC: switching it
  * off stops the channel. */
-void psg_channel_update(struct psg_channel *channel, uint8_t nrx4, bool dac_enabled);
+void psg_channel_update(struct psg_channel *channel, uint8_t nrx4, enum psg_dac dac);
 
 /* One 256 Hz tick: the channel stops when its enabled length runs out. */
 void psg_channel_clock_length(struct psg_channel *channel);
@@ -118,8 +124,8 @@ void psg_envelope_trigger(struct psg_envelope *envelope, uint8_t nrx2);
  * trigger restarts the envelope. */
 void psg_envelope_clock(struct psg_envelope *envelope);
 
-/* Whether NRx2 leaves the channel's DAC on. */
-bool psg_dac_enabled(uint8_t nrx2);
+/* The state of the DAC NRx2 leaves the channel with. */
+enum psg_dac psg_dac_from_nrx2(uint8_t nrx2);
 
 /* A channel's frequency timer: counts `period` cycles between steps. Runs it
  * for `cycles` cycles and returns how many steps (expiries) that covered.

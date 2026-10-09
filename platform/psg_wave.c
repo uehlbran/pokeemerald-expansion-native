@@ -106,6 +106,12 @@ static void latch_window(struct psg_wave *wave, const uint8_t window[PSG_WAVE_BA
     memcpy(wave->window_seen, window, PSG_WAVE_BANK_BYTES);
 }
 
+/* NR30 bit 7 is channel 3's DAC. */
+static enum psg_dac wave_dac(uint8_t nr30)
+{
+    return (nr30 & NR30_PLAYBACK) != 0 ? PSG_DAC_ON : PSG_DAC_OFF;
+}
+
 void psg_wave_update(struct psg_wave *wave, const struct psg_wave_registers *registers)
 {
     wave->nr30 = registers->nr30;
@@ -113,13 +119,13 @@ void psg_wave_update(struct psg_wave *wave, const struct psg_wave_registers *reg
     wave->frequency = (uint16_t)(registers->nr33 | (registers->nr34 & PSG_NRX4_FREQUENCY_HIGH_MASK)
                                                        << PSG_NRX4_FREQUENCY_HIGH_SHIFT);
     latch_window(wave, registers->window);
-    psg_channel_update(&wave->channel, registers->nr34, (registers->nr30 & NR30_PLAYBACK) != 0);
+    psg_channel_update(&wave->channel, registers->nr34, wave_dac(registers->nr30));
 }
 
 void psg_wave_trigger(struct psg_wave *wave, const struct psg_wave_registers *registers)
 {
     const uint16_t length = (uint16_t)(WAVE_LENGTH_UNITS - registers->nr31);
-    if (!psg_channel_start(&wave->channel, (registers->nr30 & NR30_PLAYBACK) != 0, length))
+    if (!psg_channel_start(&wave->channel, wave_dac(registers->nr30), length))
         return;
     wave->position = 0;
     wave->countdown = sample_period(wave->frequency);
