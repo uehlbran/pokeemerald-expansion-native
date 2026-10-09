@@ -151,6 +151,11 @@ $(OBJ_DIR)/inspect.o $(OBJ_DIR)/inspect_menu.o $(OBJ_DIR)/inspect_args.o $(OBJ_D
 # header (include/task.h, ...) would leave these objects compiled against the old
 # structure layouts.
 $(OBJ_DIR)/inspect.o $(OBJ_DIR)/inspect_menu.o $(OBJ_DIR)/inspect_args.o $(OBJ_DIR)/test/test_inspect_args.o: CFLAGS_ALL := $(subst -MMD,-MD,$(CFLAGS_ALL))
+# They also rebuild when the flags here change: an object compiled before a flag
+# or dependency-tracking change would otherwise keep a stale layout (the .d files
+# written with -MMD list no game header, so a game header change is not seen until
+# the object is rebuilt once).
+$(OBJ_DIR)/inspect.o $(OBJ_DIR)/inspect_menu.o $(OBJ_DIR)/inspect_args.o $(OBJ_DIR)/test/test_inspect_args.o: Makefile game_flags.mk
 
 # The files a test names on its "// deps:" line.
 test_deps = $(shell sed -n -E 's@^//[[:space:]]*\#?[[:space:]]*deps:@@p' test/$(1).c)
