@@ -254,6 +254,58 @@ up to `tone`, which is enough (the players are zero at every `MPlayOpen`,
 before it is read); a static assertion in m4a_layout.h pins that field
 order (531011a558).
 
+## Milestone 8: CI, Windows and macOS
+
+Started 2026-10-09 after "64-bit done". PLAN.md "Milestone 8 plan" has
+the order and the inventory's findings; `research/m8-inventory.md` is the
+inventory; `research/probes/` holds the loader probes and their README
+records each run.
+
+**Linux CI.** `.github/workflows/native.yml` on the branch `ci/native`
+(pushes to `main` and by hand; two jobs: the GBA ROM with its sha1, and
+the native gate at both widths). On the runner image the 32-bit SDL2
+development package cannot be installed (its glib dependency clashes
+with the image's), so the job takes the i386 headers and link files from
+the downloaded package without its dependencies; and the platform gate
+runs after the 32-bit build, which generates the game headers the lint
+reads. The GBA job is green (the ROM's sha1 equal to the recorded one);
+the native job's result is recorded below when its run completes, and
+the workflow merges into main then.
+
+**The loader probes** (`research/probes/`, a manual workflow on the
+Windows and macOS runners, two runs on 2026-10-09; the README has the
+log references):
+
+- Windows x86_64: a PE image based at 0x01800000 with the GBA regions as
+  sections at their addresses and the code at 0x40001000 is refused by
+  the loader when the sections leave gaps, and loads at its base with
+  every region committed and writable (the ROM read-only) when the gaps
+  are filled with uninitialised read-only sections. The run-time
+  VirtualAlloc fallback also gets every region (the debug page rounded
+  to the 64 KiB granule). The memory model is kept on Windows as one
+  image with filled gaps; the second run's figures (the base over 100
+  starts, the commit charge against a baseline) are recorded when it
+  completes.
+- macOS x86_64: with `-no_pie`, `-pagezero_size 0x1000`, `-image_base
+  0x40000000`, the regions as segments at their addresses and
+  `-no_fixup_chains` (or a minimum OS version before chained fixups),
+  the image loads with the header at 0x40000000, a zero slide and every
+  region at its address, 100 starts of 100, 61 checks of 61, on the
+  Intel runner (macOS 15.7, Xcode 16.4) and under Rosetta on the Apple
+  silicon runner. Without `-no_fixup_chains` the current linker ignores
+  the image base (its warning says so) while still placing the regions.
+  A run-time `mmap` of the regions is unreliable there (16 starts of
+  100 with a small page zero, 0 with the default), so the image is the
+  mechanism. The memory model is kept on macOS x86_64.
+- macOS arm64: the linker says it outright, "-no_pie ignored for
+  arm64", and the 16 KiB page size rejects the debug page's address;
+  a page zero under 4 GiB is killed at start. The inventory's verdict
+  stands: the fixed-address model cannot hold on arm64 (the owner's
+  decision, above).
+
+**In flight.** The host layer on Linux (task W2, a pure refactor under
+every Linux gate).
+
 ## Verified by a gate
 
 | What | Gate | Result |
