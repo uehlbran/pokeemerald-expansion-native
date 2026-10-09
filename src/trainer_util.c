@@ -16,6 +16,31 @@
 // address in the executable that moves with any change to the build, and with
 // it the party seed (each Pokemon's personality, so its gender) and a partner's
 // OT ID. A deliberate divergence: the address is not the trainer's data.
+//
+// At 64 bits `party` is 8 bytes, not 4, and the struct is 56 bytes, not 52. The
+// bytes hashed are those the 32-bit build hashes, so the seed is the same at
+// both widths: [0, party), four zero bytes, then everything after the pointer.
+#if UINTPTR_MAX > UINT32_MAX
+_Static_assert((sizeof(struct Trainer) - sizeof(void *) + 4) % 4 == 0,
+               "TrainerDataCrc32: Crc32B hashes whole words");
+_Static_assert(offsetof(struct Trainer, items) == offsetof(struct Trainer, party) + sizeof(void *),
+               "TrainerDataCrc32: members after party must follow the pointer directly");
+_Static_assert(_Alignof(enum Item) <= 4 && _Alignof(struct StartingStatuses) <= 4
+               && _Alignof(enum TrainerPicID) <= 4,
+               "TrainerDataCrc32: a member after party needs 8-byte alignment");
+static u32 TrainerDataCrc32(const struct Trainer *trainer)
+{
+    u8 hashed[sizeof(struct Trainer) - sizeof(void *) + 4];
+    const u8 *bytes = (const u8 *)trainer;
+    const size_t head = offsetof(struct Trainer, party);
+    const size_t tail = head + sizeof(void *);
+
+    memcpy(hashed, bytes, head);
+    memset(hashed + head, 0, 4);
+    memcpy(hashed + head + 4, bytes + tail, sizeof(struct Trainer) - tail);
+    return Crc32B(hashed, sizeof(hashed));
+}
+#else
 static u32 TrainerDataCrc32(const struct Trainer *trainer)
 {
     struct Trainer hashed;
@@ -23,6 +48,7 @@ static u32 TrainerDataCrc32(const struct Trainer *trainer)
     hashed.party = NULL;
     return Crc32B((const u8 *)&hashed, sizeof(hashed));
 }
+#endif
 #endif
 #line 13
 rng_value_t GeneratePartySeed(const struct Trainer *trainer)
