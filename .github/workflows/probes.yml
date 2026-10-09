@@ -8,7 +8,7 @@ on:
 jobs:
   windows-layout:
     runs-on: windows-latest
-    timeout-minutes: 15
+    timeout-minutes: 25
     defaults:
       run:
         shell: bash
@@ -30,7 +30,7 @@ jobs:
 
   macos-layout:
     runs-on: macos-15-intel
-    timeout-minutes: 15
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
       - name: Probe M0 (fixed-address image on macOS x86_64)
@@ -47,7 +47,7 @@ jobs:
 
   macos-arm64-layout:
     runs-on: macos-latest
-    timeout-minutes: 15
+    timeout-minutes: 25
     continue-on-error: true
     steps:
       - uses: actions/checkout@v4

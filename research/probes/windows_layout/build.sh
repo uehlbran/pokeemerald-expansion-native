@@ -61,9 +61,12 @@ for name in "${BUILT[@]}"; do
     if [ "$name" = as_linked ]; then
         # Git Bash reports a refused image as "Exec format error"; ask Windows itself.
         echo "---- $name: start status as Windows reports it"
-        cmd.exe //c "out\\$name.exe"
+        # Each start is bounded: run 2 of the probes hung inside cmd.exe here until the
+        # job's timeout (an orphan cmd process), so nothing waits on a console or a dialog.
+        timeout 30 cmd.exe //c "out\\$name.exe" < /dev/null
         echo "cmd.exe exit status: $?"
-        powershell.exe -NoProfile -Command "try { & '.\\out\\$name.exe'; Write-Output ('exit ' + \$LASTEXITCODE) } catch { Write-Output ('exception: ' + \$_.Exception.Message + ' HResult=' + \$_.Exception.HResult) }"
+        timeout 60 powershell.exe -NoProfile -NonInteractive -Command "try { & '.\\out\\$name.exe'; Write-Output ('exit ' + \$LASTEXITCODE) } catch { Write-Output ('exception: ' + \$_.Exception.Message + ' HResult=' + \$_.Exception.HResult) }" < /dev/null
+        echo "powershell exit status: $?"
     fi
     : > "out/$name.bases.txt"
     ok=0
