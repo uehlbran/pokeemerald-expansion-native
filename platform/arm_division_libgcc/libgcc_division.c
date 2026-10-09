@@ -42,18 +42,32 @@ static void print_u64(uint64_t value)
                  (unsigned long)(value & LOW_HALF_MASK));
 }
 
+/* The record's names for the two ABIs (libgcc_division.h). */
+#define ABI_GAME "apcs-gnu"
+#define ABI_EABI "aapcs"
+
+static void print_results_u32(const char *abi, uint32_t quotient, uint32_t remainder)
+{
+    (void)printf("  %s", abi);
+    print_u32(quotient);
+    print_u32(remainder);
+}
+
+static void print_results_u64(const char *abi, uint64_t quotient, uint64_t remainder)
+{
+    (void)printf("  %s", abi);
+    print_u64(quotient);
+    print_u64(remainder);
+}
+
 static void line_u32(uint32_t n, uint32_t d)
 {
     (void)printf("u32");
     print_u32(n);
     (void)printf(" /");
     print_u32(d);
-    (void)printf("  apcs-gnu");
-    print_u32(game_division_ops.udiv32(n, d));
-    print_u32(game_division_ops.umod32(n, d));
-    (void)printf("  aapcs");
-    print_u32(eabi_division_ops.udiv32(n, d));
-    print_u32(eabi_division_ops.umod32(n, d));
+    print_results_u32(ABI_GAME, game_division_ops.udiv32(n, d), game_division_ops.umod32(n, d));
+    print_results_u32(ABI_EABI, eabi_division_ops.udiv32(n, d), eabi_division_ops.umod32(n, d));
     (void)printf("\n");
 }
 
@@ -63,12 +77,8 @@ static void line_s32(int32_t n, int32_t d)
     print_u32((uint32_t)n);
     (void)printf(" /");
     print_u32((uint32_t)d);
-    (void)printf("  apcs-gnu");
-    print_u32((uint32_t)game_division_ops.sdiv32(n, d));
-    print_u32((uint32_t)game_division_ops.smod32(n, d));
-    (void)printf("  aapcs");
-    print_u32((uint32_t)eabi_division_ops.sdiv32(n, d));
-    print_u32((uint32_t)eabi_division_ops.smod32(n, d));
+    print_results_u32(ABI_GAME, (uint32_t)game_division_ops.sdiv32(n, d), (uint32_t)game_division_ops.smod32(n, d));
+    print_results_u32(ABI_EABI, (uint32_t)eabi_division_ops.sdiv32(n, d), (uint32_t)eabi_division_ops.smod32(n, d));
     (void)printf("\n");
 }
 
@@ -78,12 +88,8 @@ static void line_u64(uint64_t n, uint64_t d)
     print_u64(n);
     (void)printf(" /");
     print_u64(d);
-    (void)printf("  apcs-gnu");
-    print_u64(game_division_ops.udiv64(n, d));
-    print_u64(game_division_ops.umod64(n, d));
-    (void)printf("  aapcs");
-    print_u64(eabi_division_ops.udiv64(n, d));
-    print_u64(eabi_division_ops.umod64(n, d));
+    print_results_u64(ABI_GAME, game_division_ops.udiv64(n, d), game_division_ops.umod64(n, d));
+    print_results_u64(ABI_EABI, eabi_division_ops.udiv64(n, d), eabi_division_ops.umod64(n, d));
     (void)printf("\n");
 }
 
@@ -93,12 +99,8 @@ static void line_s64(int64_t n, int64_t d)
     print_u64((uint64_t)n);
     (void)printf(" /");
     print_u64((uint64_t)d);
-    (void)printf("  apcs-gnu");
-    print_u64((uint64_t)game_division_ops.sdiv64(n, d));
-    print_u64((uint64_t)game_division_ops.smod64(n, d));
-    (void)printf("  aapcs");
-    print_u64((uint64_t)eabi_division_ops.sdiv64(n, d));
-    print_u64((uint64_t)eabi_division_ops.smod64(n, d));
+    print_results_u64(ABI_GAME, (uint64_t)game_division_ops.sdiv64(n, d), (uint64_t)game_division_ops.smod64(n, d));
+    print_results_u64(ABI_EABI, (uint64_t)eabi_division_ops.sdiv64(n, d), (uint64_t)eabi_division_ops.smod64(n, d));
     (void)printf("\n");
 }
 
@@ -204,7 +206,7 @@ static void check_rule(void)
             || (uint64_t)game_division_ops.smod64(s, 0) != remainder)
             differences++;
     }
-    (void)printf("rule: %u unsigned and %u signed dividends by zero, %lu differences from apcs-gnu\n", CHECK_COUNT,
+    (void)printf("rule: %u unsigned and %u signed dividends by zero, %lu differences from " ABI_GAME "\n", CHECK_COUNT,
                  CHECK_COUNT, differences);
 }
 
