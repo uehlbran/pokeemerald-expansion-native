@@ -64,12 +64,9 @@
 
 enum bg_mode { MODE_0 = 0, MODE_1 = 1 }; /* the modes drawn; 2-7 are not */
 
-/* GBATEK "LCD I/O BG Control", BGxCNT bits 0-1. */
-#define BGCNT_PRIORITY_MASK 0x3u
-
 /* GBATEK "LCD I/O Display Control", Blanking Bits: forced blank "display[s]
  * white lines". An unsupported mode is drawn black. */
-#define FORCED_BLANK_COLOUR 0x7FFFu
+#define FORCED_BLANK_COLOUR PPU_COLOUR_MASK
 #define UNSUPPORTED_MODE_COLOUR 0x0000u
 
 static struct {
@@ -154,7 +151,7 @@ static void draw_bgs(const struct ppu_regs *regs, enum bg_mode mode, uint16_t li
         if (!(regs->dispcnt & (PPU_DISPCNT_BG0_ON << bg)) || !bg_in_mode(bg, mode))
             continue;
         draw_bg(regs, mode, bg, line, layers->bg_dots[bg]);
-        const unsigned priority = regs->bgcnt[bg] & BGCNT_PRIORITY_MASK;
+        const unsigned priority = regs->bgcnt[bg] & PPU_PRIORITY_MASK;
         layers->bg_priority[bg] = priority;
         unsigned slot = layers->bg_count++;
         for (; slot > 0 && layers->bg_priority[layers->order[slot - 1]] > priority; slot--)

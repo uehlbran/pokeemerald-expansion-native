@@ -19,7 +19,9 @@
  */
 #include "video.h"
 
+#include <errno.h>
 #include <stdio.h>
+#include <string.h>
 
 #include <SDL.h>
 
@@ -166,7 +168,7 @@ int video_write_frame_ppm(const uint16_t *frame, const char *path)
     }
     FILE *f = fopen(path, "wb");
     if (f == NULL) {
-        fprintf(stderr, MODULE ": fopen(%s) failed\n", path);
+        fprintf(stderr, MODULE ": fopen(%s) failed: %s\n", path, strerror(errno));
         return -1;
     }
     int result = 0;

@@ -147,7 +147,7 @@ PTEST(colour_0_of_an_8bpp_tile_is_transparent)
             stripes[r][c] = (c % 2u) ? 200 : 0;
     put_tile_8bpp(1 * 64u, stripes);
     fill_block(31 * SCREEN_BLOCK_BYTES, map_entry(1, 0, 0));
-    io_write16(IO_BG0CNT, (uint16_t)(BGCNT_8BPP | bgcnt_priority(0) | bgcnt_screen_block(31)));
+    io_write16(IO_BG0CNT, (uint16_t)(BGCNT_8BPP | bgcnt_screen_block(31)));
     /* BG1, below: solid colour from character block 1. */
     tile_pixels solid;
     solid_tile(solid, 1);
@@ -357,6 +357,51 @@ PTEST(bg_mosaic_repeats_the_first_dot_of_each_block)
     io_write16(IO_MOSAIC, 0x0000);
     PT_ASSERT_EQ_INT(ppu_render_line(1, out), PPU_OK);
     PT_ASSERT_EQ_U32(out[1], bank3(pattern_index(1, 1)));
+}
+
+/* BG0, 4bpp, mosaic on, showing the pattern tile everywhere. */
+static void mosaic_scene(uint16_t mosaic)
+{
+    scene_reset();
+    palette_set(0, BACKDROP);
+    set_bank3();
+    tile_pixels pixels;
+    pattern_tile(pixels);
+    put_tile_4bpp(1 * 32u, pixels);
+    fill_block(31 * SCREEN_BLOCK_BYTES, map_entry(1, 3, 0));
+    io_write16(IO_BG0CNT, (uint16_t)(BGCNT_MOSAIC | bgcnt_screen_block(31)));
+    io_write16(IO_MOSAIC, mosaic);
+    io_write16(IO_DISPCNT, DISP_MODE_0 | DISP_BG0);
+}
+
+PTEST(bg_mosaic_size_12_repeats_the_first_dot_of_blocks_of_12)
+{
+    /* 12 is not a multiple of the 8-dot tile pattern, so the size field's
+     * width (4 bits, up to 16) is told apart from 3 bits. */
+    uint16_t out[SCREEN_W];
+    mosaic_scene(0x00BB); /* H-Size 12 (field 11), V-Size 12 */
+    for (uint16_t line = 0; line < 26; line++) {
+        PT_ASSERT_EQ_INT(ppu_render_line(line, out), PPU_OK);
+        for (unsigned x = 0; x < 60; x++)
+            PT_ASSERT_EQ_U32(out[x], bank3(pattern_index((x / 12u * 12u) % 8u, (line / 12u * 12u) % 8u)));
+    }
+}
+
+PTEST(bg_mosaic_in_one_direction_leaves_the_other_alone)
+{
+    uint16_t out[SCREEN_W];
+    mosaic_scene(0x0010); /* H-Size 1, V-Size 2: lines repeat, dots do not */
+    for (uint16_t line = 0; line < 4; line++) {
+        PT_ASSERT_EQ_INT(ppu_render_line(line, out), PPU_OK);
+        for (unsigned x = 0; x < 16; x++)
+            PT_ASSERT_EQ_U32(out[x], bank3(pattern_index(x % 8u, line & ~1u)));
+    }
+    mosaic_scene(0x0001); /* H-Size 2, V-Size 1: dots repeat, lines do not */
+    for (uint16_t line = 0; line < 4; line++) {
+        PT_ASSERT_EQ_INT(ppu_render_line(line, out), PPU_OK);
+        for (unsigned x = 0; x < 16; x++)
+            PT_ASSERT_EQ_U32(out[x], bank3(pattern_index((x & ~1u) % 8u, line)));
+    }
 }
 
 PTEST(bg_fetches_beyond_the_64k_bg_area_are_transparent)

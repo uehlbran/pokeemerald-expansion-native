@@ -19,6 +19,8 @@ _Static_assert(LCD_LINE_COUNT - 1u <= VCOUNT_LINE_MASK, "every line fits VCOUNT'
 
 static volatile uint16_t *io_halfword(uint32_t offset)
 {
+    /* Integer-to-pointer: the I/O page is mapped at its GBA address (gba_memmap.h);
+     * GBA addresses fit in 32 bits, flagged for the 64-bit milestone there. */
     return (volatile uint16_t *)(uintptr_t)(GBA_IO_BASE + offset);
 }
 

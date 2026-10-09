@@ -40,6 +40,10 @@
 #define PPU_OBJ_VRAM_BASE UINT32_C(0x10000)
 #define PPU_OBJ_VRAM_SIZE UINT32_C(0x8000)
 
+/* A 16-bit register or OAM parameter holds a two's complement value: bit 15
+ * is the sign. */
+#define PPU_HALFWORD_SIGN 0x8000u
+
 /* GBATEK "LCD Color Palettes": 256 BG colours then 256 OBJ colours, two
  * bytes each, bits 0-14 used ("15 Not used"). Colour 0 of BG palette 0 is the
  * backdrop. */
@@ -87,6 +91,10 @@
 #define PPU_DOTS_PER_BYTE_4BPP 2u
 #define PPU_NIBBLE_BITS 4u
 #define PPU_NIBBLE_MASK 0x0Fu
+
+/* GBATEK "LCD I/O BG Control" and "LCD OBJ - OAM Attributes": the priority
+ * field of BGxCNT (bits 0-1) and of OBJ attribute 2 (bits 10-11). */
+#define PPU_PRIORITY_MASK 0x3u
 
 /* The layers in the bit order BLDCNT (bits 0-5 and 8-13) and WININ/WINOUT
  * (bits 0-4 per region) use, GBATEK "LCD I/O Color Special Effects" and
@@ -223,11 +231,25 @@ static inline uint32_t ppu_mosaic_block(uint16_t mosaic, unsigned shift)
     return (((uint32_t)mosaic >> shift) & PPU_MOSAIC_SIZE_MASK) + 1u;
 }
 
+/* Dot dot_x (even = left) of a 4bpp tile row's byte: the left dot is the low
+ * nibble. */
+static inline uint32_t ppu_4bpp_index(uint8_t pair, uint32_t dot_x)
+{
+    return (dot_x & 1u) ? (uint32_t)pair >> PPU_NIBBLE_BITS : pair & PPU_NIBBLE_MASK;
+}
+
+/* Palette colour of 4bpp dot index in a palette bank (0-15), counted from
+ * palette colour first (0 for BGs, PPU_OBJ_PALETTE_FIRST for OBJs). */
+static inline uint16_t ppu_palette_colour_4bpp(uint32_t first, uint32_t bank, uint32_t index)
+{
+    return ppu_palette_colour(first + bank * PPU_PALETTE_BANK_COLOURS + index);
+}
+
 /* A 16-bit two's complement value as a signed number, without relying on the
  * implementation-defined conversion to int16_t. */
 static inline int32_t ppu_signed_halfword(uint16_t value)
 {
-    return (int32_t)(value & 0x7FFFu) - (int32_t)(value & 0x8000u);
+    return (int32_t)(value & (PPU_HALFWORD_SIGN - 1u)) - (int32_t)(value & PPU_HALFWORD_SIGN);
 }
 
 /* ---- ppu_bg.c ---- */

@@ -52,6 +52,17 @@ PTEST(alpha_coefficients_17_to_31_count_as_16)
                      rgb(20, 20, 20));
 }
 
+PTEST(alpha_with_both_coefficients_0_is_black)
+{
+    PT_ASSERT_EQ_U32(ppu_blend_alpha(COLOUR_A, COLOUR_B, bldalpha(0, 0)), BLACK);
+}
+
+PTEST(alpha_with_eva_0_and_evb_16_shows_only_the_2nd_target)
+{
+    PT_ASSERT_EQ_U32(ppu_blend_alpha(COLOUR_A, COLOUR_B, bldalpha(0, 16)), COLOUR_B);
+    PT_ASSERT_EQ_U32(ppu_blend_alpha(COLOUR_A, COLOUR_B, bldalpha(16, 0)), COLOUR_A);
+}
+
 PTEST(alpha_reads_only_bits_0_4_and_8_12)
 {
     PT_ASSERT_EQ_U32(ppu_blend_alpha(COLOUR_A, COLOUR_B, (uint16_t)(0xE0E0u | bldalpha(8, 8))),
@@ -119,6 +130,48 @@ PTEST(no_effect_when_the_window_disables_effects)
     const struct ppu_regs alpha = effect_regs(BLD_2ND_BG0);
     PT_ASSERT_EQ_U32(ppu_blend_pixel(&alpha, &semi, true), MEAN_A_B);
     PT_ASSERT_EQ_U32(ppu_blend_pixel(&alpha, &semi, false), COLOUR_A);
+}
+
+PTEST(brightness_at_evy_0_leaves_a_1st_target_unchanged_and_at_16_reaches_white_or_black)
+{
+    const struct ppu_pixel_targets px = { { COLOUR_A, PPU_LAYER_BG0 },
+                                          { BACKDROP, PPU_LAYER_BACKDROP }, false };
+    struct ppu_regs regs = effect_regs(BLD_1ST_BG0 | BLD_BRIGHTEN);
+    regs.bldy = 0;
+    PT_ASSERT_EQ_U32(ppu_blend_pixel(&regs, &px, true), COLOUR_A);
+    regs.bldy = 16;
+    PT_ASSERT_EQ_U32(ppu_blend_pixel(&regs, &px, true), WHITE);
+    regs = effect_regs(BLD_1ST_BG0 | BLD_DARKEN);
+    regs.bldy = 0;
+    PT_ASSERT_EQ_U32(ppu_blend_pixel(&regs, &px, true), COLOUR_A);
+    regs.bldy = 16;
+    PT_ASSERT_EQ_U32(ppu_blend_pixel(&regs, &px, true), BLACK);
+}
+
+PTEST(alpha_through_the_pixel_rule_clamps_bldalpha_coefficients_above_16)
+{
+    struct ppu_regs regs = effect_regs(BLD_1ST_BG0 | BLD_ALPHA | BLD_2ND_BD);
+    regs.bldalpha = bldalpha(31, 31); /* each counts as 16: 10 + 10, not saturated */
+    const struct ppu_pixel_targets px = { { rgb(10, 10, 10), PPU_LAYER_BG0 },
+                                          { rgb(10, 10, 10), PPU_LAYER_BACKDROP }, false };
+    PT_ASSERT_EQ_U32(ppu_blend_pixel(&regs, &px, true), rgb(20, 20, 20));
+}
+
+PTEST(bldcnt_bits_14_and_15_are_not_a_2nd_target_for_the_layer_below_the_backdrop)
+{
+    /* Nothing is under the backdrop (PPU_LAYER_NONE); BLDCNT bits 14-15 are unused. */
+    const struct ppu_regs regs = effect_regs((uint16_t)(0xC000u | BLD_1ST_BD | BLD_ALPHA));
+    const struct ppu_pixel_targets px = { { COLOUR_A, PPU_LAYER_BACKDROP },
+                                          { COLOUR_B, PPU_LAYER_NONE }, false };
+    PT_ASSERT_EQ_U32(ppu_blend_pixel(&regs, &px, true), COLOUR_A);
+}
+
+PTEST(a_top_pixel_of_no_layer_is_never_a_1st_target)
+{
+    const struct ppu_regs regs = effect_regs((uint16_t)(0xFFC0u | BLD_BRIGHTEN | BLD_ALPHA));
+    const struct ppu_pixel_targets px = { { COLOUR_A, PPU_LAYER_NONE },
+                                          { COLOUR_B, PPU_LAYER_BG0 }, false };
+    PT_ASSERT_EQ_U32(ppu_blend_pixel(&regs, &px, true), COLOUR_A);
 }
 
 /* ================= through the renderer ================= */

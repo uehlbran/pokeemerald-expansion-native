@@ -115,7 +115,7 @@ PTEST(horizontal_flip_of_a_wide_obj_swaps_its_tiles)
     pattern_tile(pixels);
     put_obj_tile_4bpp(2, pixels);
     solid_obj_tiles_4bpp(3, 1, 15);
-    obj_set(0, (uint16_t)(A0_WIDE | 0), (uint16_t)(A1_HFLIP | a1_size(0) | 0), a2(2, 0, 4)); /* 16x8 */
+    obj_set(0, (uint16_t)A0_WIDE, A1_HFLIP, a2(2, 0, 4)); /* 16x8 */
     PT_ASSERT_EQ_INT(ppu_render_line(1, out), PPU_OK);
     PT_ASSERT_EQ_INT(first_mismatch(out, 0, 8, objc(4, 15)), -1);
     for (unsigned x = 8; x < 16; x++)
@@ -134,7 +134,7 @@ PTEST(an_8bpp_obj_uses_the_256_colour_obj_palette_and_colour_0_is_transparent)
     for (unsigned i = 100; i < 164; i++)
         palette_set(256 + i, rgb(i % 32u, 0, i / 32u));
     put_obj_tile_8bpp(4, pixels); /* 64 bytes: tile numbers 4 and 5 */
-    obj_set(0, (uint16_t)(A0_8BPP | 0), 0, a2(4, 0, 9)); /* the palette number is ignored */
+    obj_set(0, A0_8BPP, 0, a2(4, 0, 9)); /* the palette number is ignored */
     PT_ASSERT_EQ_INT(ppu_render_line(0, out), PPU_OK);
     PT_ASSERT_EQ_U32(out[0], rgb(100 % 32, 0, 3));
     PT_ASSERT_EQ_U32(out[3], BACKDROP);
@@ -177,7 +177,7 @@ PTEST(prohibited_shape_3_is_not_drawn)
     uint16_t out[SCREEN_W];
     obj_scene(DISP_OBJ_1D);
     solid_obj_tiles_4bpp(0, 1, 1);
-    obj_set(0, (uint16_t)(3u << 14 | 0u), 0, a2(0, 0, 1));
+    obj_set(0, (uint16_t)(3u << 14), 0, a2(0, 0, 1));
     PT_ASSERT_EQ_INT(ppu_render_line(0, out), PPU_OK);
     PT_ASSERT_EQ_INT(first_mismatch(out, 0, SCREEN_W, BACKDROP), -1);
 }
@@ -199,7 +199,7 @@ PTEST(the_disable_bit_hides_a_regular_obj)
     uint16_t out[SCREEN_W];
     obj_scene(DISP_OBJ_1D);
     solid_obj_tiles_4bpp(0, 1, 1);
-    obj_set(0, (uint16_t)(A0_DISABLE | 0), 0, a2(0, 0, 1));
+    obj_set(0, A0_DISABLE, 0, a2(0, 0, 1));
     PT_ASSERT_EQ_INT(ppu_render_line(0, out), PPU_OK);
     PT_ASSERT_EQ_INT(first_mismatch(out, 0, SCREEN_W, BACKDROP), -1);
 }
@@ -444,6 +444,27 @@ PTEST(an_affine_obj_with_the_identity_matrix_draws_like_a_regular_one)
     }
 }
 
+PTEST(an_affine_obj_with_only_pb_set_shears_texel_x_by_the_row)
+{
+    uint16_t out[SCREEN_W];
+    obj_scene(DISP_OBJ_1D);
+    tile_pixels pixels;
+    pattern_tile(pixels);
+    put_obj_tile_4bpp(2, pixels);
+    obj_affine_set(0, FIXED(1), (int16_t)128, 0, FIXED(1)); /* PB = 0.5, PC = 0 */
+    obj_set(0, A0_AFFINE, 0, a2(2, 0, 4));
+    for (uint16_t line = 0; line < 8; line++) {
+        PT_ASSERT_EQ_INT(ppu_render_line(line, out), PPU_OK);
+        for (int col = 0; col < 8; col++) {
+            /* texel = centre + (PA * dx + PB * dy), 8.8 fixed point */
+            const int fx = 256 * (col - 4) + 128 * ((int)line - 4) + 4 * 256;
+            const int tx = fx >> 8;
+            const bool inside = fx >= 0 && tx < 8;
+            PT_ASSERT_EQ_U32(out[col], inside ? objc(4, pattern_index((unsigned)tx, line)) : BACKDROP);
+        }
+    }
+}
+
 PTEST(an_affine_obj_reads_the_parameter_group_attribute_1_selects)
 {
     uint16_t out[SCREEN_W];
@@ -452,7 +473,7 @@ PTEST(an_affine_obj_reads_the_parameter_group_attribute_1_selects)
     pattern_tile(pixels);
     put_obj_tile_4bpp(2, pixels);
     obj_affine_set(5, 0, FIXED(1), FIXED(1), 0); /* group 5: transpose */
-    obj_set(0, (uint16_t)(A0_AFFINE | 0), a1_affine_group(5), a2(2, 0, 4));
+    obj_set(0, A0_AFFINE, a1_affine_group(5), a2(2, 0, 4));
     for (uint16_t line = 0; line < 8; line++) {
         PT_ASSERT_EQ_INT(ppu_render_line(line, out), PPU_OK);
         for (unsigned x = 0; x < 8; x++) /* PB steps texel x per line, PC texel y per dot */
@@ -506,7 +527,7 @@ PTEST(a_scaled_affine_obj_samples_texel_dot_over_scale)
     pattern_tile(pixels);
     put_obj_tile_4bpp(2, pixels);
     obj_affine_set(0, FIXED(1) / 2, 0, 0, FIXED(1) / 2);
-    obj_set(0, (uint16_t)(A0_AFFINE | A0_DOUBLE | 0), 0, a2(2, 0, 4)); /* 8x8 in a 16x16 box */
+    obj_set(0, (uint16_t)(A0_AFFINE | A0_DOUBLE), 0, a2(2, 0, 4)); /* 8x8 in a 16x16 box */
     for (uint16_t line = 0; line < 16; line++) {
         PT_ASSERT_EQ_INT(ppu_render_line(line, out), PPU_OK);
         for (unsigned x = 0; x < 16; x++)
@@ -524,7 +545,7 @@ PTEST(obj_mosaic_repeats_dots_and_lines)
     pattern_tile(pixels);
     put_obj_tile_4bpp(2, pixels);
     io_write16(IO_MOSAIC, 0x1100); /* OBJ H-Size 2, V-Size 2 */
-    obj_set(0, (uint16_t)(A0_MOSAIC | 0), 0, a2(2, 0, 4));
+    obj_set(0, A0_MOSAIC, 0, a2(2, 0, 4));
     for (uint16_t line = 0; line < 8; line++) {
         PT_ASSERT_EQ_INT(ppu_render_line(line, out), PPU_OK);
         for (unsigned x = 0; x < 8; x++)
@@ -548,6 +569,22 @@ PTEST(obj_mosaic_repeats_dots_and_lines)
     obj_set(0, 1, 1, a2(2, 0, 4));
     PT_ASSERT_EQ_INT(ppu_render_line(2, out), PPU_OK);
     PT_ASSERT_EQ_U32(out[3], objc(4, pattern_index(2, 1)));
+}
+
+PTEST(obj_mosaic_uses_its_own_horizontal_and_vertical_sizes)
+{
+    uint16_t out[SCREEN_W];
+    obj_scene(DISP_OBJ_1D);
+    tile_pixels pixels;
+    pattern_tile(pixels);
+    put_obj_tile_4bpp(2, pixels);
+    io_write16(IO_MOSAIC, 0x1300); /* OBJ H-Size 4 (field 3), V-Size 2 (field 1) */
+    obj_set(0, A0_MOSAIC, 0, a2(2, 0, 4));
+    for (uint16_t line = 0; line < 8; line++) {
+        PT_ASSERT_EQ_INT(ppu_render_line(line, out), PPU_OK);
+        for (unsigned x = 0; x < 8; x++)
+            PT_ASSERT_EQ_U32(out[x], objc(4, pattern_index(x & ~3u, line & ~1u)));
+    }
 }
 
 /* ---- the OBJ rendering cycle budget ---- */
@@ -580,7 +617,7 @@ PTEST(the_obj_cycle_budget_cuts_the_obj_that_exceeds_it_and_drops_the_rest)
     wide_obj(19, 0, 180, 0, 3);
     check_budget_cut(0, 2, 100, 58);
     /* With 17 in front, the 19th fits whole and the 20th is cut instead. */
-    obj_set(17, (uint16_t)(A0_DISABLE | 0), 0, 0);
+    obj_set(17, A0_DISABLE, 0, 0);
     uint16_t out[SCREEN_W];
     PT_ASSERT_EQ_INT(ppu_render_line(0, out), PPU_OK);
     PT_ASSERT_EQ_INT(first_mismatch(out, 100, 164, objc(2, 1)), -1);
