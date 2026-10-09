@@ -28,18 +28,27 @@ closed by the maintainer. Every commit is authored by uehlbran.
 Merged on 2026-10-09, each by a worker in its own worktree, reviewed by a
 Sonnet reviewer with mutation testing and gated by the orchestrator:
 m7-seed (the trainer seed hashes the same 52 bytes at both widths),
-m7-link (the two link assertions, INTR_VECTOR as a 32-bit store, and a
-Union Room task-data overlay the reviewer found), m7-testtable (the test
-table contiguous at 64 bits and checked at start-up; patchelf and the
-hydra read ELF64, with a committed test), m7-armdiv (one SIGFPE decoder
-for i386 and x86-64, the GBA's 64-bit division-by-zero results measured
-under qemu-arm). The 64-bit build links and starts; it stops in the sound
-engine because the assembled data still holds 4-byte pointers. Running
-now: m7-data (Opus): the data emitted in the x86-64 layout (macros under
-`.ifdef`, filter rules, a relocation check run by the 64-bit link), with
-the opening replay at 64 as its target. Then: the replays at 64 plain and
-sanitized, the save converter and gate (h), the suite at 64, the
-refactoring pass again.
+m7-link (the two link assertions, INTR_VECTOR as a 32-bit store, a Union
+Room task-data overlay the reviewer found), m7-testtable (the test table
+contiguous at 64 bits and checked at start-up; patchelf and the hydra
+read ELF64, with a committed test), m7-armdiv (one SIGFPE decoder for
+i386 and x86-64, the GBA's 64-bit division-by-zero results measured under
+qemu-arm), m7-data (the assembled data emitted in the x86-64 layout, with
+a relocation check, a layout check and a classified symbol list run by the
+64-bit link), m7-bscript (the battle scripts' 174 pointer operands at 8
+bytes, with a checker that parses the macros against the C declarations),
+m7-crit (an upstream out-of-bounds read in GetCriticalHitOdds that the
+64-bit build turned into a crash, fixed natively to the GBA's result).
+**The 64-bit build now plays both replays** (opening and debug menu, all
+dumps and screenshots equal to the 32-bit expectations, mixed audio
+identical frame by frame) and expansion's suite at 64 bits differs from 32
+only in `SaveBlock1 is backwards compatible` (the layout difference gate h
+converts); the 64-bit rows join the gate table once the orchestrator's own
+run on main is recorded. Running now: m7-align (Sonnet; 8-byte alignment
+of the save blocks, the heap, the RFU buffers and task data at 64, which
+is what the sanitized 64-bit replays need; in its review-fix round) and
+m7-save (Opus; the save converter and gate h). Then: the sanitized gates
+at 64, the suite at 64 recorded, the refactoring pass again, 64-bit done.
 
 **Broke and fixed.** The debug-menu gate's two battle screenshots flipped
 between male and female for the opponent's Poochyena whenever the binary

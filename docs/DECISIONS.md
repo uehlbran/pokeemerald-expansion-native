@@ -562,7 +562,9 @@ comments would not have: the link fails on exactly two static assertions,
 one of which (RecordedBattleSave) has no pointer in it at all (a u64 that
 x86-64 aligns to 8); the 8-byte INTR_VECTOR store runs off the end of
 IWRAM; the assembled data holds 61,154 address words of which 17,033 must
-widen and 44,121 must not (bytecode); GCC's x86-64 data alignment spaces
+widen and 44,121 must not (bytecode) (the count at the inventory; after the
+battle scripts were found to be read through packed structs with pointer
+members it is 19,208 widened and 41,946 left); GCC's x86-64 data alignment spaces
 the test runner's `.tests` entries 64 bytes apart; tools/patchelf is
 ELF32-only; and in the save only SaveBlock1 changes layout (two members).
 Each milestone 7 task is one section of that design, gated on the 32-bit
@@ -600,9 +602,9 @@ native build's): decided when the converter is written, and recorded here.
 
 The assembled data (maps, map events, layouts, voices, songs, cries, the
 script and special tables) is read by C through struct and array types
-whose pointers are 8 bytes at 64, so those 17,033 address words must be
-8 bytes with the C structs' padding and alignment; the 44,121 words
-inside bytecode (event scripts, battle scripts, song tracks, animation
+whose pointers are 8 bytes at 64, so those address words (19,208 once the battle scripts' 2,174 pointer
+operands were counted in) must be 8 bytes with the C structs' padding
+and alignment; the 41,946 words inside bytecode (event scripts, battle scripts, song tracks, animation
 scripts) are read byte by byte and must stay 4 bytes, which is lossless
 because every target is below 4 GiB and the ROM_SIZE tag bit survives
 zero-extension. Mechanism, in order of preference: guarded `.ifdef`
