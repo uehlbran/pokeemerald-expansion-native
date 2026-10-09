@@ -10,9 +10,29 @@
 #include "constants/battle_ai.h"
 #include "constants/pokeball.h"
 
+#if PLATFORM_NATIVE
+// The trainer's bytes, hashed without `party`. That field is the party table's
+// address: on the GBA a ROM address fixed by the ROM's link layout, natively an
+// address in the executable that moves with any change to the build, and with
+// it the party seed (each Pokemon's personality, so its gender) and a partner's
+// OT ID. A deliberate divergence: the address is not the trainer's data.
+static u32 TrainerDataCrc32(const struct Trainer *trainer)
+{
+    struct Trainer hashed;
+    memcpy(&hashed, trainer, sizeof(hashed));
+    hashed.party = NULL;
+    return Crc32B((const u8 *)&hashed, sizeof(hashed));
+}
+#endif
+#line 13
 rng_value_t GeneratePartySeed(const struct Trainer *trainer)
 {
+#if PLATFORM_NATIVE
+    u32 seed = TrainerDataCrc32(trainer) ^ READ_OTID_FROM_SAVE;
+#else
     u32 seed = Crc32B((const u8 *)trainer, sizeof(struct Trainer)) ^ READ_OTID_FROM_SAVE;
+#endif
+#line 16
     return LocalRandomSeed(seed);
 }
 
@@ -115,7 +135,12 @@ void MakePartnerGenerator(struct TrainerGenerator *trainerGen, const struct Trai
     trainerGen->isFrontier = FALSE;
     StringCopyN(trainerGen->name, partner->trainerName, TRAINER_NAME_LENGTH + 1);
     trainerGen->trainerClass = partner->trainerClass;
+#if PLATFORM_NATIVE
+    otID = TrainerDataCrc32(partner);
+#else
     otID = Crc32B((const u8 *)partner, sizeof(struct Trainer));
+#endif
+#line 119
     trainerGen->otID = OTID_STRUCT_PRESET(otID);
     trainerGen->localRngState = LocalRandomSeed(otID);
 }
