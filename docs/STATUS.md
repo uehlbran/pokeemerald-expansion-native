@@ -172,6 +172,10 @@ game_hooks_unwind being noreturn, which it is declared to be.
 | GBA memory regions can be mapped at their addresses in a native process on 32-bit and 64-bit, with ASan and UBSan | `research/memory-map-experiment.md` | works |
 | The platform gate: clang-format (`.clang-format`) finds nothing to change, clang-tidy (`.clang-tidy`) and cppcheck report nothing at both widths, every unit test passes under ASan+UBSan at both widths | `make -C platform gate` | green 2026-10-09, 79 s, on main at 61ae8181f7 (and again after the end-to-end read's five cleanups) |
 | Every gate in one sequence on main after the last milestone 6 merge (61ae8181f7): the platform gate, the 32-bit build, the opening and debug-menu replays plain (27 dumps, 26 screenshots; 20 dumps, 32 screenshots; both save round trips) and sanitized (identical), `make check` plain and sanitized (5862 tests: 5405 passed, 18 known failing, 9 expected failing, 421 to-do, 9 assumption failures, 0 failed), the GBA ROM rebuilt | the ten steps in order, each exit 0 | green 2026-10-09; 79 s, 2 s, 29 s, 28 s, 3 s, 75 s, 73 s, 38 s, 116 s, 1 s; ROM sha1 e2d4600d4e7b1269ac50c28bc96ece2b758ded9e |
+| 64-bit, gate (a): the 64-bit native executable links from main with the relocation, layout and battle-script operand checks passing | `make -f Makefile.native -j32 native BITS=64` | green 2026-10-09 on main at b66dbd4385 |
+| 64-bit, gate (d): the opening replay on the 64-bit build, every dump and screenshot equal to the 32-bit expectations, the save round trip | `tests/smoke/run.sh build/native64/pokeemerald-native out/` | green 2026-10-09 (27 dumps, 26 screenshots) |
+| 64-bit, gate (e): the debug-menu replay on the 64-bit build | `tests/smoke/run_debug_menu.sh build/native64/pokeemerald-native out/` | green 2026-10-09 (20 dumps, 32 screenshots) |
+| 64-bit, gate (b): expansion's suite against the 64-bit build: 5866 tests, 5408 passed, 1 failed, 18 known failing, 9 expected failing, 421 to-do, 9 assumption failures; per test equal to the 32-bit run except `SaveBlock1 is backwards compatible` (sizeof 15768 vs 15496: the layout difference gate h converts; the test is expansion's sizeof comparison and stays red at 64 by design unless the owner wants it guarded) | `make -f Makefile.native -j32 check BITS=64` | 2026-10-09, 125 s: red by that one test, which is the expected 64-bit layout |
 | Every platform module is merged: `gba_memmap` (region layout via linker script), `ptest.h` self-test, `timer`, `transfer_bounds`, `input`, `rtc`, `video`, `audio`, `frame_pacer`, `interrupt`, `psg`, `ppu`, `dma`, `flash`, `save_file`, `bios`, `lcd_status`, `m4a_output`, `sound_mix`, `replay`, `inspect`, `restart`, `symbols`, `debug_channel`, `crash_reboot`, `arm_division`, and the `m4a` engine translation (also proven by a differential test against the ARM original under qemu-arm, run by hand) | `make -C platform test BITS=32` and `BITS=64`, every test under ASan+UBSan with leak detection, after a Sonnet first-pass review and orchestrator merge | green on both widths at merge time |
 
 ## Not verified
@@ -204,13 +208,13 @@ Nothing yet; nothing exists to be broken.
 
 | Gate | State |
 |---|---|
-| (a) native build from a clean clone with documented prerequisites | green for 32-bit (`docs/BUILDING.md`); 64-bit not yet |
+| (a) native build from a clean clone with documented prerequisites | green for 32-bit (`docs/BUILDING.md`); 64-bit links and runs from main (clean-clone run not yet recorded) |
 | (platform) `make -C platform gate`: format, lint, sanitized unit tests at both widths | green |
-| (b) expansion's test suite against the native binary, same results as GBA | green on 32-bit, plain and sanitized: per test the GBA baseline but for the 9 benchmarks (assumption failures by decision) |
+| (b) expansion's test suite against the native binary, same results as GBA | green on 32-bit, plain and sanitized: per test the GBA baseline but for the 9 benchmarks (assumption failures by decision); at 64-bit plain the same but for `SaveBlock1 is backwards compatible` (the layout test; gate h) |
 | (h) a save written by the 32-bit native build loads correctly in the 64-bit native build (cross-width round-trip; the save container is versioned so this stays true) | milestone 7, not started |
 | (c) GBA target builds and passes the suite | green (above) |
-| (d) deterministic input-replay smoke test through the opening | green on 32-bit, plain and sanitized |
-| (e) debug-menu gate | green on 32-bit, plain and sanitized |
+| (d) deterministic input-replay smoke test through the opening | green on 32-bit, plain and sanitized; green on 64-bit plain (sanitized: m7-align in flight) |
+| (e) debug-menu gate | green on 32-bit, plain and sanitized; green on 64-bit plain |
 | (f) unit tests and smoke boot clean under sanitizers | unit tests green under ASan+UBSan on 32 and 64-bit; the opening replay and the full suite are clean under ASan+UBSan on 32-bit |
 | (g) this file | current |
 
