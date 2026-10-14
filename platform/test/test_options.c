@@ -45,7 +45,7 @@ PTEST(no_arguments_give_the_documented_defaults)
     struct options o;
     PT_ASSERT_EQ_INT(PARSE(&o, NULL), OPTIONS_OK);
     PT_ASSERT(!o.headless && !o.silent && !o.unthrottled && !o.help && !o.test_runner && !o.rtc_fixed);
-    PT_ASSERT_EQ_INT(o.scale, VIDEO_DEFAULT_SCALE);
+    PT_ASSERT_EQ_INT(o.scale, 3); /* docs/BUILDING.md: "scale 3" */
     PT_ASSERT_EQ_U32(o.frame_limit, 0);
     PT_ASSERT_EQ_STR(o.save_path, "pokeemerald.sav");
     PT_ASSERT_EQ_STR(o.rtc_offset_path, "pokeemerald.rtc");
@@ -107,7 +107,7 @@ PTEST(scale_accepts_one_to_the_maximum_and_nothing_else)
     PT_ASSERT_EQ_INT(PARSE(&o, "--scale", "1"), OPTIONS_OK);
     PT_ASSERT_EQ_INT(o.scale, 1);
     PT_ASSERT_EQ_INT(PARSE(&o, "--scale", "16"), OPTIONS_OK);
-    PT_ASSERT_EQ_INT(o.scale, VIDEO_MAX_SCALE);
+    PT_ASSERT_EQ_INT(o.scale, OPTIONS_MAX_SCALE);
     PT_ASSERT_EQ_INT(PARSE(&o, "--scale", "0"), OPTIONS_ERR_USAGE);
     PT_ASSERT_EQ_INT(PARSE(&o, "--scale", "17"), OPTIONS_ERR_USAGE);
     PT_ASSERT_EQ_INT(PARSE(&o, "--scale", "-1"), OPTIONS_ERR_USAGE);
