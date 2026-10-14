@@ -242,7 +242,8 @@ on one file), so the data is assembled with GNU as on Linux and
 converted; MinGW GCC defaults to `-mms-bitfields` against 1,247 bitfield
 members in expansion's headers (`-mno-ms-bitfields` keeps the Linux
 layouts, saves included); `ptest.h`'s SIGALRM timeout and 16 POSIX-bound
-tests need Windows variants; 7 bash scripts (574 lines) with `stat -c`,
+tests needed Windows variants (done in W3: a flag-setting watchdog thread
+and one test directory per OS family); 7 bash scripts (574 lines) with `stat -c`,
 `md5sum` and `/proc/$$/fd` as the blockers.
 
 Design: a thin `host` layer, one header per concern (memory, faults,

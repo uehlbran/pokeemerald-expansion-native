@@ -1,6 +1,6 @@
 # Status
 
-Last updated 2026-10-14 (milestone 7 done: **64-bit done**, every gate green at both widths on main at 94f3c70f62; milestone 8 in progress: the two-tier Linux CI, the host layer, the data converter and the Windows cross-build merged; the test timeout and the Windows host layer in flight).
+Last updated 2026-10-14 (milestone 7 done: **64-bit done**, every gate green at both widths on main at 94f3c70f62; milestone 8 in progress: the two-tier Linux CI, the host layer, the data converter and the Windows cross-build merged; the test timeout merged; the Windows host layer in flight).
 
 This file is the honest ledger. A thing is listed as verified only with
 the gate that proved it. Anything without a gate is unverified, whatever
@@ -67,7 +67,9 @@ model per branch. One optional install, when convenient: Wine, so the
 Windows cross-build can run its unit tests and replays here instead of
 only on the Windows runner (minutes counting double):
 `sudo apt-get install -y wine64`. Without it, task W4 proves the link
-only and the first runs happen in CI. Otherwise nothing new. The three milestone 8 items were
+only and the first runs happen in CI. A second optional install, so the
+ccache follow-up (in flight) can be measured here as well as on the
+runner: `sudo apt-get install -y ccache`. Otherwise nothing new. The three milestone 8 items were
 settled on 2026-10-14: the MinGW cross-compiler is installed (GCC 13 for
 x86_64-w64-mingw32, binutils 2.41; Wine is not, so cross-built
 executables run only on the Windows runner); macOS ships as x86_64
@@ -374,11 +376,41 @@ independently; the review's fixes (a checked write wrapper instead of a
 suppressed warning on the handler path, the PE checker's self-test
 pinned to the specification's literals, a gap-content check) merged.
 
-**In flight.** The test harness's timeout without SIGALRM and the
-per-OS split of the POSIX-bound tests (task W3, review fixes); the Windows host layer (tasks W5 to
-W7: memory, image, process and files, the vectored exception handler
-and the crash respawn, the stack switch, the watchdog, the cross-built
-unit tests for the Windows runner).
+**The test timeout and the per-OS tests** (task W3, merged 2026-10-14 at
+0a49ebfa34): `ptest.h` kept each test's limit with `alarm(2)`, which
+Windows lacks and which interrupted a test at any instruction. Now
+`host_thread.h` (host_posix.c) starts one watchdog thread per test that
+sleeps until the deadline and stores `true` into one atomic flag, and the
+test's own thread reads the flag in every assertion and at the test's
+return, abandoning the test with the same report text and exit status as
+before; the thread is created and joined once per test, so none outlives
+its test, and a test that forks (`psup_run_child`) stops the watchdog
+before the fork and starts it again after, so the child inherits no
+thread. This is the one thread the platform has, with the decision and
+the ownership model the standing rules require in DECISIONS.md, and a
+ThreadSanitizer build of every test binary but `test_crt0` is in the
+platform gate (`make -C platform tsan`, 64-bit). The sixteen tests that
+need fork, signals, pipes, permissions or `/proc` moved out of `#ifdef`s
+into `platform/test/posix/` and `platform/test/linux/` (built only for a
+target whose `HOST_TEST_DIRS` in host.mk names them), with the OS
+services declared once in `test/test_support.h` and implemented once per
+family in `test/<dir>/support.c`; a port adds a directory and a support
+file and edits no existing test. 1251 tests in 75 binaries (13 new). A
+test that never reaches an assertion after its limit hangs its binary
+(ptest.h says so; the CI job's own time limit is the backstop). Reviewed
+by Sonnet with mutation testing (13 mutants); the six findings (a test
+that no thread is left after stop, a test that stop returns promptly,
+the limit checked in every assertion family, the watchdog stopped around
+fork instead of relying on glibc's atfork handling, the signal-unsafe
+suppression scoped to the one test that leaves a handler by `siglongjmp`,
+the outcome kept when a limit expires inside a capture) fixed by the
+author and merged. The Windows source of host_thread.h is declared and
+not written (task W5 to W7).
+
+**In flight.** The Windows host layer (tasks W5 to W7: memory, image,
+process and files, the vectored exception handler and the crash respawn,
+the stack switch, the watchdog, the cross-built unit tests for the Windows
+runner).
 
 ## Verified by a gate
 
@@ -413,6 +445,7 @@ unit tests for the Windows runner).
 | Every gate in one sequence on main after the last milestone 7 merge (94f3c70f62): the platform gate (format, lint at both widths, the sanitized unit tests at both widths, tools-test, glue-test); at 32 bits the build, the two replays plain and sanitized, `make check` plain and sanitized (5409 passed), the GBA ROM rebuilt; at 64 bits the build plain and sanitized, the two replays plain and sanitized, `make check` plain and sanitized (5409 passed); the cross-width script both ways, plain and sanitized | the 22 steps in order, each exit 0 | green 2026-10-09; the 32-bit half 11 min, the 64-bit half 6 min, the cross-width runs 4 min; ROM sha1 e2d4600d4e7b1269ac50c28bc96ece2b758ded9e |
 | The orchestrator's gate on main after the host-layer merge (fa11bb1506, milestone 8 task W2): the platform gate, the 32-bit build and opening replay, the 64-bit build, both 64-bit replays plain and the opening replay sanitized, the plain 64-bit suite (5409 passed), the cross-width script 32 to 64 | the ten steps in order, each exit 0 | green 2026-10-14; 24 s, 7 s, 29 s, 5 s, 24 s, 23 s, 25 s, 58 s, 36 s, 41 s |
 | The orchestrator's gate on main after the Windows cross-build merge (f25169cdf1, task W4): the platform gate, both Linux builds, the Windows cross-link with the PE layout check, the 64-bit opening replay, the plain 64-bit suite (5409 passed) | the seven steps in order, each exit 0 | green 2026-10-14 |
+| The orchestrator's gate on main after the test-timeout merge (0a49ebfa34, task W3): the platform gate with the new ThreadSanitizer build of the tests, both Linux builds, both 64-bit replays and the 32-bit opening replay, the Windows cross-link, the plain 64-bit suite (5409 passed), the cross-width script | the nine steps in order, each exit 0 | green 2026-10-14; 199 s, 6 s, 5 s, 25 s, 35 s, 34 s, 5 s, 30 s, 45 s (the builds were warm) |
 | Every platform module is merged: `gba_memmap` (region layout via linker script), `ptest.h` self-test, `timer`, `transfer_bounds`, `input`, `rtc`, `video`, `audio`, `frame_pacer`, `interrupt`, `psg`, `ppu`, `dma`, `flash`, `save_file`, `bios`, `lcd_status`, `m4a_output`, `sound_mix`, `replay`, `inspect`, `restart`, `symbols`, `debug_channel`, `crash_reboot`, `arm_division`, and the `m4a` engine translation (also proven by a differential test against the ARM original under qemu-arm, run by hand) | `make -C platform test BITS=32` and `BITS=64`, every test under ASan+UBSan with leak detection, after a Sonnet first-pass review and orchestrator merge | green on both widths at merge time |
 
 ## Not verified
@@ -524,6 +557,9 @@ Nothing yet; nothing exists to be broken.
 | m8-probes (milestone 8: the loader probes and their workflow) | Sonnet | the runs on the Windows and macOS runners |
 | m8-host (milestone 8, task W2: the host layer on Linux, the nm symbol map) | Opus | Sonnet (mutation testing), orchestrator merge gate |
 | m8-dataconv (milestone 8, task M1: the ELF-to-flat data converter) | Opus | Sonnet (mutation testing), orchestrator merge gate |
+| m8-winglue (milestone 8, task W4: the Windows cross-build glue) | Opus | Sonnet (mutation testing), orchestrator merge gate |
+| m8-ptest (milestone 8, task W3: the watchdog timeout, the per-OS test split) | Sonnet | Sonnet (mutation testing), orchestrator merge gate |
+| ci-tiers (milestone 8: the CI workflow in two tiers) | Sonnet | orchestrator (the runs on the runner) |
 | battle-glyph (milestone 6: the trainer party seed and the nickname padding, root cause of the screenshot flake) | Opus | orchestrator |
 | upstream-report (seven issues drafted, triaged against upstream) | Sonnet | Fable (orchestrator) |
 | Research, synthesis, decisions, merges | Fable (orchestrator) | |
