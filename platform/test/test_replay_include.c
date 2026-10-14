@@ -485,6 +485,33 @@ PTEST(include_names_of_1023_and_1024_characters)
     PT_ASSERT(path_message);
 }
 
+PTEST(a_script_path_of_the_maximum_length_is_described_whole_in_the_documented_buffer)
+{
+    char message[REPLAY_INCLUDE_MESSAGE_SIZE];
+    char where[REPLAY_SOURCE_WHERE_SIZE];
+    char path[REPLAY_INCLUDE_MAX_NAME + 1u];
+    char *text;
+    bool expanded;
+    make_directory();
+    /* Repeated slashes pad the directory's path to the longest name a script may have. */
+    const char *const name = "main.replay";
+    const size_t directory_length = strlen(directory);
+    memset(path, '/', REPLAY_INCLUDE_MAX_NAME);
+    memcpy(path, directory, directory_length);
+    memcpy(path + REPLAY_INCLUDE_MAX_NAME - strlen(name), name, strlen(name) + 1u);
+    PT_ASSERT_EQ_INT((int)strlen(path), (int)REPLAY_INCLUDE_MAX_NAME);
+    write_file("main.replay", "wait 1\n");
+    const int result = expand_path(path, &text, &expanded, message, sizeof message);
+    describe(1, where, sizeof where);
+    const size_t length = strlen(where);
+    free(text);
+    replay_source_map_free(&map);
+    remove_all();
+    PT_ASSERT_EQ_INT(result, 0);
+    PT_ASSERT_EQ_INT((int)length, (int)REPLAY_INCLUDE_MAX_NAME + 2);
+    PT_ASSERT_EQ_STR(where + length - 2u, ":1");
+}
+
 PTEST(including_a_directory_is_a_read_error)
 {
     char message[REPLAY_INCLUDE_MESSAGE_SIZE];

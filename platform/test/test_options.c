@@ -54,6 +54,9 @@ PTEST(no_arguments_give_the_documented_defaults)
     PT_ASSERT_EQ_U32(o.resume_after_line, 0);
 }
 
+/* --silent's effect on the audio device (main.c: AUDIO_SILENT instead of AUDIO_DEVICE) cannot be tested
+ * here, since opening the device needs SDL, and is left to the smoke gates, which run with --silent.
+ * This test pins the flag the mapping reads. */
 PTEST(the_flags_set_their_own_field_only)
 {
     struct options o;
