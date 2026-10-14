@@ -11,7 +11,8 @@
 #   1. from/   FROM_BINARY, a copy of opening.replay cut before its `restart`: exit 0, no new
 #              sanitizer report, every dump and screenshot as in expected/ (the save is the one
 #              run.sh checks), and a save file whose header names FROM's width and layout 1.
-#   2. to/     TO_BINARY on a copy of that file, opening.replay --resume-at the `restart` line:
+#   2. to/     TO_BINARY on a copy of that file, opening.replay --resume-at the `restart` line
+#              and the clock FROM's frames give (platform/fixed_clock.h's rate, checked):
 #              the same, for the dumps and screenshots after the restart (26_continue_menu,
 #              27_continued); what was saved (25_saved) is what Continue loaded; stderr says the
 #              save was converted; the file is unchanged (the conversion is not a game write).
