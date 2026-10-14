@@ -182,6 +182,9 @@ static void on_crash(const struct host_fault *fault)
     report_write(&report);
 }
 
+/* The option and its value, appended to the arguments the process started with. */
+#define CRASH_REBOOT_APPENDED_ARGS 2u
+
 static bool build_args(int argc, char *const argv[])
 {
     size_t count = 0;
@@ -190,7 +193,7 @@ static bool build_args(int argc, char *const argv[])
             i++; /* and its value */
             continue;
         }
-        if (count + 2 >= CRASH_REBOOT_MAX_ARGS)
+        if (count + CRASH_REBOOT_APPENDED_ARGS >= CRASH_REBOOT_MAX_ARGS)
             return false;
         reboot.args[count++] = argv[i];
     }
@@ -227,16 +230,16 @@ int crash_reboot_restore(const char *state_hex)
 {
     uint8_t bytes[CRASH_REBOOT_PERSISTENT_SIZE];
     if (state_hex == NULL || strlen(state_hex) != CRASH_REBOOT_STATE_HEX_LENGTH) {
-        (void)fprintf(stderr, "crash_reboot: %s needs %zu hex digits\n", CRASH_REBOOT_OPTION,
-                      CRASH_REBOOT_STATE_HEX_LENGTH);
+        (void)fprintf(stderr, "crash_reboot: %s needs %llu hex digits\n", CRASH_REBOOT_OPTION,
+                      (unsigned long long)CRASH_REBOOT_STATE_HEX_LENGTH);
         return CRASH_REBOOT_ERR_STATE;
     }
     for (size_t i = 0; i < CRASH_REBOOT_PERSISTENT_SIZE; i++) {
         int high = hex_value(state_hex[2 * i]);
         int low = hex_value(state_hex[2 * i + 1]);
         if (high < 0 || low < 0) {
-            (void)fprintf(stderr, "crash_reboot: %s: '%.2s' at %zu is not a lower-case hex byte\n", CRASH_REBOOT_OPTION,
-                          &state_hex[2 * i], 2 * i);
+            (void)fprintf(stderr, "crash_reboot: %s: '%.2s' at %llu is not a lower-case hex byte\n",
+                          CRASH_REBOOT_OPTION, &state_hex[2 * i], (unsigned long long)i * 2u);
             return CRASH_REBOOT_ERR_STATE;
         }
         bytes[i] = (uint8_t)(high << 4 | low);
