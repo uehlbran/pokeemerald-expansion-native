@@ -290,8 +290,22 @@ log references):
   stands: the fixed-address model cannot hold on arm64 (the owner's
   decision, above).
 
-**In flight.** The host layer on Linux (task W2, a pure refactor under
-every Linux gate).
+**The host layer** (task W2, merged 2026-10-14): one header per OS
+concern under `platform/` (`host_memory`, `host_fault`, `host_process`,
+`host_image`, `host_stack`, `host_file`) with `host_posix.c` and
+`host_linux.c` behind them, chosen by `platform/host.mk` (`HOST_OS`,
+Linux the only accepted value today); the 12 modules that made OS calls
+make none now (123 lines to 0), and the replay's symbol names come from
+an `nm` map the link writes (`<exe>.symbols`) instead of an ELF reader,
+verified identical at every function address. A pure refactor: every
+Linux gate green before and after; reviewed with 44 mutants (the review
+added a bounded restart test, core-dump limits in forked children, a
+summary-line check in the test loops, tests for five uncaught mutants
+and a map recipe that leaves no empty or stale map). Rows: STATUS
+"Which model did what".
+
+**In flight.** The data converter for Mach-O and COFF (task M1, in
+review).
 
 ## Verified by a gate
 
@@ -431,6 +445,10 @@ Nothing yet; nothing exists to be broken.
 | m7-docs (milestone 7: BUILDING, ARCHITECTURE, CONTRIBUTING, the platform comments at 64 bits) | Sonnet | orchestrator |
 | refactor7-platform, refactor7-glue, refactor7-expansion (milestone 7 refactoring pass) | Sonnet | Sonnet (mutation testing), orchestrator merge gate |
 | the end-to-end read of the milestone 7 changes and its three comment corrections | Fable (orchestrator) | the full gate at both widths |
+| m8-inventory (milestone 8: the Windows and macOS inventory, no code) | Opus | orchestrator |
+| m8-probes (milestone 8: the loader probes and their workflow) | Sonnet | the runs on the Windows and macOS runners |
+| m8-host (milestone 8, task W2: the host layer on Linux, the nm symbol map) | Opus | Sonnet (mutation testing), orchestrator merge gate |
+| m8-dataconv (milestone 8, task M1: the ELF-to-flat data converter) | Opus | Sonnet (mutation testing), orchestrator merge gate |
 | battle-glyph (milestone 6: the trainer party seed and the nickname padding, root cause of the screenshot flake) | Opus | orchestrator |
 | upstream-report (seven issues drafted, triaged against upstream) | Sonnet | Fable (orchestrator) |
 | Research, synthesis, decisions, merges | Fable (orchestrator) | |
