@@ -32,7 +32,7 @@ instruction. The reference ports' C engines were not used.
 | `m4a_sequencer.c` | `MPlayMain`, `TrackStop`, `RealClearChain`, `ChnVolSetAsm`, `clear_modM`, `umul3232H32`. |
 | `m4a_note.c` | `ply_note`: voice selection, channel allocation and stealing, channel start. |
 | `m4a_commands.c` | `MPlayJumpTableCopy` and the `ply_*` track commands, with the BIOS-read guard `chk_adr_r2`. |
-| `m4a_clear64.c` | `SoundMainBTM`, in its own file (see "Notes for integration"). |
+| `m4a_clear64.c` | `SoundMainBTM`, in its own file (see "How the game links it"). |
 | `../test/test_m4a_*.c` | Unit tests: mixer, render, sequencer (`test_m4a_engine.c`), note, commands, output (`test_m4a_output.c`, the platform's `m4a_output.c`). They live with the other platform tests and follow their `// deps:` convention. |
 | `test_m4a_support.c/.h`, `test_m4a_c_reference.c/.h` | Test fixtures and the `src/m4a.c` functions the tests need. |
 | `Makefile` | Standalone build of the engine and its tests (`BITS=32` or `64`); also builds `m4a_output.c` and `gba_memmap.c` for `test_m4a_output.c`. |
@@ -218,9 +218,9 @@ what is reconciled, not the engine:
   goes through a `uintptr_t` and is the same at both widths (`m4a_render.c`,
   `m4a_note.c`, `m4a_commands.c`, `m4a_mixer.c`).
 
-## Notes for integration
+## How the game links it
 
-- **Leave `src/m4a_1.s` out of the native build** and link these files
+- **`src/m4a_1.s` is left out of the native build** and these files are linked
   instead. `platform/Makefile` already puts `m4a/m4a_*.c` into
   `libplatform.a` and runs `test/test_m4a_*.c` with the other platform
   tests. The engine's calls into `src/m4a.c` and `src/m4a_tables.c` are
@@ -241,17 +241,16 @@ what is reconciled, not the engine:
   DMA model that acts on the `DMA_START_NOW` write would copy 4 words
   from the ring to the FIFO register. That is harmless, but it is not
   needed.
-- **`src/m4a.c` concerns the native build will meet** (not changed here):
-  - `SampleFreqSet` busy-waits for `VCOUNT` to leave and then reach 159.
-    With `VCOUNT` reading 160 natively, it never returns unless the
-    platform or a guarded change handles it.
-  - `SoundInit` writes `(s32)soundInfo->pcmBuffer` to `REG_DMA1SAD`, a
-    pointer cast to a 32-bit integer.
-  - `MAX_LINES` and `NUM_MUSIC_PLAYERS` are the addresses of
-    linker-defined symbols.
-  - `MusicPlayerJumpTableCopy` contains `swi 0x2A`.
-  - `TrkVolPitSet` shifts the signed `keyShift` left, which UBSan reports
-    for negative values.
+- **`src/m4a.c` under the native build.** `SampleFreqSet`'s poll of `VCOUNT`
+  (which reads 161 while the game runs, `docs/ARCHITECTURE.md`, "The frame")
+  and the unused `swi 0x2A` in `MusicPlayerJumpTableCopy` are compiled out
+  (`docs/UPSTREAM_MODIFICATIONS.md`, `src/m4a.c`). `MAX_LINES` and
+  `NUM_MUSIC_PLAYERS` are symbols whose address is their value, which
+  `platform/gba_game.ld` defines. `SoundInit` stores `(s32)soundInfo->pcmBuffer`
+  in `REG_DMA1SAD`, a pointer cast to 32 bits that holds because the non-PIE
+  build links below 4 GiB. `TrkVolPitSet` shifts the signed `keyShift` left,
+  which UBSan's `shift-base` check, off for expansion's objects, would report
+  (`docs/ARCHITECTURE.md`, "Known divergences").
 
 ## Tests
 

@@ -1,1 +1,1 @@
-{{#include ../README.md}}
+{{#include ./upstream-README.md}}
