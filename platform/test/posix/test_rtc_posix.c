@@ -115,4 +115,24 @@ PTEST(a_set_whose_directory_sync_failed_keeps_the_offset_the_file_has)
     PT_ASSERT(strcmp(text, "23370\n") == 0); /* 20:15:00 - 13:45:30 UTC = 6h29m30s */
 }
 
+PTEST(a_first_run_whose_directory_sync_failed_starts_on_the_offset_the_file_has)
+{
+    struct locked_directory scratch = {0};
+    struct rtc_datetime read = {0};
+    char text[OFFSET_TEXT_SIZE];
+
+    PT_ASSERT(make_directory(&scratch));
+    const bool locked = lock_directory(&scratch);
+    const int init_result = rtc_init_utc(fake_source, scratch.path);
+    const int get_result = rtc_get_datetime(&read);
+    read_offset_file(scratch.path, text);
+    rtc_shutdown();
+    remove_directory(&scratch);
+    PT_ASSERT(locked);
+    PT_ASSERT_EQ_INT(init_result, 0);
+    PT_ASSERT_EQ_INT(get_result, 0);
+    PT_ASSERT_EQ_U32(read.hour_bcd, 0x93); /* 13:45:30 UTC on the first-run seed; PM flag set in 24-hour mode */
+    PT_ASSERT(strcmp(text, "0\n") == 0);
+}
+
 PTEST_MAIN()

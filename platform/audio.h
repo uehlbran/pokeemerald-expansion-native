@@ -4,8 +4,9 @@
  * Stands in for the GBA's sound output (GBATEK "GBA Sound Controller"
  * ends in a 2-channel DAC). The sound mixer produces one video frame of
  * signed 16-bit stereo samples per frame and queues them here. This is
- * the only module that calls SDL's audio API (video is the only other
- * module that calls SDL at all). Design:
+ * the only module that calls SDL's audio API; the other modules that use SDL
+ * (video, input, frame, frame_pacer, main) name what they use in their own
+ * headers. Design:
  * docs/RESEARCH.md "Audio".
  *
  * Threading: single-threaded by design. There is no audio callback; SDL's

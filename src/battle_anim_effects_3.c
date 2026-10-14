@@ -593,6 +593,11 @@ const s8 gDoomDesireLightBeamCoordTable[] =
 #endif
 #line 591
 };
+#if PLATFORM_NATIVE
+// The test (test/gba_table_reads.c) pins the fifth entry's value; only here is the size visible.
+_Static_assert(ARRAY_COUNT(gDoomDesireLightBeamCoordTable) == 5, "the fifth beam run reads past the four-entry table of the GBA: it needs its fifth entry");
+#line 592
+#endif
 
 const u8 gDoomDesireLightBeamDelayTable[] =
 {

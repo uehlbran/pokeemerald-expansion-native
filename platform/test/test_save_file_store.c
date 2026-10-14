@@ -199,6 +199,34 @@ PTEST(store_replaces_the_previous_file)
     PT_ASSERT(removed);
 }
 
+/* A tmp file a crashed store left behind may be longer than the new file: the
+ * store opens it truncating, so none of its tail survives the rename. */
+PTEST(a_longer_stale_tmp_does_not_leave_its_tail_in_the_stored_file)
+{
+    struct scratch scratch;
+    if (!scratch_create(&scratch))
+        PT_FAIL("cannot create a scratch directory");
+    memset(file_bytes, 0xEE, sizeof file_bytes); /* FILE_BYTES + 1 long: one more than the store writes */
+    const bool stale = write_file(scratch.tmp, file_bytes, sizeof file_bytes);
+    set_image(0x0C);
+    const int init = save_file_init(scratch.path);
+    const int store = save_file_store();
+    const intmax_t size = file_size(scratch.path);
+    const bool tmp_left = exists(scratch.tmp);
+    const bool read = read_file(scratch.path, FILE_BYTES);
+    const bool image = memcmp(file_bytes + HEADER_BYTES, expected_image, CHIP_BYTES) == 0;
+    save_file_shutdown();
+    const bool removed = scratch_remove(&scratch);
+    PT_ASSERT(stale);
+    PT_ASSERT_EQ_INT(init, SAVE_FILE_OK);
+    PT_ASSERT_EQ_INT(store, SAVE_FILE_OK);
+    PT_ASSERT_EQ_INT(size, FILE_BYTES);
+    PT_ASSERT(!tmp_left);
+    PT_ASSERT(read);
+    PT_ASSERT(image);
+    PT_ASSERT(removed);
+}
+
 /* <path>.tmp cannot be created (a directory is in the way): the store fails
  * before touching anything, and leaves alone what it did not create. */
 PTEST(a_tmp_that_cannot_be_created_leaves_the_old_file)

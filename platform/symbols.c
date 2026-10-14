@@ -155,7 +155,7 @@ static char *read_whole(const char *path, size_t *length)
     char *text = NULL;
     const long end = size_of_file(file, &failed_call);
     if (end >= 0 && (unsigned long)end >= UINT32_MAX)
-        (void)fprintf(stderr, "symbols: %s is %ld bytes; the limit is 4 GiB\n", path, end);
+        (void)fprintf(stderr, "symbols: %s is %ld bytes; a map must be smaller than 4 GiB\n", path, end);
     else if (end >= 0)
         text = read_text(file, (size_t)end, &failed_call);
     const int error = errno; /* of the call that failed, before fclose can change it */

@@ -113,6 +113,22 @@ same_facts() {
     done
 }
 
+# The replay creates its --out directory when it is missing (replay_session.c's make_out_dir; no
+# unit test links the session, which needs the game). An empty script is done at its first step.
+session_creates_its_output_directory() {
+    local binary="$1" work="$2"
+    local made="$work/made_by_the_session"
+    local empty="$work/empty.replay"
+    : > "$empty" || die "cannot write $empty"
+    echo "== $(basename "$made"): $binary, an --out directory that does not exist"
+    "$binary" --headless --silent --unthrottled --replay "$empty" --out "$made" \
+        --save "$work/created.sav" --rtc-offset "$work/created.rtc" --rtc-fixed "$rtc_epoch" \
+        > "$work/created.stdout" 2> "$work/created.stderr"
+    local status=$?
+    [ "$status" -eq 0 ] || fail "the replay into a missing directory ended with status $status (see $work/created.stderr)"
+    [ -d "$made" ] || fail "the replay did not create its --out directory $made"
+}
+
 smoke_main() {
 local script="$SMOKE_SCRIPT"
 local expected="$SMOKE_EXPECTED"
@@ -135,6 +151,7 @@ rm -rf "$work" || die "cannot remove $work"
 mkdir -p "$work" || die "cannot create $work"
 
 play "$binary" "$work" "$script" --rtc-fixed "$rtc_epoch"
+session_creates_its_output_directory "$binary" "$work"
 
 if [ "$update" -eq 1 ]; then
     [ "$failures" -eq 0 ] || die "not updating the expectations from a failing run"

@@ -11,7 +11,7 @@ on:
 
 jobs:
   label:
-    if: ${{ github.actor != 'allcontributors[bot]' && github.event.review.state == 'approved' && contains(fromJSON('["master", "upcoming"]'), github.base_ref) }}
+    if: ${{ github.actor != 'allcontributors[bot]' && github.event.review.state == 'approved' && contains(fromJSON('["master", "upcoming"]'), github.event.pull_request.base.ref) }}
     runs-on: ubuntu-latest
     steps:
       - name: check labels
