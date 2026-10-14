@@ -14,10 +14,12 @@
  * module does not carry.
  *
  * Also by inspection, for the same reason (no fault can be injected into the
- * pthread calls without such an accessor): that a failure on the watchdog's
- * thread (its lock, its wait) is not printed there but recorded, and reported
- * by host_watchdog_stop after the join (watchdog_thread and host_watchdog_stop
- * in host_posix.c; no call on the thread's path prints).
+ * pthread calls or the clock without such an accessor): that a failure on the
+ * watchdog's thread (its lock, its wait) is not printed there but recorded,
+ * and reported by host_watchdog_stop after the join (watchdog_thread and
+ * host_watchdog_stop in host_posix.c; no call on the thread's path prints);
+ * and that a failed clock in the start's handshake ends the wait without
+ * reading the time it did not get (watchdog_await_start).
  */
 #include <stdatomic.h>
 

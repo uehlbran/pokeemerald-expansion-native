@@ -1009,6 +1009,11 @@ times while the test thread blocks it, and requires every one to wait for the
 test thread. And the thread now prints nothing on its error paths either: a
 failed lock or wait is recorded in the watchdog, and `host_watchdog_stop`
 reports it after the join (it printed through stdio from the thread before).
+The start handshake's reason, more exactly than "it keeps a start from racing
+a stop" above (a stop joins a thread that has not reached its loop just as
+well): `host_watchdog_start` returns only a watchdog whose thread is waiting
+on the deadline, so a thread that cannot take its lock is a reported failed
+start rather than a test that silently has no limit.
 
 The Windows source of `host_thread.h` (`host_windows_thread.c`, written with
 the Windows host layer) is the same thread with Win32 calls: it waits on an

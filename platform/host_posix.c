@@ -483,10 +483,12 @@ static int watchdog_create_thread(struct host_watchdog *watchdog)
     return error;
 }
 
-/* Waits until the thread is in its loop. A caller that forks next (the POSIX
- * tests do) then finds the thread idle in a condition wait, not in the middle
- * of its start, where the sanitizers' thread registry would be locked in the
- * child for good. */
+/* Waits until the thread is in its loop, so that a watchdog
+ * host_watchdog_start returns is one whose thread keeps the deadline: a thread
+ * that cannot take its lock makes a failed start, reported, not a test without
+ * a limit. (No caller forks with the thread alive: the POSIX tests stop the
+ * watchdog before a fork, docs/DECISIONS.md, "The test time limit is kept by
+ * a flag-setting thread".) */
 static int watchdog_await_start(struct host_watchdog *watchdog)
 {
     int error = pthread_mutex_lock(&watchdog->lock);
@@ -495,11 +497,13 @@ static int watchdog_await_start(struct host_watchdog *watchdog)
     /* A thread that failed to take the lock never says it is waiting: give up
      * after WATCHDOG_START_SECONDS rather than wait for ever. */
     struct timespec give_up;
-    if (clock_gettime(WATCHDOG_CLOCK, &give_up) != 0)
+    if (clock_gettime(WATCHDOG_CLOCK, &give_up) != 0) {
         error = errno;
-    give_up.tv_sec += WATCHDOG_START_SECONDS;
-    while (!watchdog->waiting && error == 0)
-        error = pthread_cond_timedwait(&watchdog->changed, &watchdog->lock, &give_up);
+    } else {
+        give_up.tv_sec += WATCHDOG_START_SECONDS;
+        while (!watchdog->waiting && error == 0)
+            error = pthread_cond_timedwait(&watchdog->changed, &watchdog->lock, &give_up);
+    }
     (void)pthread_mutex_unlock(&watchdog->lock);
     return error;
 }
