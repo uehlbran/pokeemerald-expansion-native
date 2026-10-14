@@ -15,26 +15,18 @@
  * src/gba/audio.c and src/gb/audio.c compute it). NR30 bit 7 is the
  * channel's DAC: clear, it stops the channel and a trigger does nothing.
  *
- * WAVE RAM BANKS, AND WHERE THIS DIFFERS FROM GBATEK. On hardware,
- * WAVE_RAM0-3 address "the other (not selected) bank", at the moment of each
- * write. Here the game's writes are plain stores into the 16-byte window and
- * this module only sees the result at each psg_generate() call, not the NR30
- * value each store was made under. Expansion's m4a CgbSound (src/m4a.c,
- * CgbSound, channel 3) loads a wave by writing NR30 = 40h (bank 1 plays, so
- * the window is bank 0), the four WAVE_RAM words, then NR30 = 00h and later
- * 80h, all between two calls: the hardware ends with the new wave in bank 0,
- * which plays, while the NR30 value seen at the call says the window is
- * bank 1. Applying GBATEK's rule at the call would play bank 0's old contents
- * and silence every m4a wave instrument. So the rule here is: wave RAM
- * contents that differ from those seen at the previous call are copied into
- * the bank selected for playback at this call. That is the net effect of
- * GBATEK's rule for the two patterns games use when both happen between
- * calls: "select the other bank, write, select it back" (m4a) and "write the
- * idle bank, then select it" (double buffering). It differs from GBATEK when
- * a call falls between a write and the bank switch that should follow it, and
- * when a game rewrites the window with exactly the bytes already there,
- * meaning them for the other bank (not detectable in plain memory). The
- * window's memory is never written by this module.
+ * WAVE RAM BANKS. Hardware routes the window to the unselected bank at each
+ * write; this module sees the window once per psg_generate() call, not each
+ * write. m4a (src/m4a.c CgbSound, channel 3) loads a wave as "NR30 = 40h,
+ * write the four WAVE_RAM words, NR30 = 00h, later 80h" within one frame, so
+ * GBATEK's rule applied at the call would play the old bank and silence every
+ * m4a wave instrument. Rule here: a window that changed since the last call
+ * goes into the bank selected for playback at this call. That matches
+ * GBATEK for m4a's "select the other bank, write, select back" and for
+ * double buffering's "write the idle bank, then select it". Wrong only if a
+ * call lands between a write and its bank switch, or the game rewrites
+ * identical bytes meant for the other bank (undetectable in plain memory).
+ * The window's memory is never written by this module.
  *
  * Not modelled (Pan Docs "Audio Details"): the first sample after a trigger
  * repeating the previous one, and GBATEK's shift-register rotation of wave

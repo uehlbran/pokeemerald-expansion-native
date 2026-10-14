@@ -248,6 +248,14 @@ must remove DC after summing, as the GBA's output capacitor did. The PSG
 is generated at the output rate with point sampling and an exact cycle
 remainder, never at m4a's 13379 Hz mixer rate, which would alias badly.
 
+Amendment 2026-10-14: the shipped build does run the PSG at m4a's 13379 Hz
+(`FRAME_AUDIO_SAMPLE_RATE_HZ`), so that the 224-sample FIFO frame mixes
+sample for sample with the PSG output. Point sampling at that rate aliases
+the square and noise channels (platform/psg.c, "RESAMPLING"), which is
+accepted for now. Whether to run the device and the PSG at the GBA's
+32768 Hz PWM grid instead, upsampling the FIFO frame, is an open decision
+for the owner; the rate has not been changed.
+
 ## 2026-10-08: UBSan shift-base is disabled for expansion's objects only
 
 Expansion's DMA macros (`include/gba/macro.h`) and several source files

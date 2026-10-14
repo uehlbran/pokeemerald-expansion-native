@@ -144,11 +144,10 @@ struct ppu_regs {
 
 /* ---- bounds-checked reads of the GBA regions ---- */
 
-/* The native object at a GBA address: the regions are mapped at their GBA
- * addresses (gba_memmap.h), so the conversion is the identity. The only
- * integer-to-pointer conversion in the module; it is gba_memmap.h's identity
- * (GBA addresses fit in 32 bits and are mapped there at both widths). Callers
- * bound the address to a region first. */
+/* The native object at a GBA address. The regions are mapped at their GBA
+ * addresses at both widths (gba_memmap.h), so this is the identity; it is the
+ * module's only integer-to-pointer conversion. Callers bound the address to
+ * a region first. */
 static inline const void *ppu_gba_pointer(uint32_t address)
 {
     return (const void *)(uintptr_t)address;
