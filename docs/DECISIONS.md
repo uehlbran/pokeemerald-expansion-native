@@ -994,7 +994,9 @@ that forks has no thread alive at the fork: `psup_run_child` (posix_child.h)
 stops the watchdog, joining its thread, before the fork and starts it again
 after, so the child inherits no thread and no handle to one. (The
 handshake in `host_watchdog_start`, which returns only when the thread waits,
-stays: it keeps a start from racing a stop.)
+stays: it keeps a start from racing a stop.) The POSIX wait is on
+`CLOCK_MONOTONIC` (the condition variable's clock is set with
+`pthread_condattr_setclock`), so a step of the wall clock cannot move a deadline.
 
 The Windows source of `host_thread.h` (`host_windows_thread.c`, written with
 the Windows host layer) is the same thread with Win32 calls: it waits on an

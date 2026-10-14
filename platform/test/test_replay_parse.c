@@ -255,6 +255,8 @@ PTEST(rejects_bad_expect)
     assert_parse_error("expect map=", 1, "empty or too long");
     assert_parse_error("expect has-dash=1", 1, "bad fact name");
     assert_parse_error("expect Flag:1=1", 1, "bad fact name");
+    assert_parse_error("expect has-dash=1", 1,
+                       "digits, '_', ':')"); /* the message names every character valid_fact_name takes */
 }
 
 PTEST(rejects_bad_names_and_restart_arguments)

@@ -163,7 +163,7 @@ static bool parse_condition(char *text, struct replay_command *command, struct r
     char *fact = trim(text);
     const char *value = trim(equals + 1);
     if (!valid_fact_name(fact)) {
-        set_error(error, command->line, "bad fact name '%s' (lower-case letters, digits, '_')", fact);
+        set_error(error, command->line, "bad fact name '%s' (lower-case letters, digits, '_', ':')", fact);
         return false;
     }
     if (*value == '\0' || strlen(value) > REPLAY_MAX_VALUE_LENGTH) {
