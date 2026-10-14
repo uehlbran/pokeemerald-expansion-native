@@ -70,13 +70,14 @@ static void report_memory_failure(const char *call, uintptr_t address)
 
 /* --- host_memory: pages mapped at run time ---------------------------------------- */
 
-/* VirtualAlloc reserves address space in units of the allocation granularity,
- * 64 KiB on every Windows so far (GetSystemInfo's dwAllocationGranularity),
- * and rounds a reservation's address down to a multiple of it: an address
- * that is not a multiple of 64 KiB comes back elsewhere and is refused, and a
- * mapping keeps the rest of its 64 KiB unit from any other. MEM_RESERVE
- * fails if any page of the range is reserved already, which is the refusal
- * to map over a mapping (Linux: MAP_FIXED_NOREPLACE). */
+/* The game needs these pages at exact addresses, and VirtualAlloc only places
+ * them in units of the allocation granularity: 64 KiB on every Windows so far
+ * (GetSystemInfo's dwAllocationGranularity). It rounds a reservation's address
+ * down to a multiple of that. An address that is not a multiple comes back
+ * elsewhere and is refused here. A mapping also keeps the rest of its 64 KiB
+ * unit from any other. MEM_RESERVE fails if any page of the range is reserved
+ * already, which is the refusal to map over a mapping (Linux:
+ * MAP_FIXED_NOREPLACE). */
 int host_memory_map_fixed(uintptr_t address, size_t size)
 {
     void *const wanted = (void *)address;
@@ -341,12 +342,12 @@ int host_file_sync(int descriptor)
     return 0;
 }
 
-/* The C runtime's rename refuses an existing target on Windows. MoveFileExW
- * with MOVEFILE_REPLACE_EXISTING renames over it in one step on a volume; on
- * NTFS, which journals the rename, path then names the old file or the new
- * one, though the documentation does not promise it for every file system (a
- * FAT32 or exFAT volume can lose the target in a crash). MOVEFILE_WRITE_THROUGH
- * returns only once the rename is on the disk. */
+/* The C runtime's rename refuses an existing target on Windows, so this uses
+ * MoveFileExW with MOVEFILE_REPLACE_EXISTING, which renames over it in one
+ * step on a volume. On NTFS, which journals the rename, path then names the
+ * old file or the new one after a crash. The documentation does not promise
+ * that for every file system: a FAT32 or exFAT volume can lose the target.
+ * MOVEFILE_WRITE_THROUGH returns only once the rename is on the disk. */
 int host_file_replace(const char *from, const char *path)
 {
     wchar_t wide_from[HOST_FILE_PATH_SIZE];
@@ -595,14 +596,13 @@ static HANDLE make_kill_on_close_job(void)
     return job;
 }
 
-/* The standard handles the child is given, made inheritable: the only
- * handles it inherits (PROC_THREAD_ATTRIBUTE_HANDLE_LIST), so that a file
- * this process has open (the C runtime's fopen makes inheritable handles,
- * without FILE_SHARE_DELETE) is not held open in the child, where it would
- * refuse the child's own replacement of that file. of_kind holds each
- * kind's handle, or NULL where this process has none or it could not be made
- * inheritable (the child goes without it); list holds the distinct ones,
- * count of them, as the attribute takes them. */
+/* Only the standard handles are inherited (PROC_THREAD_ATTRIBUTE_HANDLE_LIST),
+ * made inheritable for the purpose. The C runtime's fopen makes inheritable
+ * handles without FILE_SHARE_DELETE, and one left open in the child would
+ * refuse the child's own replacement of that file. of_kind: the handle per
+ * kind, NULL where this process has none or it could not be made inheritable
+ * (the child goes without it). list: the distinct ones, count of them, as the
+ * attribute takes them. */
 enum { STANDARD_INPUT, STANDARD_OUTPUT, STANDARD_ERROR, STANDARD_HANDLE_COUNT };
 
 struct standard_handles {
@@ -690,20 +690,20 @@ static bool run_in_job(HANDLE job, const PROCESS_INFORMATION *child)
     return false;
 }
 
-/* Windows has no exec: the same program is started as a child with the same
- * arguments, standard handles, environment and working directory, and this
- * process waits for it and ends with its status, so that whoever waits for
- * this process (the test runner, the shell) sees the child's end and its
- * output on the same handles. Unlike execve, the child has a process id of
- * its own and this process stays until it ends; the child is in a job that
- * ends it if this process is ended first (make_kill_on_close_job), and it
- * inherits the standard handles and nothing else (create_child).
+/* Windows has no exec, so the same program is started as a child, with the
+ * same arguments, standard handles, environment and working directory. This
+ * process waits for it and ends with its status. Whoever waits for this
+ * process (the test runner, the shell) then sees the child's end and its
+ * output on the same handles. Unlike execve, the child has a process id of its
+ * own and this process stays until it ends. The child is in a job that ends it
+ * if this process is ended first (make_kill_on_close_job), and it inherits the
+ * standard handles and nothing else (create_child).
  *
  * The process ends with TerminateProcess, not ExitProcess: no DLL is told to
  * detach and no C runtime buffer is flushed (execve, too, drops what was not
- * flushed). No crash handler calls this: CreateProcessW allocates, from a
- * heap a crash may have corrupted (host_process_restart_is_handler_safe;
- * crash_reboot ends the process for its parent to start again instead). */
+ * flushed). No crash handler calls this. CreateProcessW allocates, from a heap
+ * a crash may have corrupted (host_process_restart_is_handler_safe), so
+ * crash_reboot ends the process for its parent to start again instead. */
 int host_process_restart(char *const argv[])
 {
     const DWORD length = GetModuleFileNameW(NULL, restart.executable, HOST_PROCESS_PATH_SIZE);
