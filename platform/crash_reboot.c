@@ -123,6 +123,11 @@ static void encode_state(void)
 #define TEXT_OF(number) #number
 #define DECIMAL_TEXT(number) TEXT_OF(number)
 
+/* Where the handler may not restart (Windows), what the report says before
+ * the state, which ends the line (crash_reboot.h). */
+static const char ending_for_the_parent[] = "ending with exit code " DECIMAL_TEXT(
+    CRASH_REBOOT_EXIT_CODE) " for the parent to start the program again with " CRASH_REBOOT_OPTION " ";
+
 /* The crash handler. When it returns, host_fault lets the fault end the
  * process. */
 static void on_crash(const struct host_fault *fault)
@@ -137,9 +142,7 @@ static void on_crash(const struct host_fault *fault)
     }
     encode_state();
     if (!host_process_restart_is_handler_safe()) {
-        report_add(&report, "ending with exit code " DECIMAL_TEXT(
-                                CRASH_REBOOT_EXIT_CODE) " for the parent to start "
-                                                        "the program again with " CRASH_REBOOT_OPTION " ");
+        report_add(&report, ending_for_the_parent);
         report_add(&report, reboot.state_hex);
         report_add(&report, "\n");
         report_write(&report);
