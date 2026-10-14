@@ -236,6 +236,11 @@ static int huff_uncomp(const char *function, const void *src, size_t src_size, v
     if (!supported_unit(header.unit)) {
         return BIOS_ERR_HEADER;
     }
+    /* The size byte itself may lie past the region when the header ends at its
+     * edge, so it is range-checked before it is read. */
+    if (!bios_range_ok(function, "tree size byte", src, HUFF_TREE_SIZE_OFFSET + 1u, TRANSFER_READ)) {
+        return BIOS_ERR_RANGE;
+    }
     if (!bios_source_byte(&in, &tree_size)) {
         return BIOS_ERR_TRUNCATED;
     }

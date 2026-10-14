@@ -507,4 +507,21 @@ PTEST(huffman_tree_table_running_off_the_region_is_refused)
     teardown();
 }
 
+PTEST(huffman_header_ending_at_the_region_end_leaves_the_size_byte_unread)
+{
+    setup();
+    /* Only the four header bytes fit: the tree-size byte would be the first
+     * byte past IWRAM, which must be refused, not read. */
+    uint8_t *tail = (uint8_t *)(uintptr_t)(GBA_IWRAM_BASE + GBA_IWRAM_SIZE - 4);
+    static const uint8_t header[] = {0x28, 0x04, 0x00, 0x00};
+    memcpy(tail, header, sizeof header);
+    uint8_t out[8];
+    memset(out, STALE, sizeof out);
+    HuffUnComp((const uint32_t *)(void *)tail, out);
+    for (size_t i = 0; i < sizeof out; i++)
+        PT_ASSERT_EQ_INT(out[i], STALE);
+    PT_ASSERT_EQ_INT(bios_huff_uncomp_bounded(tail, 1000, out), BIOS_ERR_RANGE);
+    teardown();
+}
+
 PTEST_MAIN()
