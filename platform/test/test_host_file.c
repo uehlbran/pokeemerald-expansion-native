@@ -1,13 +1,16 @@
 /*
- * test_host_file.c: durable replacement, directories and the local time
- * (host_file.h), on real files in a fresh scratch directory per test
+ * test_host_file.c: durable replacement, locks, directories and the local
+ * time (host_file.h), on real files in a fresh scratch directory per test
  * (host_file_fixture.h). A replacement leaves the new contents and no source;
- * a failed one leaves the old; a missing directory is created, once; the
- * local time follows TZ, past 2038 at both widths. What takes a file
- * descriptor or a POSIX permission (the syncs, the umask) is in
- * posix/test_host_file_posix.c.
+ * a failed one leaves the old; a lock keeps out every other open of its file
+ * until it is released; a missing directory is created, once; the local time
+ * follows TZ, past 2038 at both widths. What takes a file descriptor or a
+ * POSIX permission (the syncs, the umask) is in posix/test_host_file_posix.c;
+ * a lock held by another process, in the save lock's tests
+ * (posix/test_save_lock_posix.c, windows/test_save_lock_windows.c).
  */
 #include <errno.h>
+#include <fcntl.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <string.h>
@@ -67,6 +70,42 @@ PTEST(a_replacement_from_a_missing_file_fails_and_leaves_the_target)
     PT_ASSERT_EQ_INT(error, ENOENT);
     PT_ASSERT(old_contents);
     PT_ASSERT(removed);
+}
+
+/* --- host_file_take_lock and host_file_release_lock ---------------------------------- */
+
+/* Two opens of one file in this process stand for two processes: the lock is
+ * the open file's, not the process's. */
+PTEST(a_lock_keeps_every_other_open_of_its_file_out_until_it_is_released)
+{
+    struct scratch scratch;
+    if (!scratch_create(&scratch))
+        PT_FAIL("cannot create a scratch directory");
+    const int first = host_file_open(scratch.path, O_RDWR | O_CREAT);
+    const int second = host_file_open(scratch.path, O_RDWR | O_CREAT);
+    const int taken = host_file_take_lock(first);
+    const int refused = host_file_take_lock(second);
+    const int refused_error = errno;
+    const int released = host_file_release_lock(first);
+    const int taken_after = host_file_take_lock(second);
+    const int released_after = host_file_release_lock(second);
+    const bool kept = exists(scratch.path);
+    const bool removed = scratch_remove(&scratch);
+    PT_ASSERT(first >= 0 && second >= 0);
+    PT_ASSERT_EQ_INT(taken, 0);
+    PT_ASSERT_EQ_INT(refused, -1);
+    PT_ASSERT_EQ_INT(refused_error, EWOULDBLOCK);
+    PT_ASSERT_EQ_INT(released, 0);
+    PT_ASSERT_EQ_INT(taken_after, 0);
+    PT_ASSERT_EQ_INT(released_after, 0);
+    PT_ASSERT(kept); /* releasing closes the file, it does not remove it */
+    PT_ASSERT(removed);
+}
+
+PTEST(a_lock_on_a_descriptor_that_is_not_open_fails_for_that_reason)
+{
+    PT_ASSERT_EQ_INT(host_file_take_lock(-1), -1);
+    PT_ASSERT_EQ_INT(errno, EBADF); /* not EWOULDBLOCK: nobody holds anything */
 }
 
 PTEST(a_directory_under_a_missing_one_is_not_created)

@@ -7,19 +7,21 @@
  * on the disk. Also the small C library calls that differ between hosts:
  * opening a file the same way on every OS and writing all of a buffer to it
  * (rtc_offset_store; and stderr from a fault handler, crash_reboot and
- * arm_division), creating a directory (the replay's output, replay_session),
+ * arm_division), the lock that keeps a second process off a save
+ * (save_lock), creating a directory (the replay's output, replay_session),
  * the local time (the clock's first setting, rtc), and the two questions of
  * a path's syntax a replay's includes ask (replay_include).
  *
  * Wraps, on POSIX (host_posix.c): open with O_CLOEXEC, write, fsync, rename,
- * fsync of the directory, mkdir, localtime_r. On Windows (host_windows.c):
- * _open (binary, not inherited), WriteFile, FlushFileBuffers, MoveFileExW
- * with REPLACE_EXISTING and WRITE_THROUGH (which is what makes the
- * replacement durable there: there is no directory sync), CreateDirectoryW,
- * _localtime64_s, and Windows' path syntax (Microsoft, "File path formats on
- * Windows systems"); paths in UTF-8, the code page the executable's manifest
- * sets. A failed call returns -1 with errno set (the handler's write: false,
- * errno as it was) and reports nothing: the caller names the file.
+ * fsync of the directory, flock, mkdir, localtime_r. On Windows
+ * (host_windows.c): _open (binary, not inherited), WriteFile,
+ * FlushFileBuffers, MoveFileExW with REPLACE_EXISTING and WRITE_THROUGH
+ * (which is what makes the replacement durable there: there is no directory
+ * sync), LockFileEx and UnlockFileEx, CreateDirectoryW, _localtime64_s, and
+ * Windows' path syntax (Microsoft, "File path formats on Windows systems");
+ * paths in UTF-8, the code page the executable's manifest sets. A failed
+ * call returns -1 with errno set (the handler's write: false, errno as it
+ * was) and reports nothing: the caller names the file.
  */
 #ifndef PLATFORM_HOST_FILE_H
 #define PLATFORM_HOST_FILE_H
@@ -33,13 +35,13 @@
  * included (Linux's PATH_MAX). */
 #define HOST_FILE_PATH_SIZE 4096u
 
-/* Opens path with open(2)'s flags (O_RDONLY; O_WRONLY | O_CREAT | O_TRUNC)
- * and what every file the platform keeps is opened with: not inherited by a
- * program this one starts (O_CLOEXEC; Windows _O_NOINHERIT) and, on Windows,
- * in binary mode, so that the bytes on the disk are the same on every OS. A
- * file it creates is readable by everyone and writable by its owner (0644,
- * less the umask; Windows: not read-only). Returns the descriptor, or -1
- * with errno set. */
+/* Opens path with open(2)'s flags (O_RDONLY; O_WRONLY | O_CREAT | O_TRUNC;
+ * O_RDWR | O_CREAT) and what every file the platform keeps is opened with:
+ * not inherited by a program this one starts (O_CLOEXEC; Windows
+ * _O_NOINHERIT) and, on Windows, in binary mode, so that the bytes on the
+ * disk are the same on every OS. A file it creates is readable by everyone
+ * and writable by its owner (0644, less the umask; Windows: not read-only).
+ * Returns the descriptor, or -1 with errno set. */
 int host_file_open(const char *path, int flags);
 
 /* Writes the size bytes at bytes to the open descriptor, all of them,
@@ -77,6 +79,35 @@ int host_file_replace(const char *from, const char *path);
  * on the disk. Returns 0, or -1 with errno set (ENAMETOOLONG for a path of
  * HOST_FILE_PATH_SIZE bytes or more). */
 int host_file_sync_directory_of(const char *path);
+
+/* Takes an exclusive lock on the file open at descriptor, without waiting:
+ * one holder at a time among every open of the file, in this process (through
+ * another descriptor) or another. The lock is the open file's, kept until
+ * host_file_release_lock closes it, and the system drops it when the process
+ * ends however it ends, a crash or a kill included; the descriptor is not
+ * inherited by a program this one starts (host_file_open), so no other
+ * program ever holds it. Returns 0, or -1 with errno set: EWOULDBLOCK if
+ * another open of the file holds the lock, anything else for any other
+ * failure (EBADF: the descriptor is not open).
+ *
+ * POSIX: flock(LOCK_EX | LOCK_NB) (BSD's, on Linux and macOS alike), whose
+ * lock belongs to the open file description, so that closing some other
+ * descriptor of the same file does not drop it, as it would drop fcntl's
+ * record locks; advisory: it keeps out only those who take it too. Windows:
+ * LockFileEx(LOCKFILE_EXCLUSIVE_LOCK | LOCKFILE_FAIL_IMMEDIATELY) over every
+ * byte the file could have (ERROR_LOCK_VIOLATION is EWOULDBLOCK); mandatory
+ * there, so a read or a write of the file through any other handle fails,
+ * which nobody does to a lock file. */
+int host_file_take_lock(int descriptor);
+
+/* Drops the lock host_file_take_lock took on descriptor and closes it.
+ * POSIX: close(2), which drops the lock with the last descriptor of the
+ * open file. Windows: UnlockFileEx first, then the close; Microsoft
+ * ("LockFileEx") documents the system's own unlocking of a closed file as
+ * taking a time that "depends upon available system resources", and a
+ * process that restarts must leave the lock free for the next run at once.
+ * Returns 0, or -1 with errno set; the descriptor is closed either way. */
+int host_file_release_lock(int descriptor);
 
 /* Creates the directory path with every permission the process's umask
  * allows (Windows: the permissions it inherits from its parent directory).

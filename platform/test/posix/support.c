@@ -195,25 +195,33 @@ bool tsup_restore_stderr(struct tsup_stderr *saved)
     return restored;
 }
 
-int psup_fork_child(void (*body)(void *context), void *context)
+pid_t psup_start_child(void (*body)(void *context), void *context)
 {
     if (fflush(stdout) != 0 || fflush(stderr) != 0)
         return -1;
     const pid_t pid = fork();
-    if (pid < 0)
-        return -1;
-    if (pid == 0) {
-        const struct rlimit no_core = {0, 0};
-        if (setrlimit(RLIMIT_CORE, &no_core) != 0)
-            _exit(PSUP_CHILD_RETURNED);
-        (void)alarm(PSUP_CHILD_SECONDS); /* the previous remainder is the parent's, not ours */
-        body(context);
+    if (pid != 0)
+        return pid; /* the parent's, or -1 */
+    const struct rlimit no_core = {0, 0};
+    if (setrlimit(RLIMIT_CORE, &no_core) != 0)
         _exit(PSUP_CHILD_RETURNED);
-    }
+    (void)alarm(PSUP_CHILD_SECONDS); /* the previous remainder is the parent's, not ours */
+    body(context);
+    _exit(PSUP_CHILD_RETURNED);
+}
+
+int psup_wait_child(pid_t pid)
+{
     int status;
     if (waitpid(pid, &status, 0) != pid)
         return -1;
     return status;
+}
+
+int psup_fork_child(void (*body)(void *context), void *context)
+{
+    const pid_t pid = psup_start_child(body, context);
+    return pid < 0 ? -1 : psup_wait_child(pid);
 }
 
 int psup_exit_code(int status)

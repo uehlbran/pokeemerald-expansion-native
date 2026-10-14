@@ -9,7 +9,8 @@
  * Followed: Microsoft's documentation of VirtualAlloc, VirtualFree and
  * VirtualQuery (memoryapi.h), GetCurrentThreadStackLimits,
  * CreateProcessW and TerminateProcess (processthreadsapi.h), WriteFile,
- * FlushFileBuffers, MoveFileExW and CreateDirectoryW (fileapi.h, winbase.h),
+ * FlushFileBuffers, MoveFileExW, LockFileEx, UnlockFileEx and
+ * CreateDirectoryW (fileapi.h, winbase.h),
  * MultiByteToWideChar and WideCharToMultiByte (stringapiset.h),
  * GetModuleFileNameW, and FormatMessage for the reports; msvcrt's _open,
  * _get_osfhandle and _localtime64_s; the PE format's section flags through
@@ -359,6 +360,50 @@ int host_file_sync_directory_of(const char *path)
 {
     if (strlen(path) >= HOST_FILE_PATH_SIZE) {
         errno = ENAMETOOLONG;
+        return -1;
+    }
+    return 0;
+}
+
+/* LockFileEx and UnlockFileEx take a range: this one is every byte a file
+ * could have, from offset 0 (the OVERLAPPED's, zeroed) for 2^64 - 1 bytes,
+ * the length split into its low and high halves. A range may run past the
+ * end of the file. */
+#define WHOLE_FILE_LOW MAXDWORD
+#define WHOLE_FILE_HIGH MAXDWORD
+
+int host_file_take_lock(int descriptor)
+{
+    HANDLE handle = handle_of(descriptor);
+    if (handle == INVALID_HANDLE_VALUE) {
+        errno = EBADF;
+        return -1;
+    }
+    OVERLAPPED from_the_start;
+    memset(&from_the_start, 0, sizeof from_the_start);
+    if (!LockFileEx(handle, LOCKFILE_EXCLUSIVE_LOCK | LOCKFILE_FAIL_IMMEDIATELY, 0, WHOLE_FILE_LOW, WHOLE_FILE_HIGH,
+                    &from_the_start)) {
+        const DWORD error = GetLastError();
+        errno = error == ERROR_LOCK_VIOLATION ? EWOULDBLOCK : errno_of(error);
+        return -1;
+    }
+    return 0;
+}
+
+int host_file_release_lock(int descriptor)
+{
+    HANDLE handle = handle_of(descriptor);
+    OVERLAPPED from_the_start;
+    memset(&from_the_start, 0, sizeof from_the_start);
+    int unlock_error = 0;
+    if (handle == INVALID_HANDLE_VALUE)
+        unlock_error = EBADF;
+    else if (!UnlockFileEx(handle, 0, WHOLE_FILE_LOW, WHOLE_FILE_HIGH, &from_the_start))
+        unlock_error = errno_of(GetLastError());
+    if (_close(descriptor) != 0) /* closing drops the lock too, if more slowly: done whether or not the unlock was */
+        return -1;
+    if (unlock_error != 0) {
+        errno = unlock_error;
         return -1;
     }
     return 0;

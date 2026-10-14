@@ -19,6 +19,10 @@
 #              at start (exit status 1, "has no save header" on stderr), the file unchanged.
 #      other/  TO_BINARY on a copy whose header names layout id 2: refused at start (exit status
 #              1, the refusal on stderr), the file unchanged.
+#   3c. busy/  TO_BINARY on a copy FROM_BINARY is playing (started first, waited for until it holds
+#              the save's lock, /proc/locks): refused at start (exit status 1, one line on stderr
+#              naming the save and another instance), the file unchanged; FROM killed with SIGKILL,
+#              as a crash ends it, TO then starts on the file (exit status 0).
 #   4. again/  TO_BINARY on another copy, cross_width_save.replay: Continue, save again, restart,
 #              Continue (the replay's own `expect`s); the header then names TO's width, not FROM's,
 #              and both saves show the scene 27_continued shows.
@@ -40,7 +44,7 @@ case "$outdir" in "" | "/") die "OUTDIR must be a directory of its own, not '$ou
 
 work="$outdir/work"
 rm -rf "$work" || die "cannot remove $work"
-mkdir -p "$work/from" "$work/to" "$work/headerless" "$work/other" "$work/again" || die "cannot create $work"
+mkdir -p "$work/from" "$work/to" "$work/headerless" "$work/other" "$work/busy" "$work/again" || die "cannot create $work"
 
 # ---- 1. FROM: the opening up to and including the save ----------------------------------------
 play_until_save "$from_binary" "$work/from"
@@ -73,6 +77,50 @@ fi
 
 # ---- 3b. TO refuses a save whose layout id it does not know -------------------------------------
 refuse_other_layout "$to_binary" "$work/other" "$work/from/pokeemerald.sav"
+
+# ---- 3c. TO refuses a save another instance is playing, until that instance is gone --------------
+# The lock is flock(2)'s on <save>.lock (platform/save_lock.h). Linux lists every lock held in
+# /proc/locks by device and inode, which shows that FROM holds it without the check taking it (a
+# check that took it could be what refused FROM).
+holds_save_lock() {
+    local inode
+    inode="$(stat -c %i "$1.lock" 2> /dev/null)" || return 1
+    grep -qE "^[0-9]+: FLOCK +ADVISORY +WRITE +[0-9]+ [0-9a-f]+:[0-9a-f]+:$inode " /proc/locks
+}
+busy="$work/busy"
+cp "$work/from/pokeemerald.sav" "$busy/pokeemerald.sav" && cp "$busy/pokeemerald.sav" "$busy/before.sav" \
+    || die "cannot copy the save"
+echo "== busy: $to_binary on a save $from_binary is playing"
+# Bounded, should the kill below never come: about a minute of the intro, unthrottled.
+"$from_binary" --headless --silent --unthrottled --frames 50000 --save "$busy/pokeemerald.sav" \
+    --rtc-offset "$busy/pokeemerald.rtc" > "$busy/holder.stdout.log" 2> "$busy/holder.stderr.log" &
+holder=$!
+for _ in $(seq 100); do
+    holds_save_lock "$busy/pokeemerald.sav" && break
+    sleep 0.1
+done
+holds_save_lock "$busy/pokeemerald.sav" || fail "busy: FROM did not take the save's lock within 10 seconds"
+"$to_binary" --headless --silent --unthrottled --frames 60 --save "$busy/pokeemerald.sav" \
+    --rtc-offset "$busy/pokeemerald.rtc" > "$busy/stdout.log" 2> "$busy/stderr.log"
+status=$?
+kill -KILL "$holder" 2> /dev/null
+wait "$holder" 2> /dev/null # the shell's "Killed" notice: the status says it
+holder_status=$?
+[ "$status" -eq "$main_exit_failure" ] || fail "busy: TO ended with status $status, not $main_exit_failure"
+[ "$(wc -l < "$busy/stderr.log")" -eq 1 ] \
+    && grep -qF "save_lock: another instance of the game holds the save $busy/pokeemerald.sav " "$busy/stderr.log" \
+    || fail "busy: TO's stderr is not the one line that another instance holds the save"
+[ "$holder_status" -eq $((128 + 9)) ] || fail "busy: FROM ended with status $holder_status, not by the SIGKILL"
+"$to_binary" --headless --silent --unthrottled --frames 60 --save "$busy/pokeemerald.sav" \
+    --rtc-offset "$busy/pokeemerald.rtc" > "$busy/after.stdout.log" 2> "$busy/after.stderr.log"
+status=$?
+[ "$status" -eq 0 ] || fail "busy: TO ended with status $status once FROM was killed, not 0 (see $busy/after.stderr.log)"
+cmp -s "$busy/before.sav" "$busy/pokeemerald.sav" || fail "busy: the save file changed, but no game saved"
+for log in stderr after.stderr; do
+    if new_sanitizer_reports "$busy/$log.log" "$busy/$log.sanitizer-new.log"; then
+        fail "busy: sanitizer reports in $busy/$log.log"
+    fi
+done
 
 # ---- 4. TO saves in its own layout and comes up from it -----------------------------------------
 save_again "$to_binary" "$work/again" "$work/from"

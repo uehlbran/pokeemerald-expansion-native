@@ -30,8 +30,9 @@ int rtc_offset_store_load(const char *path, int64_t *offset, int *found);
 /* Writes offset to path atomically: a temporary file next to it (path plus
  * ".tmp") is written, synced to the disk, then replaces path (host_file.h),
  * so a failure at any step leaves the previous file intact. That holds for
- * one process per offset path, as save_file.h says of the save: the temporary
- * name is fixed and nothing locks the path. Returns 0; or -1
+ * one process per offset path: the temporary name is fixed, and the lock main
+ * takes is the save's (save_lock.h), so it keeps apart two instances on one
+ * save but not two on different saves that share an offset file. Returns 0; or -1
  * with the previous file in place; or RTC_OFFSET_STORE_REPLACED_UNSYNCED.
  * Failures are reported on stderr. */
 int rtc_offset_store_save(const char *path, int64_t offset);

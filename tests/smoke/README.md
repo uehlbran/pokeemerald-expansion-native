@@ -224,6 +224,7 @@ The arguments are FROM, TO and OUTDIR. Each step runs in its own directory of
 | `to/` | TO, `opening.replay` with `--resume-at` the `restart` line and `--rtc-fixed` advanced as `restart` advances it | `26_continue_menu` and `27_continued` and their screenshots as in `expected/`; `player_name`, `map`, `party0_species` and `party_count` of `27_continued` equal to FROM's `25_saved`; stderr says the save was converted; the file is unchanged (a conversion is not a game write) |
 | `headerless/` | TO, no replay, `--frames 60`, on the save without its 28-byte header | refused at start: exit status 1, stderr says the file has no save header and looks like an emulator or cartridge save, the file unchanged |
 | `other/` | TO, no replay, `--frames 60`, on the save with its header's layout id patched to 2 | refused at start: exit status 1, the refusal on stderr, the file unchanged |
+| `busy/` | FROM, no replay, in the background on a copy, until `/proc/locks` shows it holds `pokeemerald.sav.lock`; then TO, `--frames 60`, on the same file; then FROM killed with SIGKILL and TO again | TO refused at start while FROM runs: exit status 1, stderr the one line that another instance holds the save, naming it; FROM ended by the SIGKILL; TO then starts (exit 0), since the system dropped the lock with FROM; the file unchanged |
 | `again/` | TO, `cross_width_save.replay`: Continue, save, `restart`, Continue | the replay's `expect`s (one save before, two after); the header now names TO's width; `28_saved_again` and `29_continued_again` agree and show the scene of `27_continued` |
 
 Between them FROM and TO must write every dump and screenshot of
@@ -232,7 +233,9 @@ Between them FROM and TO must write every dump and screenshot of
 before it) and checked against the one TO wrote. A file without the header is
 never converted or taken for either layout (`docs/DECISIONS.md`, "The owner's
 five rulings on the independent review's open questions", ruling 2), which
-`headerless/` checks.
+`headerless/` checks; one game per save is ruling 3 (`platform/save_lock.h`),
+which `busy/` checks with two real processes of different widths (the unit
+tests check it with forked children).
 
 43 seconds plain from 32 to 64 bits (measured on 32 cores, 2026-10-09).
 
