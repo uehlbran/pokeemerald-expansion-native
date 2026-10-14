@@ -246,25 +246,26 @@ the order and the inventory's findings; `research/m8-inventory.md` is the
 inventory; `research/probes/` holds the loader probes and their README
 records each run.
 
-**Linux CI.** `.github/workflows/native.yml` on the branch `ci/native`
-(pushes to `main` and by hand; two jobs: the GBA ROM with its sha1, and
-the native gate at both widths). On the runner image the 32-bit SDL2
-development package cannot be installed (its glib dependency clashes
-with the image's), so the job takes the i386 headers and link files from
-the downloaded package without its dependencies; and the platform gate
-runs after the 32-bit build, which generates the game headers the lint
-reads. The GBA job is green (the ROM's sha1 equal to the recorded one);
-both jobs are green on the branch's third run (37920736586, 2026-10-09:
-the GBA ROM with the recorded sha1; the native gate end to end, about
-95 minutes on the runner), and the workflow was merged into main on
-2026-10-14. The owner then ruled an hour per push unacceptable: the
-workflow is being split into a per-push tier (docs-only pushes
-excluded, older runs cancelled, the compiler cache kept; the platform
-gate, the 64-bit build, its two replays and its plain suite; under 15
-minutes warm is the target) and a nightly tier with the rest as
-parallel jobs (DECISIONS.md "CI runs in two tiers"); the first run on
-main was cancelled rather than spend the hour, and the measured
-runtimes of each tier are recorded here when the first runs complete.
+**Linux CI.** `.github/workflows/native.yml`, one file in two tiers
+(docs/DECISIONS.md, "CI runs in two tiers"). The per-push tier (pushes to
+`main` and `ci/**`; docs-only pushes ignored; a newer push cancels the
+older run) builds the 64-bit executable, runs the platform gate, both
+64-bit replays and the plain 64-bit suite; the nightly tier (a cron at
+04:17 UTC and by hand) runs five parallel jobs: the GBA ROM with its
+sha1, the 32-bit plain job, the two sanitized jobs, and the cross-width
+save at both widths plain and sanitized. On the runner image the 32-bit
+SDL2 development package cannot be installed (its glib dependency clashes
+with the image's), so the jobs that build or test 32 bits take the i386
+headers and link files from the downloaded package without its
+dependencies; and the platform gate runs after the build, which generates
+the game headers the lint reads. Measured on 2026-10-14: the per-push job
+took 31 minutes cold (run 38563489510) and 20 minutes with its cache warm
+(38567630409), above the 15-minute target because ccache cannot cache the
+game's C files (the compile reads its input from a pipe, 92% of calls
+uncacheable; only the platform library, 321 calls, hits); the nightly
+run (38567248883) took 8 minutes for the GBA job, 24 for the 64-bit
+sanitized job, 26 for the 32-bit plain job, 23 for the cross-width job and
+41 for the 32-bit sanitized job, so about 41 minutes wall clock.
 
 **The loader probes** (`research/probes/`, a manual workflow on the
 Windows and macOS runners, two runs on 2026-10-09; the README has the
