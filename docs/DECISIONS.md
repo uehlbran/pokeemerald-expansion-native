@@ -908,3 +908,26 @@ owner's escalation rule kept (a worker that fails the gate twice on the
 same task is escalated to Opus or the orchestrator). The model used for
 each branch stays recorded in STATUS.md's table so the split is
 visible, and this check is repeated at the next milestone.
+
+## 2026-10-14: The owner's standing rules on concurrency and public-repository quality are in C-RULES.md
+
+The owner added two sections to docs/C-RULES.md, applying to all
+current and future work: concurrency (the platform stays
+single-threaded; a new thread needs an entry here with the reason a
+single-threaded design cannot work and a written ownership model;
+signal and exception handlers follow signal-safety(7) and share state
+only through `volatile sig_atomic_t` or lock-free atomics; `volatile`
+is not synchronization; threads share state through C11 atomics with
+justified memory orders or an SDL mutex with a documented lock order;
+the SIGALRM replacement in the test harness must not let a second
+thread touch game state; a thread brings a ThreadSanitizer build into
+the gate; save writes are temporary file, flush, rename; reviewers
+check races, signal safety, lock order, fork/exec with threads and
+file races explicitly) and code quality for a public repository
+(names without the spec, comments that say why, no filler, small
+cohesive modules, no speculative abstraction, everything we own left
+better on every touched call chain, expansion's files untouched but
+for hardware assumptions). Every coding worker receives the file
+verbatim in its task and the first-pass reviewer checks each diff
+against it line by line. The task W3 in flight (the test timeout) was
+re-briefed under these rules before it chose a design.
