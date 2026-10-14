@@ -79,29 +79,20 @@ only and the first runs happen in CI. A second optional install, so the
 ccache follow-up (merged) can be measured here as well as on the
 runner: `sudo apt-get install -y ccache`.
 
-Two Windows rulings, written up by the Windows host-layer worker in
-DECISIONS.md (entries of 2026-10-14, "A crash on Windows restarts
-through CreateProcessW in the unhandled-exception filter" and "Narrow
-strings on Windows are in the ANSI code page"); the branch is under
-review and will be merged under these entries unless you rule
-otherwise, since a merge can be undone and the Windows runner has not
-yet run anything. (1) The crash reboot on Windows starts the new
-process from inside the crash handler with CreateProcessW, which
-allocates and takes locks, against the C-RULES handler rule. The
-worker's reasons: Windows has no exec; the heap and loader locks are
-re-entrant on the faulting thread, and other threads keep running, so
-the call cannot deadlock against the crash; if the heap is corrupt the
-call fails and the run ends with no reboot, which is no worse than no
-handler. The rule-keeping design is a supervisor process that starts
-the game as its child and restarts it when told through a pipe; it
-changes the process model of every Windows run for a path only the
-crashing tests take. Recommendation: accept the exception as written,
-and revisit only if the Windows runner shows a hang in a crash test.
-(2) Paths and arguments on Windows stay in the ANSI code page rather
-than UTF-8, because the C runtime hands main its arguments and opens
-files in that code page; a path the code page cannot carry is refused,
-never altered. Recommendation: accept; a UTF-8 manifest can change it
-later without touching the code. Otherwise nothing new. The three milestone 8 items were
+Two Windows questions were ruled on by the owner on 2026-10-14 and the
+rulings are being applied on the Windows host-layer branch before its
+merge: (1) no process creation inside any exception handler and no
+exception to the C-RULES handler rule (re-entrant locks cover only the
+faulting thread's own; a lock held by another thread at the crash makes
+CreateProcessW in the handler a hang, which is why Crashpad and Breakpad
+handle crashes out of process): the Windows crash handler records the
+persistent state, writes the report and ends the process with one
+distinct crash exit code, and the supervising parent (the Windows test
+driver, task W8) restarts it; an unsupervised Windows run ends on a crash
+with that code. (2) No ANSI code page: the executable carries a manifest
+that sets the active code page to UTF-8, the minimum Windows version that
+honours it is recorded in BUILDING.md, and a Windows-runner test saves
+and loads through a non-ASCII path. Otherwise nothing new. The three milestone 8 items were
 settled on 2026-10-14: the MinGW cross-compiler is installed (GCC 13 for
 x86_64-w64-mingw32, binutils 2.41; Wine is not, so cross-built
 executables run only on the Windows runner); macOS ships as x86_64
@@ -438,6 +429,14 @@ suppression scoped to the one test that leaves a handler by `siglongjmp`,
 the outcome kept when a limit expires inside a capture) fixed by the
 author and merged. The Windows source of host_thread.h is declared and
 not written (task W5 to W7).
+
+**CI after the ccache merge**: the per-push run of 58cfb572a5 (run
+38584270653, the compiler cache cold for the new file-based compile)
+was green in 19 minutes 39 seconds: build 571 s, platform gate 470 s
+(now with the ThreadSanitizer build), replays 70 s; ccache saw 904
+cacheable calls of 1574 (the game's C is now among them; 222 hits from
+the platform library, 682 misses to fill). The warm figure is the next
+run's and is recorded here when it lands.
 
 **The ccache follow-up** (branch m8-ccache, merged 2026-10-14 at
 0c99a7e26b): the game's C reaches gcc as a file beside the object
