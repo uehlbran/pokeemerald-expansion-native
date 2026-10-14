@@ -68,9 +68,11 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "host_file.h"
+
 /* Bytes for a path and its terminator, including the ".tmp" store appends:
- * Linux's PATH_MAX. */
-#define SAVE_FILE_PATH_SIZE 4096u
+ * the longest path host_file.h syncs, as the RTC offset file's is. */
+#define SAVE_FILE_PATH_SIZE HOST_FILE_PATH_SIZE
 
 /* The format this build writes and the only one it reads with a header. */
 #define SAVE_FILE_FORMAT_VERSION 1u

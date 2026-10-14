@@ -17,8 +17,9 @@
 #define RTC_OFFSET_LIMIT ((int64_t)1 << 50)
 
 /* Reads *offset from path and sets *found to 1. A missing file is success
- * with *found 0 and *offset 0; an unreadable or corrupt file is -1 (reported
- * on stderr). */
+ * with *found 0 and *offset 0; an unreadable or corrupt file, or a path too
+ * long (this and the save check it against host_file.h's HOST_FILE_PATH_SIZE,
+ * leaving room for the temporary file's name), is -1 (reported on stderr). */
 int rtc_offset_store_load(const char *path, int64_t *offset, int *found);
 
 /* rtc_offset_store_save's result when the new file is in place but the

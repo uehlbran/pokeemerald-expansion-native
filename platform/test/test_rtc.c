@@ -4,8 +4,10 @@
  * Real-Time Clock (RTC)" and expansion's use of it (src/siirtc.c, src/rtc.c).
  * Time is injected; TZ is pinned so expected values are exact.
  */
+#include "host_file.h"
 #include "ptest.h"
 #include "rtc.h"
+#include "rtc_offset_store.h"
 #include "test_support.h"
 
 #include <errno.h>
@@ -468,6 +470,39 @@ PTEST(overlong_offset_path_is_an_error)
     g_now = EPOCH_2024_03_15_13_45_30;
     PT_ASSERT_EQ_INT(rtc_init(fake_source, path), -1);
     rtc_shutdown();
+}
+
+/* One limit for the offset file's path, the save file's: the path and the
+ * ".tmp" beside it must fit host_file.h's HOST_FILE_PATH_SIZE. */
+#define TMP_SUFFIX_SIZE sizeof ".tmp"
+#define LONGEST_PATH (HOST_FILE_PATH_SIZE - TMP_SUFFIX_SIZE)
+
+static void make_path_of_length(char *path, size_t length)
+{
+    memset(path, 'a', length);
+    path[0] = '/';
+    path[length] = '\0';
+}
+
+static void save_to_overlong_path(void *context)
+{
+    PT_ASSERT_EQ_INT(rtc_offset_store_save(context, 0), -1);
+}
+
+PTEST(the_offset_path_limit_is_the_host_file_limit_with_room_for_the_tmp_name)
+{
+    static char path[HOST_FILE_PATH_SIZE];
+    static char message[256];
+    char expected[64];
+
+    make_path_of_length(path, LONGEST_PATH + 1);
+    PT_ASSERT(tsup_capture_stderr(save_to_overlong_path, path, message, sizeof message));
+    (void)snprintf(expected, sizeof expected, "path is longer than %zu bytes", LONGEST_PATH);
+    PT_ASSERT(strstr(message, expected) != NULL);
+
+    make_path_of_length(path, LONGEST_PATH); /* fits; it names no directory, so only the open fails */
+    PT_ASSERT(tsup_capture_stderr(save_to_overlong_path, path, message, sizeof message));
+    PT_ASSERT(strstr(message, "path is longer") == NULL);
 }
 
 /* ---- invalid input ------------------------------------------------------ */

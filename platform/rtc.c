@@ -50,7 +50,6 @@
 
 #include "rtc.h"
 
-#include <limits.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <string.h>
@@ -73,7 +72,7 @@ struct rtc_state {
     bool initialised;
     rtc_time_source source;
     int64_t offset;             /* seconds added to the time source's UTC */
-    char offset_path[PATH_MAX]; /* empty: no persistence */
+    char offset_path[HOST_FILE_PATH_SIZE]; /* empty: no persistence */
     uint8_t status;             /* RTC_STATUS_* */
     uint8_t alarm_hour_bcd;     /* with the PM flag */
     uint8_t alarm_minute_bcd;
@@ -231,13 +230,9 @@ static int init_with_seed(rtc_time_source source, const char *offset_file_path, 
 
     rtc_shutdown();
     if (offset_file_path != NULL) {
-        if (strlen(offset_file_path) >= sizeof chip.offset_path) {
-            (void)fprintf(stderr, "rtc: offset file path is longer than %zu bytes\n", sizeof chip.offset_path - 1);
-            return -1;
-        }
         if (rtc_offset_store_load(offset_file_path, &offset, &found) != 0)
             return -1;
-        (void)snprintf(chip.offset_path, sizeof chip.offset_path, "%s", offset_file_path); /* fits: checked above */
+        (void)snprintf(chip.offset_path, sizeof chip.offset_path, "%s", offset_file_path); /* fits: the load checked */
     }
     chip.source = source != NULL ? source : system_clock;
     if (!found) {
