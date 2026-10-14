@@ -183,7 +183,7 @@ git diff OLD NEW -- tools/mgba-rom-test-hydra tools/patchelf tools/scaninc tools
   `asm_syntax.py` reads the comments, statements, labels and directives
   the filter and the battle script checker share.
 - `platform/build_glue/elf_object.py` (reads an ELF64 object for the data
-  checks), `check_support.py` (errors, report cap, options and rule
+  checks and the converter below), `check_support.py` (errors, report cap, options and rule
   matching the checkers share) and `preprocessor_conditions.py` (finds a C
   constant's value under its `#if`s, for `Z_EFFECT_BS_LENGTH`).
 - `platform/build_glue/data_address_words.txt`: the address words of the
@@ -191,6 +191,14 @@ git diff OLD NEW -- tools/mgba-rom-test-hydra tools/patchelf tools/scaninc tools
   the 64-bit link's relocation check (`check_relocations.py`) until it is
   classified there, and laid out for 8-byte pointers if C reads it as
   pointers.
+- `platform/build_glue/elf_to_flat.py` and `check_flat.py`, with
+  `macho_object.py` and `coff_object.py`: the 64-bit data converted for
+  macOS and Windows. Run `make -f Makefile.native -j"$(nproc)" check-flat
+  TARGET=macho-x86_64`, then `TARGET=coff-x86_64`. A new data section (its
+  ELF type and flags in `SECTION_TYPES`, its spelling per target in
+  `TARGETS`), a relocation other than an 8-, 4- or 16-bit absolute word, or
+  a 16-bit word whose symbol is not an absolute constant of a data object
+  stops the conversion, naming the object, section, offset and symbol.
 - The assembly translated or replaced in `platform/`: `src/m4a_1.s`
   (`platform/m4a/`; its differential test against the ARM original is run by
   hand: `make -C platform/m4a/difftest run`, needs qemu-arm, see

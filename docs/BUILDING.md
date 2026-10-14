@@ -106,6 +106,27 @@ asset conversion included, and about 30 s once the assets exist. A table that
 upstream adds to the data without a rule, or a macro whose operands change, stops
 the link with the symbol or macro named; `docs/UPGRADING.md` says what to do.
 
+#### The data for macOS and Windows
+
+The macOS and Windows ports link the data this 64-bit build assembles and checks,
+converted (`docs/DECISIONS.md`, "The data for Windows and macOS is assembled on Linux
+and converted"). `data-flat` writes each 64-bit data object (`data/*.o` and the 530
+songs) as a listing for the target's object format, at the object's path under
+`build/native64/flat/<target>/`, with `platform/build_glue/elf_to_flat.py`;
+`check-flat` assembles each listing with clang (the prerequisites above install it;
+`FLAT_CLANG=` names another) and compares the object it writes, kept beside the
+listing, with the ELF one (`check_flat.py`): the bytes, each relocation's offset,
+width, symbol and addend, the symbols and the alignment. Neither changes the Linux
+build; both make the 64-bit data objects and their three checks first, and `BITS`
+is 64 for them. A conversion and check of everything takes about 6 s per target with
+`-j32`. Their self-tests, in `make -C platform glue-test` and so in the gate, assemble
+small objects with GNU as and with clang, so the gate needs both.
+
+```
+make -f Makefile.native -j32 data-flat TARGET=macho-x86_64    # or TARGET=coff-x86_64
+make -f Makefile.native -j32 check-flat TARGET=macho-x86_64
+```
+
 The 64-bit replays are the 32-bit ones on the 64-bit executable (the same
 expectations, about 30 s each):
 

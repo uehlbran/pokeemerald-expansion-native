@@ -7,6 +7,13 @@
 #                                      # expansion's test suite through its hydra
 #   make -f Makefile.native clean      # removes build/native*/ and nothing else
 #                                      # (the platform library: make -C platform clean)
+#   make -f Makefile.native -j$(nproc) data-flat TARGET=macho-x86_64|coff-x86_64
+#                                      # the 64-bit data objects as listings for macOS or
+#                                      # Windows, in build/native64/flat/<target>/ (BITS=64)
+#   make -f Makefile.native -j$(nproc) check-flat TARGET=...
+#                                      # each listing assembled with clang and compared with
+#                                      # its ELF object ("The data converted for macOS and
+#                                      # Windows", at the end)
 #
 # Objects go to build/native<bits>/ (build/native<bits>-test/ with TEST=1,
 # and -san appended with SANITIZE=1), mirroring the source tree. `native`
@@ -113,7 +120,11 @@
 # (DATA_LAYOUT_CHECKS, below).
 # --------------------------------------------------------------------------
 
-# 32 or 64. 32 is the first milestone; 64 must keep compiling.
+# 32 or 64. 32 is the first milestone; 64 must keep compiling. data-flat and
+# check-flat convert the 64-bit data, so 64 is their default.
+ifneq (,$(filter data-flat check-flat,$(MAKECMDGOALS)))
+  BITS ?= 64
+endif
 BITS ?= 32
 # 1 builds the test objects (test/**) and defines TESTING=1, as on GBA.
 TEST ?= 0
@@ -126,6 +137,16 @@ MAP_VERSION ?= emerald
 
 ifeq (,$(filter 32 64,$(BITS)))
   $(error BITS must be 32 or 64, not '$(BITS)')
+endif
+# The object formats data-flat and check-flat convert the data for (the end of this file).
+FLAT_TARGETS := macho-x86_64 coff-x86_64
+ifneq (,$(filter data-flat check-flat,$(MAKECMDGOALS)))
+  ifneq (64,$(BITS))
+    $(error data-flat and check-flat convert the 64-bit data objects: BITS=64, not '$(BITS)')
+  endif
+  ifeq (,$(filter $(FLAT_TARGETS),$(TARGET)))
+    $(error data-flat and check-flat need TARGET=macho-x86_64 or TARGET=coff-x86_64, not '$(TARGET)')
+  endif
 endif
 
 # 1 compiles expansion's objects with AddressSanitizer and
@@ -795,3 +816,48 @@ $(OBJ_DIR)/battle_script_operands.checked: $(CHECKER_SELF_TESTS) $(BATTLE_SCRIPT
 	$(PYTHON) -I $(CHECK_BATTLE_SCRIPTS_SCRIPT) $(BATTLE_SCRIPT_MACROS) $(BATTLE_SCRIPT_COMMANDS) $(BATTLE_SCRIPT_Z_MOVE)
 	@touch $@
 endif
+
+# --------------------------------------------------------------------------
+# The data converted for macOS and Windows (docs/DECISIONS.md, "The data for
+# Windows and macOS is assembled on Linux and converted"); not part of the
+# Linux build. `data-flat TARGET=macho-x86_64|coff-x86_64` writes, for each
+# 64-bit data object (data/*.o and the songs), the listing
+# platform/build_glue/elf_to_flat.py makes of it, at the object's path under
+# $(OBJ_DIR)/flat/$(TARGET)/ with .s for .o. `check-flat TARGET=...`
+# assembles each listing with clang ($(FLAT_CLANG)) beside it and compares
+# the object with the ELF one (check_flat.py), which removes an object that
+# differs. Both start from the data the three 64-bit checks passed. The
+# 16-bit words take their values from one table over all the objects
+# (FLAT_SYMBOLS), rewritten only when it changes, so one changed object
+# remakes one listing.
+FLAT_CLANG ?= clang
+ELF_TO_FLAT_SCRIPT := $(GLUE_DIR)/elf_to_flat.py
+CHECK_FLAT_SCRIPT := $(GLUE_DIR)/check_flat.py
+FLAT_MODULES := $(addprefix $(GLUE_DIR)/,check_support.py elf_object.py macho_object.py coff_object.py)
+FLAT_DIR := $(OBJ_DIR)/flat
+FLAT_SELF_TESTS := $(FLAT_DIR)/converter.self-tested
+FLAT_SYMBOLS := $(FLAT_DIR)/absolute_symbols.txt
+FLAT_TARGET_DIR := $(FLAT_DIR)/$(TARGET)
+FLAT_SOURCES := $(DATA_ASM_OBJS) $(MID_OBJS)
+FLAT_LISTINGS := $(patsubst $(OBJ_DIR)/%.o,$(FLAT_TARGET_DIR)/%.s,$(FLAT_SOURCES))
+
+data-flat: $(FLAT_LISTINGS)
+check-flat: $(FLAT_LISTINGS:.s=.o)
+.PHONY: data-flat check-flat
+
+$(FLAT_SELF_TESTS): $(ELF_TO_FLAT_SCRIPT) $(CHECK_FLAT_SCRIPT) $(FLAT_MODULES)
+	@mkdir -p $(@D)
+	$(foreach script,$^,$(PYTHON) -I $(script) --self-test$(NEWLINE))
+	@touch $@
+
+$(FLAT_SYMBOLS): $(FLAT_SOURCES) $(FLAT_SELF_TESTS) $(DATA_LAYOUT_CHECKS)
+	@echo "$(PYTHON) -I $(ELF_TO_FLAT_SCRIPT) --symbols $@ <data objects>"
+	@$(PYTHON) -I $(ELF_TO_FLAT_SCRIPT) --symbols $@ $(FLAT_SOURCES)
+
+$(FLAT_TARGET_DIR)/%.s: $(OBJ_DIR)/%.o $(FLAT_SYMBOLS) $(FLAT_SELF_TESTS)
+	@mkdir -p $(@D)
+	$(PYTHON) -I $(ELF_TO_FLAT_SCRIPT) --target $(TARGET) --symbols $(FLAT_SYMBOLS) --output $@ $<
+
+$(FLAT_TARGET_DIR)/%.o: $(FLAT_TARGET_DIR)/%.s $(OBJ_DIR)/%.o $(FLAT_SYMBOLS) $(FLAT_SELF_TESTS)
+	$(PYTHON) -I $(CHECK_FLAT_SCRIPT) --target $(TARGET) --symbols $(FLAT_SYMBOLS) --listing $< --output $@ \
+	    --clang $(FLAT_CLANG) $(OBJ_DIR)/$*.o
