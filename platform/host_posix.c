@@ -289,18 +289,9 @@ int host_file_write_all(int descriptor, const void *bytes, size_t size)
 bool host_file_write_from_handler(int descriptor, const void *bytes, size_t size)
 {
     const int saved_errno = errno;
-    const unsigned char *next = bytes;
-    while (size > 0) {
-        const ssize_t written = write(descriptor, next, size);
-        if (written < 0 && errno == EINTR)
-            continue;
-        if (written <= 0)
-            break;
-        next += written;
-        size -= (size_t)written;
-    }
+    const bool written = host_file_write_all(descriptor, bytes, size) == 0;
     errno = saved_errno;
-    return size == 0;
+    return written;
 }
 
 int host_file_sync(int descriptor)
