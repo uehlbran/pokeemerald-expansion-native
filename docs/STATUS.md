@@ -436,8 +436,11 @@ not written (task W5 to W7).
 was green in 19 minutes 39 seconds: build 571 s, platform gate 470 s
 (now with the ThreadSanitizer build), replays 70 s; ccache saw 904
 cacheable calls of 1574 (the game's C is now among them; 222 hits from
-the platform library, 682 misses to fill). The warm figure is the next
-run's and is recorded here when it lands. Measured here too (ccache
+the platform library, 682 misses to fill). The next run (38598380204, the push
+of the Windows merge, the compiler cache restored from the run before,
+the assets cache empty since that key was new) was green in 11 minutes 32
+seconds: build 284 s (611 hits, 300 misses: the merge changed platform
+headers the game includes), platform gate 294 s, replays 46 s. Measured here too (ccache
 4.9.1 installed by the owner, an empty cache directory, the game's 384
 objects and the executable removed before each build, 32 jobs): the cold
 build 23.4 s with 384 misses; the same build again 7.5 s with 384 hits
@@ -502,9 +505,22 @@ anywhere yet: the orchestrator's gate on main (below) covers the Linux
 side and the Windows link, lint and layout; the first Windows run is the
 manual workflow `.github/workflows/windows.yml`, added with this merge.
 
-**In flight.** The first Windows run (the workflow dispatched on main);
-then tasks W8 and W9 as one worker: the replays, the suite and the
-cross-OS save on the Windows runner.
+**The first Windows runs** (the manual workflow on main): the first
+(38597933327) failed in the Linux job's own prerequisites (the 32-bit
+headers the data layout probe compiles with; fixed). The second
+(38598389601) cross-built the executable and the 69 tests on Linux in 12
+minutes and ran them on the Windows runner: the first time any of this
+code executed on Windows. Result: test_crt0 fails 6 of 11 (crt0_init
+returns an error on the PE layout), the portable division test expects
+the POSIX signal number where Windows reports an exception code, and
+every executable after the first crash test exits with status 126
+("cannot execute"), one cause hiding the rest. These are the W8 worker's
+step 1, in flight.
+
+**In flight.** Tasks W8 and W9 as one Opus worker (branch m8-winci): the
+Windows runner's unit tests and smoke made to pass, then the replays, the
+suite through a driver that restarts on exit code 75, and the cross-OS
+save; the workflow extended as it goes.
 
 ## Verified by a gate
 
