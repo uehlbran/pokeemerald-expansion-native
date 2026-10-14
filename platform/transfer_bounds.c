@@ -3,7 +3,7 @@
  *
  * Stands in for the GBA bus. On the GBA a transfer may read any mapped
  * region and write the RAM regions; writes to ROM are ignored (GBATEK "GBA
- * Memory Map"). In the native process the game's memory is three things:
+ * Memory Map"). In the native process the game's memory is:
  *
  *  - the GBA regions (gba_memmap.h): read and write. The I/O region is
  *    writable here although the hardware ignores writes to some registers;
@@ -60,7 +60,6 @@
  * there. Linux's vm.mmap_min_addr default is 65536 so nothing is mapped there
  * anyway; the 4 KiB page is the smallest unit all targets share. */
 #define TRANSFER_FIRST_PAGE_SIZE ((uintptr_t)0x1000)
-#define TRANSFER_ERR_STACK (-1)
 
 extern char game_data_start[], game_data_end[]; /* gba_game.ld */
 
@@ -146,7 +145,7 @@ int transfer_bounds_init(void)
     struct host_span stack;
     transfer_bounds_shutdown();
     if (host_image_main_stack(&stack) != 0) { /* reported */
-        return TRANSFER_ERR_STACK;
+        return TRANSFER_BOUNDS_ERR_STACK;
     }
     state.stack = range_of(stack);
     state.call_stack = range_of(host_memory_call_stack());
