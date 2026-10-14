@@ -473,7 +473,11 @@ review's composite setup action (38611677952, the push of the eight fix
 merges) was green in 15 minutes 19 seconds: setup 74 s, build 183 s
 (477 hits, 443 misses after many platform headers changed), the platform
 gate 580 s (now the largest step: the sanitized tests at both widths,
-ThreadSanitizer, lint), replays 72 s. Measured here too (ccache
+ThreadSanitizer, lint), replays 72 s. The warm run after it
+(38613903028, a one-file change): 13 minutes 19 seconds, build 171 s
+with 862 hits of 923 cacheable calls, gate 489 s, replays 71 s; so the
+per-push tier is 13 minutes warm against the 15-minute target, and the
+platform gate is where a further cut would come from. Measured here too (ccache
 4.9.1 installed by the owner, an empty cache directory, the game's 384
 objects and the executable removed before each build, 32 jobs): the cold
 build 23.4 s with 384 misses; the same build again 7.5 s with 384 hits
