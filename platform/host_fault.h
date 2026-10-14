@@ -8,7 +8,7 @@
  * crash_reboot reboots after a crash (both headers say how).
  *
  * Wraps, on Linux: signals (sigaction with SA_SIGINFO and SA_ONSTACK,
- * sigaltstack, sigprocmask, raise; host_posix.c) and the registers the
+ * sigaltstack, pthread_sigmask, raise; host_posix.c) and the registers the
  * kernel saved in the handler's ucontext_t (uc_mcontext.gregs, i386 and
  * x86-64; host_linux.c). On Windows (host_windows_fault.c): a vectored
  * exception handler, called first, for the divide error; the process's

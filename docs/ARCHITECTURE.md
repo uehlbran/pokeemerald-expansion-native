@@ -208,7 +208,7 @@ it is one layer and not `#ifdef`s in the modules. The seventh header,
 | Header | Concern | Its users | Linux |
 |---|---|---|---|
 | `host_memory.h` | memory at fixed addresses: where the link put each GBA region and the battle runner's stack; pages mapped at run time | `gba_memmap`, `game_hooks`, `transfer_bounds`, the m4a tests | `gba_regions.ld`'s symbols; `mmap` with `MAP_FIXED_NOREPLACE` |
-| `host_fault.h` | hardware faults with the faulting context: the divide-error and crash handlers' install and uninstall, the registers by name and by ModRM number, the alternate stack | `arm_division`, `crash_reboot` | `sigaction`, `sigaltstack`, `sigprocmask`, `uc_mcontext.gregs` |
+| `host_fault.h` | hardware faults with the faulting context: the divide-error and crash handlers' install and uninstall, the registers by name and by ModRM number, the alternate stack | `arm_division`, `crash_reboot` | `sigaction`, `sigaltstack`, `pthread_sigmask`, `uc_mcontext.gregs` |
 | `host_process.h` | the executable's own file, and starting it again | `crash_reboot`, `restart`, `symbols` | `/proc/self/exe`, `readlink`, `execve` |
 | `host_image.h` | the bounds of the executable's image and of the main thread's stack; its read-only segments | `transfer_bounds`, `game_hooks` (`PlatformIsRomPointer`) | `__executable_start`, `__data_start`, `_end`, `getauxval(AT_PHDR)`, `pthread_getattr_np` |
 | `host_stack.h` | running a function on a stack of the caller's choosing | `game_hooks` (`PlatformCallWithStack`) | `ucontext`, with AddressSanitizer's fiber annotations |

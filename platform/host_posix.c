@@ -1,12 +1,12 @@
 /*
  * host_posix.c: the host layer where every POSIX system agrees (Linux today,
  * macOS next): the fault handlers' installation (host_fault.h), the restart
- * of the executable and its end (host_process.h), the files (host_file.h) and the deadline
- * thread (host_thread.h). What each system does its own way is in its own
- * source, host_linux.c, reached through host_internal.h.
+ * of the executable and its end (host_process.h), the files (host_file.h)
+ * and the deadline thread (host_thread.h). What each system does its own way
+ * is in its own source, host_linux.c, reached through host_internal.h.
  *
- * Followed: POSIX (sigaction, sigaltstack, sigprocmask, execve, _exit, open,
- * write, fsync, rename, mkdir, localtime_r, pthread_create, pthread_sigmask,
+ * Followed: POSIX (sigaction, sigaltstack, pthread_sigmask, execve, _exit,
+ * open, write, fsync, rename, mkdir, localtime_r, pthread_create,
  * pthread_condattr_setclock and pthread_cond_timedwait), and signal-safety(7)
  * for what a signal handler may call: everything on the handlers' path here
  * (sigaction, raise, execve, _exit, write) is async-signal-safe.
@@ -159,8 +159,11 @@ static bool install_crash_handlers(void)
             return false;
         }
     }
-    if (sigprocmask(SIG_UNBLOCK, &crashes, NULL) != 0) {
-        perror("host_fault: sigprocmask");
+    /* pthread_sigmask, not sigprocmask, whose effect POSIX leaves unspecified
+     * in a process with threads; it returns the error rather than set errno. */
+    const int unblocked = pthread_sigmask(SIG_UNBLOCK, &crashes, NULL);
+    if (unblocked != 0) {
+        (void)fprintf(stderr, "host_fault: pthread_sigmask: %s\n", strerror(unblocked));
         return false;
     }
     return true;
