@@ -3,6 +3,8 @@
  */
 #include "replay_include.h"
 
+#include "host_file.h"
+
 #include <errno.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -215,12 +217,12 @@ static enum include_kind include_target(const char *line, size_t length, char *n
 /* path of `name` next to `including` (an absolute name stays as it is). */
 static bool sibling_path(const char *including, const char *name, char *out, size_t size)
 {
-    const char *slash = strrchr(including, '/');
+    const size_t directory_length = host_file_name_offset(including); /* its separator included */
     int written;
-    if (name[0] == '/' || slash == NULL)
+    if (host_file_path_is_absolute(name) || directory_length == 0)
         written = snprintf(out, size, "%s", name);
     else
-        written = snprintf(out, size, "%.*s/%s", (int)(slash - including), including, name);
+        written = snprintf(out, size, "%.*s%s", (int)directory_length, including, name);
     return written >= 0 && (size_t)written < size;
 }
 

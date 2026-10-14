@@ -65,9 +65,11 @@ static void new_scratch(void)
     (void)snprintf(g_tmp_path, sizeof g_tmp_path, "%s/offset.tmp", g_dir);
 }
 
+/* Binary, both: the offset file's bytes are what is compared, the same on
+ * every OS (Windows' text mode would add or drop a "\r"). */
 static void write_file(const char *path, const char *text)
 {
-    FILE *f = fopen(path, "w");
+    FILE *f = fopen(path, "wb");
     if (f == NULL || fputs(text, f) == EOF || fclose(f) != 0) {
         perror("test_rtc: write_file");
         exit(2);
@@ -76,7 +78,7 @@ static void write_file(const char *path, const char *text)
 
 static void read_file(const char *path, char *buf, size_t size)
 {
-    FILE *f = fopen(path, "r");
+    FILE *f = fopen(path, "rb");
     size_t n;
     if (f == NULL) {
         buf[0] = '\0';

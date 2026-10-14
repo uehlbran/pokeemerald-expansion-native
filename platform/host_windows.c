@@ -13,7 +13,8 @@
  * MultiByteToWideChar and WideCharToMultiByte (stringapiset.h),
  * GetModuleFileNameW, and FormatMessage for the reports; msvcrt's _open,
  * _get_osfhandle and _localtime64_s; the PE format's section flags through
- * gba_game.pe.ld's layout.
+ * gba_game.pe.ld's layout; "File path formats on Windows systems" for a
+ * path's syntax.
  */
 #include <errno.h>
 #include <fcntl.h>
@@ -386,6 +387,35 @@ int host_file_local_time(int64_t seconds, struct tm *out)
         return -1;
     }
     return 0;
+}
+
+/* Microsoft, "File path formats on Windows systems": either slash separates,
+ * and a path may start with a drive, a letter and a colon. */
+#define DRIVE_PREFIX_LENGTH 2u
+
+static bool is_path_separator(char c)
+{
+    return c == '/' || c == '\\';
+}
+
+static bool starts_with_a_drive(const char *path)
+{
+    return ((path[0] >= 'A' && path[0] <= 'Z') || (path[0] >= 'a' && path[0] <= 'z')) && path[1] == ':';
+}
+
+size_t host_file_name_offset(const char *path)
+{
+    size_t offset = starts_with_a_drive(path) ? DRIVE_PREFIX_LENGTH : 0u;
+    for (size_t i = offset; path[i] != '\0'; i++) {
+        if (is_path_separator(path[i]))
+            offset = i + 1u;
+    }
+    return offset;
+}
+
+bool host_file_path_is_absolute(const char *path)
+{
+    return is_path_separator(path[0]) || (starts_with_a_drive(path) && is_path_separator(path[DRIVE_PREFIX_LENGTH]));
 }
 
 /* --- host_process ------------------------------------------------------------------ */

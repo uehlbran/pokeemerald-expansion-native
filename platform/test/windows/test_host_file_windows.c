@@ -142,4 +142,27 @@ PTEST(a_missing_directory_is_created_once)
     PT_ASSERT(removed);
 }
 
+/* Microsoft, "File path formats on Windows systems". */
+PTEST(a_drive_and_a_separator_or_a_leading_separator_make_a_path_absolute)
+{
+    PT_ASSERT(host_file_path_is_absolute("C:\\a.replay"));
+    PT_ASSERT(host_file_path_is_absolute("c:/a.replay"));
+    PT_ASSERT(host_file_path_is_absolute("\\a.replay"));
+    PT_ASSERT(host_file_path_is_absolute("\\\\server\\share\\a.replay"));
+    PT_ASSERT(!host_file_path_is_absolute("C:a.replay")); /* from the drive's own working directory */
+    PT_ASSERT(!host_file_path_is_absolute("C:"));
+    PT_ASSERT(!host_file_path_is_absolute("1:/a.replay"));
+    PT_ASSERT(!host_file_path_is_absolute("a\\b.replay"));
+}
+
+PTEST(the_name_starts_after_either_slash_or_a_drive)
+{
+    PT_ASSERT(host_file_name_offset("a\\b.replay") == 2u);
+    PT_ASSERT(host_file_name_offset("a/b\\c.replay") == 4u);
+    PT_ASSERT(host_file_name_offset("a\\b/c.replay") == 4u);
+    PT_ASSERT(host_file_name_offset("C:\\d\\c.replay") == 5u);
+    PT_ASSERT(host_file_name_offset("C:c.replay") == 2u);
+    PT_ASSERT(host_file_name_offset("C:") == 2u);
+}
+
 PTEST_MAIN()
