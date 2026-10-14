@@ -7,11 +7,11 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <unistd.h>
 
 #include <SDL.h>
 
 #include "ptest.h"
+#include "test_support.h"
 #include "video.h"
 
 #define LCD_WIDTH 240u
@@ -22,7 +22,7 @@ static uint16_t frame_buffer[LCD_WIDTH * LCD_HEIGHT];
 
 static void use_dummy_driver(void)
 {
-    PT_ASSERT(setenv("SDL_VIDEODRIVER", "dummy", 1) == 0);
+    PT_ASSERT(tsup_set_environment("SDL_VIDEODRIVER", "dummy"));
 }
 
 static struct video_config windowed_config(void)
@@ -129,7 +129,7 @@ PTEST(headless_presents_without_a_window)
 
 PTEST(failed_driver_init_fails_and_leaves_no_subsystem)
 {
-    PT_ASSERT(setenv("SDL_VIDEODRIVER", "no_such_driver", 1) == 0);
+    PT_ASSERT(tsup_set_environment("SDL_VIDEODRIVER", "no_such_driver"));
     struct video_config cfg = windowed_config();
     int result = video_init(&cfg);
     Uint32 inited = SDL_WasInit(SDL_INIT_VIDEO);
@@ -211,10 +211,8 @@ PTEST(ppm_of_two_pixel_frame_has_exact_bytes)
     frame_buffer[1] = (uint16_t)((1u << 10) | (16u << 5) | 8u); /* b=1 g=16 r=8 */
     frame_buffer[LCD_WIDTH] = 0x0021;                           /* row 1, column 0: r=1 g=1 b=0 */
     frame_buffer[LCD_WIDTH * LCD_HEIGHT - 1u] = 0xFFFF;         /* last pixel, bit 15 set */
-    char path[] = "/tmp/video_ppm_XXXXXX";
-    int fd = mkstemp(path);
-    PT_ASSERT(fd >= 0);
-    close(fd);
+    char path[TSUP_PATH_SIZE];
+    PT_ASSERT(tsup_make_temp_file(path, sizeof path, "video_ppm"));
     int written = video_write_frame_ppm(frame_buffer, path);
 
     static unsigned char bytes[sizeof TEST_PPM_HEADER + LCD_WIDTH * LCD_HEIGHT * 3u + 16u];

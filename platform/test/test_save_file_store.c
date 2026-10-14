@@ -1,9 +1,10 @@
 /*
  * Tests of save_file.c's store: the file it writes, the atomic replacement
  * and its failures, and paths. Failures are provoked in ways that work for
- * any user, root included: a file size limit (RLIMIT_FSIZE) for a write that
- * fails part-way, a directory where the temporary file or the save must go
- * for an open or rename that fails. Format and conventions:
+ * any user, root included: a directory where the temporary file or the save
+ * must go for an open or rename that fails. The write that fails part-way,
+ * for which a file size limit (RLIMIT_FSIZE) is the means, is in
+ * posix/test_save_file_store_posix.c. Format and conventions:
  * save_file_fixture.h.
  */
 // deps: save_file.c gba_memmap.c flash.c
@@ -198,44 +199,6 @@ PTEST(store_replaces_the_previous_file)
     PT_ASSERT(removed);
 }
 
-/* The file size limit makes the write to <path>.tmp fail after 64 KiB, as a
- * full disk would. The old save must be intact and the partial tmp gone. */
-PTEST(a_write_that_fails_part_way_leaves_the_old_file)
-{
-    struct scratch scratch;
-    if (!scratch_create(&scratch))
-        PT_FAIL("cannot create a scratch directory");
-    set_image(0x0C);
-    const int init = save_file_init(scratch.path);
-    const int first = save_file_store();
-    set_image(0x0D);
-
-    struct rlimit old_limit = {0};
-    const bool got_limit = getrlimit(RLIMIT_FSIZE, &old_limit) == 0;
-    const struct rlimit low_limit = {HALF_CHIP_BYTES, old_limit.rlim_max};
-    void (*const old_handler)(int) = signal(SIGXFSZ, SIG_IGN);
-    const bool limited = got_limit && old_handler != SIG_ERR && setrlimit(RLIMIT_FSIZE, &low_limit) == 0;
-    const int second = limited ? save_file_store() : SAVE_FILE_OK;
-    const bool restored = got_limit && setrlimit(RLIMIT_FSIZE, &old_limit) == 0 && old_handler != SIG_ERR
-                          && signal(SIGXFSZ, old_handler) != SIG_ERR;
-
-    fill_pattern(expected_image, CHIP_BYTES, 0x0C); /* the old save */
-    const bool read = read_file(scratch.path, FILE_BYTES);
-    const bool old_intact = memcmp(file_bytes + HEADER_BYTES, expected_image, CHIP_BYTES) == 0;
-    const bool tmp_left = exists(scratch.tmp);
-    save_file_shutdown();
-    const bool removed = scratch_remove(&scratch);
-    PT_ASSERT(limited);
-    PT_ASSERT(restored);
-    PT_ASSERT_EQ_INT(init, SAVE_FILE_OK);
-    PT_ASSERT_EQ_INT(first, SAVE_FILE_OK);
-    PT_ASSERT_EQ_INT(second, SAVE_FILE_ERR_IO);
-    PT_ASSERT(read);
-    PT_ASSERT(old_intact);
-    PT_ASSERT(!tmp_left);
-    PT_ASSERT(removed);
-}
-
 /* <path>.tmp cannot be created (a directory is in the way): the store fails
  * before touching anything, and leaves alone what it did not create. */
 PTEST(a_tmp_that_cannot_be_created_leaves_the_old_file)
@@ -246,13 +209,13 @@ PTEST(a_tmp_that_cannot_be_created_leaves_the_old_file)
     set_image(0x0E);
     const int init = save_file_init(scratch.path);
     const int first = save_file_store();
-    const bool made = mkdir(scratch.tmp, 0700) == 0;
+    const bool made = tsup_make_directory(scratch.tmp);
     set_image(0x0F);
     const int second = save_file_store();
     fill_pattern(expected_image, CHIP_BYTES, 0x0E); /* the old save */
     const bool read = read_file(scratch.path, FILE_BYTES);
     const bool old_intact = memcmp(file_bytes + HEADER_BYTES, expected_image, CHIP_BYTES) == 0;
-    const bool directory_kept = rmdir(scratch.tmp) == 0;
+    const bool directory_kept = tsup_remove_directory(scratch.tmp);
     save_file_shutdown();
     const bool removed = scratch_remove(&scratch);
     PT_ASSERT_EQ_INT(init, SAVE_FILE_OK);
@@ -271,12 +234,12 @@ PTEST(a_failed_rename_leaves_no_tmp)
     struct scratch scratch;
     if (!scratch_create(&scratch))
         PT_FAIL("cannot create a scratch directory");
-    const bool made = mkdir(scratch.path, 0700) == 0;
+    const bool made = tsup_make_directory(scratch.path);
     set_image(0x10);
     const int init = save_file_init(scratch.path);
     const int store = save_file_store();
     const bool tmp_left = exists(scratch.tmp);
-    const bool directory_kept = rmdir(scratch.path) == 0;
+    const bool directory_kept = tsup_remove_directory(scratch.path);
     save_file_shutdown();
     const bool removed = scratch_remove(&scratch);
     PT_ASSERT(made);
@@ -288,19 +251,6 @@ PTEST(a_failed_rename_leaves_no_tmp)
 }
 
 /* ---- paths relative to the working directory, and no path at all ---- */
-
-/* Runs body with the working directory set to dir; false if it cannot. */
-static bool in_directory(const char *dir, void (*body)(void *), void *context)
-{
-    const int previous = open(".", O_RDONLY | O_DIRECTORY | O_CLOEXEC);
-    if (previous < 0)
-        return false;
-    bool ok = chdir(dir) == 0;
-    if (ok)
-        body(context);
-    ok = fchdir(previous) == 0 && ok;
-    return close(previous) == 0 && ok;
-}
 
 struct null_path_outcome {
     int init, store, load;
@@ -325,7 +275,7 @@ PTEST(null_path_stores_nothing_and_loads_new)
     if (!scratch_create(&scratch))
         PT_FAIL("cannot create a scratch directory");
     struct null_path_outcome outcome = {0};
-    const bool ran = in_directory(scratch.dir, use_null_path, &outcome);
+    const bool ran = tsup_in_directory(scratch.dir, use_null_path, &outcome);
     const bool removed = scratch_remove(&scratch);
     PT_ASSERT(ran);
     PT_ASSERT_EQ_INT(outcome.init, SAVE_FILE_OK);
@@ -361,7 +311,7 @@ PTEST(a_bare_file_name_is_stored_in_the_working_directory)
     if (!scratch_create(&scratch))
         PT_FAIL("cannot create a scratch directory");
     struct bare_name_outcome outcome = {0};
-    const bool ran = in_directory(scratch.dir, use_bare_name, &outcome);
+    const bool ran = tsup_in_directory(scratch.dir, use_bare_name, &outcome);
     const intmax_t size = file_size(scratch.path); /* <dir>/emerald.sav */
     const bool removed = scratch_remove(&scratch);
     PT_ASSERT(ran);

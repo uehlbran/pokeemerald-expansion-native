@@ -931,3 +931,81 @@ for hardware assumptions). Every coding worker receives the file
 verbatim in its task and the first-pass reviewer checks each diff
 against it line by line. The task W3 in flight (the test timeout) was
 re-briefed under these rules before it chose a design.
+
+## 2026-10-14: The per-push CI tier runs no suite; the plain 64-bit suite is nightly
+
+Measured on the runner (`.github/workflows/native.yml`, runs 38563489510
+cold and 38567630409 warm): the per-push tier as the owner specified it
+(the platform gate, the 64-bit build, both 64-bit replays, the plain
+64-bit suite) takes 31 minutes cold and 20 warm, against the 15-minute
+target; the suite alone is 887 s cold and 595 s warm, and the compiler
+cache barely helps because the game's C is compiled from a pipe that
+ccache cannot hash (3,682 of 4,003 calls uncacheable; only the platform
+library's 321 calls hit). The two parts of the specification cannot both
+hold, so the suite moves to the nightly tier as its own job and the
+per-push tier keeps the platform gate, the build and the replays (about
+10 minutes warm). The reasoning is the one already recorded: the
+orchestrator's local gate runs the suite at both widths before every
+merge, so the per-push backstop loses nothing the project relies on, and
+the nightly still runs every suite. Two follow-ups are recorded in
+PLAN.md: compiling the game's C through a file so ccache can cache it
+(the 64-bit build is 328 s warm), after which the suite could return to
+the per-push tier if the owner wants it there; and caching the converted
+assets. The owner can flip the suite back with one line in the workflow.
+## 2026-10-14: The test time limit is kept by a flag-setting thread; the per-OS tests live in one directory per OS family
+
+`ptest.h` kept each test's limit with `alarm(2)` and SIGALRM, which Windows
+lacks and which interrupted a test at any instruction. Its replacement is
+`host_thread.h`: a watchdog thread that sleeps until the deadline and then
+stores `true` in one C11 `atomic_bool`. The test's own thread reads the flag in
+every assertion and when a test returns, and abandons the test (`longjmp`,
+as the signal handler's `siglongjmp` did) with the same report text and exit
+status as before. The thread is a new thread in a single-threaded platform
+(docs/C-RULES.md, "Concurrency"), so this is the justification the rule asks
+for.
+
+Why a single-threaded design cannot work: a limit has to be measured while the
+test runs, and the test thread is the one thing that cannot measure it when
+it is stuck. A signal is the single-threaded form, and it is POSIX only
+(Windows has neither SIGALRM nor `alarm`; its timer-queue and multimedia
+timers call back on a thread of their own). A signal handler that does more
+than set a flag is a handler that touches test state at any instruction, which
+the rule forbids as much as a thread would. So the one portable clock is a
+thread; the rule's second half then holds it to doing nothing but setting a
+flag.
+
+Ownership model. The test thread owns all test and game state, the
+`ptest_expired` flag's meaning, the watchdog handle, and the jump target. The
+watchdog thread owns the watchdog's deadline and stop request, behind that
+watchdog's mutex, and writes one thing outside it: the flag, once, with a relaxed
+store (the flag publishes no data; the join in `host_watchdog_stop` orders the
+rest). It takes no callback, prints nothing, allocates nothing and reads no
+test state. It is created and joined once per test, so no thread outlives its
+test. The one case this does not catch is a test that never reaches an
+assertion after the limit (an endless loop with none in it, a blocking call
+that never returns): such a test hangs its binary, and ptest.h says so; the
+CI job's own time limit is the backstop. A ThreadSanitizer build of every test
+binary but `test_crt0` (which reads where the linker put the game's objects, and
+ThreadSanitizer moves them) is part of the gate (`make -C platform tsan`, 64-bit,
+`build/64-tsan`); `test_arm_division_posix` alone runs with
+`report_signal_unsafe=0`, because it leaves a signal handler by `siglongjmp`
+on purpose and ThreadSanitizer then calls every later `free()` unsafe. A test
+that forks has no thread alive at the fork: `psup_run_child` (posix_child.h)
+stops the watchdog, joining its thread, before the fork and starts it again
+after, so the child inherits no thread and no handle to one. (The
+handshake in `host_watchdog_start`, which returns only when the thread waits,
+stays: it keeps a start from racing a stop.)
+
+The Windows source of `host_thread.h` is declared (the header names the calls)
+and not written.
+
+The tests that only some OS can run (fork, signals, pipes, file
+permissions, `setrlimit`, Linux's `pthread_getattr_np`) are not `#ifdef`s in
+the portable tests: each such test file is split into the portable part, in
+`platform/test/test_<name>.c`, and the per-OS part, in
+`platform/test/<dir>/test_<name>_<dir>.c`, which the Makefile builds only
+for a `HOST_OS` whose `HOST_TEST_DIRS` (`platform/host.mk`) names the
+directory (`posix` for Linux and macOS, `linux` for Linux). What the tests
+share of the OS is declared once in `test/test_support.h` and implemented
+once per OS family in `test/<dir>/support.c`. A port adds a directory and a
+support file; it edits no existing test.

@@ -1,6 +1,6 @@
 # Status
 
-Last updated 2026-10-14 (milestone 7 done: **64-bit done**, every gate green at both widths on main at 94f3c70f62; milestone 8 in progress: Linux CI on main, the probes decided, the host layer and the data converter in review).
+Last updated 2026-10-14 (milestone 7 done: **64-bit done**, every gate green at both widths on main at 94f3c70f62; milestone 8 in progress: the two-tier Linux CI, the host layer, the data converter and the Windows cross-build merged; the test timeout and the Windows host layer in flight).
 
 This file is the honest ledger. A thing is listed as verified only with
 the gate that proved it. Anything without a gate is unverified, whatever
@@ -250,25 +250,30 @@ the order and the inventory's findings; `research/m8-inventory.md` is the
 inventory; `research/probes/` holds the loader probes and their README
 records each run.
 
-**Linux CI.** `.github/workflows/native.yml` on the branch `ci/native`
-(pushes to `main` and by hand; two jobs: the GBA ROM with its sha1, and
-the native gate at both widths). On the runner image the 32-bit SDL2
-development package cannot be installed (its glib dependency clashes
-with the image's), so the job takes the i386 headers and link files from
-the downloaded package without its dependencies; and the platform gate
-runs after the 32-bit build, which generates the game headers the lint
-reads. The GBA job is green (the ROM's sha1 equal to the recorded one);
-both jobs are green on the branch's third run (37920736586, 2026-10-09:
-the GBA ROM with the recorded sha1; the native gate end to end, about
-95 minutes on the runner), and the workflow was merged into main on
-2026-10-14. The owner then ruled an hour per push unacceptable: the
-workflow is being split into a per-push tier (docs-only pushes
-excluded, older runs cancelled, the compiler cache kept; the platform
-gate, the 64-bit build, its two replays and its plain suite; under 15
-minutes warm is the target) and a nightly tier with the rest as
-parallel jobs (DECISIONS.md "CI runs in two tiers"); the first run on
-main was cancelled rather than spend the hour, and the measured
-runtimes of each tier are recorded here when the first runs complete.
+**Linux CI.** `.github/workflows/native.yml`, one file in two tiers
+(docs/DECISIONS.md, "CI runs in two tiers"). The per-push tier (pushes to
+`main` and `ci/**`; docs-only pushes ignored; a newer push cancels the
+older run) builds the 64-bit executable, runs the platform gate and both
+64-bit replays; the nightly tier (a cron at 04:17 UTC and by hand) runs
+six parallel jobs: the GBA ROM with its sha1, the plain 64-bit build with
+its suite (`native64`), the 32-bit plain job, the two sanitized jobs, and
+the cross-width save at both widths plain and sanitized. On the runner
+image the 32-bit SDL2 development package cannot be installed (its glib
+dependency clashes with the image's), so the jobs that build or test 32
+bits take the i386 headers and link files from the downloaded package
+without its dependencies; and the platform gate runs after the build,
+which generates the game headers the lint reads. Measured on 2026-10-14:
+the per-push job took 591 s warm (run 38573169538: prerequisites 48 s,
+build 322 s, platform gate 163 s, replays 46 s) and, with the suite still
+in it, 31 minutes cold (38563489510) and 20 minutes warm (38567630409).
+The suite moved to the nightly tier because it alone is 10 minutes warm on
+the runner against a 15-minute target, and the orchestrator's local gate
+runs it before every merge. The nightly run 38567248883 took, per job,
+8 minutes for the GBA ROM, 24 for the 64-bit sanitized job, 26 for the
+32-bit plain job, 23 for the cross-width job and 41 for the 32-bit
+sanitized job (about 41 minutes wall clock); `native64` was added after
+that run and has not run yet. ccache hits only the platform library, not
+the game's C files (they compile from a pipe).
 
 **The loader probes** (`research/probes/`, a manual workflow on the
 Windows and macOS runners, two runs on 2026-10-09; the README has the
@@ -347,11 +352,33 @@ over all objects and 58 mutants; the Linux executables unchanged. The
 orchestrator's gate after the merge: platform gate, the 64-bit build,
 both conversions and checks, the opening replay, all green (0b86a3454c).
 
+**The Windows cross-build** (task W4, merged 2026-10-14 at f25169cdf1):
+`make -f Makefile.native native BITS=64 TARGET_OS=windows` links
+`build/native64-windows/pokeemerald-native.exe` with the MinGW-w64
+toolchain (x86_64 only; `platform/target.mk`), a pinned SDL2 2.30.12
+development package fetched with a sha256 check, the PE linker scripts
+(`platform/gba_regions.pe.ld`, `gba_game.pe.ld`, `gba_gaps.pe.s`: the
+image based at 0x01800000, every GBA region a section at its address,
+the gaps between them filled with uninitialised read-only sections, the
+code at 0x40001000, no dynamic base and no relocations, as the loader
+probe accepted), the COFF data assembled by MinGW's `as` from the
+converter's listings, and `check_pe_layout.py`, which fails the link
+unless the executable's headers and section table are exactly that
+layout. Expansion's files are untouched; the Linux executables are
+byte-identical before and after. Nothing cross-built runs here (no
+Wine): the executable stops at its first start-up step by design until
+the Windows host layer exists (tasks W5 to W7, in flight), and the first
+runs happen on the Windows runner (task W9). Reviewed: the layout, the
+data, the weak-symbol provisions and the symbol map confirmed
+independently; the review's fixes (a checked write wrapper instead of a
+suppressed warning on the handler path, the PE checker's self-test
+pinned to the specification's literals, a gap-content check) merged.
+
 **In flight.** The test harness's timeout without SIGALRM and the
-per-OS split of the POSIX-bound tests (task W3); the CI workflow in two
-tiers; the Windows cross-build glue (task W4: the target-OS switch, SDL2
-for MinGW, the PE linker scripts with the probe's filled layout, the
-COFF data from the converter, the link).
+per-OS split of the POSIX-bound tests (task W3, review fixes); the Windows host layer (tasks W5 to
+W7: memory, image, process and files, the vectored exception handler
+and the crash respawn, the stack switch, the watchdog, the cross-built
+unit tests for the Windows runner).
 
 ## Verified by a gate
 
@@ -385,6 +412,7 @@ COFF data from the converter, the link).
 | Gate (h): a save written by the 32-bit build loads in the 64-bit build and back: the opening up to the save by one width, Continue by the other (the dumps and screenshots after the restart as expected, the loaded state equal to the saved one, the file unchanged until the game saves), the bare image (an older 32-bit build's), a refused foreign layout id, and a save made by the second build loaded again by it; both directions, plain and sanitized | `tests/smoke/run_cross_width.sh build/native32/pokeemerald-native build/native64/pokeemerald-native out/` and the reverse, then the `-san` builds | green 2026-10-09 on main at 94f3c70f62: 39 s, 34 s, 99 s, 84 s |
 | Every gate in one sequence on main after the last milestone 7 merge (94f3c70f62): the platform gate (format, lint at both widths, the sanitized unit tests at both widths, tools-test, glue-test); at 32 bits the build, the two replays plain and sanitized, `make check` plain and sanitized (5409 passed), the GBA ROM rebuilt; at 64 bits the build plain and sanitized, the two replays plain and sanitized, `make check` plain and sanitized (5409 passed); the cross-width script both ways, plain and sanitized | the 22 steps in order, each exit 0 | green 2026-10-09; the 32-bit half 11 min, the 64-bit half 6 min, the cross-width runs 4 min; ROM sha1 e2d4600d4e7b1269ac50c28bc96ece2b758ded9e |
 | The orchestrator's gate on main after the host-layer merge (fa11bb1506, milestone 8 task W2): the platform gate, the 32-bit build and opening replay, the 64-bit build, both 64-bit replays plain and the opening replay sanitized, the plain 64-bit suite (5409 passed), the cross-width script 32 to 64 | the ten steps in order, each exit 0 | green 2026-10-14; 24 s, 7 s, 29 s, 5 s, 24 s, 23 s, 25 s, 58 s, 36 s, 41 s |
+| The orchestrator's gate on main after the Windows cross-build merge (f25169cdf1, task W4): the platform gate, both Linux builds, the Windows cross-link with the PE layout check, the 64-bit opening replay, the plain 64-bit suite (5409 passed) | the seven steps in order, each exit 0 | green 2026-10-14 |
 | Every platform module is merged: `gba_memmap` (region layout via linker script), `ptest.h` self-test, `timer`, `transfer_bounds`, `input`, `rtc`, `video`, `audio`, `frame_pacer`, `interrupt`, `psg`, `ppu`, `dma`, `flash`, `save_file`, `bios`, `lcd_status`, `m4a_output`, `sound_mix`, `replay`, `inspect`, `restart`, `symbols`, `debug_channel`, `crash_reboot`, `arm_division`, and the `m4a` engine translation (also proven by a differential test against the ARM original under qemu-arm, run by hand) | `make -C platform test BITS=32` and `BITS=64`, every test under ASan+UBSan with leak detection, after a Sonnet first-pass review and orchestrator merge | green on both widths at merge time |
 
 ## Not verified

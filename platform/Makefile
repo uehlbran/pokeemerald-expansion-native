@@ -10,7 +10,8 @@
 #   make -C platform format-check  fail, naming the files, if any would change
 #   make -C platform lint          clang-tidy (../.clang-tidy) and cppcheck over every .c file;
 #                                  any finding fails
-#   make -C platform gate          the platform gate: format-check, lint and test for both widths, tools-test, glue-test
+#   make -C platform tsan          the unit tests under ThreadSanitizer (64-bit, build/64-tsan)
+#   make -C platform gate          the platform gate: format-check, lint and test for both widths, tsan, tools-test, glue-test
 #   make -C platform clean         remove build/
 #
 # Layout: every platform/*.c is a module and goes into libplatform.a, so a new
@@ -55,8 +56,23 @@ endif
 # link). It applies to `lib` only: the unit tests always run sanitized
 # (docs/C-RULES.md), so NOSAN=1 with any other goal is an error. Its objects
 # live in their own directory so the two builds never mix.
+# TSAN=1 builds and runs the unit tests under ThreadSanitizer instead of
+# AddressSanitizer and UndefinedBehaviorSanitizer (the two cannot combine),
+# 64-bit only, in build/64-tsan: the platform is single-threaded except for
+# the test time limit's watchdog thread (host_thread.h), which every test
+# binary starts, and this proves that thread touches nothing but its flag
+# (docs/C-RULES.md, "Concurrency"). `make -C platform tsan` is the shortcut.
+TSAN ?= 0
+ifeq ($(TSAN),1)
+ifneq ($(BITS),64)
+$(error TSAN=1 is for BITS=64 only)
+endif
+endif
+
 NOSAN ?= 0
-ifeq ($(NOSAN),1)
+ifeq ($(TSAN),1)
+BUILD_DIR := build/64-tsan
+else ifeq ($(NOSAN),1)
 ifneq ($(filter-out lib clean,$(or $(MAKECMDGOALS),all)),)
 $(error NOSAN=1 is for the lib goal only; the unit tests always run under the sanitizers)
 endif
@@ -87,6 +103,9 @@ OPTIMISATION := -O1 -g
 # unconditionally (docs/C-RULES.md; "override" ignores command-line attempts
 # to change it); any report aborts the binary.
 override SANITIZERS := -fsanitize=address,undefined -fno-sanitize-recover=all -fno-omit-frame-pointer
+ifeq ($(TSAN),1)
+override SANITIZERS := -fsanitize=thread -fno-omit-frame-pointer
+endif
 ifeq ($(NOSAN),1)
 override SANITIZERS :=
 endif
@@ -103,7 +122,7 @@ endif
 # because expansion's include/gba/macro.h includes "platform/dma_hooks.h"
 # under PLATFORM_NATIVE, as Makefile.native compiles it; only quote includes
 # search it, and it is not a system directory, so dma_hooks.h keeps our warnings.
-INCLUDES := -I. -iquote .. -idirafter ../include
+INCLUDES := -I. -Itest -iquote .. -idirafter ../include
 
 # SDL2, for the modules that talk to the host (input, video, audio) and their
 # tests; harmless for the others. The i386 and amd64 dev packages share flags.
@@ -136,17 +155,38 @@ LDFLAGS_ALL := -m$(BITS) $(SANITIZERS) $(GBA_LDFLAGS)
 # The sanitizer options every test runs under, set here so the environment
 # cannot weaken them: leaks detected, no suppressions file, UBSan backtraces.
 override SANITIZER_ENV := ASAN_OPTIONS=detect_leaks=1 LSAN_OPTIONS= UBSAN_OPTIONS=print_stacktrace=1
+ifeq ($(TSAN),1)
+override SANITIZER_ENV := TSAN_OPTIONS=halt_on_error=1:exitcode=66
+endif
+# The one test binary that leaves a signal handler by siglongjmp, on purpose
+# (test_arm_division_posix): ThreadSanitizer keeps believing the thread is in
+# the handler and calls every later free() signal-unsafe. It runs with that
+# report off (report_signal_unsafe=0); races are still reported, and every
+# other binary keeps the report.
+SIGNAL_JUMP_TESTS := test_arm_division_posix
+SIGNAL_JUMP_ENV := $(if $(filter 1,$(TSAN)),TSAN_OPTIONS=halt_on_error=1:exitcode=66:report_signal_unsafe=0)
 
 PLATFORM_SRCS := $(filter-out host_%.c,$(wildcard *.c)) $(HOST_SRCS)
 MODULE_SRCS := $(PLATFORM_SRCS) $(wildcard m4a/m4a_*.c)
 MODULE_OBJS := $(MODULE_SRCS:%.c=$(OBJ_DIR)/%.o)
 HOST_OBJS   := $(HOST_SRCS:%.c=$(OBJ_DIR)/%.o)
-TEST_SRCS   := $(wildcard test/test_*.c)
-TEST_NAMES  := $(TEST_SRCS:test/%.c=%)
+# The tests every target runs (test/test_*.c) and the tests only this OS can
+# run (test/<dir>/test_*.c for each of host.mk's HOST_TEST_DIRS), whose binaries
+# carry the directory's name as a suffix (a port adds its directory and its
+# support, see README.md).
+TEST_SRCS   := $(wildcard test/test_*.c) $(foreach dir,$(HOST_TEST_DIRS),$(wildcard test/$(dir)/test_*.c))
+TEST_NAMES  := $(basename $(notdir $(TEST_SRCS)))
+# test/support_<family>.c: what the tests share of the OS (test/test_support.h).
+TEST_SUPPORT_OBJ := $(OBJ_DIR)/test/$(HOST_TEST_SUPPORT_DIR)/support.o
+# test_crt0 reads where the linker put the game's objects, which ThreadSanitizer's
+# instrumentation changes (crt0_init finds no game object): it is not run under it.
+ifeq ($(TSAN),1)
+TEST_NAMES := $(filter-out test_crt0,$(TEST_NAMES))
+endif
 TEST_BINS   := $(TEST_NAMES:%=$(BUILD_DIR)/%)
 LIB         := $(BUILD_DIR)/libplatform.a
 
-.PHONY: all lib test clean format format-check lint lint-tidy lint-cppcheck gate
+.PHONY: tsan all lib test clean format format-check lint lint-tidy lint-cppcheck gate
 all: lib test
 
 lib: $(LIB)
@@ -217,14 +257,16 @@ $(GAME_FLAG_OBJS): Makefile game_flags.mk
 # write_symbol_map), as the game's does: test_symbols reads its own.
 SYMBOL_MAP_TESTS := test_symbols
 
+# A test's source: test/<name>.c or test/<family>/<name>.c.
+test_source = $(filter %/$(1).c,$(TEST_SRCS))
 # The files a test names on its "// deps:" line.
-test_deps = $(shell sed -n -E 's@^//[[:space:]]*\#?[[:space:]]*deps:@@p' test/$(1).c)
+test_deps = $(shell sed -n -E 's@^//[[:space:]]*\#?[[:space:]]*deps:@@p' $(call test_source,$(1)))
 # The module under test, if the test is named after one, plus its deps.
 test_inputs = $(wildcard $(1:test_%=%).c) $(call test_deps,$(1))
 
 define TEST_LINK_RULE
-$(foreach dep,$(call test_deps,$(1)),$(if $(wildcard $(dep)),,$(error test/$(1).c lists '$(dep)' on its deps line, but platform/$(dep) does not exist)))
-$(BUILD_DIR)/$(1): $(OBJ_DIR)/test/$(1).o $(patsubst %.c,$(OBJ_DIR)/%.o,$(call test_inputs,$(1))) $(HOST_OBJS) $(REGIONS_LD) $(GAME_LD)
+$(foreach dep,$(call test_deps,$(1)),$(if $(wildcard $(dep)),,$(error $(call test_source,$(1)) lists '$(dep)' on its deps line, but platform/$(dep) does not exist)))
+$(BUILD_DIR)/$(1): $(patsubst %.c,$(OBJ_DIR)/%.o,$(call test_source,$(1))) $(patsubst %.c,$(OBJ_DIR)/%.o,$(call test_inputs,$(1))) $(HOST_OBJS) $(TEST_SUPPORT_OBJ) $(REGIONS_LD) $(GAME_LD)
 	$$(CC) $$(LDFLAGS_ALL) -o $$@ $$(filter %.o,$$^) $$(SDL_LIBS)
 	$$(if $$(filter $$(SYMBOL_MAP_TESTS),$(1)),$$(call write_symbol_map,$$@,$$@.symbols) || { rm -f $$@; exit 1; })
 endef
@@ -238,7 +280,8 @@ test: $(TEST_BINS)
 	@status=0; \
 	for bin in $(TEST_BINS); do \
 		echo "== $$bin"; \
-		$(SANITIZER_ENV) ./$$bin > $$bin.log 2>&1; code=$$?; \
+		extra=; case $$bin in $(addprefix */,$(SIGNAL_JUMP_TESTS))) extra='$(SIGNAL_JUMP_ENV)';; esac; \
+		env $(SANITIZER_ENV) $$extra ./$$bin > $$bin.log 2>&1; code=$$?; \
 		cat $$bin.log; \
 		if [ $$code -ne 0 ]; then \
 			echo "FAILED: $$bin exited with status $$code"; status=1; \
@@ -264,7 +307,7 @@ FORMAT_FILES := $(shell find . -path ./build -prune -o \( -name '*.c' -o -name '
 # it is linted when W5 makes the real file and a cross lint (clang-tidy with the
 # MinGW headers) possible. clang-format still covers it (FORMAT_FILES).
 LINT_SRCS    := $(PLATFORM_SRCS) $(wildcard m4a/*.c) $(wildcard m4a/difftest/*.c) $(wildcard arm_division_libgcc/*.c) \
-                $(wildcard test/*.c)
+                $(wildcard test/*.c) $(wildcard test/*/*.c)
 
 # A missing tool must fail the target, not pass it silently.
 require_tool = @command -v $(1) >/dev/null 2>&1 || { echo "$(1) is not installed ($(2))"; exit 1; }
@@ -350,13 +393,17 @@ glue-test:
 # Not in it, because they need qemu-arm and the ARM toolchain: the records
 # against the GBA's own code, run by hand (docs/UPGRADING.md):
 # `make -C platform/m4a/difftest run` and `make -C platform/arm_division_libgcc run`.
+tsan:
+	$(MAKE) test BITS=64 TSAN=1
+
 gate:
 	$(MAKE) format-check
 	$(MAKE) lint BITS=32
 	$(MAKE) lint BITS=64
 	$(MAKE) test BITS=32
 	$(MAKE) test BITS=64
+	$(MAKE) tsan
 	$(MAKE) tools-test
 	$(MAKE) glue-test
 
--include $(wildcard $(OBJ_DIR)/*.d $(OBJ_DIR)/test/*.d $(OBJ_DIR)/m4a/*.d)
+-include $(wildcard $(OBJ_DIR)/*.d $(OBJ_DIR)/test/*.d $(OBJ_DIR)/test/*/*.d $(OBJ_DIR)/m4a/*.d)

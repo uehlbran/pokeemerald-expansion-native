@@ -11,25 +11,19 @@
  * Backup Flash ROM"). A bare 131072-byte image, what GBA emulators write, is
  * a legacy file.
  *
- * Each test works in a fresh directory under $TMPDIR (or /tmp) that it
+ * Each test works in a fresh directory under the temporary directory that it
  * creates and removes. It gathers what it checks into locals, cleans up, and
  * only then asserts, so a failing test leaves no files behind.
  */
 #ifndef SAVE_FILE_FIXTURE_H
 #define SAVE_FILE_FIXTURE_H
 
-#include <dirent.h>
 #include <errno.h>
-#include <fcntl.h>
 #include <limits.h>
-#include <signal.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/resource.h>
-#include <sys/stat.h>
-#include <unistd.h>
 
 #include <gba/types.h>
 #include <gba/flash_internal.h>
@@ -37,6 +31,7 @@
 #include "flash.h"
 #include "ptest.h"
 #include "save_file.h"
+#include "test_support.h"
 
 #define KIB 1024u
 #define SECTOR_BYTES (4 * KIB)
@@ -81,44 +76,32 @@ static inline bool format_path(char *out, const char *first, const char *second)
 
 static inline bool scratch_create(struct scratch *scratch)
 {
-    const char *base = getenv("TMPDIR");
-    if (base == NULL || base[0] == '\0')
-        base = "/tmp";
-    if (!format_path(scratch->dir, base, "/save_file_test.XXXXXX"))
-        return false;
-    if (mkdtemp(scratch->dir) == NULL)
+    if (!tsup_make_temp_directory(scratch->dir, sizeof scratch->dir, "save_file_test"))
         return false;
     if (format_path(scratch->path, scratch->dir, "/emerald.sav")
         && format_path(scratch->tmp, scratch->path, TMP_SUFFIX))
         return true;
-    (void)rmdir(scratch->dir); /* best-effort: the test fails anyway */
+    (void)tsup_remove_directory(scratch->dir); /* best-effort: the test fails anyway */
     return false;
-}
-
-static inline bool remove_if_present(const char *path)
-{
-    return remove(path) == 0 || errno == ENOENT;
 }
 
 /* Removes the save, the temporary file and the directory; true if all went. */
 static inline bool scratch_remove(const struct scratch *scratch)
 {
-    const bool save_gone = remove_if_present(scratch->path);
-    const bool tmp_gone = remove_if_present(scratch->tmp);
-    return save_gone && tmp_gone && rmdir(scratch->dir) == 0;
+    const bool save_gone = tsup_remove_file(scratch->path);
+    const bool tmp_gone = tsup_remove_file(scratch->tmp);
+    return save_gone && tmp_gone && tsup_remove_directory(scratch->dir);
 }
 
 static inline bool exists(const char *path)
 {
-    struct stat info;
-    return stat(path, &info) == 0;
+    return tsup_exists(path);
 }
 
 /* The file's size, or -1 if it cannot be stat'ed. */
 static inline intmax_t file_size(const char *path)
 {
-    struct stat info;
-    return stat(path, &info) == 0 ? (intmax_t)info.st_size : -1;
+    return tsup_file_size(path);
 }
 
 static inline bool write_file(const char *path, const uint8_t *bytes, size_t count)
@@ -166,14 +149,7 @@ static inline bool image_is_expected(void)
 
 static inline bool directory_is_empty(const char *path)
 {
-    DIR *const dir = opendir(path);
-    if (dir == NULL)
-        return false;
-    size_t entries = 0;
-    for (const struct dirent *entry = readdir(dir); entry != NULL; entry = readdir(dir))
-        if (strcmp(entry->d_name, ".") != 0 && strcmp(entry->d_name, "..") != 0)
-            entries++;
-    return closedir(dir) == 0 && entries == 0;
+    return tsup_directory_is_empty(path);
 }
 
 /* Puts expected_image, filled from seed, into the chip as the game would

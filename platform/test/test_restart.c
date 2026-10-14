@@ -1,33 +1,12 @@
 /*
  * test_restart.c: the arguments of a restarted process and the exec itself
- * (restart.c). The exec is tested by running this test binary again: its
- * constructor notices RESTART_TEST_CHILD_FILE in the environment, writes the
- * arguments it was started with to that file and exits before any test runs.
+ * (restart.c). The exec itself, which forks a child, is in
+ * posix/test_restart_posix.c.
  */
 #include "ptest.h"
 #include "restart.h"
 
-#include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
-#include <sys/wait.h>
-#include <unistd.h>
-
-#define CHILD_FILE_VARIABLE "RESTART_TEST_CHILD_FILE"
-
-__attribute__((constructor)) static void act_as_the_restarted_process(int argc, char **argv)
-{
-    const char *path = getenv(CHILD_FILE_VARIABLE);
-    if (path == NULL)
-        return;
-    FILE *file = fopen(path, "w");
-    if (file == NULL)
-        _exit(2);
-    for (int i = 0; i < argc; i++)
-        (void)fprintf(file, "%s\n", argv[i]);
-    (void)fclose(file);
-    _exit(0);
-}
 
 static char *const plain[] = {"game", "--headless", "--save", "a.sav"};
 
@@ -100,35 +79,6 @@ PTEST(a_large_epoch_and_line_fit_their_buffers)
     PT_ASSERT_EQ_INT(restart_build_args(3, argv, UINT32_MAX, INT64_MIN, &args), 0);
     PT_ASSERT_EQ_STR(args.argv[2], "-9223372036854775808");
     PT_ASSERT_EQ_STR(args.argv[4], "4294967295");
-}
-
-PTEST(exec_runs_this_executable_again_with_the_arguments)
-{
-    char path[] = "/tmp/test_restart_XXXXXX";
-    int fd = mkstemp(path);
-    PT_ASSERT(fd >= 0);
-    close(fd);
-    (void)fflush(NULL);
-    pid_t pid = fork();
-    if (pid == 0) {
-        char *const argv[] = {"child-name", "--one", "two"};
-        struct restart_args args;
-        setenv(CHILD_FILE_VARIABLE, path, 1);
-        if (restart_build_args(3, argv, 9, 0, &args) == 0)
-            (void)restart_exec(&args);
-        _exit(3);
-    }
-    int status = 0;
-    PT_ASSERT(pid > 0 && waitpid(pid, &status, 0) == pid);
-    char content[256] = "";
-    FILE *file = fopen(path, "r");
-    size_t length = file != NULL ? fread(content, 1, sizeof content - 1, file) : 0;
-    if (file != NULL)
-        (void)fclose(file);
-    content[length] = '\0';
-    unlink(path);
-    PT_ASSERT(WIFEXITED(status) && WEXITSTATUS(status) == 0);
-    PT_ASSERT_EQ_STR(content, "child-name\n--one\ntwo\n--resume-at\n9\n");
 }
 
 PTEST_MAIN()

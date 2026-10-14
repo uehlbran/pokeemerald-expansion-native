@@ -5,21 +5,18 @@
  */
 #include "ptest.h"
 #include "replay_include.h"
+#include "test_support.h"
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/stat.h>
-#include <sys/types.h>
-#include <unistd.h>
 
-static char directory[64];
+static char directory[128];
 
 static void make_directory(void)
 {
-    (void)snprintf(directory, sizeof directory, "/tmp/replay_include_test_XXXXXX");
-    if (mkdtemp(directory) == NULL) {
-        perror("mkdtemp");
+    if (!tsup_make_temp_directory(directory, sizeof directory, "replay_include_test")) {
+        perror("tsup_make_temp_directory");
         exit(2);
     }
 }
@@ -42,11 +39,8 @@ static void path_of(const char *name, char *out, size_t size)
 
 static void remove_all(void)
 {
-    char command[256];
-    (void)snprintf(command, sizeof command, "rm -rf '%s'", directory);
-    // NOLINTNEXTLINE(cert-env33-c): the test removes its own temporary directory
-    if (system(command) != 0)
-        perror("rm");
+    if (!tsup_remove_tree(directory))
+        perror("tsup_remove_tree");
 }
 
 static struct replay_source_map map;
@@ -107,7 +101,7 @@ PTEST(includes_nest_and_resolve_next_to_the_including_file)
     char path[256];
     make_directory();
     (void)snprintf(path, sizeof path, "%s/sub", directory);
-    PT_ASSERT_EQ_INT(mkdir(path, 0777), 0);
+    PT_ASSERT(tsup_make_directory(path));
     write_file("sub/inner.replay", "wait 3\n");
     write_file("sub/middle.replay", "include inner.replay\nwait 2\n");
     write_file("main.replay", "include sub/middle.replay\nwait 1\n");
@@ -454,7 +448,7 @@ PTEST(including_a_directory_is_a_read_error)
     char path[256];
     make_directory();
     (void)snprintf(path, sizeof path, "%s/adir", directory);
-    PT_ASSERT_EQ_INT(mkdir(path, 0777), 0);
+    PT_ASSERT(tsup_make_directory(path));
     write_file("main.replay", "include adir\n");
     PT_ASSERT_EQ_INT(expand("main.replay", &text, &expanded, message, sizeof message), -1);
     PT_ASSERT(strstr(message, "adir") != NULL);

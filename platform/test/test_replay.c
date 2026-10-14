@@ -11,9 +11,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <unistd.h>
 
 #include "input.h"
+#include "test_support.h"
 
 static struct replay_script script;
 
@@ -441,20 +441,19 @@ PTEST(restart_stops_the_keys_and_the_run)
 }
 
 /* Output files go to a directory of the test's own. */
-static char out_dir[128];
+static char out_dir[128]; /* the scratch directory must fit; the files in it need room too */
 
 static void make_out_dir(void)
 {
-    (void)snprintf(out_dir, sizeof out_dir, "/tmp/test_replay_XXXXXX");
-    PT_ASSERT(mkdtemp(out_dir) != NULL);
+    PT_ASSERT(tsup_make_temp_directory(out_dir, sizeof out_dir, "test_replay"));
 }
 
 static void remove_out_dir(void)
 {
     char path[REPLAY_PATH_SIZE];
     (void)snprintf(path, sizeof path, "%s/d1.txt", out_dir);
-    (void)unlink(path);
-    (void)rmdir(out_dir);
+    (void)tsup_remove_file(path);
+    (void)tsup_remove_directory(out_dir);
 }
 
 PTEST(dump_writes_every_fact_and_screenshot_names_the_path)
