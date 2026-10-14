@@ -23,12 +23,14 @@ LeakSanitizer and UndefinedBehaviorSanitizer. `make test` runs every test
 binary, prints its output, and fails if any binary exits non-zero, prints
 a sanitizer report, or ends without ptest's `N passed, 0 failed` line (a
 binary that exits early passes no test). The 32-bit build needs the i386 C library and sanitizer
-runtimes (`gcc-multilib`). The tests run on Linux only for now: the region
-layout needs GNU ld and a non-PIE ELF executable (see below), and `HOST_OS`
-(`host.mk`, default `uname -s`) accepts `Linux` only (the host layer,
-below). `make lib TARGET_OS=windows BITS=64` cross-builds the library for
-Windows with MinGW-w64 (`target.mk`; `docs/BUILDING.md`, "Windows (cross-build
-from Linux)"); it is the only goal that accepts `TARGET_OS=windows`.
+runtimes (`gcc-multilib`). The tests run on Linux (the region
+layout needs GNU ld and a non-PIE ELF executable, see below; `HOST_OS`,
+`host.mk`, default `uname -s`, accepts `Linux` only), and cross-build for
+Windows with `TARGET_OS=windows BITS=64` and MinGW-w64 (`target.mk`; the `lib`,
+`test` and `lint` goals accept it, `tsan` and the sanitizers do not). The
+Windows binaries run on Windows through `test_runner/run_windows_tests.sh`
+(`docs/BUILDING.md`, "Windows (cross-build from Linux)"). macOS is not
+attempted.
 
 Every test binary is linked with `gba_regions.ld`, `gba_game.ld` and
 `-no-pie -Wl,-Ttext-segment=0x40000000`, so the GBA memory regions exist in
@@ -89,8 +91,9 @@ handle to one.
 
 ## ptest.h
 
-`platform/test/ptest.h` is a header-only test framework, about two hundred
-lines with no dependency beyond the C library (why in-house: `docs/RESEARCH.md`, "Test framework
+`platform/test/ptest.h` is a header-only test framework whose one dependency
+beyond the C library is `host_thread.h`, the watchdog for the per-test limit
+(why in-house: `docs/RESEARCH.md`, "Test framework
 for the platform layer").
 
 ```c
