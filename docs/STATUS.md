@@ -572,9 +572,23 @@ workflow on main, unpack it, and run `pokeemerald-native.exe` from the
 `build/native64-windows` folder (SDL2.dll is beside it); the checklist
 is at the end of this section once the first run on main is green.
 
-**In flight.** The owner's rulings 3 and 4 (the save lock; src/siirtc.c
-out of the native build), the Windows follow-ups, and the fresh review
-of the Windows runner files.
+**The owner's rulings 2, 3 and 4 are merged** (2026-10-14): a save
+file without this project's header is refused with a message, left
+untouched, never converted, and the game does not start over it (the
+cross-width gate's new headerless stage proves it at both widths); one
+instance per save through an exclusive OS lock on `<save>.lock` (flock;
+LockFileEx on Windows), taken before any module starts and released
+after the last store, with a second instance refused by name, the lock
+surviving every save and released on a kill (tests at each level and a
+busy stage in the cross-width gate; the Windows twins run on the
+runner); src/siirtc.c restored to upstream's text and left out of the
+native build, the SiiRtc API provided by platform/rtc_siirtc.c, the GBA
+ROM's sha1 unchanged. Each branch was reviewed (the lock with a
+32-instance race test) and gated on main (suite 5418).
+
+**In flight.** The Windows follow-ups from the two reviews of the runner
+files (script tests, patchelf's PE cases, the hydra's end-of-output
+rule, the restart bound, stale figures), with their confirmation run.
 
 ## Verified by a gate
 
