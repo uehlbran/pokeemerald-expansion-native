@@ -370,12 +370,12 @@ int host_file_local_time(int64_t seconds, struct tm *out)
 
 struct host_watchdog {
     pthread_t thread;
-    pthread_mutex_t lock; /* guards deadline and stopping, nothing else */
+    pthread_mutex_t lock; /* guards deadline, stopping and waiting, nothing else */
     pthread_cond_t changed;
     struct timespec deadline;
     bool stopping;
     bool waiting;         /* the thread has started and is about to wait: host_watchdog_start returns only then */
-    atomic_bool *expired; /* the caller's flag: the only thing written outside the lock */
+    atomic_bool *expired; /* the caller's flag: the one thing the thread writes that is not its own */
     /* The thread's own failure, which it does not print (host_thread.h):
      * host_watchdog_stop reports it after the join, which orders the write
      * before the read. */
