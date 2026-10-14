@@ -237,9 +237,13 @@ static inline unsigned ptest_default_timeout(void)
     return (unsigned)value;
 }
 
-/* Gives the running test seconds (more than 0) from now to finish. */
+/* Gives the running test seconds (more than 0) from now to finish. A limit
+ * that has already passed stays passed: the next assertion abandons the test
+ * with the limit that fired. */
 static inline void ptest_set_timeout(unsigned seconds)
 {
+    if (ptest_limit_passed())
+        return;
     if (host_watchdog_restart(ptest_watchdog, seconds) == 0)
         ptest_timeout_seconds = seconds;
 }
