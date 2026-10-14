@@ -20,8 +20,9 @@
 # beside it), removed when it ends: Windows keeps the image of an executable
 # it has started, and the image's commit charge, for as long as the file is
 # there, about 1 GiB for this layout's (the image spans 0x01800000 to
-# 0x41xxxxxx), and the system's commit limit holds fewer than ten of them
-# (measured on the runner, docs/BUILDING.md, "Running it on Windows").
+# 0x41xxxxxx); the runner's commit ran out after two dozen of them
+# (docs/DECISIONS.md, "The Windows unit tests run from copies removed after
+# them").
 set -u
 
 TEST_SECONDS=600

@@ -339,6 +339,16 @@ jobs:
         if: always()
         run: tests/smoke/run_cross_os.sh load build/native64-windows/pokeemerald-native.exe out/cross-os/save/work/from out/cross-os/load
 
+      - name: Keep the logs and the outputs so far
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-logs-before-the-suite
+          path: |
+            platform/build/64-windows/test/*.log
+            out/
+          if-no-files-found: ignore
+
       # Expansion's hydra needs fork, poll and stdbuf: MSYS2's, which the
       # image has at C:\msys64, with its gcc (docs/DECISIONS.md, "The suite
       # on Windows runs under MSYS2").
@@ -353,14 +363,29 @@ jobs:
           make -C tools/patchelf
           make -C tools/mgba-rom-test-hydra
 
-      - name: Gate b, the suite through the hydra
+      # The test runner's own tests first, two of which crash on purpose: a
+      # minute that shows the hydra, the restart on exit code 75 and the
+      # protocol work before the whole suite is run.
+      - name: The test runner's own tests through the hydra (its crashes included)
+        id: suite_check
         if: always()
+        timeout-minutes: 5
         shell: C:\msys64\usr\bin\bash.exe -l -e -o pipefail {0}
         env:
           MSYSTEM: MSYS
           CHERE_INVOKING: 1
         run: |
           mkdir -p out
+          MAKEFLAGS=-j"$(nproc)" TESTS=test/test_test_runner.c platform/test_runner/run_windows_suite.sh build/native64-test-windows/pokeemerald-native-test.exe | tee out/suite-windows-runner.log
+
+      - name: Gate b, the suite through the hydra
+        if: always() && steps.suite_check.outcome == 'success'
+        timeout-minutes: 25
+        shell: C:\msys64\usr\bin\bash.exe -l -e -o pipefail {0}
+        env:
+          MSYSTEM: MSYS
+          CHERE_INVOKING: 1
+        run: |
           MAKEFLAGS=-j"$(nproc)" platform/test_runner/run_windows_suite.sh build/native64-test-windows/pokeemerald-native-test.exe | tee out/suite-windows.log
 
       - name: Upload the suite's results and gate h's second stage
@@ -373,8 +398,8 @@ jobs:
             out/cross-os/load/work/again/
           if-no-files-found: ignore
 
-      - name: Keep the logs and the outputs of a failed run
-        if: failure()
+      - name: Keep the logs and the outputs
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: windows-logs

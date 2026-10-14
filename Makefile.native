@@ -569,6 +569,9 @@ ifeq (check,$(MAKECMDGOALS))
   ifneq ($(TEST),1)
     $(error check runs the test runner build; TEST must be 1)
   endif
+  ifeq ($(TARGET_OS),windows)
+    $(error check runs the suite here; the Windows test runner build (native TEST=1 TARGET_OS=windows) runs on Windows: platform/test_runner/run_windows_suite.sh, docs/BUILDING.md)
+  endif
 endif
 
 PATCHELF := $(TOOLS_DIR)/patchelf/patchelf$(EXE)
@@ -946,12 +949,15 @@ $(FLAT_TARGET_DIR)/%.o: $(FLAT_TARGET_DIR)/%.s $(OBJ_DIR)/%.o $(FLAT_SYMBOLS) $(
 #   make -f Makefile.native -j32 native BITS=64 TARGET_OS=windows
 #
 # links build/native64-windows/pokeemerald-native.exe with MinGW-w64
-# (platform/target.mk has the toolchain and the flags). It is made in two
+# (platform/target.mk has the toolchain and the flags); with TEST=1, the test
+# runner build, build/native64-test-windows/pokeemerald-native-test.exe, which
+# runs on Windows (platform/test_runner/run_windows_suite.sh). It is made in two
 # makes, because the data cannot be a prerequisite of the make that needs it:
 #   1. windows-data: the Linux tree's 64-bit data objects and their three
 #      checks, then the COFF listings of them (data-flat) compared with the ELF
 #      objects (check-flat, TARGET=coff-x86_64), by a make for the build
-#      machine's own target (TARGET_OS=$(HOST_OS)) into build/native64/;
+#      machine's own target (TARGET_OS=$(HOST_OS)) into build/native64/
+#      (TEST=1: build/native64-test/);
 #   2. this make, again, with WINDOWS_DATA_CHECKED=1: the C objects, the data
 #      objects (the listings assembled by MinGW's as), the platform library,
 #      and the link. A listing that check-flat rejects stops the first make,

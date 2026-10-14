@@ -234,3 +234,27 @@ the 32-bit layout (R7 of milestone 7: its only producers are GBA emulators and
 native builds from before the header), which `bare/` checks.
 
 43 seconds plain from 32 to 64 bits (measured on 32 cores, 2026-10-09).
+
+## Across operating systems: `run_cross_os.sh`
+
+The Linux and the Windows 64-bit builds lay the save out alike (MinGW's
+bit-fields are GCC's on Linux with `-mno-ms-bitfields`, `platform/target.mk`),
+so a save moves between them with nothing converted. `run_cross_os.sh` checks
+it in three stages, each on the directories the stage before it wrote, since
+the builds run on two machines; `.github/workflows/windows.yml` carries the
+directories between its jobs. The steps are `run_cross_width.sh`'s
+(`save_steps.sh` holds them for both scripts):
+
+```
+tests/smoke/run_cross_os.sh save build/native64/pokeemerald-native out/save                                       # Linux
+tests/smoke/run_cross_os.sh load build/native64-windows/pokeemerald-native.exe out/save/work/from out/load         # Windows, Git Bash
+tests/smoke/run_cross_os.sh back build/native64/pokeemerald-native out/save/work/from out/load/work/again out/back # Linux
+```
+
+| Stage, step | Build, script | Checked |
+|---|---|---|
+| `save`, `from/` | Linux, as `run_cross_width.sh`'s `from/` | the same, and the layout tag {64,1} |
+| `load`, `to/` | Windows, as `to/` | the same, except that nothing is said about the save on stderr (it is not another build's, so it is not converted) |
+| `load`, `other/` | Windows, as `other/` | the same |
+| `load`, `again/` | Windows, `cross_width_save.replay` | as `again/`, with the layout tag still {64,1} and nothing said about the save |
+| `back`, `back/` | Linux, `cross_os_back.replay`: Continue on the save `again/` wrote | the replay's `expect`s (two saves); `player_name`, `map`, `party0_species`, `party_count` and `save_counter` of `30_continued_back` equal to Windows' `28_saved_again`; the scene of `27_continued`; nothing said about the save; the file unchanged |

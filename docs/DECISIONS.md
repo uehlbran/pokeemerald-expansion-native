@@ -1181,3 +1181,74 @@ and no `longjmp` across it (game_hooks leaves the stack first, as on Linux).
 What cannot be checked here: that the dispatch and the switch behave as
 reasoned; `test_host_stack`, `test_game_hooks` and the suite's battle tests
 on the Windows runner are the evidence.
+
+## 2026-10-14: The suite on Windows runs under MSYS2
+
+Gate (b) on Windows is expansion's own suite, through expansion's own hydra
+(`tools/mgba-rom-test-hydra`), on the Windows test runner build, with the
+per-test results equal to the Linux 64-bit build's of the same commit. The
+inventory offered three routes (`research/m8-inventory.md` 5.2, W8): (i) the
+hydra built under MSYS2 on the Windows runner, (ii) the Linux hydra driving
+the Windows executable through Wine on a Linux runner, (iii) a Windows-native
+driver of our own. (i) is taken.
+
+Why (i). The hydra is a small POSIX program: fork, pipe, poll, waitpid,
+regex, and `stdbuf` for its runners. The `windows-latest` image has MSYS2 at
+`C:\msys64`, whose runtime provides all of them; measured on the runner
+(run 38601458286): `pacman -S --noconfirm --needed gcc make` takes 24 s, MSYS2's
+coreutils has `stdbuf` (with its `libstdbuf.dll`), and both the hydra and
+patchelf build with MSYS2's gcc once the hydra includes `<sys/prctl.h>` on
+Linux only (an `UPSTREAM_MODIFICATIONS.md` row). Upstream's "MSYS2 builds do
+not work" is about building the game, which this route does not do: the game
+is cross-built on Linux. (ii) would run the suite under Wine, which is not
+Windows: the loader that maps the image, the exception dispatch that walks
+the battle runner's stack switch to the crash filter, and msvcrt are exactly
+what the Windows gate is for (the Windows host layer's DECISIONS entries list
+them as unverifiable anywhere but Windows), and it adds a Wine install to a
+Linux job. (iii) would re-implement the hydra's protocol parsing and summary,
+a second copy of upstream's logic to keep in step with it, for no gain once
+(i) works.
+
+What the route needs from the platform side: patchelf patches a PE file
+through its COFF symbol table (a `tools/` row); `native-rom-test`, which the
+hydra starts in mgba-rom-test's place, copies the hydra's copy to a name ending
+in `.exe` (Windows runs nothing else) and is the supervising parent the crash
+reboot needs on Windows ("A crash on Windows ends the process for its parent
+to start again"): on exit code 75 it starts the runner again, on the same
+standard output, with the state from the last `crash_reboot:` line of its
+standard error, so the hydra sees one run go on past a crash as it does on
+Linux; `platform/test_runner/run_windows_suite.sh` does what `make check` does
+(the headless copy patched, the hydra started from the repository's root,
+the executable's directory on `PATH` so that the hydra's copies in the
+temporary directory find `SDL2.dll`). The comparison,
+`platform/test_runner/compare_suite_results.sh`, drops the runner numbers and
+Windows' `\r` and requires the two sorted lists of "test name: result" lines
+to be equal. The Windows workflow runs the Linux suite of the same commit in a
+parallel job for it, rather than comparing with a committed list that would
+have to follow every change to the tests.
+
+## 2026-10-14: The Windows unit tests run from copies removed after them
+
+Each executable of the Windows layout costs about 1 GiB of the system's
+commit charge from its first start until its file is deleted, whether or not
+it is running. Measured on the runner (run 38601458286, a 2-vCPU image with
+8 GiB of memory and a 10,107 MiB commit limit): starting a test executable
+and letting it exit raised the committed bytes by 1,000 MiB, starting it
+again by nothing, starting a copy by another 1,000 MiB, and deleting the copy
+gave the 1,000 MiB back. The image spans 0x01800000 to 0x41xxxxxx, and the
+system charges the image's pages, the 1 GiB of read-only gaps included, to the
+image's section object, which it keeps cached while the file exists; probe W1
+measured the process's own commit charge (3 MiB), which does not include it.
+With 69 test executables the runner's commit ran out after the 24th had
+started (the limit grows with the system-managed page file, but not without
+end), and every later start failed ("Resource temporarily unavailable", run
+38598389601).
+`run_windows_tests.sh` therefore runs each test from a copy under its own
+name in a directory of its own and deletes it when the test ends; the suite's
+runners already run from copies the hydra and `native-rom-test` delete.
+
+What it means beyond the tests: the game too costs 1 GiB of commit while it is
+installed and has been run once, on top of what it uses. That is a property of
+the memory model on Windows (one image holding the GBA regions at their
+addresses, the code at 0x40001000; DECISIONS.md, "The ports share a thin host
+layer"), recorded here for the owner; nothing in this task changes the model.
