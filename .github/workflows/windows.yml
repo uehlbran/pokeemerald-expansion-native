@@ -22,10 +22,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # The Windows build starts from the Linux 64-bit data, whose layout
+      # checks compile a probe at both widths, so the 32-bit headers are needed
+      # here too.
       - name: Prerequisites (docs/BUILDING.md, the native and the Windows lines)
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends build-essential pkg-config git python3 libpng-dev libsdl2-dev clang gcc-mingw-w64-x86-64 binutils-mingw-w64-x86-64 mingw-w64-tools
+          sudo apt-get install -y --no-install-recommends build-essential gcc-multilib libc6-dev-i386 pkg-config git python3 libpng-dev libsdl2-dev clang gcc-mingw-w64-x86-64 binutils-mingw-w64-x86-64 mingw-w64-tools
 
       # The same tools cache as native.yml, so the Linux data build does not
       # rebuild them.
