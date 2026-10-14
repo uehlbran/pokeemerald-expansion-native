@@ -81,15 +81,14 @@
 #
 #   gcc -E <CPPFLAGS> src.c | preproc -i -g build/assets src.c charmap.txt
 #     | sed -f platform/build_glue/c_filter.sed
-#     > obj.i/<stdin>
-#   gcc -c -x c <CFLAGS> -o obj obj.i/<stdin>
+#     > obj.i
+#   gcc -c -x c <CFLAGS> -o obj obj.i
 #
 # Expansion pipes into cc1 without -fpreprocessed, so cc1 preprocesses the
 # already-preprocessed text a second time; `gcc -x c` does the same and
 # keeps the gcc driver (and so -m32/-m64). The text goes through a file
-# because ccache cannot cache a compile from standard input; the file is
-# named <stdin> so that the object's file symbol, and with it the executable,
-# stays what the pipe gave (see COMPILE_C). `-x cpp-output` was tried and
+# because ccache cannot cache a compile from standard input (see COMPILE_C).
+# `-x cpp-output` was tried and
 # rejected: it changes which file gcc takes as the main file, and with it
 # the diagnostics (204 -Wunused-const-variable warnings expansion's build
 # does not show).
@@ -692,19 +691,16 @@ $(C_BUILDDIR)/pokemon.o: $(C_SUBDIR)/pokemon.c $(DATA_SRC_SUBDIR)/pokemon/teacha
 
 # The recipes for src/ and test/ are the same; recursive variables, so that
 # $< and $@ are those of the rule that uses them. The filtered text goes to
-# a file and the compiler reads that file, because ccache cannot cache a
-# compile whose source is standard input. The file is named <stdin>, in a
-# directory of its own beside the object (obj.i/<stdin>): the compiler puts
-# the name of its input file into the object as the file symbol, and with
-# this name the objects, and so the executable, stay byte-identical to those
-# compiled from the pipe. The directory exists only for the compile: it is
+# a file beside the object (obj.i) and the compiler reads that file, because
+# ccache cannot cache a compile whose source is standard input. The compiler
+# puts the name of its input file into the object as the file symbol, so the
+# symbol is obj.i where the pipe gave <stdin>; nothing else in the object or
+# the executable changes. The file exists only for the compile: it is
 # removed whether the compile succeeds or not, and `&&` keeps a failed
 # preprocessing step from reaching the compiler.
-C_INPUT_DIR = $(@:.o=.i)
-C_INPUT = $(C_INPUT_DIR)/'<stdin>'
-COMPILE_C = mkdir -p $(C_INPUT_DIR) \
-            && $(CPP) $(CPPFLAGS) $< | $(PREPROC) -i -g $(ASSETS_DIR_NAME) $< charmap.txt | $(C_FILTER) > $(C_INPUT) \
-            && $(HOST_CC) $(CFLAGS) -c -x c -o $@ $(C_INPUT); status=$$?; rm -rf $(C_INPUT_DIR); exit $$status
+C_INPUT = $(@:.o=.i)
+COMPILE_C = $(CPP) $(CPPFLAGS) $< | $(PREPROC) -i -g $(ASSETS_DIR_NAME) $< charmap.txt | $(C_FILTER) > $(C_INPUT) \
+            && $(HOST_CC) $(CFLAGS) -c -x c -o $@ $(C_INPUT); status=$$?; rm -f $(C_INPUT); exit $$status
 SCAN_C = $(SCANINC) -M $@ -g $(ASSETS_DIR_NAME) $(INCLUDE_SCANINC_ARGS) $<
 
 $(C_BUILDDIR)/%.o: $(C_SUBDIR)/%.c $(C_FILTER_SCRIPT)

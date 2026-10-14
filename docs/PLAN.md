@@ -186,8 +186,8 @@ Order of work:
    build, the platform gate and both 64-bit replays, 591 s warm (31 min
    cold with the suite, which moved to the nightly tier); nightly, six
    parallel jobs, 41 minutes wall clock. Follow-up, done: COMPILE_C writes
-   the preprocessed text to a file (`obj.i/<stdin>`) that gcc compiles, so
-   ccache can cache the game's C (executables byte-identical); the
+   the preprocessed text to a file (`obj.i`) that gcc compiles, so
+   ccache can cache the game's C (only the file symbols differ); the
    converted assets are cached too (`.github/actions/native-assets`).
 2. An inventory of the Windows (MinGW) and macOS ports, no code (an Opus
    worker, to the session scratchpad and summarised here): what in
