@@ -153,7 +153,7 @@ int rtc_offset_store_save(const char *path, int64_t offset)
     /* The directory holding path, so the replacement itself is durable. */
     if (host_file_sync_directory_of(path) != 0) {
         rtc_report_call_failure("fsync (offset file directory)");
-        return -1;
+        return RTC_OFFSET_STORE_REPLACED_UNSYNCED;
     }
     return 0;
 }

@@ -131,7 +131,9 @@ static int chip_seconds_now(int64_t *out)
     return 0;
 }
 
-/* Makes the chip read chip_seconds now, persisting before committing. */
+/* Makes the chip read chip_seconds now, persisting before committing. A file
+ * that was replaced but not yet synced is the offset on disk, so the chip
+ * takes it too: running on the old one would disagree with the next start. */
 static int set_chip_seconds_at(int64_t chip_seconds, int64_t utc)
 {
     int64_t new_offset;
@@ -141,7 +143,7 @@ static int set_chip_seconds_at(int64_t chip_seconds, int64_t utc)
         (void)fprintf(stderr, "rtc: offset %lld out of range\n", (long long)new_offset);
         return -1;
     }
-    if (chip.offset_path[0] != '\0' && rtc_offset_store_save(chip.offset_path, new_offset) != 0)
+    if (chip.offset_path[0] != '\0' && rtc_offset_store_save(chip.offset_path, new_offset) < 0)
         return -1;
     chip.offset = new_offset;
     return 0;
@@ -241,7 +243,7 @@ static int init_with_seed(rtc_time_source source, const char *offset_file_path, 
     if (!found) {
         /* First run: show the host's wall clock (or, for rtc_init_utc, UTC), then run on fixed UTC + offset. */
         if (host_utc_seconds(&utc) != 0 || (seed_from_host_zone && local_minus_utc(utc, &offset) != 0)
-            || (chip.offset_path[0] != '\0' && rtc_offset_store_save(chip.offset_path, offset) != 0)) {
+            || (chip.offset_path[0] != '\0' && rtc_offset_store_save(chip.offset_path, offset) < 0)) {
             rtc_shutdown();
             return -1;
         }

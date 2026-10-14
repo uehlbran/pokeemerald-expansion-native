@@ -72,7 +72,10 @@ int rtc_set_status(uint8_t status);
 int rtc_get_datetime(struct rtc_datetime *out);
 /* Rejects invalid BCD and out-of-range fields without changing anything.
  * day_of_week_bcd is validated (00h..06h) but the stored value is computed
- * from the date. Persists the offset; on failure nothing changes. */
+ * from the date. Persists the offset; on failure the offset on disk and in
+ * the chip are unchanged. (A failed directory sync after the file was
+ * replaced is not a failure here: the new offset is on disk and in the chip,
+ * and the failure is reported on stderr.) */
 int rtc_set_datetime(const struct rtc_datetime *in);
 
 /* hour, minute, second only; the other fields are left untouched in out. */
