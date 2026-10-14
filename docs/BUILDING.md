@@ -349,17 +349,17 @@ sanitizers), and so is `BITS=32`.
 
 ### Running it on Windows
 
-Nothing built this way runs on the build machine. What runs it is the
-Windows workflow, `.github/workflows/windows.yml` (by hand,
+Nothing built this way runs on the build machine. What runs it is the Windows
+workflow, `.github/workflows/windows.yml` (nightly at 05:17 UTC, and by hand,
 `gh workflow run windows.yml`): three Linux jobs side by side cross-build the
 game and the unit tests (and play the Linux half of the cross-OS save gate),
 cross-build the test runner, and run the suite on the Linux 64-bit build; a
 Windows job (`windows-latest`, Git Bash and the image's MSYS2) runs everything
 below on what they built; a last Linux job compares. The same by hand, on a
-64-bit Windows 10 1903 or later with Git for Windows and, for the suite,
-MSYS2 at `C:\msys64`, from a checkout made with `core.autocrlf false` (the
-scripts and the expectations are compared byte for byte) holding the
-build's outputs where the build left them:
+64-bit Windows 10 1903 or later with Git for Windows and, for the suite, MSYS2
+at `C:\msys64`, from a checkout made with `core.autocrlf false` (the scripts
+and the expectations are compared byte for byte) holding the build's outputs
+where the build left them:
 
 ```
 # Git Bash
