@@ -114,6 +114,8 @@ static struct {
     host_fault_crash_handler handler;
 } crash;
 
+/* The installing thread's alternate stack (sigaltstack is per thread): one
+ * buffer, so no second thread could be given one without a buffer of its own. */
 static _Alignas(16) unsigned char alternate_stack[HOST_FAULT_ALTERNATE_STACK_SIZE];
 
 /* Lets the signal do what it does without the handler: kill the process.
