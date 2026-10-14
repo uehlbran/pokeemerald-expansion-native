@@ -58,9 +58,13 @@ make -C platform test BITS=64
 The platform gate, which a change to anything under `platform/` passes before
 it merges, runs the style check, the static analysis and those tests at both
 widths, the 64-bit tests again under ThreadSanitizer (`tsan`), then `tools-test`
-(`platform/test_runner/test_patchelf.sh`: tools/patchelf patches ELF32 and ELF64
-executables at the right bytes and refuses a bad ELF class) and `glue-test` (the
-self-test of every script in `platform/build_glue/`):
+(in `platform/test_runner/`: `test_patchelf.sh`, tools/patchelf patches ELF32
+and ELF64 executables at the right bytes and refuses a bad ELF class;
+`test_hydra_end_of_output.sh`, expansion's hydra reports every result of a
+runner that ends with its pipe full; and the Windows runner's scripts driven
+with fake executables, `test_run_windows_tests.sh`,
+`test_native_rom_test_windows.sh` and `test_compare_suite_results.sh`) and
+`glue-test` (the self-test of every script in `platform/build_glue/`):
 
 ```
 make -C platform gate              # format-check, lint and test at BITS=32 and 64, tsan, tools-test, glue-test

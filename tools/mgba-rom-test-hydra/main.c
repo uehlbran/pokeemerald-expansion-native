@@ -792,11 +792,11 @@ int main(int argc, char *argv[])
         }
         for (int i = 0; i < nrunners; i++)
         {
-            // A read of nothing is the end of the runner's output: Linux's
-            // poll reports it as POLLHUP too, MSYS2's reports a pipe whose
-            // writer has gone as readable only.
+            // A read of nothing is the runner's end; POLLHUP alone is not,
+            // the pipe may still hold its last lines (and MSYS2's poll never
+            // reports it).
             bool eof = false;
-            if (pollfds[i].revents & POLLIN)
+            if (pollfds[i].revents & (POLLIN | POLLHUP))
             {
                 int n;
                 if ((n = read(pollfds[i].fd, runners[i].input_buffer + runners[i].input_buffer_size, runners[i].input_buffer_capacity - runners[i].input_buffer_size)) == -1)
@@ -809,7 +809,7 @@ int main(int argc, char *argv[])
                 handle_read(i, &runners[i]);
             }
 
-            if (eof || (pollfds[i].revents & (POLLERR | POLLHUP)))
+            if (eof || (pollfds[i].revents & POLLERR))
             {
                 if (close(pollfds[i].fd) == -1)
                 {
