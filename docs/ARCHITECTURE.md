@@ -317,8 +317,9 @@ driver entry in expansion's own table, and `save_file` persists the region
 as `pokeemerald.sav`: a 28-byte header (`PENSAVE\0`, format version, the
 writing build's pointer width and layout id, image size, CRC-32) and the
 image, written to a temporary file, synced and renamed. A file written by a
-build with another layout is refused, not overwritten. A bare 128 KiB image
-loads as legacy. The frame loop stores the file whenever the flash was
+build with another layout is refused, not overwritten, and so is a file
+without the header (an emulator's or a cartridge's save): it is never loaded,
+converted or written over. The frame loop stores the file whenever the flash was
 written. The field table is in `platform/README.md`, "The flash chip and the
 save file"; the decisions are "Native structs follow the host ABI" and "The
 native save file is versioned" in `DECISIONS.md`.

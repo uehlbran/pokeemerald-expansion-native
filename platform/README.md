@@ -244,11 +244,14 @@ A file with the magic loads only if its version is 1, its sizes are exact,
 its pointer width is 32 or 64 and its CRC matches; with this build's layout
 tag the load returns `SAVE_FILE_OK`, with another (say a 32-bit save in the
 64-bit build) `SAVE_FILE_FOREIGN_LAYOUT`, and `save_file_loaded_layout`
-reports the tag so main can refuse or convert. A bare 131072-byte image
-without the magic, what GBA emulators write, loads as `SAVE_FILE_LEGACY`
-(layout unknown) and gets a header on the next store; for an emulator, our
-image is the file's last 131072 bytes. Anything else is `SAVE_FILE_CORRUPT`
-and leaves an erased chip.
+reports the tag so main can refuse or convert. A file
+without the magic, whatever its size (what GBA emulators and cartridge dumps
+write), is `SAVE_FILE_REFUSED`: one message on stderr says it looks like an
+emulator or cartridge save, that importing those is not supported yet and that
+the file is left untouched; the chip stays erased, `save_file_store` writes
+nothing while the refusal stands, and main does not start. Any other file that
+cannot be used is `SAVE_FILE_CORRUPT` and leaves an erased chip. Our image is
+the file's last 131072 bytes.
 
 `save_convert` moves a save between the 32-bit and the 64-bit layout, which
 differ in `SaveBlock1` only: its 64 object event templates and its Enigma
@@ -263,10 +266,8 @@ and writes it back with `CalculateChecksum`'s sums; any other slot, and every
 other sector, is left as it is, so the game's own slot fallback sees what it
 would have seen. The offsets are `save_layout32.h` and `save_layout64.h`, each
 pinned by static assertions in the build of its own width. Main converts a
-`SAVE_FILE_FOREIGN_LAYOUT` file with layout id 1, and, in the 64-bit build, a
-`SAVE_FILE_LEGACY` one, which it takes to have the 32-bit layout (its
-producers are emulators and the native builds from before the header). The
-image is not marked dirty: the file keeps its layout until the game saves.
+`SAVE_FILE_FOREIGN_LAYOUT` file with layout id 1; the converter never runs on
+a file without the header. The image is not marked dirty: the file keeps its layout until the game saves.
 Gate (h), `tests/smoke/run_cross_width.sh`, plays a save across the widths.
 
 The frame loop must call `save_file_store()` whenever `flash_take_dirty()`

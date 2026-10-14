@@ -576,11 +576,6 @@ PTEST(bad_arguments_change_nothing)
     PT_ASSERT_MEM_EQ(image, original, CHIP_BYTES);
 }
 
-PTEST(a_bare_image_is_taken_to_have_the_32_bit_layout)
-{
-    PT_ASSERT_EQ_U32(SAVE_CONVERT_BARE_IMAGE_POINTER_BITS, 32);
-}
-
 /* ---- 64 to 32 ---- */
 
 /* make_image_32 with every object event template's script zero, which a

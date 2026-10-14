@@ -116,46 +116,15 @@ PTEST(missing_file_loads_as_a_new_erased_chip)
     PT_ASSERT(removed);
 }
 
-/* A .sav as an emulator writes it: the chip's bytes in order, no header. It
- * loads as a legacy file of unknown layout, sector s at s * 4096 with banks
- * included, and loading is not a game write. */
-PTEST(an_emulator_save_loads_as_legacy_byte_for_byte)
+/* The first size bytes of file_bytes, as a save file, load with this status:
+ * the chip is left erased (not partly loaded, not left as it was), nothing is
+ * marked dirty, no layout is reported, and the file stays, byte for byte. */
+static void check_load_status(size_t size, int expected_status)
 {
     struct scratch scratch;
     if (!scratch_create(&scratch))
         PT_FAIL("cannot create a scratch directory");
-    flash_init();
-    fill_pattern(expected_image, CHIP_BYTES, 0x04);
-    const bool written = write_file(scratch.path, expected_image, CHIP_BYTES);
-    const int init = save_file_init(scratch.path);
-    const int load = save_file_load();
-    const bool loaded = image_is_expected();
-    const bool dirty = flash_take_dirty();
-    struct save_file_layout layout;
-    const bool has_layout = save_file_loaded_layout(&layout);
-    uint8_t sector_17[SECTOR_BYTES];
-    ReadFlash(17, 0, sector_17, SECTOR_BYTES);
-    const bool sector_17_matches = memcmp(sector_17, expected_image + 17 * SECTOR_BYTES, SECTOR_BYTES) == 0;
-    save_file_shutdown();
-    const bool removed = scratch_remove(&scratch);
-    PT_ASSERT(written);
-    PT_ASSERT_EQ_INT(init, SAVE_FILE_OK);
-    PT_ASSERT_EQ_INT(load, SAVE_FILE_LEGACY);
-    PT_ASSERT(loaded);
-    PT_ASSERT(sector_17_matches);
-    PT_ASSERT(!dirty);
-    PT_ASSERT(!has_layout);
-    PT_ASSERT(removed);
-}
-
-/* The first size bytes of file_bytes, as a save file, are reported as
- * corrupt: the chip is left erased (not partly loaded, not left as it was),
- * nothing is marked dirty, no layout is reported, and the file stays. */
-static void check_rejected_file(size_t size)
-{
-    struct scratch scratch;
-    if (!scratch_create(&scratch))
-        PT_FAIL("cannot create a scratch directory");
+    memcpy(expected_file, file_bytes, size);
     const bool written = write_file(scratch.path, file_bytes, size);
     set_image(0x06);
     const int init = save_file_init(scratch.path);
@@ -165,40 +134,106 @@ static void check_rejected_file(size_t size)
     struct save_file_layout layout;
     const bool has_layout = save_file_loaded_layout(&layout);
     const intmax_t size_after = file_size(scratch.path);
+    const bool unchanged = read_file(scratch.path, size) && memcmp(file_bytes, expected_file, size) == 0;
     save_file_shutdown();
     const bool removed = scratch_remove(&scratch);
     PT_ASSERT(written);
     PT_ASSERT_EQ_INT(init, SAVE_FILE_OK);
-    PT_ASSERT_EQ_INT(load, SAVE_FILE_CORRUPT);
+    PT_ASSERT_EQ_INT(load, expected_status);
     PT_ASSERT(erased);
     PT_ASSERT(!dirty);
     PT_ASSERT(!has_layout);
     PT_ASSERT_EQ_INT(size_after, (intmax_t)size);
+    PT_ASSERT(unchanged);
     PT_ASSERT(removed);
 }
 
-/* A file with no header and the wrong size for a bare image. */
-static void check_rejected_size(size_t size)
+static void check_rejected_file(size_t size)
 {
-    fill_pattern(file_bytes, size, 0x05);
-    check_rejected_file(size);
+    check_load_status(size, SAVE_FILE_CORRUPT);
 }
 
-PTEST(a_512_kbit_save_is_rejected)
+/* A file without the header, which is refused whatever its size. */
+static void check_headerless_file(size_t size)
 {
-    check_rejected_size(HALF_CHIP_BYTES);
+    check_load_status(size, SAVE_FILE_REFUSED);
 }
-PTEST(a_file_one_byte_too_long_is_rejected)
+
+static void check_headerless_size(size_t size)
 {
-    check_rejected_size(CHIP_BYTES + 1);
+    fill_pattern(file_bytes, size, 0x05);
+    check_headerless_file(size);
 }
-PTEST(a_file_one_byte_too_short_is_rejected)
+
+/* The game's sector footer (src/save.c, struct SaveSector): the signature
+ * 0x08012025 is the u32 at byte 0xFF8 of each 4096-byte sector. */
+#define SECTOR_FOOTER_SIGNATURE_OFFSET 0xFF8u
+#define SECTOR_SIGNATURE UINT32_C(0x08012025)
+
+/* An emulator's .sav, the chip's bytes in order with no header (sector s at
+ * s * 4096, banks included) and the game's signature in every sector, is
+ * refused and left as it was: the game's checksum cannot tell its layout from
+ * a native one, so it is never loaded. */
+PTEST(an_emulator_save_is_refused_and_left_untouched)
 {
-    check_rejected_size(CHIP_BYTES - 1);
+    fill_pattern(file_bytes, CHIP_BYTES, 0x04);
+    for (size_t sector = 0; sector < CHIP_BYTES / SECTOR_BYTES; sector++)
+        put_u32le(file_bytes + sector * SECTOR_BYTES + SECTOR_FOOTER_SIGNATURE_OFFSET, SECTOR_SIGNATURE);
+    check_headerless_file(CHIP_BYTES);
 }
-PTEST(an_empty_file_is_rejected)
+
+struct load_action {
+    int status;
+};
+
+static void load_refused_file(void *context)
 {
-    check_rejected_size(0);
+    struct load_action *const action = context;
+    action->status = save_file_load();
+}
+
+/* The one message names the path, says what the file looks like, that
+ * importing is unsupported, and that the file is left untouched. */
+PTEST(the_refusal_message_names_the_path_and_says_the_file_is_untouched)
+{
+    struct scratch scratch;
+    if (!scratch_create(&scratch))
+        PT_FAIL("cannot create a scratch directory");
+    fill_pattern(file_bytes, CHIP_BYTES, 0x04);
+    const bool written = write_file(scratch.path, file_bytes, CHIP_BYTES);
+    const int init = save_file_init(scratch.path);
+    struct load_action action = {0};
+    char message[1024];
+    const bool captured = tsup_capture_stderr(load_refused_file, &action, message, sizeof message);
+    save_file_shutdown();
+    const bool removed = scratch_remove(&scratch);
+    PT_ASSERT(written);
+    PT_ASSERT_EQ_INT(init, SAVE_FILE_OK);
+    PT_ASSERT(captured);
+    PT_ASSERT_EQ_INT(action.status, SAVE_FILE_REFUSED);
+    PT_ASSERT(strstr(message, scratch.path) != NULL);
+    PT_ASSERT(strstr(message, "looks like an emulator or cartridge save") != NULL);
+    PT_ASSERT(strstr(message, "importing those is not supported yet") != NULL);
+    PT_ASSERT(strstr(message, "left untouched") != NULL);
+    PT_ASSERT(strchr(message, '\n') == strrchr(message, '\n')); /* one line */
+    PT_ASSERT(removed);
+}
+
+PTEST(a_512_kbit_save_is_refused)
+{
+    check_headerless_size(HALF_CHIP_BYTES);
+}
+PTEST(a_headerless_file_one_byte_too_long_is_refused)
+{
+    check_headerless_size(CHIP_BYTES + 1);
+}
+PTEST(a_headerless_file_one_byte_too_short_is_refused)
+{
+    check_headerless_size(CHIP_BYTES - 1);
+}
+PTEST(an_empty_file_is_refused)
+{
+    check_headerless_size(0);
 }
 
 /* ---- the header ---- */
@@ -270,12 +305,11 @@ PTEST(the_magic_alone_is_rejected)
     check_rejected_file(MAGIC_BYTES);
 }
 
-/* Seven bytes of the magic, without its terminator: no header, and too short
- * for a bare image. */
-PTEST(the_magic_without_its_last_byte_is_rejected)
+/* Seven bytes of the magic, without its terminator: no header. */
+PTEST(the_magic_without_its_last_byte_is_refused)
 {
     memcpy(file_bytes, MAGIC, MAGIC_BYTES - 1);
-    check_rejected_file(MAGIC_BYTES - 1);
+    check_headerless_file(MAGIC_BYTES - 1);
 }
 
 PTEST(a_truncated_image_is_rejected)
@@ -294,30 +328,30 @@ PTEST(a_headered_file_one_byte_too_long_is_rejected)
 }
 
 /* Right length for a headered file, but the magic is wrong in its first,
- * middle or last byte: it has no header, and is not a bare image's size. */
-static void check_rejected_magic_byte(size_t index)
+ * middle or last byte: it has no header. */
+static void check_refused_magic_byte(size_t index)
 {
     fill_pattern(expected_image, CHIP_BYTES, 0x2C);
     build_file(native_pointer_bits(), SAVE_FILE_LAYOUT_ID);
     file_bytes[index] ^= 0x20; /* 'P' -> 'p', and so on */
-    check_rejected_file(FILE_BYTES);
+    check_headerless_file(FILE_BYTES);
 }
-PTEST(a_wrong_first_magic_byte_is_rejected)
+PTEST(a_wrong_first_magic_byte_is_refused)
 {
-    check_rejected_magic_byte(0);
+    check_refused_magic_byte(0);
 }
-PTEST(a_wrong_middle_magic_byte_is_rejected)
+PTEST(a_wrong_middle_magic_byte_is_refused)
 {
-    check_rejected_magic_byte(3);
+    check_refused_magic_byte(3);
 }
-PTEST(a_wrong_last_magic_byte_is_rejected)
+PTEST(a_wrong_last_magic_byte_is_refused)
 {
-    check_rejected_magic_byte(MAGIC_BYTES - 1);
+    check_refused_magic_byte(MAGIC_BYTES - 1);
 }
 
-/* A bare image of exactly the chip's size that happens to start with the
- * magic is a headered file of the wrong size, not a legacy file. */
-PTEST(a_bare_image_starting_with_the_magic_is_rejected)
+/* An image of exactly the chip's size that happens to start with the magic is
+ * a headered file of the wrong size, which is corrupt, not headerless. */
+PTEST(a_chip_sized_file_starting_with_the_magic_is_rejected)
 {
     fill_pattern(file_bytes, CHIP_BYTES, 0x28);
     memcpy(file_bytes, MAGIC, MAGIC_BYTES);
@@ -387,9 +421,9 @@ PTEST(a_file_with_another_layout_id_loads_as_foreign)
     PT_ASSERT_EQ_U32(outcome.layout.layout_id, SAVE_FILE_LAYOUT_ID + 1);
 }
 
-/* After a headered load, a load that reads no header and a shutdown both
- * forget the layout. */
-PTEST(the_loaded_layout_is_forgotten_by_a_headerless_load_and_shutdown)
+/* After a headered load, a load that refuses a headerless file and a shutdown
+ * both forget the layout. */
+PTEST(the_loaded_layout_is_forgotten_by_a_refused_load_and_shutdown)
 {
     struct scratch scratch;
     if (!scratch_create(&scratch))
@@ -401,9 +435,12 @@ PTEST(the_loaded_layout_is_forgotten_by_a_headerless_load_and_shutdown)
     const int headered = save_file_load();
     const bool after_headered = save_file_loaded_layout(&layout);
     const bool rewritten = write_file(scratch.path, expected_image, CHIP_BYTES);
-    const int legacy = save_file_load();
-    const bool after_legacy = save_file_loaded_layout(&layout);
-    const int headered_again = save_file_store() == SAVE_FILE_OK ? save_file_load() : -99;
+    const int refused = save_file_load();
+    const bool after_refused = save_file_loaded_layout(&layout);
+    const bool removed_refused = tsup_remove_file(scratch.path);
+    const int headered_again = save_file_init(scratch.path) == SAVE_FILE_OK && save_file_store() == SAVE_FILE_OK
+                                   ? save_file_load()
+                                   : -99;
     save_file_shutdown();
     const bool after_shutdown = save_file_loaded_layout(&layout);
     const bool removed = scratch_remove(&scratch);
@@ -412,8 +449,9 @@ PTEST(the_loaded_layout_is_forgotten_by_a_headerless_load_and_shutdown)
     PT_ASSERT_EQ_INT(headered, SAVE_FILE_OK);
     PT_ASSERT(after_headered);
     PT_ASSERT(rewritten);
-    PT_ASSERT_EQ_INT(legacy, SAVE_FILE_LEGACY);
-    PT_ASSERT(!after_legacy);
+    PT_ASSERT_EQ_INT(refused, SAVE_FILE_REFUSED);
+    PT_ASSERT(!after_refused);
+    PT_ASSERT(removed_refused);
     PT_ASSERT_EQ_INT(headered_again, SAVE_FILE_OK);
     PT_ASSERT(!after_shutdown);
     PT_ASSERT(removed);

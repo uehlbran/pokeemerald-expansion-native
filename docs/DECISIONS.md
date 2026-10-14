@@ -229,6 +229,11 @@ is rewritten with a header on the next store. Gate (h), run in milestone
 64-bit build, which will need a layout conversion keyed on the tag. The
 header makes any future layout change detectable instead of silent.
 
+Amendment, 2026-10-14: the bare-file clause no longer holds. A file without
+the header is refused, never accepted as legacy and never rewritten (the
+owner's ruling 2 in "The owner's five rulings on the independent review's
+open questions").
+
 ## 2026-10-08: PSG trigger, wave-bank and output-scale rules
 
 The PSG module consumes a trigger by clearing NRx4 bit 7 in the I/O
@@ -714,6 +719,20 @@ with each id in exactly one sector; a slot that fails its own checksum
 is left for the game's own recovery, since converting a corrupt sector
 would hide the corruption from it. The cross-width script's fourth step
 (continue, save, restart, continue) checks the 64-bit header round trip.
+
+Amendment, 2026-10-14: the first half of this entry is withdrawn. A bare
+image is no longer read as the 32-bit layout or any other: a file without
+the header is refused as an emulator or cartridge save and the converter
+never runs on it (the owner's ruling 2 in "The owner's five rulings on the
+independent review's open questions"). SAVE_FILE_LEGACY,
+SAVE_CONVERT_BARE_IMAGE_POINTER_BITS and main's legacy branch are gone.
+The two-way converter and the slot rule stand. The refusal is
+SAVE_FILE_REFUSED: save_file_load prints one message and leaves the file
+alone, and save_file_store also writes nothing while the refusal stands;
+main stops, as it does for any file the build cannot use, because the
+player named that file and a new game over it would be the next store's
+overwrite in a different guise. The cross-width script's bare/ stage became
+headerless/, which expects the refusal.
 
 ## 2026-10-09: At 64 bits the save blocks keep 32 positions by doubling the range, and the RFU carve uses fixed offsets
 

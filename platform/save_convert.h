@@ -48,12 +48,6 @@
 
 #include <stdint.h>
 
-/* The pointer width whose layout an image without a header
- * (SAVE_FILE_LEGACY) is taken to have: the native builds from before the
- * header were all 32-bit. (An emulator's .sav has no header either, but its
- * GBA layout is neither width's and is not supported: save_file.h.) */
-#define SAVE_CONVERT_BARE_IMAGE_POINTER_BITS 32u
-
 /* save_convert_image's error: a NULL image, or a pair of widths that is not
  * 32 and 64 in either order. */
 #define SAVE_CONVERT_ERR_ARGUMENT (-1)

@@ -278,12 +278,6 @@ static int start_save_file(const struct options *o)
     case SAVE_FILE_OK:
     case SAVE_FILE_NEW:
         return 0;
-    case SAVE_FILE_LEGACY:
-        (void)fprintf(stderr,
-                      "main: %s has no header; loading it as a %u-bit native save (an emulator's .sav will be "
-                      "rejected by the game and overwritten on its first save)\n",
-                      o->save_path, SAVE_CONVERT_BARE_IMAGE_POINTER_BITS);
-        return adopt_save_layout(o->save_path, SAVE_CONVERT_BARE_IMAGE_POINTER_BITS);
     case SAVE_FILE_FOREIGN_LAYOUT:
         if (save_file_loaded_layout(&layout) && layout.layout_id == SAVE_FILE_LAYOUT_ID)
             return adopt_save_layout(o->save_path, layout.pointer_bits);

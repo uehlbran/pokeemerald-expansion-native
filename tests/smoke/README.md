@@ -222,16 +222,17 @@ The arguments are FROM, TO and OUTDIR. Each step runs in its own directory of
 |---|---|---|
 | `from/` | FROM, `opening.replay` cut just before its `restart` (a copy in the directory, with the file it includes) | exit 0, no sanitizer report, dumps `01_title` .. `25_saved` and their screenshots as in `expected/`, the save file's header names FROM's width and layout 1 |
 | `to/` | TO, `opening.replay` with `--resume-at` the `restart` line and `--rtc-fixed` advanced as `restart` advances it | `26_continue_menu` and `27_continued` and their screenshots as in `expected/`; `player_name`, `map`, `party0_species` and `party_count` of `27_continued` equal to FROM's `25_saved`; stderr says the save was converted; the file is unchanged (a conversion is not a game write) |
-| `bare/` | as `to/`, on the save without its 28-byte header; only when FROM is 32-bit | the same, and stderr says the file has no header |
+| `headerless/` | TO, no replay, `--frames 60`, on the save without its 28-byte header | refused at start: exit status 1, stderr says the file has no save header and looks like an emulator or cartridge save, the file unchanged |
 | `other/` | TO, no replay, `--frames 60`, on the save with its header's layout id patched to 2 | refused at start: exit status 1, the refusal on stderr, the file unchanged |
 | `again/` | TO, `cross_width_save.replay`: Continue, save, `restart`, Continue | the replay's `expect`s (one save before, two after); the header now names TO's width; `28_saved_again` and `29_continued_again` agree and show the scene of `27_continued` |
 
 Between them FROM and TO must write every dump and screenshot of
 `expected/`. The `restart` line is found from the expansion FROM wrote
 (`from/expanded.replay`, the cut script with its include expanded, ends just
-before it) and checked against the one TO wrote. A bare image is taken to have
-the 32-bit layout (`docs/DECISIONS.md`, "Gate (h) is a platform-side save converter": its
-only producers are GBA emulators and native builds from before the header), which `bare/` checks.
+before it) and checked against the one TO wrote. A file without the header is
+never converted or taken for either layout (`docs/DECISIONS.md`, "The owner's
+five rulings on the independent review's open questions", ruling 2), which
+`headerless/` checks.
 
 43 seconds plain from 32 to 64 bits (measured on 32 cores, 2026-10-09).
 

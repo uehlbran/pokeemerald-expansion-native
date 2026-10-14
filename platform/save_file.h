@@ -28,13 +28,11 @@
  *     offset 24  CRC-32/ISO-HDLC of the image (save_file_crc32)
  *     offset 28  the image: byte n is byte n of the chip, sector s at
  *                28 + s * 4096, bank 1 from 28 + 0x10000
- * A bare 131072-byte image (an emulator's .sav, or a native build's from
- * before the header) loads as SAVE_FILE_LEGACY and is taken to be the 32-bit
- * native layout (save_convert.h). An emulator's save is in the GBA's layout,
- * which no native build reads: the game finds its checksums wrong and starts
- * a new game (a 64-bit build first runs the 32-bit converter over it), and
- * the next store overwrites the file. Nothing here probes a bare image for the
- * GBA layout, so copy an emulator's save before trying it.
+ * A file without the header is refused (SAVE_FILE_REFUSED), never loaded:
+ * an emulator's .sav (the GBA's layout, which no native build reads), a
+ * cartridge dump, or an early native test save. The game's checksum is a sum
+ * over raw bytes, so nothing in the file tells a GBA-layout image from a
+ * native one and no probe can be written; the file is left untouched.
  * The image in a file this build wrote is its last 131072 bytes
  * (tail -c 131072).
  * The layout tag says which ABI's struct layout the game data in the image
@@ -106,11 +104,6 @@ enum save_file_status {
     /* No file at the path (or a NULL path): the image is an erased chip and
      * the game starts without a save. */
     SAVE_FILE_NEW = 1,
-    /* Loaded a bare FLASH_CHIP_SIZE-byte image with no header (an older
-     * build's, or an emulator's or a cartridge dump's): the layout is not
-     * recorded, and main takes it to be the 32-bit native one; the next store
-     * writes it back with a header. */
-    SAVE_FILE_LEGACY = 2,
     /* Loaded an intact version-1 file whose layout tag is not this build's
      * (save_file_loaded_layout says which). The image is in the chip, but
      * the game must not read it as native: main refuses or converts it. */
@@ -118,8 +111,6 @@ enum save_file_status {
     /* The file exists but cannot be used: it could not be read; or it has
      * the magic but a truncated header, an unknown version, a pointer width
      * other than 32 or 64, a wrong image size or a CRC that does not match;
-     * or it has no magic and is not exactly FLASH_CHIP_SIZE bytes (a
-     * 65536-byte 512 Kbit save is one of these; Emerald's chip is 1 Mbit).
      * The reason was printed to stderr; the image is an erased chip; the
      * file is untouched until the game writes and store replaces it. */
     SAVE_FILE_CORRUPT = -1,
@@ -133,6 +124,13 @@ enum save_file_status {
     /* save_file_load or save_file_store before save_file_init (or after
      * save_file_shutdown). */
     SAVE_FILE_ERR_NOT_INITIALISED = -4,
+    /* The file does not start with this project's magic (shorter than the
+     * magic included): an emulator's or a cartridge's save, which importing
+     * is not supported yet. One message naming the path was printed to
+     * stderr; the image is an erased chip; the file is never written: until
+     * the next load or save_file_init, save_file_store returns this too and
+     * touches nothing. main stops rather than start a new game over it. */
+    SAVE_FILE_REFUSED = -5,
 };
 
 /* Remembers path (copied) for load and store; NULL means no persistence:
@@ -142,14 +140,14 @@ enum save_file_status {
 int save_file_init(const char *path);
 
 /* Replaces the flash image with the file's: SAVE_FILE_OK, SAVE_FILE_NEW,
- * SAVE_FILE_LEGACY, SAVE_FILE_FOREIGN_LAYOUT, SAVE_FILE_CORRUPT or
+ * SAVE_FILE_FOREIGN_LAYOUT, SAVE_FILE_CORRUPT, SAVE_FILE_REFUSED or
  * SAVE_FILE_ERR_NOT_INITIALISED. Does not mark the image dirty
  * (flash_take_dirty), so nothing is written back until the game writes. */
 int save_file_load(void);
 
 /* The layout tag of the file the last save_file_load read: true and *out
  * filled after SAVE_FILE_OK or SAVE_FILE_FOREIGN_LAYOUT; false (and *out
- * untouched) when that load read no header (NEW, LEGACY, CORRUPT), before
+ * untouched) when that load read no header (NEW, REFUSED, CORRUPT), before
  * any load, and after save_file_shutdown. */
 bool save_file_loaded_layout(struct save_file_layout *out);
 
@@ -160,7 +158,8 @@ struct save_file_layout save_file_native_layout(void);
 /* Writes the header (with the running build's layout tag and the image's
  * CRC) and the whole image to <path>.tmp (every fwrite checked), flushes and
  * fsyncs it, closes it, renames it over <path>, and fsyncs the directory.
- * SAVE_FILE_OK, SAVE_FILE_ERR_IO or SAVE_FILE_ERR_NOT_INITIALISED. With a
+ * SAVE_FILE_OK, SAVE_FILE_ERR_IO, SAVE_FILE_REFUSED (the last load refused
+ * the file: nothing is written) or SAVE_FILE_ERR_NOT_INITIALISED. With a
  * NULL path it writes nothing and returns SAVE_FILE_OK. */
 int save_file_store(void);
 
