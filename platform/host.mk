@@ -2,19 +2,22 @@
 # what follows from it. Included by platform/Makefile, platform/m4a/Makefile
 # and Makefile.native, so that the platform layer and the game agree.
 #
-# HOST_OS names it as `uname -s` does (it defaults to that). Each OS has one
-# source for the host layer beside the one every POSIX system shares
-# (platform/host_*.h are the interface; docs/ARCHITECTURE.md, "The host
-# layer"); Linux is the only one so far, so a port adds its file and its
-# value here. Named HOST_OS, not OS, because Windows sets OS in every
-# environment and make would take it.
+# HOST_OS is the system building it, named as `uname -s` does (it defaults to
+# that); only Linux builds so far. TARGET_OS (target.mk, included below) is the
+# system the executable runs on: HOST_OS, or `windows` for the cross build.
+# Each target OS has one source for the host layer beside the one every POSIX
+# system shares (platform/host_*.h are the interface; docs/ARCHITECTURE.md,
+# "The host layer"), so a port adds its file and its value here. Named HOST_OS,
+# not OS, because Windows sets OS in every environment and make would take it.
 HOST_OS ?= $(shell uname -s)
 
+ifneq ($(HOST_OS),Linux)
+$(error HOST_OS must be Linux (the only system that builds so far), not '$(HOST_OS)')
+endif
+
+include $(dir $(lastword $(MAKEFILE_LIST)))target.mk
+
 NM ?= nm
-
-ifeq ($(HOST_OS),Linux)
-
-HOST_SRCS := host_posix.c host_linux.c
 
 # $(call write_symbol_map,EXECUTABLE,MAP): the function map symbols.c reads
 # to name the game's callbacks (symbols.h has the format), written by the
@@ -35,6 +38,12 @@ write_symbol_map = rm -f $(2) $(2).nm $(2).tmp \
 	&& rm -f $(2).nm && mv $(2).tmp $(2) \
 	|| { rm -f $(2) $(2).nm $(2).tmp; echo "write_symbol_map: no function map for $(1)" >&2; false; }
 
-else
-$(error HOST_OS must be Linux (the only port so far), not '$(HOST_OS)')
+ifeq ($(TARGET_OS),Linux)
+
+HOST_SRCS := host_posix.c host_linux.c
+
+else ifeq ($(TARGET_OS),windows)
+
+HOST_SRCS := host_windows.c
+
 endif

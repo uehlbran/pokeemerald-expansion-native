@@ -21,7 +21,9 @@
 # directory (pokeemerald-native-test with TEST=1, the test runner build),
 # and its link writes the executable's function map beside it
 # (pokeemerald-native.symbols, which the replays name callbacks with).
-# HOST_OS (platform/host.mk) is the system it runs on: Linux.
+# HOST_OS (platform/host.mk) is the system that builds it, Linux; TARGET_OS
+# (platform/target.mk) the system it runs on, Linux unless `windows`, the
+# MinGW-w64 cross build ("The Windows cross-build", at the end).
 #
 # Expansion's Makefile and its rule fragments are not modified; this file
 # sits beside them and reuses them. See docs/ARCHITECTURE.md ("Build") and
@@ -158,6 +160,21 @@ ifeq (,$(filter 0 1,$(SANITIZE)))
   $(error SANITIZE must be 0 or 1, not '$(SANITIZE)')
 endif
 
+# The system the executable is built for and its toolchain (TARGET_OS, ...).
+include platform/host.mk
+
+# The Windows build compiles and links with MinGW-w64, which has no sanitizers,
+# and its test runner (the patch of the test runner's constants into a PE file,
+# the hydra) is not ported yet.
+ifeq ($(TARGET_OS),windows)
+  ifneq ($(SANITIZE),0)
+    $(error TARGET_OS=windows has no sanitized build: MinGW-w64's GCC has no sanitizers)
+  endif
+  ifneq ($(TEST),0)
+    $(error TARGET_OS=windows builds the game only (TEST=0): the test runner is not ported to Windows yet)
+  endif
+endif
+
 BUILD_DIR := build
 ifeq ($(TEST),1)
   OBJ_DIR := $(BUILD_DIR)/native$(BITS)-test
@@ -166,6 +183,11 @@ else
 endif
 ifeq ($(SANITIZE),1)
   OBJ_DIR := $(OBJ_DIR)-san
+endif
+# The Windows objects, kept apart from the Linux ones whose data they are made from.
+ELF_OBJ_DIR := $(OBJ_DIR)
+ifeq ($(TARGET_OS),windows)
+  OBJ_DIR := $(OBJ_DIR)-windows
 endif
 # INCGFX outputs are not shared with the GBA build (see GFX: our palettes are padded).
 ASSETS_DIR_NAME := $(BUILD_DIR)/assets-native
@@ -201,8 +223,7 @@ endef
 # -funsigned-char: plain char is unsigned on ARM, and the game was written
 # for that ABI. Passed to the preprocessing step too, so <limits.h> agrees.
 include platform/game_flags.mk
-include platform/host.mk
-ARCH_FLAGS := -m$(BITS) $(GAME_CHAR_FLAGS)
+ARCH_FLAGS := -m$(BITS) $(GAME_CHAR_FLAGS) $(TARGET_CFLAGS)
 
 CPP := $(HOST_CC) -E $(ARCH_FLAGS)
 
@@ -311,8 +332,12 @@ ifeq ($(DATA_POINTER_SIZE),8)
   # --source: the file an error message names (the recipes' first prerequisite).
   ASM_FILTER_POINTERS = --pointer-size 8 --input $(ASM_FILTER_INPUT) --source $<
   # Made by the three checks of the 64-bit data (below); the link waits for them.
-  DATA_LAYOUT_CHECKS := $(OBJ_DIR)/data_relocations.checked $(OBJ_DIR)/data_layout.checked \
-                        $(OBJ_DIR)/battle_script_operands.checked
+  # The Windows build has no ELF data of its own: it links the Linux tree's,
+  # converted, after these checks passed there (data-flat waits for them).
+  ifneq ($(TARGET_OS),windows)
+    DATA_LAYOUT_CHECKS := $(OBJ_DIR)/data_relocations.checked $(OBJ_DIR)/data_layout.checked \
+                          $(OBJ_DIR)/battle_script_operands.checked
+  endif
 endif
 
 # --------------------------------------------------------------------------
@@ -398,12 +423,18 @@ OBJS := $(C_OBJS) $(DATA_ASM_OBJS) $(MID_OBJS)
 ifeq ($(TEST),1)
   OBJS += $(TEST_OBJS)
 endif
+# The Windows build's data objects are the converted listings assembled, in
+# coff/ beside the C objects. Not at DATA_ASM_OBJS' paths: map_data_rules.mk
+# gives two of those a recipe that assembles the ELF text. (gba_game.pe.ld
+# finds the game's data by the objects' directories, which coff/ keeps.)
+ifeq ($(TARGET_OS),windows)
+  COFF_DATA_OBJS := $(patsubst $(OBJ_DIR)/%.o,$(OBJ_DIR)/coff/%.o,$(DATA_ASM_OBJS) $(MID_OBJS))
+  OBJS := $(C_OBJS) $(COFF_DATA_OBJS)
+endif
 
 ifeq ($(SETUP_PREREQS),1)
   $(shell mkdir -p $(sort $(dir $(OBJS))))
 endif
-
-objects: $(OBJS)
 
 clean:
 	rm -rf $(BUILD_DIR)/native*/
@@ -430,7 +461,7 @@ else
   NATIVE_EXE_NAME := pokeemerald-native
   INITIAL_MAIN_CB2 := CB2_InitCopyrightScreenAfterBootup
 endif
-NATIVE_EXE := $(OBJ_DIR)/$(NATIVE_EXE_NAME)
+NATIVE_EXE := $(OBJ_DIR)/$(NATIVE_EXE_NAME)$(TARGET_EXE_SUFFIX)
 
 # The platform library is built by platform/Makefile, sanitized or not to
 # match (NOSAN=1 puts it in its own directory). It lives under
@@ -438,22 +469,34 @@ NATIVE_EXE := $(OBJ_DIR)/$(NATIVE_EXE_NAME)
 # `make -C platform clean` removes it (and the unit tests).
 ifeq ($(SANITIZE),1)
   PLATFORM_LIB := platform/build/$(BITS)/libplatform.a
-  PLATFORM_LIB_ARGS := BITS=$(BITS) HOST_OS=$(HOST_OS)
+  PLATFORM_LIB_ARGS := BITS=$(BITS) HOST_OS=$(HOST_OS) TARGET_OS=$(TARGET_OS)
   NATIVE_LINK_SANITIZERS := -fsanitize=address,undefined
 else
   PLATFORM_LIB := platform/build/$(BITS)-nosan/libplatform.a
-  PLATFORM_LIB_ARGS := BITS=$(BITS) HOST_OS=$(HOST_OS) NOSAN=1
+  ifeq ($(TARGET_OS),windows)
+    PLATFORM_LIB := platform/build/$(BITS)-windows/libplatform.a
+  endif
+  PLATFORM_LIB_ARGS := BITS=$(BITS) HOST_OS=$(HOST_OS) TARGET_OS=$(TARGET_OS) NOSAN=1
   NATIVE_LINK_SANITIZERS :=
 endif
 
-NATIVE_LINKER_SCRIPTS := platform/gba_regions.ld platform/gba_game.ld
-NATIVE_LDFLAGS := -m$(BITS) -no-pie -Wl,-Ttext-segment=0x40000000 \
+NATIVE_LINKER_SCRIPTS := platform/$(REGIONS_LD_NAME) platform/$(GAME_LD_NAME)
+NATIVE_LDFLAGS := -m$(BITS) $(GBA_LAYOUT_LDFLAGS) \
                   $(NATIVE_LINKER_SCRIPTS:%=-Wl,-T,%) \
                   -Wl,--defsym,gInitialMainCB2=$(INITIAL_MAIN_CB2) \
                   -Wl,--defsym,gba_game_objects_linked=1 $(NATIVE_LINK_SANITIZERS)
-NATIVE_LDLIBS := $(shell pkg-config --libs sdl2) -lm
+NATIVE_LDLIBS := $(SDL_LIBS) -lm
 
+# The Windows build runs in two makes (WINDOWS_DATA_CHECKED, "The Windows
+# cross-build" at the end): the first makes the Linux data and converts it, the
+# second compiles and links. Everything else has one.
+ifeq ($(TARGET_OS)/$(WINDOWS_DATA_CHECKED),windows/)
+native objects: windows-data
+	+$(MAKE) -f Makefile.native $@ WINDOWS_DATA_CHECKED=1
+else
+objects: $(OBJS)
 native: $(NATIVE_EXE)
+endif
 
 # Seeds $(ASSETS_DIR_NAME) from the GBA build's build/assets so that the first native build converts
 # only what differs: copies it (preserving times, so make sees the files as up to date) and deletes
@@ -477,7 +520,7 @@ check-palette-padding:
 
 # Always asks platform/Makefile, which knows the library's own prerequisites
 # and leaves it untouched when it is up to date.
-platform-lib:
+platform-lib: $(if $(filter windows,$(TARGET_OS)),sdl2-mingw)
 	$(MAKE) -C platform lib $(PLATFORM_LIB_ARGS)
 
 $(PLATFORM_LIB): platform-lib ;
@@ -706,7 +749,10 @@ endif
 # --------------------------------------------------------------------------
 # Data assembly: expansion's recipe, with $(AS) being the filter plus the
 # host assembler. map_data_rules.mk supplies maps.o and map_events.o, which
-# are mapjson's output to the filter's 8-byte rules.
+# are mapjson's output to the filter's 8-byte rules. The Windows build does
+# not assemble the data: it assembles the Linux tree's, converted ("The
+# Windows cross-build", at the end).
+ifneq ($(TARGET_OS),windows)
 
 $(DATA_ASM_BUILDDIR)/maps.o $(DATA_ASM_BUILDDIR)/map_events.o: private ASM_FILTER_INPUT := mapjson
 
@@ -746,6 +792,8 @@ $(ASM_FILTER_CHECKED): $(ASM_FILTER_SCRIPT) $(ASM_FILTER_MODULES)
 	$(foreach module,$(ASM_FILTER_MODULES),$(PYTHON) -I $(module) --self-test$(NEWLINE))
 	@touch $@
 
+endif
+
 # The 64-bit link checks the data it assembled against the C that reads it,
 # with three checks, each of which says what it checks in its own header:
 # the address words (check_relocations.py, against data_address_words.txt and
@@ -755,7 +803,7 @@ $(ASM_FILTER_CHECKED): $(ASM_FILTER_SCRIPT) $(ASM_FILTER_MODULES)
 # battle script macros against src/battle_script_commands.c
 # (check_battle_script_operands.py). The checkers and the modules they share
 # run their self-tests first, once per change.
-ifeq ($(DATA_POINTER_SIZE),8)
+ifeq ($(DATA_POINTER_SIZE)/$(TARGET_OS),8/Linux)
 CHECK_RELOCATIONS_SCRIPT := $(GLUE_DIR)/check_relocations.py
 CHECK_DATA_LAYOUT_SCRIPT := $(GLUE_DIR)/check_data_layout.py
 CHECK_BATTLE_SCRIPTS_SCRIPT := $(GLUE_DIR)/check_battle_script_operands.py
@@ -861,3 +909,64 @@ $(FLAT_TARGET_DIR)/%.s: $(OBJ_DIR)/%.o $(FLAT_SYMBOLS) $(FLAT_SELF_TESTS)
 $(FLAT_TARGET_DIR)/%.o: $(FLAT_TARGET_DIR)/%.s $(OBJ_DIR)/%.o $(FLAT_SYMBOLS) $(FLAT_SELF_TESTS)
 	$(PYTHON) -I $(CHECK_FLAT_SCRIPT) --target $(TARGET) --symbols $(FLAT_SYMBOLS) --listing $< --output $@ \
 	    --clang $(FLAT_CLANG) $(OBJ_DIR)/$*.o
+
+# --------------------------------------------------------------------------
+# The Windows cross-build (TARGET_OS=windows, docs/BUILDING.md, "Windows
+# (cross-build from Linux)"):
+#
+#   make -f Makefile.native -j32 native BITS=64 TARGET_OS=windows
+#
+# links build/native64-windows/pokeemerald-native.exe with MinGW-w64
+# (platform/target.mk has the toolchain and the flags). It is made in two
+# makes, because the data cannot be a prerequisite of the make that needs it:
+#   1. windows-data: the Linux tree's 64-bit data objects and their three
+#      checks, then the COFF listings of them (data-flat) compared with the ELF
+#      objects (check-flat, TARGET=coff-x86_64), by a make for the build
+#      machine's own target (TARGET_OS=$(HOST_OS)) into build/native64/;
+#   2. this make, again, with WINDOWS_DATA_CHECKED=1: the C objects, the data
+#      objects (the listings assembled by MinGW's as; a listing whose checked
+#      object is missing, because check-flat removed it, stops the build), the
+#      platform library, and the link.
+# Assets and generated headers do not depend on the target and are shared.
+
+SDL2_MINGW_VERSION := 2.30.12
+SDL2_MINGW_TARBALL := SDL2-devel-$(SDL2_MINGW_VERSION)-mingw.tar.gz
+SDL2_MINGW_URL := https://github.com/libsdl-org/SDL/releases/download/release-$(SDL2_MINGW_VERSION)/$(SDL2_MINGW_TARBALL)
+SDL2_MINGW_SHA256 := dddafbf0705a8cbe1f97c69680886ce147ed4d38f1d04e03523681298e081b0f
+SDL2_MINGW_ROOT := $(BUILD_DIR)/sdl2-mingw
+SDL2_MINGW_STAMP := $(SDL2_MINGW_ROOT)/$(SDL2_MINGW_TARBALL).unpacked
+
+.PHONY: sdl2-mingw windows-data
+sdl2-mingw: $(SDL2_MINGW_STAMP)
+
+# SDL2's development package for MinGW-w64 (headers, import library, SDL2.dll),
+# the newest 2.30 release, which is the series the Linux build uses. Fetched
+# here, not committed: the download is checked against the sha256 above before
+# anything is unpacked, and a mismatch removes it and stops. SDL is under the
+# zlib licence, which allows this and shipping SDL2.dll beside the executable
+# (https://www.libsdl.org/license.php). Only the x86_64 tree and the licence are
+# unpacked, into build/sdl2-mingw/x86_64-w64-mingw32/ (SDL2_MINGW_DIR).
+$(SDL2_MINGW_STAMP):
+	rm -rf $(SDL2_MINGW_ROOT)
+	mkdir -p $(SDL2_MINGW_ROOT)
+	curl --fail --location --silent --show-error --output $(SDL2_MINGW_ROOT)/$(SDL2_MINGW_TARBALL) $(SDL2_MINGW_URL)
+	echo "$(SDL2_MINGW_SHA256)  $(SDL2_MINGW_ROOT)/$(SDL2_MINGW_TARBALL)" | sha256sum --check --status \
+	    || { echo "sdl2-mingw: $(SDL2_MINGW_TARBALL) does not match its recorded sha256 $(SDL2_MINGW_SHA256)" >&2; \
+	         rm -f $(SDL2_MINGW_ROOT)/$(SDL2_MINGW_TARBALL); exit 1; }
+	tar -xzf $(SDL2_MINGW_ROOT)/$(SDL2_MINGW_TARBALL) -C $(SDL2_MINGW_ROOT) --strip-components=1 \
+	    SDL2-$(SDL2_MINGW_VERSION)/x86_64-w64-mingw32 SDL2-$(SDL2_MINGW_VERSION)/LICENSE.txt
+	touch $@
+
+ifeq ($(TARGET_OS),windows)
+
+windows-data:
+	+$(MAKE) -f Makefile.native check-flat TARGET=coff-x86_64 BITS=64 TARGET_OS=$(HOST_OS) TEST=0 SANITIZE=0
+
+# The listings and the objects they were checked against, in the Linux tree.
+WINDOWS_FLAT_DIR := $(ELF_OBJ_DIR)/flat/coff-x86_64
+
+$(COFF_DATA_OBJS): $(OBJ_DIR)/coff/%.o: $(WINDOWS_FLAT_DIR)/%.s $(WINDOWS_FLAT_DIR)/%.o
+	@mkdir -p $(@D)
+	$(HOST_AS) -o $@ $<
+
+endif
