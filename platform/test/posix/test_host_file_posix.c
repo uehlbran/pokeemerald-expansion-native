@@ -1,7 +1,8 @@
 /*
  * test_host_file_posix.c: the parts of host_file.h that are POSIX: the
  * descriptor calls (the open with O_CLOEXEC and its mode, the write of a
- * whole buffer, the sync), the directory fsync(2) is applied to, and the
+ * whole buffer through short and interrupted writes, the handler's write
+ * that leaves errno alone, the sync), the directory fsync(2) is applied to, and the
  * directory the umask shapes. The rest is in ../test_host_file.c; the scratch
  * directory is ../host_file_fixture.h's.
  */
@@ -167,9 +168,11 @@ static int drain_slowly(int descriptor, pid_t writer)
     return total == INTERRUPTED_SIZE ? CHILD_WROTE_ALL : CHILD_BYTES_WRONG;
 }
 
+/* context: NULL to write with host_file_write_all, anything else to write
+ * with host_file_write_from_handler. */
 static void write_through_interruptions(void *context)
 {
-    (void)context;
+    const bool from_handler = context != NULL;
     static uint8_t bytes[INTERRUPTED_SIZE];
     for (size_t i = 0; i < sizeof bytes; i++)
         bytes[i] = byte_at(i);
@@ -188,7 +191,11 @@ static void write_through_interruptions(void *context)
         _exit(drain_slowly(fds[0], writer));
     }
     (void)close(fds[0]);
-    const int written = host_file_write_all(fds[1], bytes, sizeof bytes);
+    bool written_all;
+    if (from_handler)
+        written_all = host_file_write_from_handler(fds[1], bytes, sizeof bytes);
+    else
+        written_all = host_file_write_all(fds[1], bytes, sizeof bytes) == 0;
     (void)close(fds[1]);
     int status = -1;
     pid_t waited;
@@ -196,7 +203,7 @@ static void write_through_interruptions(void *context)
         waited = waitpid(reader, &status, 0);
     while (waited < 0 && errno == EINTR);
     const bool read_all = waited == reader && psup_exit_code(status) == CHILD_WROTE_ALL;
-    if (written != 0)
+    if (!written_all)
         _exit(CHILD_WRITE_FAILED);
     if (!read_all)
         _exit(CHILD_BYTES_WRONG);
@@ -206,6 +213,43 @@ static void write_through_interruptions(void *context)
 PTEST(a_write_cut_short_or_interrupted_by_a_signal_is_carried_on_to_the_end)
 {
     PT_ASSERT_EQ_INT(psup_exit_code(psup_run_child(write_through_interruptions, NULL)), CHILD_WROTE_ALL);
+}
+
+PTEST(a_handlers_write_cut_short_or_interrupted_is_carried_on_to_the_end_too)
+{
+    static int from_handler;
+    PT_ASSERT_EQ_INT(psup_exit_code(psup_run_child(write_through_interruptions, &from_handler)), CHILD_WROTE_ALL);
+}
+
+/* A value errno does not take from a write, to see that the handler's write
+ * leaves errno as it found it. */
+#define ERRNO_BEFORE EDOM
+
+PTEST(a_handlers_write_leaves_errno_as_it_was_whether_it_writes_or_fails)
+{
+    struct scratch scratch;
+    if (!scratch_create(&scratch))
+        PT_FAIL("cannot create a scratch directory");
+    const int writer = host_file_open(scratch.path, O_WRONLY | O_CREAT | O_TRUNC);
+    errno = ERRNO_BEFORE;
+    const bool written = writer >= 0 && host_file_write_from_handler(writer, TEXT, sizeof TEXT - 1u);
+    const int error_after_writing = errno;
+    const bool writer_closed = writer >= 0 && close(writer) == 0;
+    const int reader = host_file_open(scratch.path, O_RDONLY);
+    errno = ERRNO_BEFORE;
+    const bool refused = reader >= 0 && !host_file_write_from_handler(reader, TEXT, sizeof TEXT - 1u); /* EBADF */
+    const int error_after_failing = errno;
+    const bool reader_closed = reader >= 0 && close(reader) == 0;
+    const bool contents = strcmp(read_text(scratch.path), TEXT) == 0;
+    const bool removed = scratch_remove(&scratch);
+    PT_ASSERT(written);
+    PT_ASSERT_EQ_INT(error_after_writing, ERRNO_BEFORE);
+    PT_ASSERT(writer_closed);
+    PT_ASSERT(refused);
+    PT_ASSERT_EQ_INT(error_after_failing, ERRNO_BEFORE);
+    PT_ASSERT(reader_closed);
+    PT_ASSERT(contents);
+    PT_ASSERT(removed);
 }
 
 /* --- host_file_sync and host_file_sync_directory_of ------------------------------ */

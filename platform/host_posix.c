@@ -284,6 +284,25 @@ int host_file_write_all(int descriptor, const void *bytes, size_t size)
     return 0;
 }
 
+/* errno is saved and put back: a handler that changed it would change what
+ * the interrupted code reads after a failed call of its own. */
+bool host_file_write_from_handler(int descriptor, const void *bytes, size_t size)
+{
+    const int saved_errno = errno;
+    const unsigned char *next = bytes;
+    while (size > 0) {
+        const ssize_t written = write(descriptor, next, size);
+        if (written < 0 && errno == EINTR)
+            continue;
+        if (written <= 0)
+            break;
+        next += written;
+        size -= (size_t)written;
+    }
+    errno = saved_errno;
+    return size == 0;
+}
+
 int host_file_sync(int descriptor)
 {
     return fsync(descriptor);

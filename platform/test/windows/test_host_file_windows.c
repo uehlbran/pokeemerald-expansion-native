@@ -2,7 +2,8 @@
  * test_host_file_windows.c: the parts of host_file.h that are Windows' own
  * (host_windows.c): a file host_file_open makes is binary (a "\n" stays one
  * byte) and its handle is not inherited by a started process; the descriptor
- * calls refuse a bad descriptor and one not open for writing; the directory
+ * calls refuse a bad descriptor and one not open for writing; the handler's
+ * write leaves errno alone, whether it writes or fails; the directory
  * sync checks only the length; a directory is made once. The rest is in
  * ../test_host_file.c; the scratch directory is ../host_file_fixture.h's.
  */
@@ -80,6 +81,37 @@ PTEST(the_descriptor_calls_refuse_a_bad_or_read_only_descriptor)
     PT_ASSERT_EQ_INT(refused, -1);
     PT_ASSERT(closed);
     PT_ASSERT(kept);
+    PT_ASSERT(removed);
+}
+
+/* A value errno does not take from a write, to see that the handler's write
+ * leaves errno as it found it: it reads no error code and sets no errno. */
+#define ERRNO_BEFORE EDOM
+
+PTEST(a_handlers_write_writes_everything_and_leaves_errno_whether_it_writes_or_fails)
+{
+    struct scratch scratch;
+    if (!scratch_create(&scratch))
+        PT_FAIL("cannot create a scratch directory");
+    const int writer = host_file_open(scratch.path, O_WRONLY | O_CREAT | O_TRUNC);
+    errno = ERRNO_BEFORE;
+    const bool written = writer >= 0 && host_file_write_from_handler(writer, LINES, sizeof LINES - 1u);
+    const int error_after_writing = errno;
+    const bool writer_closed = writer >= 0 && _close(writer) == 0;
+    const intmax_t size = tsup_file_size(scratch.path);
+    const int reader = host_file_open(scratch.path, O_RDONLY);
+    errno = ERRNO_BEFORE;
+    const bool refused = reader >= 0 && !host_file_write_from_handler(reader, LINES, sizeof LINES - 1u);
+    const int error_after_failing = errno;
+    const bool reader_closed = reader >= 0 && _close(reader) == 0;
+    const bool removed = scratch_remove(&scratch);
+    PT_ASSERT(written);
+    PT_ASSERT_EQ_INT(error_after_writing, ERRNO_BEFORE);
+    PT_ASSERT(writer_closed);
+    PT_ASSERT_EQ_INT(size, (intmax_t)(sizeof LINES - 1u));
+    PT_ASSERT(refused); /* WriteFile on a handle opened for reading */
+    PT_ASSERT_EQ_INT(error_after_failing, ERRNO_BEFORE);
+    PT_ASSERT(reader_closed);
     PT_ASSERT(removed);
 }
 

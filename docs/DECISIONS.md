@@ -1073,11 +1073,15 @@ through a handle opened then and resumes the helper, which becomes the
 restarted run, and which needs a suspended helper of its own.
 
 (a) is taken, as the simpler here. It leaves the filter two system calls,
-neither of which allocates: `WriteFile` (on the handle `_get_osfhandle` reads
-from the C runtime's table, without a lock) and `TerminateProcess`; the
-report itself is built on the handler's stack, from the static state, so
-that two threads crashing at once do not share a buffer. Nothing changes in
-how a run starts. (b) would create a second process at the start of every
+neither of which allocates: `WriteFile` (`host_file_write_from_handler`, on
+the handle `_get_osfhandle` reads from the C runtime's table without a lock;
+a failed write is left at that, with no `GetLastError` and no `errno`, which
+msvcrt would allocate a block for on a thread that had not used it) and
+`TerminateProcess`. The report line is built on the handler's stack. The
+state it carries is encoded into the module's one static buffer, which two
+threads crashing at once would both write, with the same persistent bytes:
+harmless, and the same on Linux, whose handler encodes into that buffer
+too. Nothing changes in how a run starts. (b) would create a second process at the start of every
 run on Windows, a player's included, and keep it suspended for the whole
 run; it would need a channel for the state besides the command line, held
 open in both processes (against the restart's rule of inheriting the

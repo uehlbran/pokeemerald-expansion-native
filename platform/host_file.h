@@ -25,6 +25,7 @@
 #ifndef PLATFORM_HOST_FILE_H
 #define PLATFORM_HOST_FILE_H
 
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <time.h>
@@ -45,10 +46,21 @@ int host_file_open(const char *path, int flags);
 /* Writes the size bytes at bytes to the open descriptor, all of them,
  * retrying a short write (and on POSIX one interrupted by a signal). No
  * allocation, no lock, no stdio (write(2); Windows: WriteFile on the
- * descriptor's handle, past the C runtime's own lock), so that a fault
- * handler may call it. Returns 0, or -1 with errno set and part of the bytes
- * perhaps written. */
+ * descriptor's handle, past the C runtime's own lock). Returns 0, or -1 with
+ * errno set and part of the bytes perhaps written. A handler writes with
+ * host_file_write_from_handler instead. */
 int host_file_write_all(int descriptor, const void *bytes, size_t size);
+
+/* host_file_write_all for a fault handler: the same writes, but errno is
+ * left as it was, whatever happens, so that a handler neither changes what
+ * the interrupted code sees in errno nor, on Windows, makes the C runtime
+ * set it up on a thread that has not used it (msvcrt allocates a thread's
+ * errno block on first use). POSIX: write(2) with errno saved and restored,
+ * async-signal-safe. Windows: WriteFile on the descriptor's handle and
+ * nothing else; msvcrt's _get_osfhandle reads the handle from its table
+ * without a lock (it sets errno only for a descriptor that is not open).
+ * Returns true if every byte was written. */
+bool host_file_write_from_handler(int descriptor, const void *bytes, size_t size);
 
 /* Writes what the open file descriptor holds through to the disk. Returns 0,
  * or -1 with errno set. */

@@ -16,11 +16,11 @@
  * saved in the exception's CONTEXT (x86-64). The handlers run in a signal
  * handler or an exception handler: they may call only async-signal-safe
  * functions (signal-safety(7)), which the accessors below, host_file's
- * host_file_write_all, host_process_end and, on Linux, host_process_restart
- * are (on Windows the restart creates a process, which a handler must not:
- * host_process_restart_is_handler_safe). They are installed and
- * removed from the main thread; a fault of another thread (SDL's) reaches
- * them too, on the thread that faulted.
+ * host_file_write_from_handler, host_process_end and, on Linux,
+ * host_process_restart are (on Windows the restart creates a process, which
+ * a handler must not: host_process_restart_is_handler_safe). They are
+ * installed and removed from the main thread; a fault of another thread
+ * (SDL's) reaches them too, on the thread that faulted.
  */
 #ifndef PLATFORM_HOST_FAULT_H
 #define PLATFORM_HOST_FAULT_H

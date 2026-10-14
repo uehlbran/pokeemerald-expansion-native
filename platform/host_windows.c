@@ -300,6 +300,23 @@ int host_file_write_all(int descriptor, const void *bytes, size_t size)
     return 0;
 }
 
+/* No GetLastError and no errno: on a thread that has not used the C runtime,
+ * msvcrt's _errno would allocate the thread's runtime block. */
+bool host_file_write_from_handler(int descriptor, const void *bytes, size_t size)
+{
+    HANDLE handle = handle_of(descriptor);
+    const unsigned char *next = bytes;
+    while (handle != INVALID_HANDLE_VALUE && size > 0) {
+        const DWORD chunk = size > MAXDWORD ? MAXDWORD : (DWORD)size;
+        DWORD written = 0;
+        if (!WriteFile(handle, next, chunk, &written, NULL) || written == 0)
+            break;
+        next += written;
+        size -= written;
+    }
+    return size == 0;
+}
+
 int host_file_sync(int descriptor)
 {
     HANDLE handle = handle_of(descriptor);
@@ -495,77 +512,84 @@ static HANDLE make_kill_on_close_job(void)
     return job;
 }
 
-/* The standard handles, each once and only those that exist, made
- * inheritable: the one handles the child inherits (PROC_THREAD_ATTRIBUTE_
- * HANDLE_LIST), so that a file this process has open (the C runtime's fopen
- * makes inheritable handles, without FILE_SHARE_DELETE) is not held open in
- * the child, where it would refuse the child's own replacement of that file.
- * The list takes only inheritable handles; a standard handle not marked so is
- * marked. Returns how many it wrote to handles. */
-#define STANDARD_HANDLE_COUNT 3u
+/* The standard handles the child is given, made inheritable: the only
+ * handles it inherits (PROC_THREAD_ATTRIBUTE_HANDLE_LIST), so that a file
+ * this process has open (the C runtime's fopen makes inheritable handles,
+ * without FILE_SHARE_DELETE) is not held open in the child, where it would
+ * refuse the child's own replacement of that file. of_kind holds each
+ * kind's handle, or NULL where this process has none or it could not be made
+ * inheritable (the child goes without it); list holds the distinct ones,
+ * count of them, as the attribute takes them. */
+enum { STANDARD_INPUT, STANDARD_OUTPUT, STANDARD_ERROR, STANDARD_HANDLE_COUNT };
 
-static size_t standard_handles(HANDLE handles[STANDARD_HANDLE_COUNT])
+struct standard_handles {
+    HANDLE of_kind[STANDARD_HANDLE_COUNT];
+    HANDLE list[STANDARD_HANDLE_COUNT];
+    size_t count;
+};
+
+static void find_standard_handles(struct standard_handles *found)
 {
     static const DWORD kinds[STANDARD_HANDLE_COUNT] = {STD_INPUT_HANDLE, STD_OUTPUT_HANDLE, STD_ERROR_HANDLE};
-    size_t count = 0;
+    found->count = 0;
     for (size_t i = 0; i < STANDARD_HANDLE_COUNT; i++) {
         HANDLE handle = GetStdHandle(kinds[i]);
-        bool listed = handle == NULL || handle == INVALID_HANDLE_VALUE;
-        for (size_t j = 0; j < count && !listed; j++)
-            listed = handles[j] == handle;
-        if (!listed && SetHandleInformation(handle, HANDLE_FLAG_INHERIT, HANDLE_FLAG_INHERIT))
-            handles[count++] = handle;
+        found->of_kind[i] = NULL;
+        if (handle == NULL || handle == INVALID_HANDLE_VALUE)
+            continue;
+        bool listed = false;
+        for (size_t j = 0; j < found->count && !listed; j++)
+            listed = found->list[j] == handle;
+        if (!listed && !SetHandleInformation(handle, HANDLE_FLAG_INHERIT, HANDLE_FLAG_INHERIT))
+            continue;
+        if (!listed)
+            found->list[found->count++] = handle;
+        found->of_kind[i] = handle;
     }
-    return count;
 }
 
 /* Room for a process attribute list of one attribute (about 48 bytes on
  * x86-64; InitializeProcThreadAttributeList says how much it needs). */
 #define ATTRIBUTE_LIST_SIZE 256u
 
-/* Windows has no exec: the same program is started as a child with the same
- * arguments, standard handles, environment and working directory, and this
- * process waits for it and ends with its status, so that whoever waits for
- * this process (the test runner, the shell) sees the child's end and its
- * output on the same handles. Unlike execve, the child has a process id of
- * its own and this process stays until it ends; the child is in a job that
- * ends it if this process is ended first (make_kill_on_close_job), and it
- * inherits the standard handles and nothing else (standard_handles).
- *
- * The process ends with TerminateProcess, not ExitProcess: no DLL is told to
- * detach and no C runtime buffer is flushed (execve, too, drops what was not
- * flushed). No crash handler calls this: CreateProcessW allocates, from a
- * heap a crash may have corrupted (host_process_restart_is_handler_safe;
- * crash_reboot ends the process for its parent to start again instead). */
 /* Starts the command line built in `restart` as a suspended child that
- * inherits the standard handles only. False with errno set. */
+ * inherits the standard handles only. The extended STARTUPINFOEXW, its size
+ * in cb and EXTENDED_STARTUPINFO_PRESENT go together, with the handle list;
+ * with no standard handle to give, the plain STARTUPINFOW and no
+ * inheritance. False with errno set. */
 static bool create_child(PROCESS_INFORMATION *child)
 {
     static _Alignas(16) unsigned char attribute_list[ATTRIBUTE_LIST_SIZE];
-    HANDLE inherited[STANDARD_HANDLE_COUNT];
-    const size_t inherited_count = standard_handles(inherited);
+    struct standard_handles handles;
+    find_standard_handles(&handles);
+    const bool inherits = handles.count > 0;
     STARTUPINFOEXW startup;
     memset(&startup, 0, sizeof startup);
-    startup.StartupInfo.cb = sizeof startup;
-    startup.StartupInfo.dwFlags = STARTF_USESTDHANDLES;
-    startup.StartupInfo.hStdInput = GetStdHandle(STD_INPUT_HANDLE);
-    startup.StartupInfo.hStdOutput = GetStdHandle(STD_OUTPUT_HANDLE);
-    startup.StartupInfo.hStdError = GetStdHandle(STD_ERROR_HANDLE);
-    startup.lpAttributeList = (LPPROC_THREAD_ATTRIBUTE_LIST)attribute_list; /* an opaque buffer the calls fill */
-    SIZE_T list_size = sizeof attribute_list;
-    if (inherited_count > 0
-        && (!InitializeProcThreadAttributeList(startup.lpAttributeList, 1, 0, &list_size)
-            || !UpdateProcThreadAttribute(startup.lpAttributeList, 0, PROC_THREAD_ATTRIBUTE_HANDLE_LIST, inherited,
-                                          inherited_count * sizeof inherited[0], NULL, NULL))) {
-        errno = errno_of(GetLastError());
-        return false;
+    startup.StartupInfo.cb = inherits ? sizeof startup : sizeof startup.StartupInfo;
+    if (inherits) {
+        startup.StartupInfo.dwFlags = STARTF_USESTDHANDLES;
+        startup.StartupInfo.hStdInput = handles.of_kind[STANDARD_INPUT];
+        startup.StartupInfo.hStdOutput = handles.of_kind[STANDARD_OUTPUT];
+        startup.StartupInfo.hStdError = handles.of_kind[STANDARD_ERROR];
+        startup.lpAttributeList = (LPPROC_THREAD_ATTRIBUTE_LIST)attribute_list; /* an opaque buffer the calls fill */
+        SIZE_T list_size = sizeof attribute_list;
+        if (!InitializeProcThreadAttributeList(startup.lpAttributeList, 1, 0, &list_size)) {
+            errno = errno_of(GetLastError());
+            return false;
+        }
+        if (!UpdateProcThreadAttribute(startup.lpAttributeList, 0, PROC_THREAD_ATTRIBUTE_HANDLE_LIST, handles.list,
+                                       handles.count * sizeof handles.list[0], NULL, NULL)) {
+            errno = errno_of(GetLastError());
+            DeleteProcThreadAttributeList(startup.lpAttributeList);
+            return false;
+        }
     }
-    const DWORD flags = CREATE_SUSPENDED | (inherited_count > 0 ? EXTENDED_STARTUPINFO_PRESENT : 0u);
-    const bool created = CreateProcessW(restart.executable, restart.command_line, NULL, NULL, inherited_count > 0,
-                                        flags, NULL, NULL, &startup.StartupInfo, child);
+    const DWORD flags = CREATE_SUSPENDED | (inherits ? EXTENDED_STARTUPINFO_PRESENT : 0u);
+    const bool created = CreateProcessW(restart.executable, restart.command_line, NULL, NULL, inherits, flags, NULL,
+                                        NULL, &startup.StartupInfo, child);
     if (!created)
         errno = errno_of(GetLastError());
-    if (inherited_count > 0)
+    if (inherits)
         DeleteProcThreadAttributeList(startup.lpAttributeList);
     return created;
 }
@@ -583,6 +607,20 @@ static bool run_in_job(HANDLE job, const PROCESS_INFORMATION *child)
     return false;
 }
 
+/* Windows has no exec: the same program is started as a child with the same
+ * arguments, standard handles, environment and working directory, and this
+ * process waits for it and ends with its status, so that whoever waits for
+ * this process (the test runner, the shell) sees the child's end and its
+ * output on the same handles. Unlike execve, the child has a process id of
+ * its own and this process stays until it ends; the child is in a job that
+ * ends it if this process is ended first (make_kill_on_close_job), and it
+ * inherits the standard handles and nothing else (create_child).
+ *
+ * The process ends with TerminateProcess, not ExitProcess: no DLL is told to
+ * detach and no C runtime buffer is flushed (execve, too, drops what was not
+ * flushed). No crash handler calls this: CreateProcessW allocates, from a
+ * heap a crash may have corrupted (host_process_restart_is_handler_safe;
+ * crash_reboot ends the process for its parent to start again instead). */
 int host_process_restart(char *const argv[])
 {
     const DWORD length = GetModuleFileNameW(NULL, restart.executable, HOST_PROCESS_PATH_SIZE);

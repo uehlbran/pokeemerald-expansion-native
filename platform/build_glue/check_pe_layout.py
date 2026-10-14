@@ -129,12 +129,13 @@ class Image:
 
 def read_manifest(data, base, sections, directory_rva):
     """The bytes of the application manifest in the resources at directory_rva (0: none), or None."""
-    def offset_of(rva):
+    def offset_of(rva, size=1):
+        """The file offset of the size bytes at rva, which must lie in one section's stored bytes."""
         for section in sections:
             start = section.address - base
-            if start <= rva < start + section.raw_size:
+            if start <= rva and rva + size <= start + section.raw_size:
                 return section.raw_pointer + rva - start
-        raise CheckError("the resource at RVA %#x is not in the file" % rva)
+        raise CheckError("the resources' %#x bytes at RVA %#x are not in the file" % (size, rva))
 
     if directory_rva == 0:
         return None
@@ -161,7 +162,9 @@ def read_manifest(data, base, sections, directory_rva):
     if found & RESOURCE_SUBDIRECTORY:
         raise CheckError("the resources' directory is malformed")
     data_rva, size = struct.unpack_from("<II", data, directory)
-    start = offset_of(data_rva)
+    start = offset_of(data_rva, size)
+    if start + size > len(data):
+        raise CheckError("the manifest runs past the end of the file")
     return bytes(data[start:start + size])
 
 
@@ -343,22 +346,44 @@ def self_test():
     expect("a manifest of another code page", check_image(image), ["does not set the active code page to UTF-8"])
 
     # A resource tree as windres writes one, at RVA 0x1000 of a section stored at file offset 0x200:
-    # type 24 -> id 1 -> language 0x409 -> the data entry -> the manifest's bytes.
-    def tree(type_id, name_id):
-        def directory(entry_id, entry_target):
-            return struct.pack("<IIHHHH", 0, 0, 0, 0, 0, 1) + struct.pack("<II", entry_id, entry_target)
-        body = (directory(type_id, 0x80000018) + directory(name_id, 0x80000030) + directory(0x409, 0x48)
-                + struct.pack("<IIII", 0x1000 + 0x58, len(GOOD_MANIFEST), 0, 0) + GOOD_MANIFEST)
+    # the root (0x00, room for two entries), type 24 -> the names (0x20), id 1 -> the languages
+    # (0x38), 0x409 -> the data entry (0x50) -> the manifest's bytes (0x60). The root may
+    # start with a named entry (the high bit set in its name: the offset of a string), as a
+    # resource of a named type would; it never matches an id.
+    def tree(type_id, name_id, named_first=False, name_target=0x80000038, manifest_size=None):
+        def directory(entries):
+            named = sum(1 for entry_id, _ in entries if entry_id & 0x80000000)
+            return (struct.pack("<IIHHHH", 0, 0, 0, 0, named, len(entries) - named)
+                    + b"".join(struct.pack("<II", entry_id, entry_target) for entry_id, entry_target in entries))
+        root_entries = [(type_id, 0x80000020)]
+        if named_first:
+            # The name's offset, 0x18, has the manifest type's id in its low bits: a walk that
+            # ignored the high bit would take this entry for type 24.
+            root_entries.insert(0, (0x80000018, 0x80000020))
+        root = directory(root_entries).ljust(0x20, b"\0")
+        size = len(GOOD_MANIFEST) if manifest_size is None else manifest_size
+        body = (root + directory([(name_id, name_target)]) + directory([(0x409, 0x50)])
+                + struct.pack("<IIII", 0x1000 + 0x60, size, 0, 0) + GOOD_MANIFEST)
         return bytes(0x200) + body
 
     sections = [Section(".rsrc", IMAGE_BASE + 0x1000, 0x200, READ_ONLY_INITIALISED, 0x200, 0x200)]
     for name, data, rva, wanted in (("a manifest read", tree(24, 1), 0x1000, GOOD_MANIFEST),
+                                    ("a manifest after a named entry", tree(24, 1, named_first=True), 0x1000,
+                                     GOOD_MANIFEST),
                                     ("a resource of another type", tree(16, 1), 0x1000, None),
+                                    ("only a named type", tree(16, 1, named_first=True), 0x1000, None),
                                     ("a manifest of another id", tree(24, 2), 0x1000, None),
                                     ("no resources", b"", 0, None)):
         found = read_manifest(data, IMAGE_BASE, sections, rva)
         if found != wanted:
             failures.append("%s\n  expected %r\n  got      %r" % (name, wanted, found))
+    for name, data in (("a data entry where a directory belongs", tree(24, 1, name_target=0x50)),
+                       ("a manifest that runs past its section", tree(24, 1, manifest_size=0x400))):
+        try:
+            read_manifest(data, IMAGE_BASE, sections, 0x1000)
+            failures.append("read_manifest accepted %s" % name)
+        except CheckError:
+            pass
     data = bytearray(1024)
     for message, damaged in (("a short file", b"MZ"), ("not a PE file", bytes(data))):
         try:

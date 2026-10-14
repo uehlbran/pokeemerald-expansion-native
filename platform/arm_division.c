@@ -372,7 +372,7 @@ static bool complete(struct host_fault *fault)
 
 /* "arm_division: undecodable divide error at pc 0x12345678, passed on
  * (...)\n", 16 digits on x86-64, formatted without stdio and written with
- * host_file_write_all, which a fault handler may call. */
+ * host_file_write_from_handler, which a fault handler may call. */
 static void report_passed_on(const struct host_fault *fault)
 {
     static const char head[] = "arm_division: undecodable divide error at pc 0x";
@@ -386,7 +386,7 @@ static void report_passed_on(const struct host_fault *fault)
         line[sizeof head - 1 + i] = hex[(pc >> shift) & HEX_DIGIT_MASK];
     }
     memcpy(line + sizeof head - 1 + PC_HEX_DIGITS, tail, sizeof tail - 1);
-    (void)host_file_write_all(STDERR_FILENO, line, sizeof line); /* nothing to do if stderr is gone */
+    (void)host_file_write_from_handler(STDERR_FILENO, line, sizeof line); /* nothing to do if stderr is gone */
 }
 
 /* Completes a divide error, or reports the one it cannot complete (so that

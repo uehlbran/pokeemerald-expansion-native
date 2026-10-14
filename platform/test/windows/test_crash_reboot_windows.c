@@ -71,6 +71,25 @@ static void divide_with_no_handler(void)
     divide_by_zero(&quotient, &remainder);
 }
 
+/* Deep enough to overflow the 2 MiB main stack; the flag keeps the compiler
+ * from proving that it never ends. The filter then runs on what
+ * SetThreadStackGuarantee kept at the stack's end (host_fault.h). */
+static volatile bool keep_recursing = true;
+
+static unsigned recurse(unsigned depth) // NOLINT(misc-no-recursion): overflowing the stack is the point
+{
+    volatile unsigned char page[4096];
+    page[0] = (unsigned char)depth;
+    if (keep_recursing)
+        return recurse(depth + 1u) + page[0];
+    return page[0];
+}
+
+static void overflow_the_stack(void)
+{
+    (void)recurse(0);
+}
+
 /* The crashing child: installs the reboot, puts pattern A in the region
  * (unless progress is false) and crashes. */
 static void crash_in_child(bool progress, void (*crash)(void))
@@ -118,6 +137,10 @@ static void crash_with_progress_by_division(void)
 {
     crash_in_child(true, divide_with_no_handler);
 }
+static void crash_with_progress_by_stack_overflow(void)
+{
+    crash_in_child(true, overflow_the_stack);
+}
 static void crash_without_progress(void)
 {
     crash_in_child(false, crash_by_null_call);
@@ -127,11 +150,9 @@ static const struct {
     const char *name;
     void (*body)(void);
 } children[] = {
-    {"null_call", crash_with_progress_by_null_call},
-    {"illegal", crash_with_progress_by_illegal_instruction},
-    {"divide", crash_with_progress_by_division},
-    {"no_progress", crash_without_progress},
-    {"restarted", restarted_child},
+    {"null_call", crash_with_progress_by_null_call}, {"illegal", crash_with_progress_by_illegal_instruction},
+    {"divide", crash_with_progress_by_division},     {"overflow", crash_with_progress_by_stack_overflow},
+    {"no_progress", crash_without_progress},         {"restarted", restarted_child},
 };
 
 /* Runs child name with its stderr in a scratch file, and reads the file into
@@ -204,6 +225,13 @@ PTEST(an_illegal_instruction_and_a_divide_error_do_too)
     PT_ASSERT(is_reboot_report(text, "C000001D", pattern_a));
     PT_ASSERT_EQ_U32(run_child("divide", text), CRASH_REBOOT_EXIT_CODE);
     PT_ASSERT(is_reboot_report(text, "C0000094", pattern_a));
+}
+
+PTEST(a_stack_overflow_does_too_on_the_stack_kept_for_the_handler)
+{
+    char text[REPORT_TEXT_SIZE];
+    PT_ASSERT_EQ_U32(run_child("overflow", text), CRASH_REBOOT_EXIT_CODE);
+    PT_ASSERT(is_reboot_report(text, "C00000FD", pattern_a)); /* EXCEPTION_STACK_OVERFLOW */
 }
 
 PTEST(the_program_started_again_with_the_reported_state_finds_it_restored)
