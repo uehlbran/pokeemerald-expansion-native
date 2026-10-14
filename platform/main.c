@@ -18,6 +18,11 @@
  * one exception is crash_reboot's handler, which, in test-runner mode,
  * replaces a crashed process with a fresh run of the same program.
  *
+ * Before any module starts, main takes the save's lock (save_lock.h), so
+ * that a second instance on the same save stops there, and it releases the
+ * lock once every module has stopped, after the last store and before a
+ * restart, whose new run takes it again as any start does.
+ *
  * Test-runner mode (--test-runner) makes the process what mgba-rom-test is
  * to expansion's hydra (tools/mgba-rom-test-hydra, run through
  * platform/test_runner/native-rom-test): mGBA's debug registers print to
@@ -60,6 +65,7 @@
 #include "rtc.h"
 #include "save_convert.h"
 #include "save_file.h"
+#include "save_lock.h"
 #include "timer.h"
 #include "transfer_bounds.h"
 #include "video.h"
@@ -490,8 +496,13 @@ int main(int argc, char **argv)
         return MAIN_EXIT_OK;
     }
 
-    if (!start_steps(module_steps, MODULE_STEP_COUNT, &options))
+    /* Test-runner mode has no save path: it writes no save and takes no lock. */
+    if (options.save_path != NULL && save_lock_take(options.save_path) != SAVE_LOCK_OK)
+        return MAIN_EXIT_FAILURE; /* reported */
+    if (!start_steps(module_steps, MODULE_STEP_COUNT, &options)) {
+        save_lock_release();
         return MAIN_EXIT_FAILURE;
+    }
 
     status = run_game(&options);
     if (frame_flush_save() != 0 && status == MAIN_EXIT_OK)
@@ -504,6 +515,14 @@ int main(int argc, char **argv)
     const int64_t restart_epoch = fixed_clock_at(options.rtc_fixed_epoch, frame_count());
     const uint32_t restart_line = replay_session_restart_line();
     stop_steps(module_steps, MODULE_STEP_COUNT);
+    /* After every module has stopped, so after the last store
+     * (frame_flush_save); no test can see that order, since this is the last
+     * thing before the process ends and only an instance started during that
+     * final store could tell. Released before the restart, not handed on: on
+     * Windows the new run is a child this process waits for, which could never
+     * take a lock its parent holds (docs/DECISIONS.md, the amendment to ruling
+     * (3)). */
+    save_lock_release();
     if (restart && status == MAIN_EXIT_OK)
         return restart_process(argc, argv, restart_epoch, restart_line);
     return status;

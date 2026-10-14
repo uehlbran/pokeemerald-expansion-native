@@ -159,6 +159,7 @@ returned to the caller (`main` decides what to do; modules never call
 | `m4a/` | the ARM sound engine `src/m4a_1.s`, in C | n/a (game code) | yes, and a differential test against the ARM original under qemu-arm, run by hand (`platform/m4a/README.md`) |
 | `flash` | the 1 Mbit flash chip's driver entry | GBA Cart Backup Flash ROM | yes |
 | `save_file` | the cartridge's persistence | n/a | yes |
+| `save_lock` | the cartridge being in one console at a time: one running game per save, an OS lock on `<save>.lock` that `main` holds from before the first module starts to after the last stops | n/a | yes (with child processes) |
 | `save_convert` | the save moving between the 32-bit and the 64-bit build (`SaveBlock1`'s layouts, `save_layout32.h`, `save_layout64.h`) | n/a (expansion's `src/save.c` format) | yes, and gate (h) |
 | `debug_channel` | mGBA's debug registers | mGBA `src/gba/io.c` | yes |
 | `crash_reboot` | the reboot after a crash, keeping IWRAM's last 0x200 bytes (test runner mode) | BIOS Reset Functions | yes (real crashes and re-execs) |
@@ -219,7 +220,7 @@ the unit tests' time limit.
 | `host_image.h` | the bounds of the executable's image and of the main thread's stack; its read-only segments | `transfer_bounds`, `game_hooks` (`PlatformIsRomPointer`) | `__executable_start`, `__data_start`, `_end`, `getauxval(AT_PHDR)`, `pthread_getattr_np` |
 | `host_stack.h` | running a function on a stack of the caller's choosing | `game_hooks` (`PlatformCallWithStack`) | `ucontext`, with AddressSanitizer's fiber annotations |
 | `host_thread.h` | a one-shot deadline kept by a thread that only sets the caller's atomic flag: the unit tests' per-test time limit (`ptest.h`); the one thread in the platform (`DECISIONS.md`, "The test time limit is kept by a flag-setting thread") | `test/ptest.h` | `pthread` and a condition variable (`host_posix.c`) |
-| `host_file.h` | opening a file the same way everywhere, writing a whole buffer (from a fault handler too), durable file replacement, `mkdir` with a mode, the local time | `save_file`, `rtc_offset_store`, `crash_reboot`, `arm_division`, `replay_session`, `rtc` | `open` with `O_CLOEXEC`, `write`, `fsync`, `rename`, a directory's `fsync`, `mkdir`, `localtime_r` |
+| `host_file.h` | opening a file the same way everywhere, writing a whole buffer (from a fault handler too), durable file replacement, an exclusive lock on a file, `mkdir` with a mode, the local time | `save_file`, `save_lock`, `rtc_offset_store`, `crash_reboot`, `arm_division`, `replay_session`, `rtc` | `open` with `O_CLOEXEC`, `write`, `fsync`, `rename`, a directory's `fsync`, `flock`, `mkdir`, `localtime_r` |
 
 The sources are one per OS family: `host_posix.c` holds what Linux and macOS
 share (the signal handlers' installation and chaining, `execve`, the files,
@@ -257,7 +258,12 @@ crash there is still dispatched to the filter (`DECISIONS.md`, "The battle
 runner's stack switch on Windows is hand-written assembly, not a fiber").
 The image's writable sections are linked last (`gba_game.pe.ld`), so that its
 mutable data is one stretch as on Linux; the files are written in binary mode
-and replaced with `MoveFileExW` and write-through, with no directory sync.
+and replaced with `MoveFileExW` and write-through, with no directory sync. The
+save's lock is `LockFileEx` over the whole lock file, released with
+`UnlockFileEx` before its handle closes; since the restarted run is a child
+the restarting process waits for, `main` releases the lock before the
+restart, and the child takes it as any start does (`DECISIONS.md`, the
+amendment to the owner's ruling (3)).
 
 The replay's function names are OS-neutral the same way: the link writes
 `<executable>.symbols`, the executable's function symbols as `nm` lists

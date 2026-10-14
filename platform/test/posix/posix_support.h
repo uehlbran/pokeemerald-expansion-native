@@ -27,6 +27,13 @@
  * (posix_child.h), which first stops the runner's watchdog thread. */
 int psup_fork_child(void (*body)(void *context), void *context);
 
+/* psup_fork_child's two halves, for a child that runs while the test goes on:
+ * the start, which returns the child's process id (or -1) without waiting,
+ * and the wait, which returns its wait status once it has ended (or -1). A
+ * test starts one with psup_start_child_running (posix_child.h). */
+pid_t psup_start_child(void (*body)(void *context), void *context);
+int psup_wait_child(pid_t pid);
+
 /* The exit code in a wait status of a child that exited, else -1. */
 int psup_exit_code(int status);
 

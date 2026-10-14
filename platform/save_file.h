@@ -14,8 +14,9 @@
  * <path>, then the directory is fsynced, so a crash or a full disk leaves
  * either the old file or the new one, never a torn one.
  * That holds for one process per save path: the temporary name is fixed, so
- * two instances storing to the same path can rename each other's half-written
- * file over the save, and nothing locks the path.
+ * two instances storing to the same path could rename each other's
+ * half-written file over the save. main holds save_lock.h's lock on the path
+ * for as long as the game runs, so a second instance does not start.
  *
  * FILE FORMAT, version 1. A SAVE_FILE_HEADER_SIZE (28) byte header, every
  * integer an unsigned 32-bit little-endian value, then the chip image:

@@ -1,7 +1,8 @@
 /*
- * save_file_fixture.h: what test_save_file.c (loading and the format) and
- * test_save_file_store.c (storing) share. Each is one test binary including
- * this once; the helpers are static inline so a binary need not use them all.
+ * save_file_fixture.h: what test_save_file.c (loading and the format),
+ * test_save_file_store.c (storing) and the save lock's tests
+ * (test_save_lock*.c) share. Each is one test binary including this once;
+ * the helpers are static inline so a binary need not use them all.
  *
  * The format, written out here from save_file.h's description rather than
  * taken from the module: a 28-byte version-1 header (magic "PENSAVE\0", then
@@ -39,6 +40,7 @@
 #define HALF_CHIP_BYTES (64 * KIB) /* a 512 Kbit save */
 #define ERASED 0xFFu
 #define TMP_SUFFIX ".tmp"
+#define LOCK_SUFFIX ".lock" /* save_lock.h's companion file */
 
 /* The version-1 header. */
 #define MAGIC "PENSAVE" /* with its terminator, the 8 magic bytes */
@@ -67,6 +69,7 @@ struct scratch {
     char dir[SAVE_FILE_PATH_SIZE];  /* a fresh directory */
     char path[SAVE_FILE_PATH_SIZE]; /* <dir>/emerald.sav */
     char tmp[SAVE_FILE_PATH_SIZE];  /* <path>.tmp */
+    char lock[SAVE_FILE_PATH_SIZE]; /* <path>.lock */
 };
 
 static inline bool format_path(char *out, const char *first, const char *second)
@@ -79,19 +82,21 @@ static inline bool scratch_create(struct scratch *scratch)
 {
     if (!tsup_make_temp_directory(scratch->dir, sizeof scratch->dir, "save_file_test"))
         return false;
-    if (format_path(scratch->path, scratch->dir, "/emerald.sav")
-        && format_path(scratch->tmp, scratch->path, TMP_SUFFIX))
+    if (format_path(scratch->path, scratch->dir, "/emerald.sav") && format_path(scratch->tmp, scratch->path, TMP_SUFFIX)
+        && format_path(scratch->lock, scratch->path, LOCK_SUFFIX))
         return true;
     (void)tsup_remove_directory(scratch->dir); /* best-effort: the test fails anyway */
     return false;
 }
 
-/* Removes the save, the temporary file and the directory; true if all went. */
+/* Removes the save, the temporary file, the lock file and the directory;
+ * true if all went. */
 static inline bool scratch_remove(const struct scratch *scratch)
 {
     const bool save_gone = tsup_remove_file(scratch->path);
     const bool tmp_gone = tsup_remove_file(scratch->tmp);
-    return save_gone && tmp_gone && tsup_remove_directory(scratch->dir);
+    const bool lock_gone = tsup_remove_file(scratch->lock);
+    return save_gone && tmp_gone && lock_gone && tsup_remove_directory(scratch->dir);
 }
 
 static inline bool exists(const char *path)

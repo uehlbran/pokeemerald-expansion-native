@@ -19,6 +19,11 @@
 #              at start (exit status 1, "has no save header" on stderr), the file unchanged.
 #      other/  TO_BINARY on a copy whose header names layout id 2: refused at start (exit status
 #              1, the refusal on stderr), the file unchanged.
+#   3c. busy/  TO_BINARY on a copy FROM_BINARY is playing (started first, waited for until it holds
+#              the save's lock, /proc/locks): refused at start (exit status 1, one line on stderr
+#              naming the save and another instance), before any module: its own clock file not
+#              created, no temporary file; the file unchanged; FROM killed with SIGKILL, as a crash
+#              ends it, TO then starts on the file (exit status 0) and creates its clock file.
 #   4. again/  TO_BINARY on another copy, cross_width_save.replay: Continue, save again, restart,
 #              Continue (the replay's own `expect`s); the header then names TO's width, not FROM's,
 #              and both saves show the scene 27_continued shows.
@@ -40,7 +45,7 @@ case "$outdir" in "" | "/") die "OUTDIR must be a directory of its own, not '$ou
 
 work="$outdir/work"
 rm -rf "$work" || die "cannot remove $work"
-mkdir -p "$work/from" "$work/to" "$work/headerless" "$work/other" "$work/again" || die "cannot create $work"
+mkdir -p "$work/from" "$work/to" "$work/headerless" "$work/other" "$work/busy" "$work/again" || die "cannot create $work"
 
 # ---- 1. FROM: the opening up to and including the save ----------------------------------------
 play_until_save "$from_binary" "$work/from"
@@ -73,6 +78,71 @@ fi
 
 # ---- 3b. TO refuses a save whose layout id it does not know -------------------------------------
 refuse_other_layout "$to_binary" "$work/other" "$work/from/pokeemerald.sav"
+
+# ---- 3c. TO refuses a save another instance is playing, until that instance is gone --------------
+# The lock is flock(2)'s on <save>.lock (platform/save_lock.h). Linux lists every lock held in
+# /proc/locks with the holder's process id and the file's inode, which shows that FROM holds it
+# without the check taking it (a check that took it could be what refused FROM).
+holds_save_lock() {
+    local save="$1" pid="$2" inode
+    inode="$(stat -c %i "$save.lock" 2> /dev/null)" || return 1
+    grep -qE "^[0-9]+: FLOCK +ADVISORY +WRITE +$pid [0-9a-f]+:[0-9a-f]+:$inode " /proc/locks
+}
+
+# Kills the background FROM, $1, with SIGKILL, as a crash would end it; returns its status.
+kill_holder() {
+    kill -KILL "$1" 2> /dev/null
+    wait "$1" 2> /dev/null # the shell's "Killed" notice: the status says it
+}
+
+# TO is given a clock file of its own, which its first start creates (rtc's first setting): the
+# refused start must not have created it, nor any temporary file, or the lock was taken after a
+# module had started.
+busy_save() {
+    local busy="$1" holder status
+    cp "$work/from/pokeemerald.sav" "$busy/pokeemerald.sav" && cp "$busy/pokeemerald.sav" "$busy/before.sav" \
+        || die "cannot copy the save"
+    echo "== busy: $to_binary on a save $from_binary is playing"
+    # Bounded, should the kill below never come: about a minute of the intro, unthrottled.
+    "$from_binary" --headless --silent --unthrottled --frames 50000 --save "$busy/pokeemerald.sav" \
+        --rtc-offset "$busy/from.rtc" > "$busy/holder.stdout.log" 2> "$busy/holder.stderr.log" &
+    holder=$!
+    for _ in $(seq 100); do
+        holds_save_lock "$busy/pokeemerald.sav" "$holder" && break
+        sleep 0.1
+    done
+    if ! holds_save_lock "$busy/pokeemerald.sav" "$holder"; then
+        kill_holder "$holder"
+        fail "busy: FROM did not take the save's lock within 10 seconds"
+        return
+    fi
+    "$to_binary" --headless --silent --unthrottled --frames 60 --save "$busy/pokeemerald.sav" \
+        --rtc-offset "$busy/to.rtc" > "$busy/stdout.log" 2> "$busy/stderr.log"
+    status=$?
+    kill_holder "$holder"
+    [ $? -eq $((128 + 9)) ] || fail "busy: FROM did not end by the SIGKILL"
+    [ "$status" -eq "$main_exit_failure" ] || fail "busy: TO ended with status $status, not $main_exit_failure"
+    [ "$(wc -l < "$busy/stderr.log")" -eq 1 ] \
+        && grep -qF "save_lock: another instance of the game holds the save $busy/pokeemerald.sav " "$busy/stderr.log" \
+        || fail "busy: TO's stderr is not the one line that another instance holds the save"
+    [ ! -e "$busy/to.rtc" ] || fail "busy: the refused TO created its clock file: it started a module before the lock"
+    if ls "$busy"/*.tmp > /dev/null 2>&1; then
+        fail "busy: a temporary file was left in $busy"
+    fi
+    "$to_binary" --headless --silent --unthrottled --frames 60 --save "$busy/pokeemerald.sav" \
+        --rtc-offset "$busy/to.rtc" > "$busy/after.stdout.log" 2> "$busy/after.stderr.log"
+    status=$?
+    [ "$status" -eq 0 ] || fail "busy: TO ended with status $status once FROM was killed, not 0 (see $busy/after.stderr.log)"
+    [ -e "$busy/to.rtc" ] || fail "busy: TO's start did not create its clock file, so the check above proves nothing"
+    cmp -s "$busy/before.sav" "$busy/pokeemerald.sav" || fail "busy: the save file changed, but no game saved"
+    local log
+    for log in stderr after.stderr; do
+        if new_sanitizer_reports "$busy/$log.log" "$busy/$log.sanitizer-new.log"; then
+            fail "busy: sanitizer reports in $busy/$log.log"
+        fi
+    done
+}
+busy_save "$work/busy"
 
 # ---- 4. TO saves in its own layout and comes up from it -----------------------------------------
 save_again "$to_binary" "$work/again" "$work/from"

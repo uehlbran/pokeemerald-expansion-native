@@ -1377,3 +1377,82 @@ installed and has been run once, on top of what it uses. That is a property of
 the memory model on Windows (one image holding the GBA regions at their
 addresses, the code at 0x40001000; DECISIONS.md, "The ports share a thin host
 layer"), recorded here for the owner; nothing in this task changes the model.
+
+## 2026-10-14: Amendment to ruling (3): the save's lock across a restart and a crash
+
+Ruling (3) as built (`platform/save_lock.h`), and the choice it left open.
+
+The lock is `host_file.h`'s: `flock(LOCK_EX | LOCK_NB)` on POSIX,
+`LockFileEx(LOCKFILE_EXCLUSIVE_LOCK | LOCKFILE_FAIL_IMMEDIATELY)` over every
+byte on Windows, on `<save>.lock` opened through `host_file_open` (`O_RDWR |
+O_CREAT`, 0644, not inherited). flock, not fcntl's record locks, which belong
+to the process and drop when it closes any descriptor of the file; flock's
+belongs to the open file. `main` takes it after parsing the options, before
+any module starts, so a second instance opens no window and reads or writes
+neither the save nor the clock's file, and releases it after every module has
+stopped, so after the last store. Test-runner mode has no save path and takes
+no lock. A refused start prints one line and exits with status 1:
+
+    save_lock: another instance of the game holds the save <save> (the lock on <save>.lock); not starting, so that the two cannot write over each other's saves
+
+Any other failure is reported by call (`save_lock: open(<save>.lock): ...`,
+`flock(...)`) and stops the start too.
+
+The restart: released and taken again, on both systems, never handed on.
+`main` releases the lock after the modules stop and before `restart_exec`; the
+new run takes it in its own `main`, as any start does.
+- Windows: the new run is a child the restarting process waits for
+  (`host_process_restart`). A lock its parent held would refuse it, since
+  the child inherits no handle but the standard ones and a `LockFileEx` lock
+  is the handle's that took it. So the parent releases first, with an
+  explicit `UnlockFileEx`: of a closed handle's locks Microsoft writes that
+  "the time it takes for the operating system to unlock these locks depends
+  upon available system resources" (`LockFileEx`).
+- Linux: a descriptor without `O_CLOEXEC` would survive the exec, and the new
+  image would hold the lock through a descriptor it does not know, and refuse
+  itself at its own take (a new open). `host_file_open`'s `O_CLOEXEC` closes
+  it at the exec, so even an exec with the lock still held leaves it free for
+  the new image; `main` releases it first anyway, in the same order as on
+  Windows.
+
+So the two runs never both hold it (the old one has dropped it before the new
+one exists: before `CreateProcessW`, before `execve`), and the new run always
+finds it free unless another instance took it in the gap between the release
+and the take, in which case the restarted run refuses with the line above and
+exits with status 1: still one game on the save, which is the rule.
+
+The crash reboot runs in test-runner mode only, which has no save path, so no
+lock is held when a crash reboots (Linux: the handler's `execve`; Windows: the
+parent's new start after exit code 75). Were one held, the exec would close it
+(`O_CLOEXEC`) and the crashed Windows process's end would drop it before the
+parent starts the next run. A crash in a normal run ends the process, and the
+system drops the lock with it.
+
+Tests: `platform/test/posix/test_save_lock_posix.c` (a) a forked child holds
+the lock and the parent is refused with the line, (b) the lock outlives two
+stores, which replace the save, a child still refused, (c) a child killed with
+`SIGKILL` while holding it leaves it free, and the restart: a child takes it,
+releases it (or keeps it) and restarts through `host_process_restart`, and the
+restarted run takes it. `test/windows/test_save_lock_windows.c` has the twins
+(Windows has no fork: there this process holds and a child is refused, and the
+holder ended at once is a child ending itself with `TerminateProcess`).
+`tests/smoke/run_cross_width.sh`, step `busy/`: TO is refused, with that one
+line and before any module starts (its own clock file, which a start creates,
+is not created, nor any temporary file), on a save FROM is playing, and starts
+once FROM is killed; the replays'
+`restart` with a save path is `run.sh`'s and `again/`'s.
+
+Not covered by the lock: the clock's offset file, also written through a fixed
+temporary name; two instances on different saves that share one offset file
+are not kept apart (`rtc_offset_store.h`). And a save reached by two names, a
+symbolic or a hard link (`a/link.sav` to `a/real.sav`): the lock file is the
+path as given plus `.lock`, so the two names have two lock files and two
+instances on them both start. A known limit, written in `save_lock.h`:
+resolving the path to its file (`realpath`, `GetFinalPathNameByHandleW`, and
+for a hard link not even those) is not worth a host call for a link someone
+made on purpose.
+
+Not testable: that `main` releases the lock after the last store. The release
+is the last thing before the process ends, so only an instance started during
+that final store could see the order; `main.c` and the POSIX test's header say
+so.

@@ -7,7 +7,8 @@
  *
  * Followed: POSIX (sigaction, sigaltstack, pthread_sigmask, execve, _exit,
  * open, write, fsync, rename, mkdir, localtime_r, pthread_create,
- * pthread_condattr_setclock and pthread_cond_timedwait), and signal-safety(7)
+ * pthread_condattr_setclock and pthread_cond_timedwait), flock(2) (not
+ * POSIX: BSD's, which Linux and macOS share), and signal-safety(7)
  * for what a signal handler may call: everything on the handlers' path here
  * (sigaction, raise, execve, _exit, write) is async-signal-safe.
  */
@@ -24,6 +25,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/file.h>
 #include <sys/stat.h>
 #include <time.h>
 #include <unistd.h>
@@ -335,6 +337,16 @@ int host_file_sync_directory_of(const char *path)
         errno = error;
         return -1;
     }
+    return close(descriptor);
+}
+
+int host_file_take_lock(int descriptor)
+{
+    return flock(descriptor, LOCK_EX | LOCK_NB);
+}
+
+int host_file_release_lock(int descriptor)
+{
     return close(descriptor);
 }
 
