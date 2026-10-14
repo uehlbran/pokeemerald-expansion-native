@@ -1183,3 +1183,12 @@ and no `longjmp` across it (game_hooks leaves the stack first, as on Linux).
 What cannot be checked here: that the dispatch and the switch behave as
 reasoned; `test_host_stack`, `test_game_hooks` and the suite's battle tests
 on the Windows runner are the evidence.
+
+## 2026-10-14: macOS waits for the owner's own Windows verification
+
+The owner's ruling: no macOS work (tasks M2 to M5) starts until Windows is
+fully done (the executable, the unit tests, the replays and the suite on
+the Windows runner) and the owner has verified it by hand on a Windows
+machine. The macOS decision of earlier today (x86_64 under Rosetta, arm64
+not started) stands; only its start moves.
+

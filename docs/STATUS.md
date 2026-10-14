@@ -538,6 +538,12 @@ the ':' the code accepts). The summary (findings by severity and area;
 accepted, rejected, fixed; what needs the owner) is written here when
 the pass is complete.
 
+**Order from the owner (2026-10-14):** macOS (M2 to M5) does not start
+until Windows is fully done and the owner has verified it by hand on a
+Windows machine (DECISIONS.md). After the Windows runner work merges, the
+next tasks are the review fixes and the re-review of the in-flight files,
+not macOS.
+
 **In flight.** Tasks W8 and W9 as one Opus worker (branch m8-winci): the
 Windows runner's unit tests and smoke made to pass, then the replays, the
 suite through a driver that restarts on exit code 75, and the cross-OS
