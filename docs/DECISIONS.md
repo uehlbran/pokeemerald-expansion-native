@@ -931,3 +931,24 @@ for hardware assumptions). Every coding worker receives the file
 verbatim in its task and the first-pass reviewer checks each diff
 against it line by line. The task W3 in flight (the test timeout) was
 re-briefed under these rules before it chose a design.
+
+## 2026-10-14: The per-push CI tier runs no suite; the plain 64-bit suite is nightly
+
+Measured on the runner (`.github/workflows/native.yml`, runs 38563489510
+cold and 38567630409 warm): the per-push tier as the owner specified it
+(the platform gate, the 64-bit build, both 64-bit replays, the plain
+64-bit suite) takes 31 minutes cold and 20 warm, against the 15-minute
+target; the suite alone is 887 s cold and 595 s warm, and the compiler
+cache barely helps because the game's C is compiled from a pipe that
+ccache cannot hash (3,682 of 4,003 calls uncacheable; only the platform
+library's 321 calls hit). The two parts of the specification cannot both
+hold, so the suite moves to the nightly tier as its own job and the
+per-push tier keeps the platform gate, the build and the replays (about
+10 minutes warm). The reasoning is the one already recorded: the
+orchestrator's local gate runs the suite at both widths before every
+merge, so the per-push backstop loses nothing the project relies on, and
+the nightly still runs every suite. Two follow-ups are recorded in
+PLAN.md: compiling the game's C through a file so ccache can cache it
+(the 64-bit build is 328 s warm), after which the suite could return to
+the per-push tier if the owner wants it there; and caching the converted
+assets. The owner can flip the suite back with one line in the workflow.
