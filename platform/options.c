@@ -101,7 +101,9 @@ static bool parse_flag(const char *arg, struct options *out)
 /* Options whose value is a string kept as it is (it points into argv). */
 static bool parse_string_option(const char *arg, const char *value, struct options *out)
 {
-    if (value == NULL)
+    /* A missing value, not a path that starts with "--": `--save --headless`
+     * is a forgotten path, not a save file of that name. */
+    if (value == NULL || (value[0] == '-' && value[1] == '-'))
         return false;
     if (strcmp(arg, CRASH_REBOOT_OPTION) == 0)
         out->persistent_state = value;
