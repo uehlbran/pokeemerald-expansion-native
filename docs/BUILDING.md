@@ -404,7 +404,8 @@ platform/test_runner/compare_suite_results.sh suite-linux64.log suite-windows.lo
   `pokeemerald.rtc` in binary mode; then again from a directory with a
   non-ASCII name, with non-ASCII save and clock paths on the command line,
   where the clock's file must appear under exactly its name and a file at the
-  save path that is not a save must be refused by its name.
+  save path without the save header must be refused by its name and left as
+  it was.
 - The replays (gates d and e) compare with the Linux expectations unchanged:
   the Windows build draws the same frames and dumps the same facts as the
   Linux 64-bit one (the same code and data, bit-fields laid out as GCC lays
