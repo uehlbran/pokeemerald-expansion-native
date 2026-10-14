@@ -53,6 +53,11 @@ bool tsup_make_temp_file(char *path, size_t size, const char *prefix)
     return false;
 }
 
+FILE *tsup_open_temp_stream(void)
+{
+    return tmpfile();
+}
+
 bool tsup_make_directory(const char *path)
 {
     return mkdir(path, SCRATCH_DIRECTORY_MODE) == 0;

@@ -9,8 +9,12 @@
  * swapcontext, setcontext; glibc at both widths), with AddressSanitizer's
  * fiber annotations (sanitizer/common_interface_defs.h) when built with it,
  * so that ASan knows which stack is current and does not misreport the
- * switch. Another OS adds its own source behind the same calls
- * (research/m8-inventory.md, 1.2 row 11). Single-threaded, not reentrant.
+ * switch. On Windows (host_windows_stack.c): a switch in assembly for the
+ * Win64 ABI (fibers cannot run on a stack of the caller's choosing), which
+ * widens the thread's stack limits (NT_TIB) to hold both stacks while the
+ * entry runs, so that the system's exception dispatch walks from the entry's
+ * frames to the caller's (research/m8-inventory.md, 1.2 row 11).
+ * Single-threaded, not reentrant.
  */
 #ifndef PLATFORM_HOST_STACK_H
 #define PLATFORM_HOST_STACK_H

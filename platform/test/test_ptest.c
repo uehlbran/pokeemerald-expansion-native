@@ -424,7 +424,7 @@ struct run {
 static struct run run_registry(const struct ptest_registry *registry)
 {
     struct run run = {.status = -1, .text_complete = false, .text = ""};
-    FILE *const out = tmpfile();
+    FILE *const out = tsup_open_temp_stream();
     if (out == NULL)
         return run;
     run.status = ptest_main_for(registry, out);

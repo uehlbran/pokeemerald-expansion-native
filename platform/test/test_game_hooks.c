@@ -21,8 +21,10 @@
 #include "decompress_asm.h"
 #include "game_hooks.h"
 #include "gba_memmap.h"
+#include "host_memory.h"
 #include "interrupt.h"
 #include "ptest.h"
+#include "test_support.h"
 
 
 extern const uint8_t RomHeaderGameCode[4];
@@ -46,15 +48,17 @@ static uintptr_t address_of(const volatile void *pointer)
     return address;
 }
 
-/* On the platform's call stack, which gba_regions.ld puts below 2^27 so that
- * the battle runner's 27-bit address fields hold its locals' addresses
- * (include/test/battle.h, QueuedSubHitEvent). */
-#define BATTLE_RUNNER_ADDRESS_LIMIT (UINT32_C(1) << 27)
+/* On the platform's call stack, where the link put it (host_memory.h), below
+ * 2^27 so that the battle runner's 27-bit address fields hold its locals'
+ * addresses (include/test/battle.h, QueuedSubHitEvent). */
+#define BATTLE_RUNNER_ADDRESS_LIMIT UINT32_C(0x08000000) /* 2^27, written apart from game_hooks.h */
+_Static_assert(GAME_HOOKS_CALL_STACK_LIMIT == BATTLE_RUNNER_ADDRESS_LIMIT,
+               "the call stack must end below the battle runner's 27-bit address fields");
 
 static bool on_call_stack(uintptr_t address)
 {
-    return address >= GAME_HOOKS_CALL_STACK_ADDRESS
-           && address < GAME_HOOKS_CALL_STACK_ADDRESS + GAME_HOOKS_CALL_STACK_SIZE
+    const struct host_span stack = host_memory_call_stack();
+    return address >= stack.start && address < stack.start + GAME_HOOKS_CALL_STACK_SIZE
            && address < BATTLE_RUNNER_ADDRESS_LIMIT;
 }
 
@@ -349,7 +353,7 @@ PTEST(a_jump_from_an_interrupt_handler_leaves_the_dispatch_and_the_battle_stack)
 
 PTEST(debug_hooks_reach_the_debug_channel)
 {
-    FILE *out = tmpfile();
+    FILE *out = tsup_open_temp_stream();
     PT_ASSERT(out != NULL);
     PT_ASSERT_EQ_INT(gba_memmap_init(), GBA_MEMMAP_OK);
     bool closed = PlatformDebugOpen(); /* no channel: a GBA without mGBA */

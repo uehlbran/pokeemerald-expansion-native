@@ -1,14 +1,15 @@
 /*
  * host_posix.c: the host layer where every POSIX system agrees (Linux today,
  * macOS next): the fault handlers' installation (host_fault.h), the restart
- * of the executable (host_process.h), the files (host_file.h) and the deadline
+ * of the executable and its end (host_process.h), the files (host_file.h) and the deadline
  * thread (host_thread.h). What each system does its own way is in its own
  * source, host_linux.c, reached through host_internal.h.
  *
- * Followed: POSIX (sigaction, sigaltstack, sigprocmask, execve, fsync, rename,
- * mkdir, localtime_r, pthread_create and pthread_cond_timedwait), and
- * signal-safety(7) for what a signal handler may call: everything on the
- * handlers' path here (sigaction, raise, execve) is async-signal-safe.
+ * Followed: POSIX (sigaction, sigaltstack, sigprocmask, execve, _exit, open,
+ * write, fsync, rename, mkdir, localtime_r, pthread_create and
+ * pthread_cond_timedwait), and signal-safety(7) for what a signal handler may
+ * call: everything on the handlers' path here (sigaction, raise, execve,
+ * _exit, write) is async-signal-safe.
  */
 #define _FILE_OFFSET_BITS 64 /* with _TIME_BITS: a 64-bit time_t on 32-bit builds, */
 #define _TIME_BITS 64        /* so host_file_local_time converts dates past 2038 */
@@ -209,6 +210,26 @@ uintptr_t host_fault_address(const struct host_fault *fault)
     return (uintptr_t)fault->info->si_addr;
 }
 
+#define SIGNAL_NAME_PREFIX "signal "
+#define DECIMAL_BASE 10u
+
+/* Written by hand, not with snprintf, which is not async-signal-safe. */
+void host_fault_name(const struct host_fault *fault, char name[HOST_FAULT_NAME_SIZE])
+{
+    char digits[HOST_FAULT_NAME_SIZE];
+    size_t count = 0;
+    unsigned number = (unsigned)fault->signal_number;
+    do {
+        digits[count++] = (char)('0' + number % DECIMAL_BASE);
+        number /= DECIMAL_BASE;
+    } while (number > 0 && count < sizeof digits);
+    size_t length = sizeof SIGNAL_NAME_PREFIX - 1u;
+    memcpy(name, SIGNAL_NAME_PREFIX, length);
+    while (count > 0 && length < HOST_FAULT_NAME_SIZE - 1u)
+        name[length++] = digits[--count];
+    name[length] = '\0';
+}
+
 /* --- host_process ---------------------------------------------------------------- */
 
 int host_process_restart(char *const argv[])
@@ -217,11 +238,70 @@ int host_process_restart(char *const argv[])
     return -1;
 }
 
+bool host_process_restart_is_handler_safe(void)
+{
+    return true;
+}
+
+void host_process_end(unsigned status)
+{
+    _exit((int)status);
+}
+
 /* --- host_file --------------------------------------------------------------------- */
 
 /* mkdir's mode for a new directory: every permission, which the umask
  * narrows (mkdir(2)). */
 #define HOST_FILE_DIRECTORY_MODE 0777
+
+/* open's mode for a new file: readable by everyone, writable by the owner,
+ * which the umask may narrow further. */
+#define HOST_FILE_CREATED_MODE 0644
+
+int host_file_open(const char *path, int flags)
+{
+    return open(path, flags | O_CLOEXEC, HOST_FILE_CREATED_MODE);
+}
+
+/* write(2) is async-signal-safe (signal-safety(7)). It returns 0 for a
+ * non-empty buffer only on a device that takes nothing, which would loop
+ * forever: that is an error here. */
+int host_file_write_all(int descriptor, const void *bytes, size_t size)
+{
+    const unsigned char *next = bytes;
+    while (size > 0) {
+        const ssize_t written = write(descriptor, next, size);
+        if (written < 0 && errno == EINTR)
+            continue;
+        if (written <= 0) {
+            if (written == 0)
+                errno = EIO;
+            return -1;
+        }
+        next += written;
+        size -= (size_t)written;
+    }
+    return 0;
+}
+
+/* errno is saved and put back: a handler that changed it would change what
+ * the interrupted code reads after a failed call of its own. */
+bool host_file_write_from_handler(int descriptor, const void *bytes, size_t size)
+{
+    const int saved_errno = errno;
+    const unsigned char *next = bytes;
+    while (size > 0) {
+        const ssize_t written = write(descriptor, next, size);
+        if (written < 0 && errno == EINTR)
+            continue;
+        if (written <= 0)
+            break;
+        next += written;
+        size -= (size_t)written;
+    }
+    errno = saved_errno;
+    return size == 0;
+}
 
 int host_file_sync(int descriptor)
 {

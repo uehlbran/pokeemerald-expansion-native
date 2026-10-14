@@ -19,7 +19,15 @@ reads the PE headers and exits 1, printing one line per problem, unless:
   * every GBA region, and the battle runner's stack, is a section at its GBA
     address, of exactly its size, writable, and the gaps between them are
     read-only (a writable gap would be charged to the process as memory);
-  * .text is at 0x40001000.
+  * .text is at 0x40001000;
+  * above it, the sections the loader keeps (not the discardable debug
+    sections) are read-only first and writable after (gba_game.pe.ld moves
+    the initialised data there), so that the program's mutable data is one
+    stretch, which host_windows.c's host_image_writable gives;
+  * its resources hold the application manifest (type RT_MANIFEST, id 1) and
+    the manifest sets the active code page to UTF-8 (build_glue/
+    windows_manifest.xml, linked through target.mk), without which the
+    narrow strings the C runtime gives and takes are not UTF-8.
 
 The addresses and sizes are those of gba_regions.pe.ld (GBATEK "GBA Memory
 Map"), written out again on purpose: this checks the link, not the script
@@ -28,6 +36,7 @@ headers it builds.
 """
 
 import os
+import re
 import struct
 import sys
 
@@ -43,9 +52,24 @@ IMAGE_FILE_RELOCS_STRIPPED = 0x0001
 IMAGE_DLLCHARACTERISTICS_HIGH_ENTROPY_VA = 0x0020
 IMAGE_DLLCHARACTERISTICS_DYNAMIC_BASE = 0x0040
 # "Section Flags".
+IMAGE_SCN_MEM_DISCARDABLE = 0x02000000
 IMAGE_SCN_MEM_WRITE = 0x80000000
 BASE_RELOCATION_DIRECTORY = 5
 MAX_PROBLEMS = 20
+# "The .rsrc Section": the resource directory, its entries (an id, and the
+# offset from the directory's start of a subdirectory, high bit set, or of a
+# data entry: the data's RVA and size), three levels deep (type, name,
+# language). The manifest the loader reads at process creation is type
+# RT_MANIFEST, id CREATEPROCESS_MANIFEST_RESOURCE_ID (winuser.h).
+RESOURCE_DIRECTORY = 2
+RESOURCE_DIRECTORY_HEADER = 16
+RESOURCE_ENTRY_SIZE = 8
+RESOURCE_SUBDIRECTORY = 0x80000000
+RT_MANIFEST = 24
+CREATEPROCESS_MANIFEST_RESOURCE_ID = 1
+# Microsoft, "Use UTF-8 code pages in Windows apps": the element and its namespace.
+UTF8_CODE_PAGE = re.compile(rb'<activeCodePage\s+xmlns="http://schemas\.microsoft\.com/SMI/2019/WindowsSettings"\s*>'
+                            rb'\s*UTF-8\s*</activeCodePage>')
 
 # (what, address, size): gba_regions.pe.ld.
 REGIONS = (
@@ -77,12 +101,17 @@ DATA_DIRECTORY_SIZE = 8
 
 
 class Section:
-    def __init__(self, name, address, size, flags, raw_size=0):
+    def __init__(self, name, address, size, flags, raw_size=0, raw_pointer=0):
         self.name, self.address, self.size, self.flags, self.raw_size = name, address, size, flags, raw_size
+        self.raw_pointer = raw_pointer
 
     @property
     def writable(self):
         return bool(self.flags & IMAGE_SCN_MEM_WRITE)
+
+    @property
+    def discardable(self):
+        return bool(self.flags & IMAGE_SCN_MEM_DISCARDABLE)
 
     @property
     def stored(self):
@@ -91,10 +120,52 @@ class Section:
 
 class Image:
     def __init__(self, base, section_alignment, characteristics, dll_characteristics, relocation_directory_size,
-                 sections):
+                 sections, manifest=None):
         self.base, self.section_alignment = base, section_alignment
         self.characteristics, self.dll_characteristics = characteristics, dll_characteristics
         self.relocation_directory_size, self.sections = relocation_directory_size, sections
+        self.manifest = manifest   # the application manifest's bytes, or None
+
+
+def read_manifest(data, base, sections, directory_rva):
+    """The bytes of the application manifest in the resources at directory_rva (0: none), or None."""
+    def offset_of(rva, size=1):
+        """The file offset of the size bytes at rva, which must lie in one section's stored bytes."""
+        for section in sections:
+            start = section.address - base
+            if start <= rva and rva + size <= start + section.raw_size:
+                return section.raw_pointer + rva - start
+        raise CheckError("the resources' %#x bytes at RVA %#x are not in the file" % (size, rva))
+
+    if directory_rva == 0:
+        return None
+    root = offset_of(directory_rva)
+
+    def target(directory, wanted):
+        """The target of directory's entry with id wanted (None: its first entry), or None."""
+        named, ids = struct.unpack_from("<HH", data, directory + 12)
+        for index in range(named + ids):
+            name, entry_target = struct.unpack_from("<II", data,
+                                                    directory + RESOURCE_DIRECTORY_HEADER + RESOURCE_ENTRY_SIZE * index)
+            if wanted is None or name == wanted:
+                return entry_target
+        return None
+
+    directory = root
+    for wanted in (RT_MANIFEST, CREATEPROCESS_MANIFEST_RESOURCE_ID, None):
+        found = target(directory, wanted)
+        if found is None:
+            return None
+        if wanted is not None and not found & RESOURCE_SUBDIRECTORY:
+            raise CheckError("the resources' directory is malformed")
+        directory = root + (found & ~RESOURCE_SUBDIRECTORY)
+    if found & RESOURCE_SUBDIRECTORY:
+        raise CheckError("the resources' directory is malformed")
+    data_rva, size = struct.unpack_from("<II", data, directory)
+    start = offset_of(data_rva, size)
+    if start + size > len(data):
+        raise CheckError("the manifest runs past the end of the file")
+    return bytes(data[start:start + size])
 
 
 def read_image(data):
@@ -116,12 +187,17 @@ def read_image(data):
         if directory_count > BASE_RELOCATION_DIRECTORY:
             relocation_entry = directory + DATA_DIRECTORY_SIZE * BASE_RELOCATION_DIRECTORY
             relocation_size = struct.unpack_from("<II", data, relocation_entry)[1]
+        resource_rva = 0
+        if directory_count > RESOURCE_DIRECTORY:
+            resource_rva = struct.unpack_from("<I", data, directory + DATA_DIRECTORY_SIZE * RESOURCE_DIRECTORY)[0]
         sections = []
         for index in range(section_count):
             fields = SECTION_HEADER.unpack_from(data, optional + optional_size + SECTION_HEADER_SIZE * index)
             sections.append(Section(fields[0].rstrip(b"\0").decode("ascii", "replace"), base + fields[2], fields[1],
-                                    fields[9], fields[3]))
-        return Image(base, section_alignment, characteristics, dll_characteristics, relocation_size, sections)
+                                    fields[9], fields[3], fields[4]))
+        manifest = read_manifest(data, base, sections, resource_rva)
+        return Image(base, section_alignment, characteristics, dll_characteristics, relocation_size, sections,
+                     manifest)
     except struct.error:
         raise CheckError("the PE headers are cut short")
 
@@ -171,6 +247,20 @@ def check_image(image):
     code = by_address.get(CODE_ADDRESS)
     if code is None or code.name != ".text":
         problems.append(".text is not at %#x" % CODE_ADDRESS)
+    first_writable = None
+    for section in image.sections:
+        if section.address < CODE_ADDRESS or section.discardable:
+            continue
+        if section.writable and first_writable is None:
+            first_writable = section
+        elif not section.writable and first_writable is not None:
+            problems.append("%s is read-only but follows the writable %s: the writable sections must come last"
+                            % (section.name, first_writable.name))
+    if image.manifest is None:
+        problems.append("there is no application manifest (resource type 24, id 1): target.mk links "
+                        "windows_manifest.o into every executable")
+    elif not UTF8_CODE_PAGE.search(image.manifest):
+        problems.append("the application manifest does not set the active code page to UTF-8")
     return problems
 
 
@@ -183,8 +273,11 @@ def self_test():
 
     # Section flags written out from the specification, so a wrong constant above fails here:
     # uninitialised data (0x80) readable (0x40000000), and writable (0x80000000) for a region.
+    # Initialised data is 0x40, and a debug section discardable (0x02000000).
     READ_ONLY_UNINITIALISED = 0x00000080 | 0x40000000
     READ_WRITE_UNINITIALISED = 0x00000080 | 0x40000000 | 0x80000000
+    READ_ONLY_INITIALISED = 0x00000040 | 0x40000000
+    READ_WRITE_INITIALISED = 0x00000040 | 0x40000000 | 0x80000000
 
     def layout():
         sections = []
@@ -196,8 +289,15 @@ def self_test():
             address = region_address + round_up(size, 0x1000)
         sections.append(Section(".gap", address, CODE_ADDRESS - address, READ_ONLY_UNINITIALISED))
         sections.append(Section(".text", CODE_ADDRESS, 0x1234, 0x60000020))
-        return Image(IMAGE_BASE, 0x1000, 0x0001 | 0x0002, 0x0100, 0, sections)
+        sections.append(Section(".rdata", CODE_ADDRESS + 0x2000, 0x10, READ_ONLY_INITIALISED))
+        sections.append(Section(".data", CODE_ADDRESS + 0x3000, 0x10, READ_WRITE_INITIALISED))
+        sections.append(Section(".bss", CODE_ADDRESS + 0x4000, 0x10, READ_WRITE_UNINITIALISED))
+        sections.append(Section(".debug", CODE_ADDRESS + 0x5000, 0x10, READ_ONLY_INITIALISED | 0x02000000))
+        return Image(IMAGE_BASE, 0x1000, 0x0001 | 0x0002, 0x0100, 0, sections, GOOD_MANIFEST)
 
+    GOOD_MANIFEST = (b'<assembly><application><windowsSettings><activeCodePage '
+                     b'xmlns="http://schemas.microsoft.com/SMI/2019/WindowsSettings">UTF-8</activeCodePage>'
+                     b'</windowsSettings></application></assembly>')
     expect("a good layout", check_image(layout()), [])
     image = layout()
     image.base = 0x400000
@@ -208,7 +308,7 @@ def self_test():
     image = layout()
     image.characteristics = 0x2
     image.relocation_directory_size = 8
-    image.sections.append(Section(".reloc", CODE_ADDRESS + 0x2000, 0x10, 0x42000040))
+    image.sections.append(Section(".reloc", CODE_ADDRESS + 0x6000, 0x10, 0x42000040))
     expect("relocations", check_image(image), ["flag is not set", "directory is not empty", "there is a .reloc"])
     image = layout()
     del image.sections[1]
@@ -228,8 +328,62 @@ def self_test():
     image.sections[2].flags = READ_ONLY_UNINITIALISED
     expect("a read-only region", check_image(image), ["EWRAM: .gba is not writable"])
     image = layout()
-    image.sections[-1].name = ".code"
+    image.sections[-5].name = ".code"
     expect("the code", check_image(image), [".text is not at"])
+    image = layout()
+    image.sections[-4].flags, image.sections[-3].flags = image.sections[-3].flags, image.sections[-4].flags
+    expect("data before read-only data", check_image(image),
+           [".data is read-only but follows the writable .rdata"])
+    image = layout()
+    image.sections[-1].flags &= ~0x02000000
+    expect("a kept read-only section after the data", check_image(image),
+           [".debug is read-only but follows the writable .data"])
+    image = layout()
+    image.manifest = None
+    expect("no manifest", check_image(image), ["there is no application manifest"])
+    image = layout()
+    image.manifest = GOOD_MANIFEST.replace(b"UTF-8", b"Legacy")
+    expect("a manifest of another code page", check_image(image), ["does not set the active code page to UTF-8"])
+
+    # A resource tree as windres writes one, at RVA 0x1000 of a section stored at file offset 0x200:
+    # the root (0x00, room for two entries), type 24 -> the names (0x20), id 1 -> the languages
+    # (0x38), 0x409 -> the data entry (0x50) -> the manifest's bytes (0x60). The root may
+    # start with a named entry (the high bit set in its name: the offset of a string), as a
+    # resource of a named type would; it never matches an id.
+    def tree(type_id, name_id, named_first=False, name_target=0x80000038, manifest_size=None):
+        def directory(entries):
+            named = sum(1 for entry_id, _ in entries if entry_id & 0x80000000)
+            return (struct.pack("<IIHHHH", 0, 0, 0, 0, named, len(entries) - named)
+                    + b"".join(struct.pack("<II", entry_id, entry_target) for entry_id, entry_target in entries))
+        root_entries = [(type_id, 0x80000020)]
+        if named_first:
+            # The name's offset, 0x18, has the manifest type's id in its low bits: a walk that
+            # ignored the high bit would take this entry for type 24.
+            root_entries.insert(0, (0x80000018, 0x80000020))
+        root = directory(root_entries).ljust(0x20, b"\0")
+        size = len(GOOD_MANIFEST) if manifest_size is None else manifest_size
+        body = (root + directory([(name_id, name_target)]) + directory([(0x409, 0x50)])
+                + struct.pack("<IIII", 0x1000 + 0x60, size, 0, 0) + GOOD_MANIFEST)
+        return bytes(0x200) + body
+
+    sections = [Section(".rsrc", IMAGE_BASE + 0x1000, 0x200, READ_ONLY_INITIALISED, 0x200, 0x200)]
+    for name, data, rva, wanted in (("a manifest read", tree(24, 1), 0x1000, GOOD_MANIFEST),
+                                    ("a manifest after a named entry", tree(24, 1, named_first=True), 0x1000,
+                                     GOOD_MANIFEST),
+                                    ("a resource of another type", tree(16, 1), 0x1000, None),
+                                    ("only a named type", tree(16, 1, named_first=True), 0x1000, None),
+                                    ("a manifest of another id", tree(24, 2), 0x1000, None),
+                                    ("no resources", b"", 0, None)):
+        found = read_manifest(data, IMAGE_BASE, sections, rva)
+        if found != wanted:
+            failures.append("%s\n  expected %r\n  got      %r" % (name, wanted, found))
+    for name, data in (("a data entry where a directory belongs", tree(24, 1, name_target=0x50)),
+                       ("a manifest that runs past its section", tree(24, 1, manifest_size=0x400))):
+        try:
+            read_manifest(data, IMAGE_BASE, sections, 0x1000)
+            failures.append("read_manifest accepted %s" % name)
+        except CheckError:
+            pass
     data = bytearray(1024)
     for message, damaged in (("a short file", b"MZ"), ("not a PE file", bytes(data))):
         try:

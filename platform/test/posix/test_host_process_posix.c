@@ -7,7 +7,7 @@
  * alone makes it the restarted process, so a restart that loses its arguments
  * or its environment ends there rather than running the tests, and
  * restarting, again. The path of the executable is checked in
- * ../test_host_process.c.
+ * ../test_host_process.c. And the end of a process at once, in a child too.
  *
  * The constructor runs before main, in the restarted process only; it uses
  * stdio and _exit, which is fine outside a signal handler.
@@ -78,6 +78,32 @@ PTEST(restart_runs_this_executable_again_with_the_arguments_and_the_environment)
     PT_ASSERT_EQ_INT(psup_exit_code(status), CHILD_OK);
     PT_ASSERT_EQ_STR(written, "first\n" CHILD_MODE "\nthird\n");
     PT_ASSERT(removed);
+}
+
+/* host_process_end's status, which no exit handler may change. */
+#define END_STATUS 75
+#define AT_EXIT_STATUS 9
+
+static void exit_differently(void)
+{
+    _exit(AT_EXIT_STATUS);
+}
+
+static void end_in_child(void *context)
+{
+    (void)context;
+    (void)atexit(exit_differently); /* end must not run it */
+    host_process_end(END_STATUS);
+}
+
+PTEST(end_ends_the_process_at_once_with_the_status)
+{
+    PT_ASSERT_EQ_INT(psup_exit_code(psup_run_child(end_in_child, NULL)), END_STATUS);
+}
+
+PTEST(a_crash_handler_may_restart)
+{
+    PT_ASSERT(host_process_restart_is_handler_safe()); /* execve is async-signal-safe */
 }
 
 PTEST_MAIN()

@@ -493,6 +493,9 @@ NATIVE_LDFLAGS := -m$(BITS) $(GBA_LAYOUT_LDFLAGS) \
                   -Wl,--defsym,gInitialMainCB2=$(INITIAL_MAIN_CB2) \
                   -Wl,--defsym,gba_game_objects_linked=1 $(NATIVE_LINK_SANITIZERS)
 NATIVE_LDLIBS := $(SDL_LIBS) -lm
+# What the executable carries besides code and data (Windows: the UTF-8
+# application manifest, platform/target.mk).
+NATIVE_RESOURCES := $(call target_resources,$(OBJ_DIR))
 # Run on the finished executable; the Windows one cannot be run here, so its
 # layout is read from the file. Files that must sit beside it to run.
 NATIVE_EXE_CHECK :=
@@ -545,9 +548,9 @@ $(PLATFORM_LIB) $(PLATFORM_GAPS): platform-lib ;
 # recipe, so that every way of building the executable writes its map, and a
 # map that cannot be written fails the link (.DELETE_ON_ERROR removes the
 # executable).
-$(NATIVE_EXE): $(OBJS) $(PLATFORM_GAPS) $(PLATFORM_LIB) $(NATIVE_LINKER_SCRIPTS) | check-palette-padding $(DATA_LAYOUT_CHECKS)
+$(NATIVE_EXE): $(OBJS) $(PLATFORM_GAPS) $(NATIVE_RESOURCES) $(PLATFORM_LIB) $(NATIVE_LINKER_SCRIPTS) | check-palette-padding $(DATA_LAYOUT_CHECKS)
 	@echo "$(HOST_CC) <link> -o $@"
-	@$(HOST_CC) $(NATIVE_LDFLAGS) -o $@ $(OBJS) $(PLATFORM_GAPS) $(PLATFORM_LIB) $(NATIVE_LDLIBS)
+	@$(HOST_CC) $(NATIVE_LDFLAGS) -o $@ $(OBJS) $(PLATFORM_GAPS) $(NATIVE_RESOURCES) $(PLATFORM_LIB) $(NATIVE_LDLIBS)
 	@$(call write_symbol_map,$@,$@.symbols)
 	$(NATIVE_EXE_CHECK)
 

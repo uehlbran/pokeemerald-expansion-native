@@ -12,6 +12,7 @@
 #include "gba_memmap.c" // NOLINT(bugprone-suspicious-include): tests the unit's static functions
 
 #include "ptest.h"
+#include "test_support.h"
 
 #define PAGE 0x1000u
 #define KIB 1024u
@@ -49,7 +50,7 @@ struct layout_check {
 static struct layout_check check_layout(enum gba_region id, uintptr_t start, uintptr_t end)
 {
     struct layout_check check = {.status = GBA_MEMMAP_OK, .log_complete = false, .log = ""};
-    FILE *const log = tmpfile();
+    FILE *const log = tsup_open_temp_stream();
     if (log == NULL)
         return check;
     check.status = check_linked_section(id, start, end, log);

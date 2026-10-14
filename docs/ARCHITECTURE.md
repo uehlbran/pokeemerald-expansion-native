@@ -213,18 +213,45 @@ it is one layer and not `#ifdef`s in the modules. The seventh header,
 | `host_image.h` | the bounds of the executable's image and of the main thread's stack; its read-only segments | `transfer_bounds`, `game_hooks` (`PlatformIsRomPointer`) | `__executable_start`, `__data_start`, `_end`, `getauxval(AT_PHDR)`, `pthread_getattr_np` |
 | `host_stack.h` | running a function on a stack of the caller's choosing | `game_hooks` (`PlatformCallWithStack`) | `ucontext`, with AddressSanitizer's fiber annotations |
 | `host_thread.h` | a one-shot deadline kept by a thread that only sets the caller's atomic flag: the unit tests' per-test time limit (`ptest.h`); the one thread in the platform (`DECISIONS.md`, "The test time limit is kept by a flag-setting thread") | `test/ptest.h` | `pthread` and a condition variable (`host_posix.c`) |
-| `host_file.h` | durable file replacement, `mkdir` with a mode, the local time | `save_file`, `rtc_offset_store`, `replay_session`, `rtc` | `fsync`, `rename`, a directory's `fsync`, `mkdir`, `localtime_r` |
+| `host_file.h` | opening a file the same way everywhere, writing a whole buffer (from a fault handler too), durable file replacement, `mkdir` with a mode, the local time | `save_file`, `rtc_offset_store`, `crash_reboot`, `arm_division`, `replay_session`, `rtc` | `open` with `O_CLOEXEC`, `write`, `fsync`, `rename`, a directory's `fsync`, `mkdir`, `localtime_r` |
 
 The sources are one per OS family: `host_posix.c` holds what Linux and macOS
-share (the signal handlers' installation and chaining, `execve`, the files),
-and `host_linux.c` the rest (the linker-script symbols, `MAP_FIXED_NOREPLACE`,
-the `gregs` index table, `/proc/self/exe`, `getauxval`, `pthread_getattr_np`,
-the `ucontext` switch); `host_internal.h` is what they share. `TARGET_OS`
-(`platform/target.mk`, included by `host.mk`, so by every Makefile) selects them:
-Linux, or `windows` for the cross-build, whose `host_windows.c` is a stub that
-fails every call until the port is written. A port adds its source and its value. `crt0` and `main`
-also use the toolchain (the linker scripts' own symbols, weak references,
-SDL's `main`) but call nothing of the OS's, so they are not users.
+share (the signal handlers' installation and chaining, `execve`, the files,
+the watchdog thread), and `host_linux.c` the rest (`MAP_FIXED_NOREPLACE`, the
+`gregs` index table, `/proc/self/exe`, `getauxval`, `pthread_getattr_np`, the
+`ucontext` switch); `host_internal.h` is what they share. `host_linked.c`
+reads the linker scripts' region symbols for every target linked with GNU
+ld's scripts, Linux and Windows. `TARGET_OS` (`platform/target.mk`, included
+by `host.mk`, so by every Makefile) selects them: Linux, or `windows` for the
+cross-build. A port adds its sources and its value. `crt0` and `main` also use
+the toolchain (the linker scripts' own symbols, weak references, SDL's
+`main`) but call nothing of the OS's, so they are not users.
+
+Windows (`host_windows.c`, `host_windows_fault.c`, `host_windows_stack.c`,
+`host_windows_thread.c`; `platform/README.md` has the call-by-call table) keeps
+every header's contract, with three differences of substance. The divide error
+is caught by a vectored exception handler, called before any frame's handler,
+which hands `EXCEPTION_INT_DIVIDE_BY_ZERO` and `EXCEPTION_INT_OVERFLOW` (x86's
+#DE) to `arm_division` and lets every other exception pass; what it passes on
+reaches the process's unhandled-exception filter, the crash handler, and the
+registers are read and written in the exception's `CONTEXT`. There is no exec:
+the replay's restart starts the executable as a child on the same standard
+handles, waits for it and ends with its exit status, so whoever waits for the
+process sees the restarted run. The crash reboot starts no process from the
+filter, where creating one would allocate from a heap the crash may have
+corrupted: the filter writes the report with the persistent state and ends
+the process with exit code 75, and the parent, the Windows test driver,
+starts the program again with that state (`DECISIONS.md`, "A crash on
+Windows ends the process for its parent to start again"). And the battle runner's
+stack switch is not a fiber, which cannot run on a stack of the caller's
+choosing, but a Win64 switch in assembly that saves the callee-saved
+registers, carries unwind information through its frame register, and widens
+the thread's stack limits over both stacks while the entry runs, so that a
+crash there is still dispatched to the filter (`DECISIONS.md`, "The battle
+runner's stack switch on Windows is hand-written assembly, not a fiber").
+The image's writable sections are linked last (`gba_game.pe.ld`), so that its
+mutable data is one stretch as on Linux; the files are written in binary mode
+and replaced with `MoveFileExW` and write-through, with no directory sync.
 
 The replay's function names are OS-neutral the same way: the link writes
 `<executable>.symbols`, the executable's function symbols as `nm` lists
@@ -242,7 +269,7 @@ page, whose send function prints to stdout), survives the runner's crashes
 through `crash_reboot` (a re-exec that carries IWRAM's persistent bytes,
 as the GBA's reboot kept them) and does not draw unless a replay or a
 screenshot needs the frames. The battle tests' functions run on the
-platform stack at 0x01800000 (`game_hooks`). The details are in
+platform stack at 0x01800000 (0x01801000 on Windows; `game_hooks`). The details are in
 `platform/README.md`, "The test runner", and the per-test comparison with
 the GBA baseline in `platform/test_runner/SUITE-LOG.md`.
 

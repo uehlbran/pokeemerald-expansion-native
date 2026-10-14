@@ -107,7 +107,7 @@ struct run {
 static struct run run_registry(const struct ptest_registry *registry)
 {
     struct run run = {.status = -1, .text_complete = false, .milliseconds = 0, .text = ""};
-    FILE *const out = tmpfile();
+    FILE *const out = tsup_open_temp_stream();
     if (out == NULL)
         return run;
     const uint64_t started = tsup_monotonic_milliseconds();

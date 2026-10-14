@@ -996,8 +996,12 @@ after, so the child inherits no thread and no handle to one. (The
 handshake in `host_watchdog_start`, which returns only when the thread waits,
 stays: it keeps a start from racing a stop.)
 
-The Windows source of `host_thread.h` is declared (the header names the calls)
-and not written.
+The Windows source of `host_thread.h` (`host_windows_thread.c`, written with
+the Windows host layer) is the same thread with Win32 calls: it waits on an
+event with a timeout, stores the flag once, and is joined by a wait on its
+handle. MinGW-w64 has no ThreadSanitizer; the POSIX build's is the race check
+of the design, and the Windows source shares only relaxed atomics, which the
+event's set announces.
 
 The tests that only some OS can run (fork, signals, pipes, file
 permissions, `setrlimit`, Linux's `pthread_getattr_np`) are not `#ifdef`s in
@@ -1009,3 +1013,171 @@ directory (`posix` for Linux and macOS, `linux` for Linux). What the tests
 share of the OS is declared once in `test/test_support.h` and implemented
 once per OS family in `test/<dir>/support.c`. A port adds a directory and a
 support file; it edits no existing test.
+
+## 2026-10-14: The Windows image links its writable sections last
+
+`host_image_writable` is one stretch, the program's mutable data, which
+`transfer_bounds` allows a transfer to write; on Linux it is `__data_start` to
+`_end`. MinGW's default PE script puts `.data` before `.rdata`, `.pdata` and
+`.xdata`, and `.bss` after them, so on Windows no one stretch held the data
+and the bss without read-only data in between, and the portable test
+`the_writable_part_holds_the_mutable_globals_only` could not pass. The
+alternative was a second contract, a predicate or a list of writable spans,
+which would have changed `host_image.h`, `transfer_bounds.c` and their Linux
+tests for a layout detail of one linker. Instead `platform/gba_game.pe.ld`
+moves every initialised data input (the game's `.gamedat`, everyone else's
+`.data` into `.rwdata`, and `script_data`) after `.xdata`, defining
+`__data_start__` and `__data_end__` again around what the default `.data` held
+(an emptied `.data` is dropped, and its symbols would be left undefined in
+the symbol table). The image is then code and read-only data, then writable
+data to the end, as an ELF image is, and `check_pe_layout.py` checks that order
+on every link. Nothing the loader or the C runtime uses moves: `.rdata` with
+its pseudo-relocation list, `.pdata`, `.xdata`, `.idata`, `.CRT` and `.tls`
+keep their names and places.
+
+## 2026-10-14: A crash on Windows ends the process for its parent to start again
+
+Windows has no exec. The replay's `restart` starts the program again through
+`host_process_restart`, which on Windows creates a child of the same
+executable with the same arguments, standard handles, environment and
+working directory, waits for it, and ends the process with the child's exit
+status by `TerminateProcess` (no DLL detach, no C runtime flush, as `execve`
+drops unflushed buffers). Whoever waits for the process, a shell or a test
+driver, sees the child's output on the same handles and its status; what
+differs from Linux is that the child has a process id of its own and that
+the first process stays, waiting, until it ends. The child is in a job object
+that ends it when the process waiting for it ends
+(`JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE`), so that a time limit that kills the
+process a driver started kills the restarted one too and the driver's pipes
+reach their end, as on Linux, where the restarted program is the same
+process. And the child inherits the standard handles and nothing else
+(`PROC_THREAD_ATTRIBUTE_HANDLE_LIST`), where `execve` keeps every descriptor
+without `O_CLOEXEC`: a file the C runtime had open (its handles are
+inheritable and do not share deletion) would otherwise stay open in the
+child and refuse the child's own replacement of that file.
+
+The crash reboot does not start a process. The owner ruled that no exception
+handler creates a process, with no exception to docs/C-RULES.md's handler
+rule: the heap may be corrupt at crash time, and `CreateProcessW` allocates
+from it (Crashpad and Breakpad work out of process for the same reason). Two
+designs keep the rule. (a) The parent restarts: the unhandled-exception
+filter encodes the persistent bytes into a buffer prepared at install time,
+writes the report, which ends with `--persistent-state <512 hex digits>`, to
+stderr with `WriteFile`, and ends the process with `TerminateProcess` and
+exit code 75 (`CRASH_REBOOT_EXIT_CODE`, sysexits' `EX_TEMPFAIL`, which
+nothing else here exits with); the program that started the process (the
+Windows test driver, task W8) starts it again on that code with the same
+arguments plus the state. (b) A helper restarts: at install time the program
+creates a copy of itself, suspended, in the job; the filter writes the state
+through a handle opened then and resumes the helper, which becomes the
+restarted run, and which needs a suspended helper of its own.
+
+(a) is taken, as the simpler here. It leaves the filter two system calls,
+neither of which allocates: `WriteFile` (`host_file_write_from_handler`, on
+the handle `_get_osfhandle` reads from the C runtime's table without a lock;
+a failed write is left at that, with no `GetLastError` and no `errno`, which
+msvcrt would allocate a block for on a thread that had not used it) and
+`TerminateProcess`. The report line is built on the handler's stack. The
+state it carries is encoded into the module's one static buffer, which two
+threads crashing at once would both write, with the same persistent bytes:
+harmless, and the same on Linux, whose handler encodes into that buffer
+too. Nothing changes in how a run starts. (b) would create a second process at the start of every
+run on Windows, a player's included, and keep it suspended for the whole
+run; it would need a channel for the state besides the command line, held
+open in both processes (against the restart's rule of inheriting the
+standard handles only); and the crashed process would wait in its handler
+for the helper's end to pass its status on. The cost of (a): a run on
+Windows with no such parent ends at its first crash with exit code 75 and no
+reboot. Only the test runner's crashing tests reboot, and on Windows only
+the driver runs them. A crash with the persistent bytes as the process
+started with them still ends with the exception's code, which no parent
+takes for a reboot. On Linux nothing changed: the handler `execve`s the
+executable, which is async-signal-safe. `host_process_restart_is_handler_safe`
+tells `crash_reboot` which of the two it may do, so that it has no
+conditional compilation.
+
+## 2026-10-14: Windows has no directory sync
+
+On Linux a replacement is durable once the directory that holds it is
+fsynced. Windows has no documented call that writes a directory's entries
+through: `FlushFileBuffers` is documented for a file, a volume or a pipe.
+`MoveFileExW` with `MOVEFILE_WRITE_THROUGH`, which `host_file_replace` passes,
+is documented to return only once the move is on the disk, and NTFS journals
+the rename. So on Windows `host_file_sync_directory_of` checks the path's
+length, as on Linux, and does nothing else; the save and the clock's offset
+stay temporary file, flush, replace, as docs/C-RULES.md asks. The
+replacement is atomic on NTFS, the file system Windows installs on; Microsoft
+does not document it for every file system, and a save on a FAT32 or exFAT
+volume (a USB stick, an SD card) can lose the old file in a crash.
+
+## 2026-10-14: Narrow strings on Windows are UTF-8
+
+The platform's paths and arguments are `char` strings, UTF-8 as on Linux. On
+Windows the C runtime (msvcrt) builds `main`'s arguments from `GetCommandLineA`
+and opens files by narrow paths through the system's "A" functions, both in
+the process's code page, by default the ANSI code page of the system's
+language. The owner ruled that out: the save path sits under the user's
+profile, and a user name that code page cannot write (a Japanese name on a
+Western system, an accented one on a Japanese system) would break it.
+
+Every Windows executable, the game and each test alike, carries an
+application manifest that sets the process's active code page to UTF-8
+(`platform/build_glue/windows_manifest.xml`, compiled by `windres` and linked
+through `platform/target.mk`; `gba_game.pe.ld` keeps the `.rsrc` section
+among the read-only ones, and `check_pe_layout.py` fails a link without the
+manifest). Microsoft's "Use UTF-8 code pages in Windows apps"
+(learn.microsoft.com/en-us/windows/apps/design/globalizing/use-utf8-code-page)
+documents the setting from Windows version 1903 (the May 2019 Update) on;
+that is the minimum Windows version (`BUILDING.md`), and an older one ignores
+the setting and keeps the legacy code page. `host_windows.c` converts between
+UTF-8 and the wide calls' UTF-16 with `CP_UTF8` named outright, as that page
+recommends, not with `CP_ACP`, and refuses invalid input either way (bytes
+that are not UTF-8, a lone surrogate) rather than altering it. The tests'
+own support (`test/windows/support.c`) keeps its "A" calls, which the same
+manifest makes UTF-8.
+
+Not verified yet. Nothing Windows runs here, and that msvcrt, the C runtime
+the Ubuntu MinGW-w64 GCC links by default, hands `main` the UTF-8 bytes of a
+non-ASCII argument unchanged under the manifest follows from the
+documentation (it parses `GetCommandLineA`'s string, which the code page makes
+UTF-8) but is not something the build can show. The claim is verified only
+once the Windows runner (tasks W8 and W9) has run
+`platform/test/windows/test_utf8_windows.c` (the process's code page is UTF-8;
+a non-ASCII argument passed to `CreateProcessW` in UTF-16 arrives in `argv` as
+its UTF-8 bytes; a save stored through a non-ASCII directory the host layer
+made loads back byte for byte under that name),
+`platform/test/windows/test_host_process_windows.c` (the restart carries a
+non-ASCII argument through `CP_UTF8` and back) and
+`platform/test_runner/run_windows_smoke.sh` (the game run from a non-ASCII
+directory with non-ASCII save and clock paths on its command line). Should
+msvcrt alter the bytes, the way out is to read the arguments with
+`GetCommandLineW` and `CommandLineToArgvW` and convert them with `CP_UTF8`
+before `main` uses them.
+
+## 2026-10-14: The battle runner's stack switch on Windows is hand-written assembly, not a fiber
+
+`PlatformCallWithStack` must run the battle tests' functions on one fixed
+stack (the same addresses every call, below 2^27; `game_hooks.h`), which on
+Windows is the `.callstk` section at 0x01801000. Windows' own switch, a
+fiber, cannot do that: `CreateFiber` and `CreateFiberEx` allocate the fiber's
+stack wherever the system chooses, and a fiber's stack and context are not
+documented for editing. The alternatives were a fiber whose locals would land
+elsewhere (breaking the runner's 27-bit fields and its reliance on fixed
+addresses) or a switch of our own. `platform/host_windows_stack.c` is the
+latter, about seventy lines of GNU as in the C file: it saves the registers a
+Win64 callee keeps (RBX, RBP, RDI, RSI, R12 to R15, XMM6 to XMM15, MXCSR, the
+x87 control word) on the caller's stack, moves RSP to the stack's top less the
+32-byte home space, calls the entry, and restores; `host_stack_leave` jumps to
+the same restore. Its unwind information (`.seh_*`) names RBP as its frame
+register, so the system's exception dispatch can walk from the entry's
+frames back to the caller's; and while the entry runs, the thread's stack
+limits in NT_TIB are widened to hold both stacks, since the dispatcher stops
+at a frame outside them, and a crash on the battle runner's stack must still
+reach the crash reboot's filter. Fibers' own approach, setting the limits to
+the new stack alone, would cut that walk off. What it does not do: no
+AddressSanitizer annotation (MinGW-w64 has no sanitizers), no shadow-stack
+support (the executable is not marked CET-compatible, so none is enforced),
+and no `longjmp` across it (game_hooks leaves the stack first, as on Linux).
+What cannot be checked here: that the dispatch and the switch behave as
+reasoned; `test_host_stack`, `test_game_hooks` and the suite's battle tests
+on the Windows runner are the evidence.

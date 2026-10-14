@@ -30,10 +30,37 @@
  * AgbMain. The handler uses only async-signal-safe calls (execve, sigaction,
  * raise, write) and memory it set up beforehand.
  *
+ * On Windows a crash is an exception that no handler took (an access
+ * violation, an illegal instruction, a stack overflow, a divide error
+ * arm_division passed on, ...), and the handler runs in the process's
+ * unhandled-exception filter. There is no exec, and the filter starts no
+ * process: creating one allocates, from a heap the crash may have corrupted
+ * (docs/DECISIONS.md, "A crash on Windows ends the process for its parent to
+ * start again"). The filter encodes the persistent bytes, writes the report,
+ * which ends with them, to stderr, and ends the process with exit code
+ * CRASH_REBOOT_EXIT_CODE:
+ *     crash_reboot: exception 0xC0000005 at 0x..., fault address 0x...: ending
+ *     with exit code 75 for the parent to start the program again with
+ *     --persistent-state <512 hex digits>
+ * on one line. The reboot is the parent's, the program that started this
+ * one and waits for it (the Windows test driver): on exit code 75 it starts
+ * the program again with the same arguments, any earlier --persistent-state
+ * dropped, plus the option and the digits from the last line of stderr
+ * that begins "crash_reboot: ". A run on Windows with no such parent ends at
+ * a crash with exit code 75 and no reboot. Two crashes end the run without a
+ * report or a reboot on Windows: abort(), which is not an exception there
+ * (the C runtime raises SIGABRT in its own signal table and exits with
+ * status 3), and an overflow of the battle runner's stack (game_hooks), which
+ * runs into the image's read-only headers, where the system cannot write the
+ * exception's records, so no handler runs. The report names a Windows fault
+ * by its exception code in hexadecimal ("crash_reboot: exception 0xC0000005
+ * at ..."), a Linux one by its signal ("crash_reboot: signal 11 at ...").
+ *
  * A crash with the persistent bytes unchanged since the process started
  * (zero, or what crash_reboot_restore put there) would reboot into the same
  * crash forever, as on the GBA; the handler does not reboot then: it reports
- * and lets the signal kill the process. The same happens if the exec fails.
+ * and lets the fault end the process (Windows: with the exception's code,
+ * not CRASH_REBOOT_EXIT_CODE). The same happens if the restart fails.
  *
  * Single-threaded.
  */
@@ -54,6 +81,13 @@
 
 /* The most arguments the command line may have, the reboot's two included. */
 #define CRASH_REBOOT_MAX_ARGS 64u
+
+/* The exit code of a process that crashed on Windows and asks its parent to
+ * start it again with the state its report ends with (above): sysexits.h's
+ * EX_TEMPFAIL, "try again", which nothing else here exits with (main's are 0,
+ * 1 and 64, game_hooks' 70, the test runner's 0 to 2). A decimal literal: the
+ * report spells it out. */
+#define CRASH_REBOOT_EXIT_CODE 75
 
 enum crash_reboot_error {
     CRASH_REBOOT_OK = 0,

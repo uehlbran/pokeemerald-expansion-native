@@ -16,6 +16,7 @@
 
 #include "debug_channel_fixture.h"
 #include "ptest.h"
+#include "test_support.h"
 
 PTEST(short_message_is_one_line_with_the_prefix)
 {
@@ -178,7 +179,7 @@ PTEST(the_level_bits_above_two_are_ignored)
 
 PTEST(the_handshake_answers_once_initialised)
 {
-    FILE *out = tmpfile();
+    FILE *out = tsup_open_temp_stream();
     PT_ASSERT(out != NULL);
     clear_registers();
     PT_ASSERT_EQ_INT(gba_memmap_init(), GBA_MEMMAP_OK);
@@ -203,7 +204,7 @@ PTEST(the_handshake_answers_once_initialised)
 
 PTEST(a_send_before_the_handshake_prints_nothing)
 {
-    FILE *out = tmpfile();
+    FILE *out = tsup_open_temp_stream();
     PT_ASSERT(out != NULL);
     clear_registers();
     PT_ASSERT_EQ_INT(gba_memmap_init(), GBA_MEMMAP_OK);
@@ -220,7 +221,7 @@ PTEST(a_send_before_the_handshake_prints_nothing)
 
 PTEST(init_zeroes_the_registers)
 {
-    FILE *out = tmpfile();
+    FILE *out = tsup_open_temp_stream();
     PT_ASSERT(out != NULL);
     PT_ASSERT_EQ_INT(gba_memmap_init(), GBA_MEMMAP_OK);
     put_message("stale", 5);

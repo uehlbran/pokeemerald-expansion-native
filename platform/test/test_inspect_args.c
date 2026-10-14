@@ -72,8 +72,8 @@ PTEST(every_argument_fact_has_the_right_bounds)
         const struct inspect_arg_spec *spec = inspect_arg_find(c->fact, strlen(c->fact));
         PT_ASSERT(spec != NULL);
         if (inspect_arg_in_range(spec, c->argument, c->value) != c->valid)
-            ptest_fail_at(__FILE__, __LINE__, "%s argument %zu value %u: expected %s", c->fact, c->argument,
-                          (unsigned)c->value, c->valid ? "valid" : "invalid");
+            ptest_fail_at(__FILE__, __LINE__, "%s argument %llu value %u: expected %s", c->fact,
+                          (unsigned long long)c->argument, (unsigned)c->value, c->valid ? "valid" : "invalid");
     }
 }
 

@@ -14,6 +14,7 @@
 
 #include "debug_channel.h"
 #include "gba_memmap.h"
+#include "test_support.h"
 
 /* include/gba/io_reg.h MGBA_LOG_INFO, as the runner sends it. */
 #define LOG_INFO UINT16_C(3)
@@ -59,7 +60,7 @@ static inline void clear_registers(void)
 /* A channel open on a fresh temporary file. */
 static inline FILE *open_channel(void)
 {
-    FILE *out = tmpfile();
+    FILE *out = tsup_open_temp_stream();
     if (out == NULL)
         return NULL;
     clear_registers();

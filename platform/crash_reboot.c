@@ -5,8 +5,8 @@
  * Followed: GBATEK "BIOS Reset Functions" (RegisterRamReset keeps the last
  * 200h bytes of IWRAM), expansion's test/test_runner.c (what the runner
  * keeps there and how it resumes), POSIX for what a signal handler may call
- * (signal-safety(7): write here, execve and raise in host_fault and
- * host_process).
+ * (signal-safety(7): write in host_file, execve, _exit and raise in
+ * host_fault and host_process).
  */
 #include "crash_reboot.h"
 
@@ -19,6 +19,7 @@
 
 #include "gba_memmap.h"
 #include "host_fault.h"
+#include "host_file.h"
 #include "host_process.h"
 
 _Static_assert(CRASH_REBOOT_PERSISTENT_ADDRESS >= GBA_IWRAM_BASE
@@ -42,17 +43,55 @@ static const volatile uint8_t *persistent_bytes(void)
     return (const volatile uint8_t *)(uintptr_t)CRASH_REBOOT_PERSISTENT_ADDRESS;
 }
 
-/* The report line the handler writes, built in place and written with one
- * write(2) so that the lines of processes sharing stderr do not interleave
- * (the hydra runs up to 32). Async-signal-safe: no allocation, no stdio. */
-#define REPORT_SIZE 256u
-#define DECIMAL_BASE 10u /* numbers are written and read in decimal */
+/* The report line the handler writes, built in place on the handler's stack
+ * and written with one call (host_file_write_from_handler: one write(2), or
+ * one WriteFile on Windows) so that the lines of processes sharing stderr do
+ * not interleave (the hydra runs up to 32). Async-signal-safe: no
+ * allocation, no stdio. Room for the longest, the one that carries the state
+ * for the parent (asserted below). */
+#define REPORT_SIZE 1024u
 
 struct report {
     char text[REPORT_SIZE];
     size_t length;
 };
 
+/* The report's texts: where the fault was, then one of the endings
+ * (crash_reboot.h shows whole lines). */
+static const char where_head[] = "crash_reboot: ";
+static const char where_at[] = " at ";
+static const char where_address[] = ", fault address ";
+static const char where_end[] = ": ";
+static const char no_reboot_text[] = "the test runner's persistent state is as the process started with; a reboot "
+                                     "would crash again, so the process ends here\n";
+static const char rebooting_text[] = "rebooting with the test runner's persistent state\n";
+static const char restart_failed_text[] = "crash_reboot: starting the executable again failed; the process ends "
+                                          "here\n";
+
+/* "75", the exit code in the report. */
+#define TEXT_OF(number) #number
+#define DECIMAL_TEXT(number) TEXT_OF(number)
+
+/* Where the handler may not restart (Windows), what the report says before
+ * the state, which ends the line (crash_reboot.h). */
+static const char ending_for_the_parent[] = "ending with exit code " DECIMAL_TEXT(
+    CRASH_REBOOT_EXIT_CODE) " for the parent to start the program again with " CRASH_REBOOT_OPTION " ";
+
+/* Every report fits, so that report_add never cuts one short (a report cut
+ * short would lose the state and the newline). */
+#define TEXT_LENGTH(text) (sizeof(text) - 1u)
+#define HEX_TEXT_LENGTH (2u + 2u * sizeof(uintptr_t)) /* "0x" and a pointer's digits */
+#define WHERE_LENGTH                                                                                 \
+    (TEXT_LENGTH(where_head) + (HOST_FAULT_NAME_SIZE - 1u) + TEXT_LENGTH(where_at) + HEX_TEXT_LENGTH \
+     + TEXT_LENGTH(where_address) + HEX_TEXT_LENGTH + TEXT_LENGTH(where_end))
+_Static_assert(WHERE_LENGTH + TEXT_LENGTH(no_reboot_text) <= REPORT_SIZE, "the report without a reboot fits");
+_Static_assert(WHERE_LENGTH + TEXT_LENGTH(rebooting_text) <= REPORT_SIZE, "the report of a reboot fits");
+_Static_assert(TEXT_LENGTH(restart_failed_text) <= REPORT_SIZE, "the report of a failed restart fits");
+_Static_assert(WHERE_LENGTH + TEXT_LENGTH(ending_for_the_parent) + CRASH_REBOOT_STATE_HEX_LENGTH + 1u <= REPORT_SIZE,
+               "the report for the parent, the longest, fits with its state and newline");
+
+/* Appends text; the assertions above keep it within REPORT_SIZE, which the
+ * bound here only guards. */
 static void report_add(struct report *report, const char *text)
 {
     while (*text != '\0' && report->length < REPORT_SIZE)
@@ -75,42 +114,25 @@ static void report_add_hex(struct report *report, uintptr_t value)
     report_add(report, text);
 }
 
-static void report_add_unsigned(struct report *report, unsigned value)
-{
-    char text[3 * sizeof value + 1];
-    size_t length = sizeof text - 1;
-    text[length] = '\0';
-    do {
-        text[--length] = (char)('0' + value % DECIMAL_BASE);
-        value /= DECIMAL_BASE;
-    } while (value > 0 && length > 0);
-    report_add(report, &text[length]);
-}
-
 /* Best-effort: there is nothing to do if stderr is gone. */
 static void report_write(const struct report *report)
 {
-    const char *text = report->text;
-    size_t length = report->length;
-    while (length > 0) {
-        ssize_t written = write(STDERR_FILENO, text, length);
-        if (written <= 0)
-            return;
-        text += written;
-        length -= (size_t)written;
-    }
+    (void)host_file_write_from_handler(STDERR_FILENO, report->text, report->length);
 }
 
-/* "crash_reboot: signal 11 at 0x...; fault address 0x...: " */
+/* "crash_reboot: signal 11 at 0x..., fault address 0x...: " (Windows:
+ * "exception 0xC0000005", host_fault_name) */
 static void report_where(struct report *report, const struct host_fault *fault)
 {
-    report_add(report, "crash_reboot: signal ");
-    report_add_unsigned(report, (unsigned)host_fault_number(fault));
-    report_add(report, " at ");
+    char name[HOST_FAULT_NAME_SIZE];
+    host_fault_name(fault, name);
+    report_add(report, where_head);
+    report_add(report, name);
+    report_add(report, where_at);
     report_add_hex(report, host_fault_register(fault, HOST_FAULT_PC));
-    report_add(report, ", fault address ");
+    report_add(report, where_address);
     report_add_hex(report, host_fault_address(fault));
-    report_add(report, ": ");
+    report_add(report, where_end);
 }
 
 static bool state_changed_since_start(void)
@@ -140,17 +162,23 @@ static void on_crash(const struct host_fault *fault)
     struct report report = {.length = 0};
     report_where(&report, fault);
     if (!state_changed_since_start()) {
-        report_add(&report, "the test runner's persistent state is as the process started with; a reboot "
-                            "would crash again, so the process ends here\n");
+        report_add(&report, no_reboot_text);
         report_write(&report);
         return;
     }
     encode_state();
-    report_add(&report, "rebooting with the test runner's persistent state\n");
+    if (!host_process_restart_is_handler_safe()) {
+        report_add(&report, ending_for_the_parent);
+        report_add(&report, reboot.state_hex);
+        report_add(&report, "\n");
+        report_write(&report);
+        host_process_end(CRASH_REBOOT_EXIT_CODE);
+    }
+    report_add(&report, rebooting_text);
     report_write(&report);
     (void)host_process_restart(reboot.args);
     report.length = 0;
-    report_add(&report, "crash_reboot: starting the executable again failed; the process ends here\n");
+    report_add(&report, restart_failed_text);
     report_write(&report);
 }
 

@@ -145,6 +145,40 @@ PTEST(a_crash_without_progress_ends_the_process)
     PT_ASSERT_EQ_INT(WTERMSIG(status), SIGSEGV);
 }
 
+/* The report of a crash that does not reboot, read from the child's stderr
+ * through a pipe once it has ended. */
+#define PIPE_WAIT_MILLISECONDS 5000
+#define REPORT_TEXT_SIZE 512u
+
+static void crash_without_progress_into_a_pipe(void *context)
+{
+    const int *const fds = context;
+    if (close(fds[0]) != 0 || dup2(fds[1], STDERR_FILENO) < 0)
+        _exit(CHILD_SETUP_FAILED);
+    struct crashing_child child = {MODE_NO_PROGRESS, SIGSEGV};
+    crash_in_child(&child);
+}
+
+PTEST(the_report_of_a_crash_is_one_whole_line)
+{
+    int fds[2];
+    PT_ASSERT_EQ_INT(pipe(fds), 0);
+    const int status = psup_run_child(crash_without_progress_into_a_pipe, fds);
+    (void)close(fds[1]);
+    char text[REPORT_TEXT_SIZE] = {0};
+    const ssize_t got = psup_read_within(fds[0], text, sizeof text - 1, PIPE_WAIT_MILLISECONDS);
+    (void)close(fds[0]);
+    static const char head[] = "crash_reboot: signal 11 at 0x";
+    static const char tail[] = ": the test runner's persistent state is as the process started with; a reboot "
+                               "would crash again, so the process ends here\n";
+    PT_ASSERT_EQ_INT(psup_terminating_signal(status), SIGSEGV);
+    PT_ASSERT(got > (ssize_t)(sizeof head + sizeof tail));
+    PT_ASSERT(strncmp(text, head, sizeof head - 1) == 0);
+    PT_ASSERT(strstr(text, ", fault address 0x") != NULL);
+    PT_ASSERT_EQ_STR(text + got - (ssize_t)(sizeof tail - 1), tail);
+    PT_ASSERT(strchr(text, '\n') == text + got - 1); /* one line */
+}
+
 PTEST(shutdown_restores_the_default_actions)
 {
     char *argv[] = {(char *)self_name, NULL};

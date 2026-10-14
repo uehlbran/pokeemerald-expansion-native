@@ -12,7 +12,8 @@
  *
  * Ownership model. The caller's thread owns all game and test state, and the
  * flag's meaning; the watchdog's thread owns the watchdog's own state (the
- * deadline, the stop request, behind its mutex) and writes exactly one
+ * deadline and the stop request: behind its mutex on POSIX; on Windows in
+ * relaxed C11 atomics whose changes an event announces) and writes exactly one
  * thing outside it: the caller's atomic flag, once. It calls no callback,
  * reads no caller state, prints nothing and allocates nothing. The flag is
  * a C11 atomic_bool: the watchdog stores true (relaxed: the flag carries no
@@ -24,9 +25,11 @@
  * Wraps, on Linux and macOS (host_posix.c): a pthread that waits on a
  * condition variable until the deadline, against the wall clock
  * (pthread_cond_timedwait takes CLOCK_REALTIME on both systems; a clock set
- * during a test moves the deadline with it). Windows adds its own source
- * behind the same calls (a thread that waits on an event with a timeout:
- * CreateThread, WaitForSingleObject); it is declared here and not written.
+ * during a test moves the deadline with it). On Windows
+ * (host_windows_thread.c): a thread that waits on an auto-reset event with a
+ * timeout against GetTickCount64 (CreateThread, WaitForSingleObject), the
+ * deadline and the stop request in relaxed C11 atomics that SetEvent
+ * announces; stop joins the thread by waiting on its handle.
  */
 #ifndef PLATFORM_HOST_THREAD_H
 #define PLATFORM_HOST_THREAD_H

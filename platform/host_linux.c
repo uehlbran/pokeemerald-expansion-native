@@ -1,9 +1,10 @@
 /*
  * host_linux.c: the host layer where Linux does things its own way: the
- * fixed-address memory (host_memory.h), the saved registers of a fault
- * (host_fault.h), the executable's path (host_process.h), the image and
+ * pages mapped at fixed addresses (host_memory.h), the saved registers of a
+ * fault (host_fault.h), the executable's path (host_process.h), the image and
  * stack bounds (host_image.h) and the stack switch (host_stack.h). What every
- * POSIX system shares is in host_posix.c.
+ * POSIX system shares is in host_posix.c; where the link put the regions, in
+ * host_linked.c.
  *
  * Followed: the Intel SDM vol. 2 (table 2-2) for the ModRM register order,
  * glibc's <sys/ucontext.h> for where the kernel saves each register (REG_*
@@ -102,53 +103,6 @@ int host_process_executable_path(char *out, size_t size)
     return 0;
 }
 
-/* --- host_memory: the regions gba_regions.ld places ---------------------------- */
-
-/* Section bounds defined by gba_regions.ld. Only their addresses are used. */
-extern const unsigned char gba_linked_ewram_start[], gba_linked_ewram_end[];
-extern const unsigned char gba_linked_iwram_start[], gba_linked_iwram_end[];
-extern const unsigned char gba_linked_io_start[], gba_linked_io_end[];
-extern const unsigned char gba_linked_mgba_debug_start[], gba_linked_mgba_debug_end[];
-extern const unsigned char gba_linked_palette_ram_start[], gba_linked_palette_ram_end[];
-extern const unsigned char gba_linked_vram_start[], gba_linked_vram_end[];
-extern const unsigned char gba_linked_oam_start[], gba_linked_oam_end[];
-extern const unsigned char gba_linked_sram_start[], gba_linked_sram_end[];
-extern const unsigned char platform_call_stack_start[], platform_call_stack_end[];
-
-struct linked_section {
-    const unsigned char *start;
-    const unsigned char *end;
-};
-
-static const struct linked_section linked_regions[GBA_REGION_COUNT] = {
-    [GBA_REGION_EWRAM] = {gba_linked_ewram_start, gba_linked_ewram_end},
-    [GBA_REGION_IWRAM] = {gba_linked_iwram_start, gba_linked_iwram_end},
-    [GBA_REGION_IO] = {gba_linked_io_start, gba_linked_io_end},
-    [GBA_REGION_MGBA_DEBUG] = {gba_linked_mgba_debug_start, gba_linked_mgba_debug_end},
-    [GBA_REGION_PALETTE_RAM] = {gba_linked_palette_ram_start, gba_linked_palette_ram_end},
-    [GBA_REGION_VRAM] = {gba_linked_vram_start, gba_linked_vram_end},
-    [GBA_REGION_OAM] = {gba_linked_oam_start, gba_linked_oam_end},
-    [GBA_REGION_SRAM] = {gba_linked_sram_start, gba_linked_sram_end},
-};
-
-/* Pointers to integers: the linked addresses are compared with GBA addresses. */
-static struct host_span span_of(const unsigned char *start, const unsigned char *end)
-{
-    return (struct host_span){.start = (uintptr_t)start, .end = (uintptr_t)end};
-}
-
-struct host_span host_memory_region(enum gba_region region)
-{
-    if (region <= GBA_REGION_NONE || region >= GBA_REGION_COUNT)
-        return (struct host_span){.start = 0, .end = 0};
-    return span_of(linked_regions[region].start, linked_regions[region].end);
-}
-
-struct host_span host_memory_call_stack(void)
-{
-    return span_of(platform_call_stack_start, platform_call_stack_end);
-}
-
 /* --- host_memory: pages mapped at run time ---------------------------------------- */
 
 int host_memory_map_fixed(uintptr_t address, size_t size)
@@ -184,12 +138,12 @@ extern const unsigned char __executable_start[], __data_start[], _end[]; /* GNU 
 
 struct host_span host_image_whole(void)
 {
-    return span_of(__executable_start, _end);
+    return host_span_of(__executable_start, _end);
 }
 
 struct host_span host_image_writable(void)
 {
-    return span_of(__data_start, _end);
+    return host_span_of(__data_start, _end);
 }
 
 /* The read-only PT_LOAD segments, from the program headers the kernel passed

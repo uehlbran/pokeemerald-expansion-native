@@ -19,6 +19,9 @@
 #   REGIONS_LD_NAME, GAME_LD_NAME   the file names of those two linker scripts
 #                        (in platform/)
 #   SDL_CFLAGS, SDL_LIBS how to compile and link against SDL2
+#   $(call target_resources,DIR)   the resource objects every executable
+#                        links, made in DIR by this file's rule (Windows: the
+#                        application manifest; Linux: none)
 # and, for windows, the cross tools (HOST_CC, HOST_AS, NM, CC, AR, OBJCOPY, OBJDUMP),
 # TARGET_CFLAGS (the compiler flags every Windows object takes) and the SDL2
 # development package's location (SDL2_MINGW_DIR; Makefile.native fetches it).
@@ -43,6 +46,7 @@ SDL_LIBS   := $(shell pkg-config --libs sdl2)
 GBA_LAYOUT_LDFLAGS := -no-pie -Wl,-Ttext-segment=0x40000000
 REGIONS_LD_NAME := gba_regions.ld
 GAME_LD_NAME := gba_game.ld
+target_resources =
 
 else ifeq ($(TARGET_OS),windows)
 
@@ -98,5 +102,20 @@ GBA_LAYOUT_LDFLAGS := -mconsole -static-libgcc -Wl,--image-base=0x01800000 -Wl,-
                       -Wl,--defsym,__executable_start=__ImageBase
 REGIONS_LD_NAME := gba_regions.pe.ld
 GAME_LD_NAME := gba_game.pe.ld
+
+# The application manifest that makes the process's code page UTF-8, linked
+# into the game and into every test executable alike, so that the narrow
+# strings the C runtime and the -A functions take and give (argv, paths) are
+# UTF-8 as on Linux (build_glue/windows_manifest.xml; docs/DECISIONS.md,
+# "Narrow strings on Windows are UTF-8"). windres compiles the resource
+# script; a pattern rule, so that each Makefile names the object in its own
+# build directory and none of them takes it for its default goal.
+WINDRES ?= $(CROSS_PREFIX)windres
+TARGET_MANIFEST_DIR := $(abspath $(TARGET_MK_DIR)build_glue)
+target_resources = $(1)/windows_manifest.o
+
+%/windows_manifest.o: $(TARGET_MANIFEST_DIR)/windows_manifest.rc $(TARGET_MANIFEST_DIR)/windows_manifest.xml
+	@mkdir -p $(@D)
+	$(WINDRES) --include-dir $(TARGET_MANIFEST_DIR) -O coff -o $@ $<
 
 endif

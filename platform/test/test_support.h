@@ -6,11 +6,11 @@
  * the environment, and standard error sent elsewhere for a while.
  *
  * One implementation per OS family, in test/<family>/support.c (HOST_TEST_SUPPORT_DIR,
- * platform/host.mk): test/posix/support.c for Linux and macOS. Windows adds
- * test/windows/support.c behind these same calls; it is not written (the
- * calls it needs: GetTempPath, _mkdir, _dup2, _putenv_s). What only some
- * family can do (fork, signals, pipes, file permissions) is not here but in
- * that family's tests and its own support header (test/posix/posix_support.h).
+ * platform/host.mk): test/posix/support.c for Linux and macOS,
+ * test/windows/support.c for Windows. What only some family can do (fork,
+ * signals, pipes, file permissions; a child process on Windows) is not here
+ * but in that family's tests and its own support header
+ * (test/posix/posix_support.h, test/windows/windows_support.h).
  *
  * Every call returns what it did (true, or a size), never aborts, and leaves
  * the test to assert; a path is a NUL-terminated buffer of at least
@@ -103,13 +103,21 @@ bool tsup_redirect_stderr(struct tsup_stderr *saved, FILE *to);
 /* Flushes standard error and puts it back as it was. False if either step failed. */
 bool tsup_restore_stderr(struct tsup_stderr *saved);
 
+/* A new, empty temporary file open for reading and writing in binary mode,
+ * removed when it is closed: tmpfile() where the C library puts it under the
+ * temporary directory (POSIX); on Windows a file under the temporary
+ * directory opened to be deleted on close, since msvcrt's tmpfile() writes to
+ * the root of the current drive, which a user without elevation cannot. NULL
+ * if it cannot be made. */
+FILE *tsup_open_temp_stream(void);
+
 /* Runs action(context) with standard error sent to a temporary file and copies
  * what it wrote into text (size bytes, NUL-terminated). True only if the
  * redirection, the restore and the read-back all worked and the text fit. */
 static inline bool tsup_capture_stderr(void (*action)(void *context), void *context, char *text, size_t size)
 {
     text[0] = '\0';
-    FILE *const file = tmpfile();
+    FILE *const file = tsup_open_temp_stream();
     if (file == NULL)
         return false;
     struct tsup_stderr saved;
