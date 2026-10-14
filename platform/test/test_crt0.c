@@ -28,30 +28,32 @@ PTEST(intr_main_is_0x800_bytes_of_data)
 }
 
 /* An EWRAM_INIT variable (include/gba/defines.h): gba_regions.ld puts it at
- * the bottom of EWRAM with its initial value. */
-static __attribute__((section(".ewram"), used)) volatile uint8_t ewram_init_byte = 0x5A;
+ * the bottom of EWRAM with its initial value. A word: a COFF assembler pads
+ * each section to its alignment, 4 bytes for data, so a byte's section would
+ * be 4 bytes long on Windows and 1 on Linux. */
+static __attribute__((section(".ewram"), used)) volatile uint32_t ewram_init_word = 0x5A;
 
 PTEST(ewram_init_data_sits_at_the_bottom_of_ewram)
 {
-    PT_ASSERT(address_of(&ewram_init_byte) == GBA_EWRAM_BASE);
-    PT_ASSERT(crt0_ewram_init_size() == sizeof ewram_init_byte);
+    PT_ASSERT(address_of(&ewram_init_word) == GBA_EWRAM_BASE);
+    PT_ASSERT(crt0_ewram_init_size() == sizeof ewram_init_word);
 }
 
 PTEST(reinitialize_ewram_restores_the_initial_value)
 {
     ReInitializeEWRAM(); /* before crt0_init: nothing to restore, nothing happens */
     PT_ASSERT_EQ_INT(crt0_init(), CRT0_OK);
-    ewram_init_byte = 0x00; /* RegisterRamReset(RESET_EWRAM) */
+    ewram_init_word = 0x00; /* RegisterRamReset(RESET_EWRAM) */
     ReInitializeEWRAM();
-    PT_ASSERT_EQ_INT(ewram_init_byte, 0x5A);
-    ewram_init_byte = 0x77;
+    PT_ASSERT_EQ_INT(ewram_init_word, 0x5A);
+    ewram_init_word = 0x77;
     crt0_restart();
-    PT_ASSERT_EQ_INT(ewram_init_byte, 0x5A);
+    PT_ASSERT_EQ_INT(ewram_init_word, 0x5A);
     crt0_shutdown();
-    ewram_init_byte = 0x33;
+    ewram_init_word = 0x33;
     ReInitializeEWRAM(); /* after shutdown: nothing happens */
-    PT_ASSERT_EQ_INT(ewram_init_byte, 0x33);
-    ewram_init_byte = 0x5A;
+    PT_ASSERT_EQ_INT(ewram_init_word, 0x33);
+    ewram_init_word = 0x5A;
     crt0_shutdown(); /* twice is safe */
 }
 
@@ -154,21 +156,21 @@ PTEST(crt0_init_checks_the_empty_test_table_of_a_test_runner_link)
 
 PTEST(crt0_init_refuses_a_test_table_whose_entries_are_padded_and_keeps_no_copy)
 {
-    ewram_init_byte = 0x5A;
+    ewram_init_word = 0x5A;
     PT_ASSERT_EQ_INT(crt0_init(), CRT0_OK); /* an earlier good init, dropped by the next */
     bad_test_table_entry = 0;               /* the first entry; the index only goes into the report */
     PT_ASSERT_EQ_INT(crt0_init(), CRT0_ERR_BAD_TEST_TABLE);
     bad_test_table_entry = 1000;
     PT_ASSERT_EQ_INT(crt0_init(), CRT0_ERR_BAD_TEST_TABLE);
     /* No copy is in use after the failure: a restart changes nothing. */
-    ewram_init_byte = 0x77;
+    ewram_init_word = 0x77;
     game_data_word = 7;
     crt0_restart();
     ReInitializeEWRAM();
-    PT_ASSERT_EQ_INT(ewram_init_byte, 0x77);
+    PT_ASSERT_EQ_INT(ewram_init_word, 0x77);
     PT_ASSERT_EQ_U32(game_data_word, 7);
     bad_test_table_entry = -1;
-    ewram_init_byte = 0x5A;
+    ewram_init_word = 0x5A;
     game_data_word = UINT32_C(0x1234ABCD);
     crt0_shutdown(); /* safe after a failed init */
 }

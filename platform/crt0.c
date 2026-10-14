@@ -34,8 +34,10 @@ extern unsigned char gba_linked_ewram_init_start[], gba_linked_ewram_init_end[];
 extern unsigned char game_data_start[], game_data_end[];
 extern unsigned char game_bss_start[], game_bss_objects_end[], game_bss_end[];
 /* gba_game.ld: its address is 1 in the game executable (Makefile.native's
- * --defsym), 0 elsewhere. */
-extern const unsigned char gba_game_objects_linked[];
+ * --defsym), 0 elsewhere. Weak, so that the compiler cannot take the address
+ * of a declared object to be non-null and drop the test of it (it did without
+ * the sanitizers, which keep null checks: the Windows unit tests). */
+extern const unsigned char gba_game_objects_linked[] __attribute__((weak));
 
 /* gba_game.ld: the .tests table. test/test_runner.c defines
  * gPlatformTestEntrySize (sizeof(struct Test)) in the test runner build only,

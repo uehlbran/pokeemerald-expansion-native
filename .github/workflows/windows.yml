@@ -28,7 +28,7 @@ jobs:
       - name: Prerequisites (docs/BUILDING.md, the native and the Windows lines)
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends build-essential gcc-multilib libc6-dev-i386 pkg-config git python3 libpng-dev libsdl2-dev clang gcc-mingw-w64-x86-64 binutils-mingw-w64-x86-64 mingw-w64-tools
+          sudo apt-get install -y --no-install-recommends build-essential gcc-multilib libc6-dev-i386 pkg-config git python3 libpng-dev libsdl2-dev clang ccache gcc-mingw-w64-x86-64 binutils-mingw-w64-x86-64 mingw-w64-tools
 
       # The same tools cache as native.yml, so the Linux data build does not
       # rebuild them.
@@ -57,6 +57,26 @@ jobs:
       - name: Cache the converted assets
         uses: ./.github/actions/native-assets
 
+      # The game's C reaches the compiler as a file (Makefile.native,
+      # COMPILE_C), which ccache can cache: the MinGW compile of the game is
+      # most of this job without it. Linked as the MinGW compiler's name, first
+      # on PATH, so that ccache finds the real one after it.
+      - name: Cache the compiler cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ccache
+          key: ccache-windows-${{ runner.os }}-${{ github.sha }}
+          restore-keys: |
+            ccache-windows-${{ runner.os }}-
+
+      - name: Use ccache
+        run: |
+          mkdir -p ~/.local/ccache-bin
+          ln -sf /usr/bin/ccache ~/.local/ccache-bin/x86_64-w64-mingw32-gcc
+          echo ~/.local/ccache-bin >> "$GITHUB_PATH"
+          echo /usr/lib/ccache >> "$GITHUB_PATH"
+          ccache --max-size=2G --zero-stats
+
       - name: Cache SDL2 for MinGW (pinned in Makefile.native by sha256)
         uses: actions/cache@v4
         with:
@@ -68,6 +88,10 @@ jobs:
 
       - name: Cross-build the unit tests
         run: make -C platform -j"$(nproc)" test TARGET_OS=windows BITS=64
+
+      - name: ccache statistics
+        if: always()
+        run: ccache -s
 
       - name: Upload the executable and the tests
         uses: actions/upload-artifact@v4
@@ -101,12 +125,59 @@ jobs:
         with:
           name: windows-build
 
+      # DIAGNOSTIC (temporary, task W8/W9 iteration): the system's commit
+      # charge as executables start, exit, are copied and deleted.
+      - name: Commit charge (diagnostic)
+        shell: pwsh
+        run: |
+          function Commit($what) { $m = Get-CimInstance Win32_PerfRawData_PerfOS_Memory; "{0,-44} committed {1,6} MiB of {2,6} MiB" -f $what, [math]::Round($m.CommittedBytes/1MB), [math]::Round($m.CommitLimit/1MB) }
+          Get-CimInstance Win32_ComputerSystem | Format-List TotalPhysicalMemory, NumberOfLogicalProcessors
+          Get-CimInstance Win32_PageFileUsage | Format-List Name, AllocatedBaseSize, CurrentUsage
+          Get-CimInstance Win32_PageFileSetting | Format-List Name, InitialSize, MaximumSize
+          $d = 'platform\build\64-windows\test'
+          Commit 'start'
+          & "$d\test_bios.exe" *> $null; Commit "test_bios.exe exited $LASTEXITCODE"
+          & "$d\test_bios.exe" *> $null; Commit "test_bios.exe again"
+          & "$d\test_dma.exe" *> $null; Commit "test_dma.exe exited $LASTEXITCODE"
+          & "$d\test_flash.exe" *> $null; Commit "test_flash.exe exited $LASTEXITCODE"
+          Copy-Item "$d\test_flash.exe" "$d\copy_flash.exe"
+          & "$d\copy_flash.exe" *> $null; Commit "a copy of test_flash.exe exited $LASTEXITCODE"
+          Remove-Item "$d\copy_flash.exe"; Commit 'the copy deleted'
+          Start-Sleep -Seconds 2; Commit 'two seconds later'
+          & build\native64-windows\pokeemerald-native.exe --headless --silent --frames 1 *> $null; Commit "the game exited $LASTEXITCODE"
+
       - name: The unit tests
         run: platform/test_runner/run_windows_tests.sh platform/build/64-windows/test
 
       - name: The start-up smoke
         if: always()
         run: platform/test_runner/run_windows_smoke.sh build/native64-windows/pokeemerald-native.exe
+
+      - name: Commit charge after the tests (diagnostic)
+        if: always()
+        shell: pwsh
+        run: |
+          $m = Get-CimInstance Win32_PerfRawData_PerfOS_Memory; "committed {0} MiB of {1} MiB" -f [math]::Round($m.CommittedBytes/1MB), [math]::Round($m.CommitLimit/1MB)
+          Get-Process | Sort-Object PagedMemorySize64 -Descending | Select-Object -First 12 Name, Id, PagedMemorySize64, VirtualMemorySize64 | Format-Table
+
+      # DIAGNOSTIC (temporary): MSYS2 for the hydra (task W8, route i).
+      - name: MSYS2 probe (diagnostic)
+        if: always()
+        continue-on-error: true
+        shell: C:\msys64\usr\bin\bash.exe -l -e -o pipefail {0}
+        env:
+          MSYSTEM: MSYS
+          CHERE_INVOKING: 1
+        run: |
+          uname -a
+          command -v stdbuf gcc make || true
+          time pacman -S --noconfirm --needed gcc make
+          command -v stdbuf gcc make
+          gcc --version | head -1
+          ls /usr/lib/coreutils /usr/libexec/coreutils 2>/dev/null || true
+          make -C tools/patchelf
+          make -C tools/mgba-rom-test-hydra
+          ls -l tools/patchelf tools/mgba-rom-test-hydra
 
       - name: Keep the test logs
         if: always()

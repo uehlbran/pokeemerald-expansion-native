@@ -34,9 +34,14 @@ failed=0
 for test in "${tests[@]}"; do
     name=$(basename "$test" .exe)
     log=$dir/$name.log
+    # A copy, deleted after the run: Windows keeps the image of an executable
+    # it has started, and the image's commit charge, while the file exists.
+    copy=$dir/$name.run.exe
     echo "== $name"
-    (cd "$dir" && timeout --kill-after=$KILL_SECONDS $TEST_SECONDS "./$name.exe") > "$log" 2>&1
+    cp -- "$test" "$copy"
+    (cd "$dir" && timeout --kill-after=$KILL_SECONDS $TEST_SECONDS "./$name.run.exe") > "$log" 2>&1
     code=$?
+    rm -f -- "$copy"
     cat "$log"
     # The C runtime writes "\r\n" for "\n" on a text-mode stream.
     if [ $code -ne 0 ]; then

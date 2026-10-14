@@ -153,6 +153,11 @@ uint64_t tsup_monotonic_milliseconds(void)
     return (uint64_t)now.tv_sec * MILLISECONDS_PER_SECOND + (uint64_t)now.tv_nsec / NANOSECONDS_PER_MILLISECOND;
 }
 
+int tsup_divide_error_number(void)
+{
+    return SIGFPE;
+}
+
 const char *tsup_null_device(void)
 {
     return "/dev/null";
