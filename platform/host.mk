@@ -51,7 +51,7 @@ write_symbol_map = rm -f $(2) $(2).nm $(2).tmp \
 # permissions; linux: what only Linux has, /proc and glibc's
 # pthread_getattr_np), and HOST_TEST_SUPPORT_DIR the one of them that holds
 # the support (test/test_support.h's implementation, support.c). macOS will
-# name posix and darwin; Windows its own, once written. A test directory is
+# name posix and darwin; Windows names windows. A test directory is
 # built for its OS and no other: see README.md, "Tests that need an operating
 # system".
 ifeq ($(TARGET_OS),Linux)
@@ -64,8 +64,8 @@ SYMBOL_MAP_SELECT = $$4 == "FUNC" && $$5 != "" && $$1 != ""
 else ifeq ($(TARGET_OS),windows)
 
 HOST_SRCS := host_windows.c host_windows_fault.c host_windows_stack.c host_windows_thread.c host_linked.c
-HOST_TEST_DIRS :=
-HOST_TEST_SUPPORT_DIR :=
+HOST_TEST_DIRS := windows
+HOST_TEST_SUPPORT_DIR := windows
 SYMBOL_MAP_SELECT = $$4 == "Function" && $$1 != "" && $$2 !~ /^0+$$/
 
 endif

@@ -6,6 +6,10 @@
 #   make -C platform lib           build build/<bits>/libplatform.a
 #   make -C platform lib NOSAN=1   the same without sanitizers, in
 #                                  build/<bits>-nosan/ (Makefile.native SANITIZE=0)
+#   make -C platform lib TARGET_OS=windows BITS=64    libplatform.a for Windows (MinGW-w64)
+#   make -C platform test TARGET_OS=windows BITS=64   cross-build the unit tests into
+#                                  build/64-windows/test/*.exe, not run (Windows runs them:
+#                                  test_runner/run_windows_tests.sh)
 #   make -C platform format        apply clang-format (../.clang-format) to every file below
 #   make -C platform format-check  fail, naming the files, if any would change
 #   make -C platform lint          clang-tidy (../.clang-tidy) and cppcheck over every .c file;
@@ -39,15 +43,16 @@ endif
 
 include host.mk
 
-# TARGET_OS=windows (target.mk) builds libplatform.a for Windows with MinGW-w64,
-# which has no sanitizers, and nothing else: the unit tests run where the
-# executable does, and the host layer they exercise is still a stub there
-# (host_windows.c).
+# TARGET_OS=windows (target.mk) builds for Windows with MinGW-w64, which has no
+# sanitizers, into build/<bits>-windows: libplatform.a for the game, and the
+# unit tests, which are cross-built and not run here, since they run where the
+# executable does (test_runner/run_windows_tests.sh, on Windows); and `lint`,
+# clang-tidy for the MinGW-w64 target and cppcheck, over what the Windows build
+# compiles.
 ifeq ($(TARGET_OS),windows)
-ifneq ($(filter-out lib clean,$(or $(MAKECMDGOALS),all)),)
-$(error TARGET_OS=windows builds the lib goal only: MinGW-w64 has no sanitizers, and the unit tests are not cross-built yet)
+ifneq ($(filter-out lib test lint lint-tidy lint-cppcheck clean,$(or $(MAKECMDGOALS),all)),)
+$(error TARGET_OS=windows builds the lib, test and lint goals only: MinGW-w64 has no sanitizers, and the tests run on Windows)
 endif
-NOSAN := 1
 endif
 
 # NOSAN=1 builds libplatform.a without the sanitizers, for the native game
@@ -70,16 +75,15 @@ endif
 endif
 
 NOSAN ?= 0
-ifeq ($(TSAN),1)
+ifeq ($(TARGET_OS),windows)
+BUILD_DIR := build/$(BITS)-windows
+else ifeq ($(TSAN),1)
 BUILD_DIR := build/64-tsan
 else ifeq ($(NOSAN),1)
 ifneq ($(filter-out lib clean,$(or $(MAKECMDGOALS),all)),)
 $(error NOSAN=1 is for the lib goal only; the unit tests always run under the sanitizers)
 endif
 BUILD_DIR := build/$(BITS)-nosan
-ifeq ($(TARGET_OS),windows)
-BUILD_DIR := build/$(BITS)-windows
-endif
 else ifeq ($(NOSAN),0)
 BUILD_DIR := build/$(BITS)
 else
@@ -106,7 +110,7 @@ override SANITIZERS := -fsanitize=address,undefined -fno-sanitize-recover=all -f
 ifeq ($(TSAN),1)
 override SANITIZERS := -fsanitize=thread -fno-omit-frame-pointer
 endif
-ifeq ($(NOSAN),1)
+ifneq ($(filter 1,$(NOSAN))$(filter windows,$(TARGET_OS)),)
 override SANITIZERS :=
 endif
 
@@ -183,7 +187,15 @@ TEST_SUPPORT_OBJ := $(OBJ_DIR)/test/$(HOST_TEST_SUPPORT_DIR)/support.o
 ifeq ($(TSAN),1)
 TEST_NAMES := $(filter-out test_crt0,$(TEST_NAMES))
 endif
-TEST_BINS   := $(TEST_NAMES:%=$(BUILD_DIR)/%)
+# Linux runs each test binary where it is built; the Windows ones are .exe
+# files in a directory of their own, with SDL2.dll beside them, to be copied
+# to Windows whole.
+ifeq ($(TARGET_OS),windows)
+TEST_BIN_DIR := $(BUILD_DIR)/test
+else
+TEST_BIN_DIR := $(BUILD_DIR)
+endif
+TEST_BINS   := $(TEST_NAMES:%=$(TEST_BIN_DIR)/%$(TARGET_EXE_SUFFIX))
 LIB         := $(BUILD_DIR)/libplatform.a
 
 .PHONY: tsan all lib test clean format format-check lint lint-tidy lint-cppcheck gate
@@ -254,12 +266,23 @@ test_inputs = $(wildcard $(1:test_%=%).c) $(call test_deps,$(1))
 
 define TEST_LINK_RULE
 $(foreach dep,$(call test_deps,$(1)),$(if $(wildcard $(dep)),,$(error $(call test_source,$(1)) lists '$(dep)' on its deps line, but platform/$(dep) does not exist)))
-$(BUILD_DIR)/$(1): $(patsubst %.c,$(OBJ_DIR)/%.o,$(call test_source,$(1))) $(patsubst %.c,$(OBJ_DIR)/%.o,$(call test_inputs,$(1))) $(HOST_OBJS) $(TEST_SUPPORT_OBJ) $(REGIONS_LD) $(GAME_LD)
+$(TEST_BIN_DIR)/$(1)$(TARGET_EXE_SUFFIX): $(patsubst %.c,$(OBJ_DIR)/%.o,$(call test_source,$(1))) $(patsubst %.c,$(OBJ_DIR)/%.o,$(call test_inputs,$(1))) $(HOST_OBJS) $(TEST_SUPPORT_OBJ) $(GAPS_OBJ) $(REGIONS_LD) $(GAME_LD)
+	@mkdir -p $$(@D)
 	$$(CC) $$(LDFLAGS_ALL) -o $$@ $$(filter %.o,$$^) $$(SDL_LIBS)
 	$$(if $$(filter $$(SYMBOL_MAP_TESTS),$(1)),$$(call write_symbol_map,$$@,$$@.symbols) || { rm -f $$@; exit 1; })
 endef
 $(foreach name,$(TEST_NAMES),$(eval $(call TEST_LINK_RULE,$(name))))
 
+ifeq ($(TARGET_OS),windows)
+# Built, not run: test_runner/run_windows_tests.sh runs them on Windows, with
+# the same checks as below but the sanitizers'.
+$(TEST_BIN_DIR)/SDL2.dll: $(SDL2_MINGW_DIR)/bin/SDL2.dll
+	@mkdir -p $(@D)
+	cp $< $@
+
+test: $(TEST_BINS) $(TEST_BIN_DIR)/SDL2.dll
+	@echo "built $(words $(TEST_BINS)) test executables in platform/$(TEST_BIN_DIR); on Windows: platform/test_runner/run_windows_tests.sh platform/$(TEST_BIN_DIR)"
+else
 # Runs every test even after a failure, then fails if any test exited non-zero,
 # printed a sanitizer report (a report that did not change the exit status
 # still fails the run), or ended without ptest's "N passed, 0 failed" line (a
@@ -281,6 +304,7 @@ test: $(TEST_BINS)
 	done; \
 	if [ $$status -eq 0 ]; then echo "all platform tests passed (BITS=$(BITS))"; fi; \
 	exit $$status
+endif
 
 clean:
 	rm -rf build
@@ -291,11 +315,18 @@ clean:
 # difftest, arm_division's libgcc record, tests and their headers. The build's
 # own output is not ours.
 FORMAT_FILES := $(shell find . -path ./build -prune -o \( -name '*.c' -o -name '*.h' \) -print | sort)
-# host_windows.c is compiled only for TARGET_OS=windows, so it is not in this list;
-# it is linted when W5 makes the real file and a cross lint (clang-tidy with the
-# MinGW headers) possible. clang-format still covers it (FORMAT_FILES).
-LINT_SRCS    := $(PLATFORM_SRCS) $(wildcard m4a/*.c) $(wildcard m4a/difftest/*.c) $(wildcard arm_division_libgcc/*.c) \
-                $(wildcard test/*.c) $(wildcard test/*/*.c)
+# The host layer's sources and the per-OS tests of the target OS only: the
+# Windows ones are linted by `make lint TARGET_OS=windows BITS=64` (clang-tidy
+# for the MinGW-w64 target, with its headers), not in the gate, which runs on
+# Linux alone. clang-format covers every file (FORMAT_FILES).
+# The m4a difftest and arm_division's libgcc record are Linux tools (run under
+# qemu-arm, docs/UPGRADING.md), so the Windows lint leaves them out.
+LINT_TOOL_SRCS := $(wildcard m4a/difftest/*.c) $(wildcard arm_division_libgcc/*.c)
+ifeq ($(TARGET_OS),windows)
+LINT_TOOL_SRCS :=
+endif
+LINT_SRCS    := $(PLATFORM_SRCS) $(wildcard m4a/*.c) $(LINT_TOOL_SRCS) \
+                $(wildcard test/*.c) $(foreach dir,$(HOST_TEST_DIRS),$(wildcard test/$(dir)/*.c))
 
 # A missing tool must fail the target, not pass it silently.
 require_tool = @command -v $(1) >/dev/null 2>&1 || { echo "$(1) is not installed ($(2))"; exit 1; }
@@ -321,7 +352,10 @@ format-check:
 # not ours: ../.clang-tidy's HeaderFilterRegex keeps findings to platform/.
 LINT_DIR := $(BUILD_DIR)/lint
 LINT_GAME_FILES := inspect.c inspect_menu.c inspect_args.c test/test_inspect_args.c save_convert.c
-lint_flags = -m$(BITS) -std=gnu17 $(INCLUDES) $(SDL_CFLAGS) $(if $(filter m4a/difftest/%,$(1)),-Im4a -Im4a/difftest) $(if $(filter $(1),$(LINT_GAME_FILES)),$(GAME_DEFINES) -DTESTING=0 -DEMERALD $(GAME_CHAR_FLAGS))
+ifeq ($(TARGET_OS),windows)
+LINT_TARGET_FLAGS := --target=x86_64-w64-mingw32 $(TARGET_CFLAGS)
+endif
+lint_flags = -m$(BITS) -std=gnu17 $(LINT_TARGET_FLAGS) $(INCLUDES) $(SDL_CFLAGS) $(if $(filter m4a/difftest/%,$(1)),-Im4a -Im4a/difftest) $(if $(filter $(1),$(LINT_GAME_FILES)),$(GAME_DEFINES) -DTESTING=0 -DEMERALD $(GAME_CHAR_FLAGS))
 LINT_JOBS ?= $(shell nproc)
 
 $(LINT_DIR)/compile_commands.json: Makefile game_flags.mk $(LINT_SRCS)

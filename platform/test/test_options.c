@@ -7,7 +7,8 @@
 #include "options.h"
 #include "test_support.h"
 
-#include <stdlib.h>
+#include <stdbool.h>
+#include <stdio.h>
 #include <string.h>
 
 #define OPTIONS_TEST_MAX_ARGS 31
@@ -198,14 +199,21 @@ PTEST(argc_and_argv_are_kept_for_the_crash_reboot)
     PT_ASSERT(o.argv == argv);
 }
 
+/* Room for the usage text, which is about 2 KiB. */
+#define USAGE_TEXT_SIZE 8192u
+
 PTEST(the_usage_text_names_every_option_and_the_defaults)
 {
-    char *text = NULL;
-    size_t size = 0;
-    FILE *memory = open_memstream(&text, &size);
-    PT_ASSERT(memory != NULL);
-    options_print_usage(memory);
-    (void)fclose(memory);
+    static char text[USAGE_TEXT_SIZE];
+    FILE *file = tmpfile();
+    PT_ASSERT(file != NULL);
+    options_print_usage(file);
+    const bool rewound = fseek(file, 0, SEEK_SET) == 0;
+    const size_t length = rewound ? fread(text, 1, sizeof text - 1u, file) : 0;
+    text[length] = '\0';
+    (void)fclose(file);
+    PT_ASSERT(rewound);
+    PT_ASSERT(length > 0 && length < sizeof text - 1u);
     static const char *const expected[] = {
         "--headless",  "--silent",     "--save",        "--rtc-offset",       "--scale",         "--unthrottled",
         "--frames",    "--screenshot", "--test-runner", "--persistent-state", "--replay",        "--out",
@@ -214,7 +222,6 @@ PTEST(the_usage_text_names_every_option_and_the_defaults)
     bool all_present = true;
     for (size_t i = 0; i < sizeof expected / sizeof expected[0]; i++)
         all_present = all_present && strstr(text, expected[i]) != NULL;
-    free(text);
     PT_ASSERT(all_present);
 }
 

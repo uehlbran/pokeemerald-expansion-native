@@ -283,7 +283,7 @@ static HANDLE handle_of(int descriptor)
  * files (binary, host_file_open) do not have. */
 int host_file_write_all(int descriptor, const void *bytes, size_t size)
 {
-    const HANDLE handle = handle_of(descriptor);
+    HANDLE handle = handle_of(descriptor);
     if (handle == INVALID_HANDLE_VALUE) {
         errno = EBADF;
         return -1;
@@ -308,7 +308,7 @@ int host_file_write_all(int descriptor, const void *bytes, size_t size)
 
 int host_file_sync(int descriptor)
 {
-    const HANDLE handle = handle_of(descriptor);
+    HANDLE handle = handle_of(descriptor);
     if (handle == INVALID_HANDLE_VALUE) {
         errno = EBADF;
         return -1;

@@ -6,11 +6,11 @@
  * the environment, and standard error sent elsewhere for a while.
  *
  * One implementation per OS family, in test/<family>/support.c (HOST_TEST_SUPPORT_DIR,
- * platform/host.mk): test/posix/support.c for Linux and macOS. Windows adds
- * test/windows/support.c behind these same calls; it is not written (the
- * calls it needs: GetTempPath, _mkdir, _dup2, _putenv_s). What only some
- * family can do (fork, signals, pipes, file permissions) is not here but in
- * that family's tests and its own support header (test/posix/posix_support.h).
+ * platform/host.mk): test/posix/support.c for Linux and macOS,
+ * test/windows/support.c for Windows. What only some family can do (fork,
+ * signals, pipes, file permissions; a child process on Windows) is not here
+ * but in that family's tests and its own support header
+ * (test/posix/posix_support.h, test/windows/windows_support.h).
  *
  * Every call returns what it did (true, or a size), never aborts, and leaves
  * the test to assert; a path is a NUL-terminated buffer of at least

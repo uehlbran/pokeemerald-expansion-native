@@ -135,6 +135,8 @@ static inline void ptest_register_in(struct ptest_registry *registry, const char
         registry->cases[registry->count++] = (struct ptest_case){name, run};
 }
 
+/* Sizes are passed as unsigned long long (%llu): the format attribute checks
+ * against the C runtime's own formats, which on Windows (msvcrt) lack %zu. */
 __attribute__((format(printf, 3, 4))) static inline void ptest_fail_at(const char *file, int line, const char *format,
                                                                        ...)
 {
@@ -196,7 +198,7 @@ static inline bool ptest_check_mem(const char *file, int line, const char *a_tex
 {
     ptest_check_limit();
     if (n > 0 && (a == NULL || e == NULL)) {
-        ptest_fail_at(file, line, "%s == %s over %zu bytes: null pointer", a_text, e_text, n);
+        ptest_fail_at(file, line, "%s == %s over %llu bytes: null pointer", a_text, e_text, (unsigned long long)n);
         return false;
     }
     const unsigned char *const pa = a, *const pe = e;
@@ -205,9 +207,9 @@ static inline bool ptest_check_mem(const char *file, int line, const char *a_tex
         at++;
     if (at < n)
         ptest_fail_at(file, line,
-                      "%s == %s over %zu bytes: first difference at offset %zu: "
+                      "%s == %s over %llu bytes: first difference at offset %llu: "
                       "actual 0x%02X, expected 0x%02X",
-                      a_text, e_text, n, at, pa[at], pe[at]);
+                      a_text, e_text, (unsigned long long)n, (unsigned long long)at, pa[at], pe[at]);
     return at == n;
 }
 

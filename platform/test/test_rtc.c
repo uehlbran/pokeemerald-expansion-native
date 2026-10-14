@@ -400,7 +400,7 @@ PTEST(dst_change_does_not_move_the_chip_time)
 {
     struct rtc_datetime out;
     /* 2024-03-09 12:00 UTC is 07:00 EST; US DST begins on 03-10. */
-    setenv("TZ", "EST5EDT,M3.2.0,M11.1.0", 1);
+    PT_ASSERT(tsup_set_environment("TZ", "EST5EDT,M3.2.0,M11.1.0"));
     tzset();
     g_now = 1709985600LL;
     PT_ASSERT_EQ_INT(rtc_init(fake_source, NULL), 0);

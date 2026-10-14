@@ -73,16 +73,16 @@ when `HOST_OS` (`host.mk`) lists the directory in `HOST_TEST_DIRS`:
 |---|---|---|
 | `test/posix/` | Linux, macOS | `fork` and `waitpid`, signals, pipes, `setrlimit`, permissions, the descriptor syncs; `posix/support.c` implements `test_support.h`, and `posix/posix_support.h` adds `psup_run_child` (a forked child with no core file and an alarm), `psup_exit_code`, `psup_terminating_signal` and `psup_read_within` (a pipe read that gives up) |
 | `test/linux/` | Linux | what only Linux and glibc say of the process: `pthread_getattr_np`, the linker's `__executable_start` |
+| `test/windows/` | Windows (cross-built on Linux, run on Windows) | where faults go (the vectored handler, the crash filter, a stack overflow), the crash reboot and the restart through a waited child, the stack switch's limits, registers and dispatch, the binary and uninherited files; `windows/support.c` implements `test_support.h`, and `windows/windows_support.h` adds `wsup_run_child` (this executable again as a child that runs one named body, with a time limit), `wsup_child_name` and `wsup_end` |
 
 A test has one place: its name is in one file, the portable part when it can
 run everywhere. A fixture two parts share is a header beside them
 (`save_file_fixture.h`, `host_file_fixture.h`, `debug_channel_fixture.h`,
 `crash_reboot_fixture.h`, `host_fault_fixture.h`). A port adds a directory
 (`test/windows/`, `test/darwin/`), its `support.c`, and its values in
-`host.mk`; it edits no existing test. Windows has no `test/windows/` yet:
-`test_support.h` names the calls it will need, and a port that lacks a test's
-OS part runs the portable part only, so the binary count is lower there, not
-a skipped test. A child is forked by `psup_run_child` (`posix/posix_child.h`), which stops the
+`host.mk`; it edits no existing test. A port that lacks a test's OS part runs
+the portable part only, so the binary count is lower there, not a skipped
+test. A child is forked by `psup_run_child` (`posix/posix_child.h`), which stops the
 time limit's watchdog thread (`ptest_pause_watchdog`, a join) before the fork
 and starts it again after, in the parent: the child inherits no thread and no
 handle to one.
