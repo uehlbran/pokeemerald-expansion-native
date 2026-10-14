@@ -165,9 +165,14 @@ static int start_psg(const struct options *o)
     (void)o;
     return psg_init(FRAME_AUDIO_SAMPLE_RATE_HZ);
 }
+/* main is this program's own, not SDL's SDL_main (SDL_MAIN_HANDLED on
+ * Windows, where SDL would otherwise take main), so SDL is told before any of
+ * its subsystems starts, as SDL_main.h asks of a program that bypasses
+ * SDL_main; on Linux the call only records it. */
 static int start_sdl(const struct options *o)
 {
     (void)o;
+    SDL_SetMainReady();
     return 0;
 }
 static int start_audio(const struct options *o)
@@ -311,8 +316,8 @@ struct module_step {
 };
 
 /* Dependency order (docs/ARCHITECTURE.md "Modules"); stopped in reverse.
- * "sdl" starts nothing (video, audio and input start their own SDL
- * subsystems) and ends SDL after all three are shut down. */
+ * "sdl" starts no subsystem (video, audio and input start their own) but
+ * tells SDL that main is ready, and ends SDL after all three are shut down. */
 static const struct module_step module_steps[] = {
     {"gba_memmap", start_gba_memmap, gba_memmap_shutdown},
     {"debug_channel", start_debug_channel, debug_channel_shutdown},
