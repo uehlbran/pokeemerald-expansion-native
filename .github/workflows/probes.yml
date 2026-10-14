@@ -5,6 +5,9 @@ name: probes
 on:
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   windows-layout:
     runs-on: windows-latest
