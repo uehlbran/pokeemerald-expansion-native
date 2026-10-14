@@ -23,7 +23,7 @@ native` links `build/native<bits>[-test][-san]/pokeemerald-native[-test]`
 | `GameCubeMultiBoot_*` | `platform/gcn_multiboot.c` (no GameCube: progress stays "none") |
 | `RomHeaderGameCode`, `RomHeaderSoftwareVersion` | `platform/rom_header.c` ("BPEE", 0) |
 | `PlatformWaitCycles`, `PlatformJumpToAgbMainLoop`, `PlatformTestRunnerExit`, `PlatformCallWithStack`, `PlatformDebugOpen`, `PlatformDebugSend`, `PlatformIsRomPointer` | `platform/game_hooks.c` (`PlatformDebugOpen` and `PlatformDebugSend` reach `platform/debug_channel.c`) |
-| `__executable_start` (`src/malloc.c`'s allocation-site offsets) | GNU ld's default script |
+| `PlatformAllocationSiteBase` (`src/malloc.c`'s allocation-site offsets) | `gba_game.ld`: `__executable_start`, GNU ld's first byte of the image |
 | `platform_call_stack_start`/`_end` (the battle runner's stack, below 2^27) | `gba_regions.ld` `.platform_call_stack` at 0x01800000 |
 | `main` | `platform/main.c` |
 
@@ -36,7 +36,7 @@ find (binutils 2.41), so `gba_game.pe.ld` defines `RandomUniform`,
 weak aliases in `src/random.c`) and `gTestRunnerEnabled`
 (`src/test_runner_stub.c`), and gives `gPlatformTestEntrySize` and
 `PlatformTestTableBadEntry` (weak references in `platform/crt0.c`) the value
-zero. `__executable_start` is `--defsym`'d to `__ImageBase`. MinGW lacks
+zero, and `PlatformAllocationSiteBase` the start of `.rdata`. MinGW lacks
 `<alloca.h>` (`build_glue/mingw_include/`), and preproc's compound-string
 section names are ELF's (`c_filter_coff.sed`). A new weak definition in
 expansion's code shows up as an undefined symbol in this link only.

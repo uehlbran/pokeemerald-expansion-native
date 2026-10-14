@@ -6283,11 +6283,9 @@ static struct PartyState *GetBattlerPartyStateByPokemon(struct Pokemon *partyMon
     // near address 0 (a deliberate divergence: callers test for NULL before using it).
     if (gBattleStruct == NULL)
         return NULL;
-    for (int i = 0; i < PARTY_SIZE; i++)
-#else
-    for (int i = 0; i < PARTY_SIZE; i++)
 #endif
-#line 6275
+#line 6274
+    for (int i = 0; i < PARTY_SIZE; i++)
     {
         struct Pokemon *mon = &party[i];
         if (partyMon == mon)

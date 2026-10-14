@@ -16,6 +16,19 @@ _Static_assert(RTC_STATUS_INTME == SIIRTCINFO_INTME, "RTC_STATUS_INTME != SIIRTC
 _Static_assert(RTC_STATUS_INTAE == SIIRTCINFO_INTAE, "RTC_STATUS_INTAE != SIIRTCINFO_INTAE");
 _Static_assert(RTC_STATUS_24HOUR == SIIRTCINFO_24HOUR, "RTC_STATUS_24HOUR != SIIRTCINFO_24HOUR");
 _Static_assert(RTC_STATUS_POWER == SIIRTCINFO_POWER, "RTC_STATUS_POWER != SIIRTCINFO_POWER");
+
+// The chip always answers. A failed native read (locked, or no time source) answers with
+// zeros as well, because RtcGetRawInfo ignores the result and uses whatever the struct holds.
+static void ClearTime(struct SiiRtcInfo *rtc)
+{
+    rtc->hour = rtc->minute = rtc->second = 0;
+}
+
+static void ClearDateTime(struct SiiRtcInfo *rtc)
+{
+    rtc->year = rtc->month = rtc->day = rtc->dayOfWeek = 0;
+    ClearTime(rtc);
+}
 #endif
 #line 8
 
@@ -294,7 +307,10 @@ bool8 SiiRtcGetDateTime(struct SiiRtcInfo *rtc)
     struct rtc_datetime dateTime;
 
     if (sLocked == TRUE || rtc_get_datetime(&dateTime) != 0)
+    {
+        ClearDateTime(rtc);
         return FALSE;
+    }
 
     rtc->year = dateTime.year_bcd;
     rtc->month = dateTime.month_bcd;
@@ -344,9 +360,7 @@ bool8 SiiRtcGetTime(struct SiiRtcInfo *rtc)
 
     if (sLocked == TRUE || rtc_get_time(&dateTime) != 0)
     {
-        // The chip always answers; a failed native read answers with zeros
-        // so callers that ignore the return value read defined bytes.
-        rtc->hour = rtc->minute = rtc->second = 0;
+        ClearTime(rtc);
         return FALSE;
     }
 

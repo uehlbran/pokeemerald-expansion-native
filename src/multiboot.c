@@ -475,7 +475,7 @@ static void MultiBootWaitSendDone(void)
 // keeps, burns `cycles` CPU cycles, counting the wait states of the memory
 // it runs from; CPU time belongs to the platform layer. Defined at the end
 // of the file so that the GBA build's line numbers do not move.
-void PlatformWaitCycles(u32 cycles);
+#include "platform/game_hooks.h"
 
 static void MultiBootWaitCycles(u32 cycles)
 {
