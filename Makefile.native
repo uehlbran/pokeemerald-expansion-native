@@ -165,15 +165,10 @@ endif
 # The system the executable is built for and its toolchain (TARGET_OS, ...).
 include platform/host.mk
 
-# The Windows build compiles and links with MinGW-w64, which has no sanitizers,
-# and its test runner (the patch of the test runner's constants into a PE file,
-# the hydra) is not ported yet.
+# The Windows build compiles and links with MinGW-w64, which has no sanitizers.
 ifeq ($(TARGET_OS),windows)
   ifneq ($(SANITIZE),0)
     $(error TARGET_OS=windows has no sanitized build: MinGW-w64's GCC has no sanitizers)
-  endif
-  ifneq ($(TEST),0)
-    $(error TARGET_OS=windows builds the game only (TEST=0): the test runner is not ported to Windows yet)
   endif
 endif
 
@@ -435,6 +430,9 @@ endif
 ifeq ($(TARGET_OS),windows)
   COFF_DATA_OBJS := $(patsubst $(OBJ_DIR)/%.o,$(OBJ_DIR)/coff/%.o,$(DATA_ASM_OBJS) $(MID_OBJS))
   OBJS := $(C_OBJS) $(COFF_DATA_OBJS)
+  ifeq ($(TEST),1)
+    OBJS += $(TEST_OBJS)
+  endif
 endif
 
 ifeq ($(SETUP_PREREQS),1)
@@ -815,13 +813,15 @@ $(MPLAYDEF_NATIVE): sound/MPlayDef.s $(ASM_FILTER_CHECKED)
 # map_events.o included) waits for its self-test.
 $(DATA_ASM_OBJS) $(MID_OBJS): $(ASM_FILTER_CHECKED)
 
+endif
+
+# Also the Windows test runner build's: its test objects' event scripts
+# (OVERWORLD_SCRIPT_FLAT) go through the filter.
 $(ASM_FILTER_CHECKED): $(ASM_FILTER_SCRIPT) $(ASM_FILTER_MODULES)
 	@mkdir -p $(@D)
 	$(ASM_FILTER) --self-test
 	$(foreach module,$(ASM_FILTER_MODULES),$(PYTHON) -I $(module) --self-test$(NEWLINE))
 	@touch $@
-
-endif
 
 # The 64-bit link checks the data it assembled against the C that reads it,
 # with three checks, each of which says what it checks in its own header:
@@ -993,7 +993,7 @@ $(OBJ_DIR)/SDL2.dll: $(SDL2_MINGW_STAMP)
 	cp $(SDL2_MINGW_ROOT)/x86_64-w64-mingw32/bin/SDL2.dll $@
 
 windows-data:
-	+$(MAKE) -f Makefile.native check-flat TARGET=coff-x86_64 BITS=64 TARGET_OS=$(HOST_OS) TEST=0 SANITIZE=0
+	+$(MAKE) -f Makefile.native check-flat TARGET=coff-x86_64 BITS=64 TARGET_OS=$(HOST_OS) TEST=$(TEST) SANITIZE=0
 
 # The listings, in the Linux tree.
 WINDOWS_FLAT_DIR := $(ELF_OBJ_DIR)/flat/coff-x86_64

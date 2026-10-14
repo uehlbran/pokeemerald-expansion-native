@@ -20,6 +20,17 @@
 # first. (mgba-rom-test only reads the file, so the hydra never needed to.)
 # Bash, not sh: the descriptor's number can be above 9.
 #
+# On Windows (the hydra built under MSYS2, run_windows_suite.sh) two things
+# differ, and run_on_windows does them instead: the system runs a file only
+# under a name that ends in .exe, so the copy is copied once more to such a
+# name (and removed at the end); and a crash does not start the program again
+# by itself: the process writes its report, which ends with the test runner's
+# persistent state, to standard error and exits with CRASH_REBOOT_EXIT_CODE
+# (platform/crash_reboot.h), for its parent to start it again with
+# "--persistent-state <the state>". This script is that parent: it starts the
+# program again on the same standard output, as the exec in place does on
+# Linux, so that the hydra sees one run go on past the crash.
+#
 # stdbuf works by preloading a library into what it runs, which is 64-bit
 # on x86-64 hosts and cannot load into the 32-bit executable (the loader
 # prints an error for every run and every crash reboot). The executable
@@ -33,6 +44,36 @@ if [ "$#" -lt 1 ]; then
     exit 2
 fi
 for executable; do :; done
+
+# platform/crash_reboot.h: CRASH_REBOOT_EXIT_CODE, CRASH_REBOOT_OPTION and
+# CRASH_REBOOT_STATE_HEX_LENGTH.
+crash_reboot_exit_code=75
+crash_reboot_option=--persistent-state
+crash_reboot_state_digits=512
+
+run_on_windows() {
+    local exe="$1.exe" report="$1.stderr" state=() status digits
+    cp -- "$1" "$exe"
+    trap 'rm -f -- "$exe" "$report"' EXIT
+    while :; do
+        status=0
+        "$exe" --headless --silent --unthrottled --test-runner "${state[@]}" 2> "$report" || status=$?
+        cat -- "$report" >&2
+        [ "$status" -eq "$crash_reboot_exit_code" ] || break
+        digits=$(sed -n -E "s/^crash_reboot: .* $crash_reboot_option ([0-9a-f]{$crash_reboot_state_digits})\r?\$/\1/p" \
+            "$report" | tail -n 1)
+        if [ -z "$digits" ]; then
+            echo "native-rom-test: exit code $crash_reboot_exit_code without a crash report on standard error" >&2
+            break
+        fi
+        state=("$crash_reboot_option" "$digits")
+    done
+    exit "$status"
+}
+
+case "$(uname -s)" in
+    MSYS* | MINGW* | CYGWIN*) run_on_windows "$executable" ;;
+esac
 
 chmod u+x "$executable"
 copy=$(readlink -f -- "$executable")

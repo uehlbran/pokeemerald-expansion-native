@@ -46,12 +46,12 @@ include host.mk
 # TARGET_OS=windows (target.mk) builds for Windows with MinGW-w64, which has no
 # sanitizers, into build/<bits>-windows: libplatform.a for the game, and the
 # unit tests, which are cross-built and not run here, since they run where the
-# executable does (test_runner/run_windows_tests.sh, on Windows); and `lint`,
+# executable does (test_runner/run_windows_tests.sh, on Windows); `lint`,
 # clang-tidy for the MinGW-w64 target and cppcheck, over what the Windows build
-# compiles.
+# compiles; and `tools-test`, tools/patchelf on a Windows executable.
 ifeq ($(TARGET_OS),windows)
-ifneq ($(filter-out lib test lint lint-tidy lint-cppcheck clean,$(or $(MAKECMDGOALS),all)),)
-$(error TARGET_OS=windows builds the lib, test and lint goals only: MinGW-w64 has no sanitizers, and the tests run on Windows)
+ifneq ($(filter-out lib test lint lint-tidy lint-cppcheck tools-test clean,$(or $(MAKECMDGOALS),all)),)
+$(error TARGET_OS=windows builds the lib, test, lint and tools-test goals only: MinGW-w64 has no sanitizers, and the tests run on Windows)
 endif
 endif
 
@@ -401,10 +401,16 @@ lint-cppcheck:
 
 lint: lint-tidy lint-cppcheck
 
-# tools/patchelf on ELF32 and ELF64 (builds the tool if needed).
+# tools/patchelf on ELF32 and ELF64 (builds the tool if needed); with
+# TARGET_OS=windows, on a PE file built with MinGW-w64 instead (the Windows
+# workflow's Linux job runs it: the platform gate runs on Linux alone).
 tools-test:
 	$(MAKE) -C .. -f make_tools.mk check-tools
+ifeq ($(TARGET_OS),windows)
+	test_runner/test_patchelf_pe.sh
+else
 	test_runner/test_patchelf.sh
+endif
 
 .PHONY: tools-test
 
