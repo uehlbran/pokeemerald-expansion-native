@@ -354,22 +354,34 @@ static const struct module_step module_steps[] = {
 };
 #define MODULE_STEP_COUNT (sizeof module_steps / sizeof module_steps[0])
 
-static void stop_modules(size_t started)
+/* The modules a soft reset starts again (restart_after_soft_reset says why),
+ * in the same order as above. */
+static const struct module_step soft_reset_steps[] = {
+    {"interrupt", start_interrupt, interrupt_shutdown},
+    {"timer", start_timer, timer_shutdown},
+    {"dma", start_dma, dma_shutdown},
+    {"ppu", start_ppu, ppu_shutdown},
+    {"psg", start_psg, psg_shutdown},
+};
+#define SOFT_RESET_STEP_COUNT (sizeof soft_reset_steps / sizeof soft_reset_steps[0])
+
+/* Stops the first `started` of steps, in reverse. */
+static void stop_steps(const struct module_step *steps, size_t started)
 {
     while (started > 0)
-        module_steps[--started].stop();
+        steps[--started].stop();
 }
 
-/* Starts every module; on a failure stops the ones already started and the
- * one that failed (shutdown is safe on a partially initialised module, and
- * releases what its init acquired before failing). Returns true if all
- * started. */
-static bool start_modules(const struct options *options)
+/* Starts the count steps in order; on a failure stops the ones already
+ * started and the one that failed (shutdown is safe on a partially
+ * initialised module, and releases what its init acquired before failing).
+ * Returns true if all started. */
+static bool start_steps(const struct module_step *steps, size_t count, const struct options *options)
 {
-    for (size_t i = 0; i < MODULE_STEP_COUNT; i++) {
-        if (module_steps[i].start(options) != 0) {
-            (void)fprintf(stderr, "main: starting %s failed\n", module_steps[i].name);
-            stop_modules(i + 1);
+    for (size_t i = 0; i < count; i++) {
+        if (steps[i].start(options) != 0) {
+            (void)fprintf(stderr, "main: starting %s failed\n", steps[i].name);
+            stop_steps(steps, i + 1);
             return false;
         }
     }
@@ -400,18 +412,12 @@ static void run_frame(void)
  * save_file (a cartridge keeps its save across a reset; flash_init would
  * erase it), rtc (the clock runs on), and video, audio and input (the host
  * side). */
-static int restart_after_soft_reset(void)
+static int restart_after_soft_reset(const struct options *options)
 {
     RegisterRamReset(MAIN_CRT0_RESET_FLAGS);
     crt0_restart();
-    interrupt_shutdown();
-    timer_shutdown();
-    dma_shutdown();
-    ppu_shutdown();
-    psg_shutdown();
-    if (interrupt_init(gIntrTable, INTERRUPT_TABLE_LENGTH) != INTERRUPT_OK || timer_init(interrupt_raise) != TIMER_OK
-        || dma_init(interrupt_raise) != DMA_OK || ppu_init() != PPU_OK
-        || psg_init(FRAME_AUDIO_SAMPLE_RATE_HZ) != PSG_OK) {
+    stop_steps(soft_reset_steps, SOFT_RESET_STEP_COUNT);
+    if (!start_steps(soft_reset_steps, SOFT_RESET_STEP_COUNT, options)) {
         (void)fprintf(stderr, "main: restarting the hardware modules after SoftReset failed\n");
         return -1;
     }
@@ -420,7 +426,7 @@ static int restart_after_soft_reset(void)
 
 /* Runs the game until it ends; returns the exit status. setjmp's targets
  * are this function's frame, which stays live while AgbMain runs. */
-static int run_game(void)
+static int run_game(const struct options *options)
 {
     switch (setjmp(exit_target)) {
     case 0:
@@ -435,7 +441,7 @@ static int run_game(void)
     }
 
     if (setjmp(reset_target) == BIOS_RESET_JUMP_VALUE) {
-        if (restart_after_soft_reset() != 0)
+        if (restart_after_soft_reset(options) != 0)
             return MAIN_EXIT_FAILURE;
     }
     frame_power_on();
@@ -487,10 +493,10 @@ int main(int argc, char **argv)
         return MAIN_EXIT_OK;
     }
 
-    if (!start_modules(&options))
+    if (!start_steps(module_steps, MODULE_STEP_COUNT, &options))
         return MAIN_EXIT_FAILURE;
 
-    status = run_game();
+    status = run_game(&options);
     if (frame_flush_save() != 0 && status == MAIN_EXIT_OK)
         status = MAIN_EXIT_FAILURE;
     if (!options.test_runner) /* stdout is the hydra's */
@@ -500,7 +506,7 @@ int main(int argc, char **argv)
         status = settle_replay(status, &restart);
     const int64_t restart_epoch = fixed_clock_at(options.rtc_fixed_epoch, frame_count());
     const uint32_t restart_line = replay_session_restart_line();
-    stop_modules(MODULE_STEP_COUNT);
+    stop_steps(module_steps, MODULE_STEP_COUNT);
     if (restart && status == MAIN_EXIT_OK)
         return restart_process(argc, argv, restart_epoch, restart_line);
     return status;

@@ -1015,6 +1015,23 @@ stays: it keeps a start from racing a stop.) The POSIX wait is on
 `CLOCK_MONOTONIC` (the condition variable's clock is set with
 `pthread_condattr_setclock`), so a step of the wall clock cannot move a deadline.
 
+Amended 2026-10-14, after the independent code review. The POSIX watchdog
+thread is created with every signal blocked (`pthread_sigmask` around
+`pthread_create`, the caller's mask put back after it) and keeps that mask. A
+signal sent to the process goes to any thread that does not block it, so
+until then a test's own handler (an `alarm(2)`'s, say) could run on the
+watchdog thread, against the ownership model above.
+`test/posix/test_host_thread_posix.c` sends the process a signal two hundred
+times while the test thread blocks it, and requires every one to wait for the
+test thread. And the thread now prints nothing on its error paths either: a
+failed lock or wait is recorded in the watchdog, and `host_watchdog_stop`
+reports it after the join (it printed through stdio from the thread before).
+The start handshake's reason, more exactly than "it keeps a start from racing
+a stop" above (a stop joins a thread that has not reached its loop just as
+well): `host_watchdog_start` returns only a watchdog whose thread is waiting
+on the deadline, so a thread that cannot take its lock is a reported failed
+start rather than a test that silently has no limit.
+
 The Windows source of `host_thread.h` (`host_windows_thread.c`, written with
 the Windows host layer) is the same thread with Win32 calls: it waits on an
 event with a timeout, stores the flag once, and is joined by a wait on its

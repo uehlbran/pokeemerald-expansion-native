@@ -4,7 +4,8 @@
  * neither takes nor resets (test_crash_reboot's children do).
  *
  * The handler only stores into a volatile sig_atomic_t, as signal-safety(7)
- * allows.
+ * allows. It runs on the test's thread, which the alarm's end of the sleep
+ * shows: the runner's watchdog thread blocks every signal (host_thread.h).
  */
 #include <signal.h>
 #include <unistd.h>
@@ -35,6 +36,7 @@ PTEST(a_test_may_use_its_own_alarm_under_the_runner)
     const bool rang = alarm_rang != 0;
     PT_ASSERT_EQ_INT(sigaction(SIGALRM, &previous, NULL), 0);
     PT_ASSERT(rang);
+    PT_ASSERT(left > 0); /* the sleep was cut short: the handler ran on this thread */
 }
 
 PTEST_MAIN()

@@ -10,17 +10,14 @@
  * arm_division), creating a directory (the replay's output, replay_session)
  * and the local time (the clock's first setting, rtc).
  *
- * Wraps, on Linux and the other POSIX systems (host_posix.c): open with
- * O_CLOEXEC, write, fsync, rename (atomic over an existing file), open of a
- * directory with fsync, mkdir with a mode, localtime_r. On Windows
- * (host_windows.c): the C runtime's _open in binary mode and not inherited,
- * WriteFile and FlushFileBuffers on a descriptor's handle, MoveFileExW with
- * MOVEFILE_REPLACE_EXISTING and MOVEFILE_WRITE_THROUGH, no directory sync
- * (the replacement's write-through is what makes it durable there),
- * CreateDirectoryW, _localtime64_s; paths in UTF-8, the code page the
- * executable's manifest gives the C runtime's own narrow calls. Every call returns -1 with errno set
- * on failure and reports nothing: the caller knows which file it was and
- * says so.
+ * Wraps, on POSIX (host_posix.c): open with O_CLOEXEC, write, fsync, rename,
+ * fsync of the directory, mkdir, localtime_r. On Windows (host_windows.c):
+ * _open (binary, not inherited), WriteFile, FlushFileBuffers, MoveFileExW
+ * with REPLACE_EXISTING and WRITE_THROUGH (which is what makes the
+ * replacement durable there: there is no directory sync), CreateDirectoryW,
+ * _localtime64_s; paths in UTF-8, the code page the executable's manifest
+ * sets. A failed call returns -1 with errno set (the handler's write: false,
+ * errno as it was) and reports nothing: the caller names the file.
  */
 #ifndef PLATFORM_HOST_FILE_H
 #define PLATFORM_HOST_FILE_H
