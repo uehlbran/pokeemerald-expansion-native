@@ -86,9 +86,17 @@ mkdir "$unicode_dir" || fail "cannot make the non-ASCII directory"
 echo "== in a non-ASCII directory, with non-ASCII save and clock paths"
 run "$unicode_dir" --save "$save_name" --rtc-offset "$rtc_name"
 check_run "$unicode_dir/$rtc_name"
+# The directory may hold only the clock file, the save's lock (platform/save_lock.c
+# creates <save>.lock before the modules start and never deletes it) and the save.
 listed=$(cd "$unicode_dir" && ls -A)
-[ "$listed" = "$rtc_name" ] || [ "$listed" = "$rtc_name"$'\n'"$save_name" ] \
-    || [ "$listed" = "$save_name"$'\n'"$rtc_name" ] || fail "the non-ASCII directory holds other names: $listed"
+lock_name="$save_name.lock"
+[ -e "$unicode_dir/$lock_name" ] || fail "the non-ASCII directory has no $lock_name"
+while IFS= read -r name; do
+    case $name in
+    "$save_name" | "$rtc_name" | "$lock_name") ;;
+    *) fail "the non-ASCII directory holds another name: $name" ;;
+    esac
+done <<< "$listed"
 
 echo "== the same with an 11-byte file without the save header at the non-ASCII save path"
 printf 'not a save\n' > "$unicode_dir/$save_name"
