@@ -442,6 +442,19 @@ static void PutAddress(uint8_t *dst, const void *target)
         dst[i] = (uint8_t)(bits >> (8 * i));
 }
 
+/* A key-split voice keeps its table address in the four bytes attack..release
+   (voice_keysplit's .4byte). */
+static void SetSplitTable(struct ToneData *voice, const void *table)
+{
+    uint8_t bytes[4];
+
+    PutAddress(bytes, table);
+    voice->attack = bytes[0];
+    voice->decay = bytes[1];
+    voice->sustain = bytes[2];
+    voice->release = bytes[3];
+}
+
 /* Which of sVoices drum key i uses. */
 static int DrumVoice(int i)
 {
@@ -498,7 +511,7 @@ static void MakeVoices(void)
     sVoices[5] = (struct ToneData){4, 60, 0, 0, (struct WaveData *)(uintptr_t)0, 0, 1, 8, 2};
     sVoices[6] = (struct ToneData){TONEDATA_TYPE_RHY, 0, 0, 0, (struct WaveData *)sDrums, 0, 0, 0, 0};
     sVoices[7] = (struct ToneData){TONEDATA_TYPE_SPL, 0, 0, 0, (struct WaveData *)sSplitVoices, 0, 0, 0, 0};
-    PutAddress(&sVoices[7].attack, sSplitTable); /* voice_keysplit: .4byte in attack..release */
+    SetSplitTable(&sVoices[7], sSplitTable);
     sVoices[8] = (struct ToneData){TYPE_REV, 60, 0, 0, shortWave, 255, 0, 255, 200};
     sVoices[9] = (struct ToneData){TYPE_CMP, 60, 0, 0, cmpWave, 255, 0, 255, 0};
     sVoices[10] = (struct ToneData){TYPE_CMP | TONEDATA_TYPE_FIX, 60, 0, 0, cmpLoopWave, 255, 250, 200, 150};

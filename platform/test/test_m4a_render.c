@@ -8,6 +8,7 @@
  * small reference players below, which model the documented behaviour
  * with plain integer arithmetic rather than the engine's register tricks.
  */
+#include <stddef.h>
 #include <string.h>
 
 #include "m4a/test_m4a_support.h"
@@ -228,7 +229,8 @@ PTEST(Mixer_offset_start_plays_from_the_offset)
     for (uint32_t i = 0; i < SPV; i++)
         PT_ASSERT_EQ_U32(PcmBytes(si)[i], M4aTestMixDelta(ENV_RIGHT, (int32_t)((10 + i) * 3)));
     PT_ASSERT_EQ_U32(si->chans[0].count, 40 - 10 - SPV);
-    PT_ASSERT_EQ_PTR(si->chans[0].currentPointer, w.wave.data + 10 + SPV);
+    /* The samples run past the one-element data[] of struct WaveData into the union's storage. */
+    PT_ASSERT_EQ_PTR(si->chans[0].currentPointer, (const s8 *)&w + offsetof(struct WaveData, data) + 10 + SPV);
 }
 
 /* Mixer: resampling with linear interpolation */

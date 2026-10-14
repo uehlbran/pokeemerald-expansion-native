@@ -812,10 +812,13 @@ next 64-bit build rather than the gate.
 ## 2026-10-09: CI starts on Linux only, in this project's own workflow, on pushes to main
 
 Milestone 8 asks for CI for both targets and for Windows and macOS.
-Upstream's workflows trigger on branches this repository does not have
-(`master`, `upcoming`), so they have never run here and are left as
-they are rather than edited (an edit would be a row in
-UPSTREAM_MODIFICATIONS.md for no gain). This project's workflow,
+Upstream's workflows push-trigger on branches this repository does not
+have (`master`, `upcoming`), so no push has run them here; they were left
+as they were rather than edited. (Amended 2026-10-14: `build.yml` and
+`labels.yml` also triggered on every pull request, which would have started
+upstream's ROM jobs on the first one. They now filter pull requests to the
+same two branches, a row in UPSTREAM_MODIFICATIONS.md; deleting them was
+rejected because every upgrade would conflict on the deletion.) This project's workflow,
 `.github/workflows/native.yml`, runs the gate STATUS.md records, on
 `ubuntu-latest`, on pushes to `main` and by hand only: a run is about
 an hour of a 4-core runner (the suite alone is four runs of 5862 tests)

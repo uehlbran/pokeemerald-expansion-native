@@ -55,6 +55,7 @@ that carry it).
 | `.gitignore` | The native build's default real-time-clock offset file (`pokeemerald.rtc`, `platform/main.c`) is a build product | Three lines appended: a comment and `/pokeemerald.rtc`; unguarded, ignored by the GBA build | M2 |
 | `CREDITS.md` | Credit the reference ports and sources | A section added at the top; upstream content kept verbatim below | M1 |
 | `LICENSE` | Scoped license for the platform layer | New file; upstream has none | M1 |
+| `.github/workflows/build.yml`, `.github/workflows/labels.yml` | Upstream's `pull_request` triggers had no branch filter, so its ROM build and label check would run on the first pull request this repository receives, although it has neither upstream branch | `branches: [master, upcoming]` under `pull_request:` in both; in `labels.yml` the `label` job's `if` also requires the pull request's base branch to be one of the two, because `pull_request_review` has no branch filter. Nothing else edited, so the files stay inert here | Review 2026-10-14 |
 
 ## Source modifications
 

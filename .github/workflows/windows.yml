@@ -10,6 +10,9 @@ name: windows
 on:
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 concurrency:
   group: windows-${{ github.ref }}
   cancel-in-progress: true

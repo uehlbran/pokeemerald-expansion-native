@@ -2,8 +2,8 @@
 
 **Status (2026-10-08): all of it is provided.** `make -f Makefile.native
 native` links `build/native<bits>[-test][-san]/pokeemerald-native[-test]`
-(32-bit; 64-bit stops at two expansion layout assertions, see
-`BOOT-LOG.md`). Where each need below is met:
+(both widths; the two expansion layout assertions that first stopped the
+64-bit link are guarded, see `BOOT-LOG.md`, "64-bit"). Where each need below is met:
 
 | Need | Provided by |
 |---|---|

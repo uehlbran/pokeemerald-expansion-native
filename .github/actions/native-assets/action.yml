@@ -32,13 +32,15 @@ runs:
       id: key
       shell: bash
       run: |
-        {
-          git rev-parse HEAD:graphics HEAD:data/tilesets HEAD:test/compression \
-            HEAD:tools/gbagfx HEAD:tools/compresSmol HEAD:tools/rsfont HEAD:tools/bin2c \
-            HEAD:platform/build_glue/gbagfx_pad.sh HEAD:platform/build_glue/unpadded_palettes.txt \
-            HEAD:graphics_file_rules.mk HEAD:spritesheet_rules.mk HEAD:make_tools.mk HEAD:Makefile.native
-          git grep -hE 'INCGFX|INCBIN' -- src include data test | LC_ALL=C sort
-        } | sha256sum | awk '{ print "hash=" $1 }' >> "$GITHUB_OUTPUT"
+        # Hashed in two steps so that a renamed input fails the key: a brace
+        # group takes the status of its last command, and a failed rev-parse
+        # would leave a key blind to that input.
+        trees=$(git rev-parse HEAD:graphics HEAD:data/tilesets HEAD:test/compression \
+          HEAD:tools/gbagfx HEAD:tools/compresSmol HEAD:tools/rsfont HEAD:tools/bin2c \
+          HEAD:platform/build_glue/gbagfx_pad.sh HEAD:platform/build_glue/unpadded_palettes.txt \
+          HEAD:graphics_file_rules.mk HEAD:spritesheet_rules.mk HEAD:make_tools.mk HEAD:Makefile.native) || exit 1
+        { echo "$trees"; git grep -hE 'INCGFX|INCBIN' -- src include data test | LC_ALL=C sort; } \
+          | sha256sum | awk '{ print "hash=" $1 }' >> "$GITHUB_OUTPUT"
 
     - name: Restore build/assets-native
       id: cache
