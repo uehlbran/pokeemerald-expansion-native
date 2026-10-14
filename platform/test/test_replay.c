@@ -246,6 +246,29 @@ PTEST(hold_for_releases_after_n_frames_and_keeps_other_holds)
     PT_ASSERT_EQ_U32(fake.keys_at[3], INPUT_KEY_R);
 }
 
+PTEST(a_press_right_after_a_hold_for_of_the_same_key_continues_the_hold)
+{
+    struct replay replay;
+    struct fake fake;
+    PT_ASSERT_EQ_INT(start(&replay, &fake, "hold A for 2\npress A\nwait 1\nrestart", 0), 0);
+    PT_ASSERT_EQ_INT(run(&replay, &fake, 100), REPLAY_RESTART);
+    PT_ASSERT_EQ_U32(fake.keys_at[0], INPUT_KEY_A);
+    PT_ASSERT_EQ_U32(fake.keys_at[1], INPUT_KEY_A);
+    PT_ASSERT_EQ_U32(fake.keys_at[2], INPUT_KEY_A); /* the press, with no frame up before it */
+    PT_ASSERT_EQ_U32(fake.keys_at[3], 0u);
+}
+
+PTEST(a_wait_between_a_hold_for_and_a_press_of_the_same_key_gives_two_separate_downs)
+{
+    struct replay replay;
+    struct fake fake;
+    PT_ASSERT_EQ_INT(start(&replay, &fake, "hold A for 2\nwait 1\npress A\nwait 1\nrestart", 0), 0);
+    PT_ASSERT_EQ_INT(run(&replay, &fake, 100), REPLAY_RESTART);
+    PT_ASSERT_EQ_U32(fake.keys_at[1], INPUT_KEY_A);
+    PT_ASSERT_EQ_U32(fake.keys_at[2], 0u);
+    PT_ASSERT_EQ_U32(fake.keys_at[3], INPUT_KEY_A);
+}
+
 PTEST(press_of_a_held_key_returns_to_held)
 {
     struct replay replay;

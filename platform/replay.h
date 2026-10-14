@@ -1,8 +1,8 @@
 /*
  * replay.h: the input-replay script and the driver that plays it.
  *
- * Stands in for a person at the keypad, for the headless smoke test (gate d,
- * docs/PLAN.md "Milestone 3 design"). The script is text, one command per
+ * Stands in for a person at the keypad, for the headless smoke test
+ * (tests/smoke/README.md). The script is text, one command per
  * line; `#` starts a comment that runs to the end of the line. Keys are a
  * comma list of A, B, START, SELECT, UP, DOWN, LEFT, RIGHT, L, R (any case).
  * Facts are the named values platform/inspect.h reads from the game.
@@ -13,7 +13,10 @@
  *   press KEYS times N         N such presses in a row, N from 1 to REPLAY_MAX_PRESS_TIMES (the debug menu's numeric entry)
  *   hold KEYS                  hold KEYS until released
  *   release KEYS               stop holding KEYS
- *   hold KEYS for N            hold KEYS for N frames, then release them
+ *   hold KEYS for N            hold KEYS for N frames, then release them: the keys are up again
+ *                              from frame N, with no frame of its own for the release, so a
+ *                              `press` of the same keys on the next line continues the hold
+ *                              without a gap (put a `wait 1` between them for two presses)
  *   wait-until FACT=VALUE max N  advance until the fact equals the value; fail
  *                              if that takes more than N frames
  *   expect FACT=VALUE          fail the run if the fact differs
