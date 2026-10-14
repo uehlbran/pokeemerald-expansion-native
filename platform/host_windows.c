@@ -1,17 +1,20 @@
 /*
- * host_windows.c: the host layer on Windows (x86-64, MinGW-w64): the pages
- * mapped at fixed addresses (host_memory.h) and the image's and the main
- * stack's bounds (host_image.h); where the link put the regions is
- * host_linked.c's. Until tasks W5 to W7 have written each part, the other
- * calls are stubs (research/m8-inventory.md, 5.2) that
- * return their error value and print nothing: -1, an empty span, or, where
- * the header has no error value, an answer no real one can be mistaken for
- * (UINTPTR_MAX for a register or an address, "read-only" for any address).
+ * host_windows.c: the host layer on Windows (x86-64, MinGW-w64), the calls
+ * made in the ordinary course of a run: the pages mapped at fixed addresses
+ * (host_memory.h), the image's and the main stack's bounds (host_image.h),
+ * the files (host_file.h), and the executable's path and its restart
+ * (host_process.h). The faults are host_windows_fault.c's, where the link put
+ * the regions host_linked.c's. The stack switch (host_stack.h) is a stub
+ * until task W7 writes it: it returns -1 and prints nothing.
  *
  * Followed: Microsoft's documentation of VirtualAlloc, VirtualFree and
- * VirtualQuery (memoryapi.h), GetCurrentThreadStackLimits
- * (processthreadsapi.h) and FormatMessage for the reports; the PE format's
- * section flags through gba_game.pe.ld's layout.
+ * VirtualQuery (memoryapi.h), GetCurrentThreadStackLimits,
+ * CreateProcessW and TerminateProcess (processthreadsapi.h), WriteFile,
+ * FlushFileBuffers, MoveFileExW and CreateDirectoryW (fileapi.h, winbase.h),
+ * MultiByteToWideChar and WideCharToMultiByte (stringapiset.h),
+ * GetModuleFileNameW, and FormatMessage for the reports; msvcrt's _open,
+ * _get_osfhandle and _localtime64_s; the PE format's section flags through
+ * gba_game.pe.ld's layout.
  */
 #include <errno.h>
 #include <fcntl.h>
@@ -30,7 +33,6 @@
 
 #include <windows.h>
 
-#include "host_fault.h"
 #include "host_file.h"
 #include "host_image.h"
 #include "host_memory.h"
@@ -536,66 +538,7 @@ int host_process_restart(char *const argv[])
     return -1; /* not reached: TerminateProcess ends the calling thread with its process */
 }
 
-/* --- not written yet (tasks W6 and W7) ---------------------------------------------- */
-
-int host_fault_install_divide_error(host_fault_divide_handler handler)
-{
-    (void)handler;
-    return -1;
-}
-
-void host_fault_uninstall_divide_error(void)
-{
-}
-
-int host_fault_install_crash(host_fault_crash_handler handler)
-{
-    (void)handler;
-    return -1;
-}
-
-void host_fault_uninstall_crash(void)
-{
-}
-
-bool host_fault_is_divide_error(const struct host_fault *fault)
-{
-    (void)fault;
-    return false;
-}
-
-int host_fault_number(const struct host_fault *fault)
-{
-    (void)fault;
-    return -1;
-}
-
-uintptr_t host_fault_address(const struct host_fault *fault)
-{
-    (void)fault;
-    return UINTPTR_MAX;
-}
-
-uintptr_t host_fault_register(const struct host_fault *fault, enum host_fault_register name)
-{
-    (void)fault;
-    (void)name;
-    return UINTPTR_MAX;
-}
-
-void host_fault_set_register(struct host_fault *fault, enum host_fault_register name, uintptr_t value)
-{
-    (void)fault;
-    (void)name;
-    (void)value;
-}
-
-uintptr_t host_fault_general_register(const struct host_fault *fault, unsigned number)
-{
-    (void)fault;
-    (void)number;
-    return UINTPTR_MAX;
-}
+/* --- not written yet (task W7) ------------------------------------------------------- */
 
 int host_stack_run(void *stack, size_t size, void (*entry)(void *context), void *context)
 {
