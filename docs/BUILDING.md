@@ -230,7 +230,8 @@ and stops), into `build/sdl2-mingw/` (not committed); SDL is under the zlib
 licence, which allows this and shipping `SDL2.dll` beside the executable. The
 build uses the package's headers and import library directly, not its
 `sdl2.pc`, which carries another machine's prefix and asks for `-mwindows` and
-SDL's `WinMain` shim; `SDL_MAIN_HANDLED` and `-mconsole` take their place.
+SDL's `WinMain` shim; `SDL_MAIN_HANDLED` and `-mconsole` take their place,
+and `main` tells SDL with `SDL_SetMainReady` (on every OS).
 
 What the build does, in two makes (`Makefile.native`, "The Windows
 cross-build"): the first is the Linux 64-bit data (`build/native64/`) with its
@@ -259,13 +260,47 @@ x86_64-w64-mingw32-nm -u build/native64-windows/pokeemerald-native.exe        # 
 ```
 
 The platform library alone: `make -C platform lib TARGET_OS=windows BITS=64`
-(`platform/build/64-windows/`); the unit tests are not cross-built.
-`SANITIZE=1` and `TEST=1` are errors with `TARGET_OS=windows` (MinGW's GCC has no
-sanitizers; the test runner is not ported). `BITS=32` is an error.
+(`platform/build/64-windows/`). The unit tests, cross-built and not run:
+`make -C platform test TARGET_OS=windows BITS=64` writes every test that runs
+on Windows to `platform/build/64-windows/test/` (the portable ones and
+`platform/test/windows/`'s, 68 executables, with `SDL2.dll`); each is linked
+with the PE scripts and checked by `check_pe_layout.py` like the game. The
+Windows sources' static analysis: `make -C platform lint TARGET_OS=windows
+BITS=64` (clang-tidy for the MinGW-w64 target, with its headers, and cppcheck;
+not in the platform gate, which runs on Linux alone). `SANITIZE=1` and
+`TEST=1` are errors with `TARGET_OS=windows` (MinGW's GCC has no sanitizers; the
+test runner is not ported). `BITS=32` is an error.
 
-What cannot be verified without Windows (or Wine): that the loader maps the
-image, which the probe on `windows-latest` showed for this layout
-(`research/probes/README.md`, W1) but not for this executable; that anything
-runs. `platform/host_windows.c` is a stub (task W5 replaces it): every call
-fails, so the executable stops in its first host call. Running it needs
-`SDL2.dll` beside it (the Makefile copies it) and 64-bit Windows.
+### Running it on Windows
+
+Nothing here runs on the build machine; on a 64-bit Windows with Git Bash
+(the CI runner's job, task W9), from a checkout with the build's outputs:
+
+```
+platform/test_runner/run_windows_tests.sh platform/build/64-windows/test
+platform/test_runner/run_windows_smoke.sh build/native64-windows/pokeemerald-native.exe
+```
+
+The first runs every test executable as `make -C platform test` does on
+Linux (each to its end, a failure if it exits non-zero or ends without
+"N passed, 0 failed", a log beside each) and ends with "all 68 Windows test
+executables passed". The second starts the game with `--headless --silent
+--frames 60` in an empty directory and passes when it exits 0, prints only
+`main: 60 frames` on standard output and nothing on standard error, and has
+written `pokeemerald.rtc` in binary mode. The game itself needs
+`SDL2.dll` beside it (the Makefile copies it), as each test directory has.
+
+What the host layer does on Windows, and why each choice: `platform/README.md`,
+"The host layer", and `docs/ARCHITECTURE.md`. Two differences a player or a
+test sees: the main thread's stack is 2 MiB, not 8; a crash reboot and the
+replay's `restart` start a child process (another process id) that the first
+one waits for, where Linux replaces the process in place.
+
+What cannot be verified here: that the loader maps this executable (the probe
+on `windows-latest` showed it for the layout, `research/probes/README.md`, W1);
+that the exception dispatch walks through the battle runner's stack switch to
+the crash filter; that the C runtime's time zones match the tests' POSIX TZ
+strings (msvcrt applies its own daylight-saving rules: `test_rtc` and
+`test_host_file`'s zone tests are the first to watch); that a fixed page can be
+mapped at 0x01000000 in a Windows process (`test_host_memory`, the m4a tests).
+The first run on Windows is the evidence for all of them.

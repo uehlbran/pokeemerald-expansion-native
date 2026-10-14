@@ -177,28 +177,35 @@ against; the 4 KiB pages are only the native mapping granularity. The
 executable itself starts at 0x40000000, above every region. At 0x01800000
 (GBATEK's unused area), `gba_regions.ld` also places the 1 MiB stack
 `game_hooks` runs the battle test runner's functions on, low enough for the
-runner's 27-bit address fields.
+runner's 27-bit address fields; on Windows `gba_regions.pe.ld` puts it at
+0x01801000, since the image's headers take 0x01800000, and the regions are
+sections of the image (`docs/ARCHITECTURE.md`, "The memory model").
 
 ## The host layer (`host_*`)
 
 What the modules need from the operating system, one header per concern, so
 that no module makes an OS call of its own (`docs/ARCHITECTURE.md`, "The
-host layer", has the design and the users). Two sources implement them,
-chosen by `TARGET_OS` (`target.mk`, through `host.mk`, included by this
-Makefile, `m4a/Makefile` and `Makefile.native`): `host_posix.c`, what Linux and
-macOS share, and `host_linux.c`, the rest; `host_internal.h` is what they share.
-For `TARGET_OS=windows` it is `host_windows.c` alone, a stub whose every call
-fails until the port is written. Each header
-says what it stands in for and what it wraps, and has its test.
+host layer", has the design and the users). The sources are chosen by
+`TARGET_OS` (`target.mk`, through `host.mk`, included by this Makefile,
+`m4a/Makefile` and `Makefile.native`). Linux: `host_posix.c`, what Linux and
+macOS share, and `host_linux.c`, the rest; `host_internal.h` is what they
+share. Windows: `host_windows.c` (memory, image, files, process),
+`host_windows_fault.c`, `host_windows_stack.c` and `host_windows_thread.c`.
+Both: `host_linked.c`, where the linker scripts put the regions. Each header
+says what it stands in for and what it wraps, and has its test; the Windows
+sources are linted with `make -C platform lint TARGET_OS=windows BITS=64` and
+their tests are cross-built (`make -C platform test TARGET_OS=windows
+BITS=64`) and run on Windows (`test_runner/run_windows_tests.sh`).
 
-| Header | Gives | Linux (source) | Test |
-|---|---|---|---|
-| `host_memory.h` | `host_memory_region` and `host_memory_call_stack`: where the link put each GBA region and the battle runner's stack; `host_memory_map_fixed`/`unmap_fixed`: a page at an exact address, never over a mapping | `gba_regions.ld`'s symbols, `mmap` with `MAP_FIXED_NOREPLACE` (`host_linux.c`) | `test_host_memory.c` |
-| `host_fault.h` | the divide-error handler (passes what it does not complete to the one installed before) and the crash handler (on a 64 KiB alternate stack; the fault ends the process when it returns), each with install and uninstall; the fault's number, address, and registers: PC, accumulator and data by name, the general ones by ModRM number | `sigaction`, `sigaltstack`, `sigprocmask`, `raise` (`host_posix.c`); `uc_mcontext.gregs` (`host_linux.c`) | `test_host_fault.c` |
-| `host_process.h` | `host_process_executable_path`, and `host_process_restart`: this executable again in this process, async-signal-safe | `readlink` of `/proc/self/exe` (`host_linux.c`), `execve` (`host_posix.c`) | `test_host_process.c` |
-| `host_image.h` | the executable's image and its writable part, whether an address is in a read-only segment, the main thread's whole stack | `__executable_start`, `__data_start`, `_end`, `getauxval(AT_PHDR)`, `pthread_getattr_np` (`host_linux.c`) | `test_host_image.c` |
-| `host_stack.h` | `host_stack_run`: a function on a given stack, at the same depth each call; `host_stack_leave`: back to the caller early | `ucontext`, AddressSanitizer's fiber annotations (`host_linux.c`) | `test_host_stack.c` |
-| `host_file.h` | `host_file_sync`, `host_file_replace` (atomic), `host_file_sync_directory_of`, `host_file_make_directory`, `host_file_local_time`; failures are -1 with `errno`, reported by the caller | `fsync`, `rename`, `open` of the directory and `fsync`, `mkdir(path, 0777)`, `localtime_r` with a 64-bit `time_t` (`host_posix.c`) | `test_host_file.c` |
+| Header | Gives | Linux (source) | Windows (source) | Test |
+|---|---|---|---|---|
+| `host_memory.h` | `host_memory_region` and `host_memory_call_stack`: where the link put each GBA region and the battle runner's stack; `host_memory_map_fixed`/`unmap_fixed`: a page at an exact address, never over a mapping | `gba_regions.ld`'s symbols (`host_linked.c`), `mmap` with `MAP_FIXED_NOREPLACE` (`host_linux.c`) | `gba_regions.pe.ld`'s symbols (`host_linked.c`), `VirtualAlloc` at a multiple of 64 KiB, `VirtualFree` of the whole mapping | `test_host_memory.c` |
+| `host_fault.h` | the divide-error handler (passes what it does not complete to the one installed before) and the crash handler (on a 64 KiB alternate stack; the fault ends the process when it returns), each with install and uninstall; the fault's number, address, and registers: PC, accumulator and data by name, the general ones by ModRM number | `sigaction`, `sigaltstack`, `sigprocmask`, `raise` (`host_posix.c`); `uc_mcontext.gregs` (`host_linux.c`) | a vectored exception handler called first, for `EXCEPTION_INT_DIVIDE_BY_ZERO` and `_OVERFLOW` only; the unhandled-exception filter; `SetThreadStackGuarantee` for a stack overflow; `SetErrorMode` (no dialogs); the `CONTEXT` by offset (`host_windows_fault.c`) | `test_host_fault.c`, `posix/`, `windows/test_host_fault_windows.c` |
+| `host_process.h` | `host_process_executable_path`, and `host_process_restart`: this executable again with the same standard handles | `readlink` of `/proc/self/exe` (`host_linux.c`), `execve`, async-signal-safe (`host_posix.c`) | `GetModuleFileNameW` in the ANSI code page; `CreateProcessW` of a child, a wait, `TerminateProcess` with its status | `test_host_process.c`, `posix/`, `windows/test_host_process_windows.c` |
+| `host_image.h` | the executable's image and its writable part, whether an address is in a read-only segment, the main thread's whole stack | `__executable_start`, `__data_start`, `_end`, `getauxval(AT_PHDR)`, `pthread_getattr_np` (`host_linux.c`) | `__text_start__`, `__data_start__`, `__bss_end__` (the writable sections linked last, `gba_game.pe.ld`), `VirtualQuery`, `GetCurrentThreadStackLimits` (2 MiB) | `test_host_image.c`, `linux/` |
+| `host_stack.h` | `host_stack_run`: a function on a given stack, at the same depth each call; `host_stack_leave`: back to the caller early | `ucontext`, AddressSanitizer's fiber annotations (`host_linux.c`) | a Win64 switch in assembly with unwind information, the `NT_TIB` stack limits widened over both stacks (`host_windows_stack.c`) | `test_host_stack.c`, `windows/test_host_stack_windows.c` |
+| `host_file.h` | `host_file_open` (not inherited; binary on Windows), `host_file_write_all` (every byte, from a fault handler too), `host_file_sync`, `host_file_replace` (atomic), `host_file_sync_directory_of`, `host_file_make_directory`, `host_file_local_time`; failures are -1 with `errno`, reported by the caller | `open` with `O_CLOEXEC`, `write`, `fsync`, `rename`, `open` of the directory and `fsync`, `mkdir(path, 0777)`, `localtime_r` with a 64-bit `time_t` (`host_posix.c`) | `_open` with `_O_NOINHERIT` and `_O_BINARY`, `WriteFile` and `FlushFileBuffers` on the descriptor's handle, `MoveFileExW` with `MOVEFILE_REPLACE_EXISTING` and `MOVEFILE_WRITE_THROUGH`, no directory sync (the length only), `CreateDirectoryW`, `_localtime64_s` | `test_host_file.c`, `posix/`, `windows/test_host_file_windows.c` |
+| `host_thread.h` | the test time limit's watchdog: a thread that stores `true` in an atomic flag once its deadline passes | a `pthread` on a condition variable (`host_posix.c`) | a thread on an event with a timeout, joined by a wait on its handle (`host_windows_thread.c`) | `test_host_thread.c`, `linux/` |
 
 ## The flash chip (`flash`) and the save file (`save_file`)
 

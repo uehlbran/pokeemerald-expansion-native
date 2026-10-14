@@ -209,8 +209,15 @@ git diff OLD NEW -- tools/mgba-rom-test-hydra tools/patchelf tools/scaninc tools
   definition) is undefined in the Windows link until `gba_game.pe.ld` defines
   it; a new include of a header MinGW lacks goes in
   `platform/build_glue/mingw_include/`; a new ELF section-flag trick in
-  preproc's output goes in `c_filter_coff.sed`. The pinned SDL2 for MinGW
-  (`SDL2_MINGW_VERSION` and its sha256 in `Makefile.native`) is bumped by hand.
+  preproc's output goes in `c_filter_coff.sed`. `gba_game.pe.ld` also moves
+  every initialised data section after the read-only ones (`DECISIONS.md`,
+  "The Windows image links its writable sections last"): a new writable
+  section name in expansion's output (as `script_data` is) is placed there
+  too; where the linker would put it before `.rdata`, `check_pe_layout.py`
+  fails the link with "is read-only but follows the writable". A format string checked by `format(printf, ...)` in our
+  code takes `%llu` with a cast, not `%zu`: MinGW checks it against msvcrt's
+  formats. The pinned SDL2 for MinGW (`SDL2_MINGW_VERSION` and its sha256 in
+  `Makefile.native`) is bumped by hand.
 - The assembly translated or replaced in `platform/`: `src/m4a_1.s`
   (`platform/m4a/`; its differential test against the ARM original is run by
   hand: `make -C platform/m4a/difftest run`, needs qemu-arm, see
@@ -243,6 +250,15 @@ make -f Makefile.native -j32 check BITS=32 SANITIZE=1
 
 (The first build converts every graphic; `make -f Makefile.native
 seed-assets` after the GBA build makes it faster. `BUILDING.md`.)
+
+The Windows cross-build, here, and its tests, on Windows (`BUILDING.md`,
+"Running it on Windows"):
+
+```
+make -f Makefile.native -j"$(nproc)" native BITS=64 TARGET_OS=windows
+make -C platform test TARGET_OS=windows BITS=64
+make -C platform lint TARGET_OS=windows BITS=64
+```
 
 - The suite must equal the new baseline per test, except the benchmarks
   (`DECISIONS.md`, "Benchmarks are assumption failures natively"). The
