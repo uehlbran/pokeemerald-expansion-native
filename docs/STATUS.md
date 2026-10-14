@@ -1,6 +1,6 @@
 # Status
 
-Last updated 2026-10-14 (milestone 7 done: **64-bit done**, every gate green at both widths on main at 94f3c70f62; milestone 8 in progress: the two-tier Linux CI, the host layer, the data converter and the Windows cross-build merged; the test timeout merged; the Windows host layer in flight).
+Last updated 2026-10-14 (milestone 7 done: **64-bit done**, every gate green at both widths on main at 94f3c70f62; milestone 8 in progress: the two-tier Linux CI, the host layer, the data converter and the Windows cross-build merged; the test timeout, the ccache follow-up and the Windows host layer merged; the first Windows run next).
 
 This file is the honest ledger. A thing is listed as verified only with
 the gate that proved it. Anything without a gate is unverified, whatever
@@ -80,8 +80,9 @@ ccache follow-up (merged) can be measured here as well as on the
 runner: `sudo apt-get install -y ccache`.
 
 Two Windows questions were ruled on by the owner on 2026-10-14 and the
-rulings are being applied on the Windows host-layer branch before its
-merge: (1) no process creation inside any exception handler and no
+rulings are applied in the merged Windows host layer (DECISIONS.md, "A
+crash on Windows ends the process for its parent to start again" and
+"Narrow strings on Windows are UTF-8"): (1) no process creation inside any exception handler and no
 exception to the C-RULES handler rule (re-entrant locks cover only the
 faulting thread's own; a lock held by another thread at the crash makes
 CreateProcessW in the handler a hang, which is why Crashpad and Breakpad
@@ -463,10 +464,47 @@ recorded here. The orchestrator's gate on the branch was green (the
 platform gate, both builds, both 64-bit replays, the Windows link, the
 suite at 5409).
 
-**In flight.** The Windows host layer (tasks W5 to W7: memory, image,
-process and files, the vectored exception handler and the crash respawn,
-the stack switch, the watchdog, the cross-built unit tests for the Windows
-runner).
+**The Windows host layer** (tasks W5 to W7, merged 2026-10-14 at
+2976d5b13d; an Opus worker, an Opus reviewer in two passes with mutation
+testing, the owner's two rulings applied): `host_windows.c` and its three
+companions (faults, the stack switch, the watchdog) give Windows every
+service the host headers declare: the regions and the call stack from the
+linker scripts' symbols (`host_linked.c`, shared with Linux), VirtualAlloc
+at the fixed addresses, the image bounds and the 2 MiB main stack from
+the TEB, files through _open/WriteFile/FlushFileBuffers with
+MoveFileExW's write-through replacement (atomic on NTFS), the executable
+path and a restart as a child process in a kill-on-close job object with
+only the three standard handles; the divide error through a vectored
+exception handler called first (the registers from the CONTEXT in the
+order arm_division expects); the crash handler as the unhandled-exception
+filter, which under the owner's ruling creates no process: it writes one
+report line carrying the persistent state and ends the process with exit
+code 75 using only WriteFile and TerminateProcess, and the supervising
+parent (the Windows test driver, task W8) starts the program again; an
+unsupervised Windows run ends at its first crash with that code. The
+battle runner's stack switch is hand-written Win64 assembly with unwind
+information (a fiber cannot use the fixed `.callstk`), the watchdog a
+thread waiting on an event. Under the owner's second ruling every
+executable carries an application manifest setting the active code page
+to UTF-8 (Windows 10 version 1903 or later, recorded in BUILDING.md with
+Microsoft's page), the PE layout check requires it, and a new Windows
+test passes a non-ASCII argument to a child and saves through a
+non-ASCII directory; the claim that msvcrt's argv arrives as UTF-8 is
+marked unverified in DECISIONS.md until the Windows runner has run that
+test. Linux: the raw write() calls of the RTC store and the crash report
+now go through host_file (a handler-safe write that leaves errno alone),
+SDL_SetMainReady is called on every OS, and the executables otherwise
+differ from before only by those symbols (nm diff recorded by the
+reviewer). 69 unit-test executables cross-build for Windows with the PE
+layout check on each, plus `run_windows_tests.sh` and
+`run_windows_smoke.sh` for the runner. Nothing built for Windows has run
+anywhere yet: the orchestrator's gate on main (below) covers the Linux
+side and the Windows link, lint and layout; the first Windows run is the
+manual workflow `.github/workflows/windows.yml`, added with this merge.
+
+**In flight.** The first Windows run (the workflow dispatched on main);
+then tasks W8 and W9 as one worker: the replays, the suite and the
+cross-OS save on the Windows runner.
 
 ## Verified by a gate
 
@@ -501,6 +539,7 @@ runner).
 | Every gate in one sequence on main after the last milestone 7 merge (94f3c70f62): the platform gate (format, lint at both widths, the sanitized unit tests at both widths, tools-test, glue-test); at 32 bits the build, the two replays plain and sanitized, `make check` plain and sanitized (5409 passed), the GBA ROM rebuilt; at 64 bits the build plain and sanitized, the two replays plain and sanitized, `make check` plain and sanitized (5409 passed); the cross-width script both ways, plain and sanitized | the 22 steps in order, each exit 0 | green 2026-10-09; the 32-bit half 11 min, the 64-bit half 6 min, the cross-width runs 4 min; ROM sha1 e2d4600d4e7b1269ac50c28bc96ece2b758ded9e |
 | The orchestrator's gate on main after the host-layer merge (fa11bb1506, milestone 8 task W2): the platform gate, the 32-bit build and opening replay, the 64-bit build, both 64-bit replays plain and the opening replay sanitized, the plain 64-bit suite (5409 passed), the cross-width script 32 to 64 | the ten steps in order, each exit 0 | green 2026-10-14; 24 s, 7 s, 29 s, 5 s, 24 s, 23 s, 25 s, 58 s, 36 s, 41 s |
 | The orchestrator's gate on main after the Windows cross-build merge (f25169cdf1, task W4): the platform gate, both Linux builds, the Windows cross-link with the PE layout check, the 64-bit opening replay, the plain 64-bit suite (5409 passed) | the seven steps in order, each exit 0 | green 2026-10-14 |
+| The orchestrator's gate on main after the Windows host-layer merge (2976d5b13d, tasks W5 to W7): the platform gate with ThreadSanitizer, both Linux builds, both 64-bit replays and the 32-bit opening replay, the Windows build from scratch with the PE layout and manifest check and no undefined symbol, the 69 Windows test executables built and layout-checked, the Windows lint, the plain 64-bit suite (5409 passed), the cross-width script | the twelve steps in order, each exit 0 | green 2026-10-14; 196 s, 4 s, 4 s, 24 s, 23 s, 29 s, 19 s, 0 s, 2 s, 12 s, 30 s, 39 s (the game objects were warm) |
 | The orchestrator's gate on main after the test-timeout merge (0a49ebfa34, task W3): the platform gate with the new ThreadSanitizer build of the tests, both Linux builds, both 64-bit replays and the 32-bit opening replay, the Windows cross-link, the plain 64-bit suite (5409 passed), the cross-width script | the nine steps in order, each exit 0 | green 2026-10-14; 199 s, 6 s, 5 s, 25 s, 35 s, 34 s, 5 s, 30 s, 45 s (the builds were warm) |
 | Every platform module is merged: `gba_memmap` (region layout via linker script), `ptest.h` self-test, `timer`, `transfer_bounds`, `input`, `rtc`, `video`, `audio`, `frame_pacer`, `interrupt`, `psg`, `ppu`, `dma`, `flash`, `save_file`, `bios`, `lcd_status`, `m4a_output`, `sound_mix`, `replay`, `inspect`, `restart`, `symbols`, `debug_channel`, `crash_reboot`, `arm_division`, and the `m4a` engine translation (also proven by a differential test against the ARM original under qemu-arm, run by hand) | `make -C platform test BITS=32` and `BITS=64`, every test under ASan+UBSan with leak detection, after a Sonnet first-pass review and orchestrator merge | green on both widths at merge time |
 
@@ -616,6 +655,7 @@ Nothing yet; nothing exists to be broken.
 | m8-winglue (milestone 8, task W4: the Windows cross-build glue) | Opus | Sonnet (mutation testing), orchestrator merge gate |
 | m8-ptest (milestone 8, task W3: the watchdog timeout, the per-OS test split) | Sonnet | Sonnet (mutation testing), orchestrator merge gate |
 | m8-ccache (milestone 8: the game's C compiled through a file for ccache; the assets cache in CI) | Sonnet | Sonnet (mutation testing of the cache key), orchestrator merge gate |
+| m8-winhost (milestone 8, tasks W5 to W7: the Windows host layer, faults, stack switch, watchdog, the UTF-8 manifest, the cross-built Windows tests) | Opus | Opus (two passes, mutation testing), orchestrator merge gate |
 | ci-tiers (milestone 8: the CI workflow in two tiers) | Sonnet | orchestrator (the runs on the runner) |
 | battle-glyph (milestone 6: the trainer party seed and the nickname padding, root cause of the screenshot flake) | Opus | orchestrator |
 | upstream-report (seven issues drafted, triaged against upstream) | Sonnet | Fable (orchestrator) |

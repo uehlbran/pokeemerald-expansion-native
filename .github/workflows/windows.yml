@@ -1,0 +1,113 @@
+# The Windows runner (milestone 8, tasks W8 and W9; docs/PLAN.md "Milestone 8
+# plan"): nothing built for Windows can run on the Linux build machine, so a
+# Linux job cross-builds the executable and the unit tests with MinGW-w64
+# (docs/BUILDING.md, "Windows (cross-build from Linux)") and a Windows job
+# runs them (docs/BUILDING.md, "Running it on Windows"). Manual only for now:
+# Windows minutes count double, and the job list grows with task W9 (the
+# replays, the suite through the hydra, the cross-OS save gate).
+name: windows
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: windows-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  cross-build:
+    name: Cross-build on Linux (the executable and the unit tests)
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Prerequisites (docs/BUILDING.md, the native and the Windows lines)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends build-essential pkg-config git python3 libpng-dev libsdl2-dev clang gcc-mingw-w64-x86-64 binutils-mingw-w64-x86-64 mingw-w64-tools
+
+      # The same tools cache as native.yml, so the Linux data build does not
+      # rebuild them.
+      - name: Cache the build tools
+        uses: actions/cache@v4
+        with:
+          path: |
+            tools/bin2c/bin2c
+            tools/gbafix/gbafix
+            tools/gbagfx/gbagfx
+            tools/jsonproc/jsonproc
+            tools/mapjson/mapjson
+            tools/mid2agb/mid2agb
+            tools/preproc/preproc
+            tools/ramscrgen/ramscrgen
+            tools/rsfont/rsfont
+            tools/scaninc/scaninc
+            tools/trainerproc/trainerproc
+            tools/compresSmol/compresSmol
+            tools/compresSmol/compresSmolTilemap
+            tools/wav2agb/wav2agb
+            tools/patchelf/patchelf
+            tools/mgba-rom-test-hydra/mgba-rom-test-hydra
+          key: tools-native-${{ runner.os }}-${{ hashFiles('tools/*/Makefile', 'tools/**/*.c', 'tools/**/*.cpp', 'tools/**/*.h', 'make_tools.mk') }}
+
+      - name: Cache the converted assets
+        uses: ./.github/actions/native-assets
+
+      - name: Cache SDL2 for MinGW (pinned in Makefile.native by sha256)
+        uses: actions/cache@v4
+        with:
+          path: build/sdl2-mingw
+          key: sdl2-mingw-${{ hashFiles('Makefile.native') }}
+
+      - name: Cross-build the executable (the Linux data, converted; the PE layout check)
+        run: make -f Makefile.native -j"$(nproc)" native BITS=64 TARGET_OS=windows
+
+      - name: Cross-build the unit tests
+        run: make -C platform -j"$(nproc)" test TARGET_OS=windows BITS=64
+
+      - name: Upload the executable and the tests
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-build
+          if-no-files-found: error
+          path: |
+            build/native64-windows/pokeemerald-native.exe
+            build/native64-windows/pokeemerald-native.exe.symbols
+            build/native64-windows/SDL2.dll
+            platform/build/64-windows/test/*.exe
+            platform/build/64-windows/test/SDL2.dll
+
+  run:
+    name: Run on Windows (the unit tests, the start-up smoke)
+    needs: cross-build
+    runs-on: windows-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+    steps:
+      # The scripts and the replays' expected outputs are committed with LF
+      # line endings and compared byte for byte.
+      - name: Keep line endings as committed
+        run: git config --global core.autocrlf false
+      - uses: actions/checkout@v4
+
+      - name: Download the build
+        uses: actions/download-artifact@v4
+        with:
+          name: windows-build
+
+      - name: The unit tests
+        run: platform/test_runner/run_windows_tests.sh platform/build/64-windows/test
+
+      - name: The start-up smoke
+        if: always()
+        run: platform/test_runner/run_windows_smoke.sh build/native64-windows/pokeemerald-native.exe
+
+      - name: Keep the test logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-test-logs
+          path: platform/build/64-windows/test/*.log
