@@ -196,6 +196,18 @@ Order of work:
    sources (make's rule for missing intermediates); a fresh checkout is
    unaffected, but `rm` of an object by hand then needs the executable
    removed too. Name the secondary targets (the asset chains) instead.
+   Two more follow-ups from the review fixes of 2026-10-14: (a) the
+   native soft reset hangs when the A+B+Start+Select combination is
+   held: AgbMainLoop reads the keys before any frame passes and the host
+   and replay keys change only at frame boundaries, so the combination
+   is still held after every reset (reproduced with a scratch replay;
+   no gate replay reaches a soft reset); the fix is to require the keys
+   released once after a reset, as the player's hand would be, with a
+   replay test; (b) pthread_condattr_setclock, which the monotonic
+   watchdog wait uses, does not exist on macOS, so the macOS port needs
+   another form of the wait (pthread_cond_timedwait_relative_np, or a
+   realtime deadline recomputed from the monotonic one); noted for when
+   macOS starts.
 2. An inventory of the Windows (MinGW) and macOS ports, no code (an Opus
    worker, to the session scratchpad and summarised here): what in
    `platform/` and the build glue is Linux-specific (the regions mapped
