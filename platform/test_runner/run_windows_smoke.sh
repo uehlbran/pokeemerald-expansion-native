@@ -18,8 +18,9 @@
 # manifest (platform/build_glue/windows_manifest.xml) must carry them from
 # argv to the files. It passes if the run passes as above with the clock's
 # file under exactly its name and nothing else in the directory; and if a
-# second run, with an 11-byte file at the save path, is refused (exit status 1)
-# with standard error naming that path byte for byte.
+# second run, with an 11-byte file without the save header at the save path,
+# is refused (exit status 1) with standard error naming that path byte for
+# byte, and the file is left as it was.
 set -u
 # Git Bash converts the arguments it passes a Windows program from its
 # locale's character set: UTF-8.
@@ -89,12 +90,15 @@ listed=$(cd "$unicode_dir" && ls -A)
 [ "$listed" = "$rtc_name" ] || [ "$listed" = "$rtc_name"$'\n'"$save_name" ] \
     || [ "$listed" = "$save_name"$'\n'"$rtc_name" ] || fail "the non-ASCII directory holds other names: $listed"
 
-echo "== the same with an 11-byte file at the non-ASCII save path"
+echo "== the same with an 11-byte file without the save header at the non-ASCII save path"
 printf 'not a save\n' > "$unicode_dir/$save_name"
+cp -- "$unicode_dir/$save_name" "$scratch/not_a_save.before" || fail "cannot copy the file at the save path"
 run "$unicode_dir" --save "$save_name" --rtc-offset "$rtc_name"
 [ $code -eq 1 ] || fail "exit status $code, not 1, for a file that is not a save"
-grep -qF -- "save_file: $save_name: 11 bytes" "$scratch/stderr" \
-    || fail "standard error does not name the save path as it was given"
+# The refusal's fixed start (platform/save_file.c, refuse_headerless).
+grep -qF -- "save_file: $save_name: has no save header" "$scratch/stderr" \
+    || fail "standard error does not name the save path as it was given in the refusal"
+cmp -s "$scratch/not_a_save.before" "$unicode_dir/$save_name" || fail "the refused file at the save path changed"
 
 if [ $failed -ne 0 ]; then
     exit 1

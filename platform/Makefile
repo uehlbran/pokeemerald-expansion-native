@@ -415,15 +415,21 @@ lint-cppcheck:
 
 lint: lint-tidy lint-cppcheck
 
-# tools/patchelf on ELF32 and ELF64 (builds the tool if needed); with
-# TARGET_OS=windows, on a PE file built with MinGW-w64 instead (the Windows
-# workflow's Linux job runs it: the platform gate runs on Linux alone).
+# tools/patchelf on ELF32 and ELF64 (builds the tools if needed), the hydra
+# at the end of a runner's output, and the Windows runner's scripts driven
+# with fake executables, which run here; with TARGET_OS=windows, patchelf on
+# a PE file built with MinGW-w64 instead (the Windows workflow's Linux job
+# runs it: the platform gate runs on Linux alone).
 tools-test:
 	$(MAKE) -C .. -f make_tools.mk check-tools
 ifeq ($(TARGET_OS),windows)
 	test_runner/test_patchelf_pe.sh
 else
 	test_runner/test_patchelf.sh
+	test_runner/test_hydra_end_of_output.sh
+	test_runner/test_run_windows_tests.sh
+	test_runner/test_native_rom_test_windows.sh
+	test_runner/test_compare_suite_results.sh
 endif
 
 .PHONY: tools-test

@@ -58,9 +58,13 @@ make -C platform test BITS=64
 The platform gate, which a change to anything under `platform/` passes before
 it merges, runs the style check, the static analysis and those tests at both
 widths, the 64-bit tests again under ThreadSanitizer (`tsan`), then `tools-test`
-(`platform/test_runner/test_patchelf.sh`: tools/patchelf patches ELF32 and ELF64
-executables at the right bytes and refuses a bad ELF class) and `glue-test` (the
-self-test of every script in `platform/build_glue/`):
+(in `platform/test_runner/`: `test_patchelf.sh`, tools/patchelf patches ELF32
+and ELF64 executables at the right bytes and refuses a bad ELF class;
+`test_hydra_end_of_output.sh`, expansion's hydra reports every result of a
+runner that ends with its pipe full; and the Windows runner's scripts driven
+with fake executables, `test_run_windows_tests.sh`,
+`test_native_rom_test_windows.sh` and `test_compare_suite_results.sh`) and
+`glue-test` (the self-test of every script in `platform/build_glue/`):
 
 ```
 make -C platform gate              # format-check, lint and test at BITS=32 and 64, tsan, tools-test, glue-test
@@ -349,17 +353,17 @@ sanitizers), and so is `BITS=32`.
 
 ### Running it on Windows
 
-Nothing built this way runs on the build machine. What runs it is the
-Windows workflow, `.github/workflows/windows.yml` (by hand,
+Nothing built this way runs on the build machine. What runs it is the Windows
+workflow, `.github/workflows/windows.yml` (nightly at 05:17 UTC, and by hand,
 `gh workflow run windows.yml`): three Linux jobs side by side cross-build the
 game and the unit tests (and play the Linux half of the cross-OS save gate),
 cross-build the test runner, and run the suite on the Linux 64-bit build; a
 Windows job (`windows-latest`, Git Bash and the image's MSYS2) runs everything
 below on what they built; a last Linux job compares. The same by hand, on a
-64-bit Windows 10 1903 or later with Git for Windows and, for the suite,
-MSYS2 at `C:\msys64`, from a checkout made with `core.autocrlf false` (the
-scripts and the expectations are compared byte for byte) holding the
-build's outputs where the build left them:
+64-bit Windows 10 1903 or later with Git for Windows and, for the suite, MSYS2
+at `C:\msys64`, from a checkout made with `core.autocrlf false` (the scripts
+and the expectations are compared byte for byte) holding the build's outputs
+where the build left them:
 
 ```
 # Git Bash
@@ -400,7 +404,8 @@ platform/test_runner/compare_suite_results.sh suite-linux64.log suite-windows.lo
   `pokeemerald.rtc` in binary mode; then again from a directory with a
   non-ASCII name, with non-ASCII save and clock paths on the command line,
   where the clock's file must appear under exactly its name and a file at the
-  save path that is not a save must be refused by its name.
+  save path without the save header must be refused by its name and left as
+  it was.
 - The replays (gates d and e) compare with the Linux expectations unchanged:
   the Windows build draws the same frames and dumps the same facts as the
   Linux 64-bit one (the same code and data, bit-fields laid out as GCC lays

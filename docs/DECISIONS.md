@@ -1347,10 +1347,10 @@ and every runner ended at its start), and the hydra takes a read of nothing
 for a runner's end, since MSYS2's `poll` reports a pipe whose writer has gone
 as readable and never as `POLLHUP` (an `UPSTREAM_MODIFICATIONS.md` row);
 without it the hydra spun after the first runner ended. Result (run
-38616861484): the 5866 results on Windows equal Linux's line for line (5409
-passed, 2 expected crashes, 7 expected failures, 18 known failing, 9 failed
-assumptions, 421 to do), in 6.5 minutes with two runners on the 2-vCPU
-runner.
+38629824732, the merged branch): the 5875 results on Windows equal Linux's
+line for line (5418 passed, 2 expected crashes, 7 expected failures, 18 known
+failing, 9 failed assumptions, 421 to do), in 5 minutes with two runners on
+the 2-vCPU runner.
 
 ## 2026-10-14: The Windows unit tests run from copies removed after them
 
@@ -1364,10 +1364,10 @@ gave the 1,000 MiB back. The image spans 0x01800000 to 0x41xxxxxx, and the
 system charges the image's pages, the 1 GiB of read-only gaps included, to the
 image's section object, which it keeps cached while the file exists; probe W1
 measured the process's own commit charge (3 MiB), which does not include it.
-With 69 test executables the runner's commit ran out after the 24th had
-started (the limit grows with the system-managed page file, but not without
-end), and every later start failed ("Resource temporarily unavailable", run
-38598389601).
+With the 69 test executables of that run (70 since) the runner's commit ran
+out after the 24th had started (the limit grows with the system-managed page
+file, but not without end), and every later start failed ("Resource
+temporarily unavailable", run 38598389601).
 `run_windows_tests.sh` therefore runs each test from a copy under its own
 name in a directory of its own and deletes it when the test ends; the suite's
 runners already run from copies the hydra and `native-rom-test` delete.

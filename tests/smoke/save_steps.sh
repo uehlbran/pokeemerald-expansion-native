@@ -17,6 +17,7 @@ save_image_size=131072
 # platform/fixed_clock.h: the clock advances one second every 60 frames; restart.c advances
 # --rtc-fixed by the seconds the run took.
 fixed_clock_frames_per_second=60
+fixed_clock_header="$here/../../platform/fixed_clock.h"
 
 # "BITS LAYOUT" of a save file with a header, or "none".
 save_layout() {
@@ -82,17 +83,37 @@ play_until_save() {
 # in the script with its includes expanded (the expansion of the cut copy ends just before it), and
 # the clock moved on. Sets resume_at and epoch.
 resume_point() {
-    local dir="$1" frames
+    local dir="$1"
     resume_at="$(($(wc -l < "$dir/expanded.replay") + 1))"
-    frames="$(tr -d '\r' < "$dir/stdout.log" | sed -n -E 's/^main: ([0-9]+) frames$/\1/p' | tail -1)"
-    [ -n "$frames" ] || die "FROM did not report its frame count"
-    epoch="$((rtc_epoch + frames / fixed_clock_frames_per_second))"
+    read_frames_played "$dir"
+    epoch="$((rtc_epoch + frames_played / fixed_clock_frames_per_second))"
+}
+
+# Sets frames_played to the frame count the run in directory $1 reported on standard output.
+read_frames_played() {
+    frames_played="$(tr -d '\r' < "$1/stdout.log" | sed -n -E 's/^main: ([0-9]+) frames$/\1/p' | tail -1)"
+    [ -n "$frames_played" ] || die "$(basename "$1") did not report its frame count"
+}
+
+# The clock resume_point set is the one the restart would have set after the run in directory $1
+# (main.c: fixed_clock_at, the base plus the run's frames in whole seconds). No dump shows the
+# clock, so a wrong one would pass every other check of the gate. The rate is read from the
+# header here, which also keeps fixed_clock_frames_per_second in step with it.
+check_resume_epoch() {
+    local from_dir="$1" per_second want
+    per_second="$(sed -n -E 's/^#define FIXED_CLOCK_FRAMES_PER_SECOND ([0-9]+)u?$/\1/p' "$fixed_clock_header")"
+    [ -n "$per_second" ] || die "no FIXED_CLOCK_FRAMES_PER_SECOND in $fixed_clock_header"
+    read_frames_played "$from_dir"
+    want="$((rtc_epoch + frames_played / per_second))"
+    [ "$epoch" = "$want" ] \
+        || fail "the clock after the restart is $epoch, not $want ($rtc_epoch + $frames_played frames / $per_second)"
 }
 
 # Step 2: binary $1 in directory $2, on the save step 1 wrote in directory $3 (copied there), plays
 # opening.replay from resume_point's line and clock, as the restart would: Continue.
 continue_on() {
     local binary="$1" dir="$2" from_dir="$3"
+    check_resume_epoch "$from_dir"
     play "$binary" "$dir" "$opening" --rtc-fixed "$epoch" --resume-at "$resume_at"
     [ "$(sed -n "${resume_at}p" "$dir/expanded.replay")" = restart ] \
         || fail "$(basename "$dir"): line $resume_at of the expanded opening.replay is not its restart"

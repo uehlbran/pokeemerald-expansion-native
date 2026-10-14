@@ -29,7 +29,9 @@
 # (platform/crash_reboot.h), for its parent to start it again with
 # "--persistent-state <the state>". This script is that parent: it starts the
 # program again on the same standard output, as the exec in place does on
-# Linux, so that the hydra sees one run go on past the crash.
+# Linux, so that the hydra sees one run go on past the crash. It stops after
+# max_crash_restarts restarts (below), and ends the runner before it removes
+# the copy when it is told to stop (TERM, INT).
 #
 # stdbuf works by preloading a library into what it runs, which is 64-bit
 # on x86-64 hosts and cannot load into the 32-bit executable (the loader
@@ -50,14 +52,42 @@ for executable; do :; done
 crash_reboot_exit_code=75
 crash_reboot_option=--persistent-state
 crash_reboot_state_digits=512
+# Each restart is one test that crashed; the suite has two that crash on
+# purpose (test/test_test_runner.c). A runner that crashes this often in one
+# partition is a broken build, and a runner that reports a crash on every
+# start would otherwise restart until the CI step's time limit ends it with
+# no word of why.
+max_crash_restarts=100
+
+# The runner running now, if any.
+runner=
+
+# Ends the runner and waits for it. On Windows a running executable cannot be
+# deleted, so the copy, and the 1 GiB of commit its image holds
+# (docs/DECISIONS.md, "The Windows unit tests run from copies removed after
+# them"), would outlive this script if the EXIT trap removed it first.
+end_runner() {
+    if [ -n "$runner" ]; then
+        kill "$runner" 2>/dev/null || true
+        wait "$runner" 2>/dev/null || true
+        runner=
+    fi
+}
 
 run_on_windows() {
-    local exe="$1.exe" report="$1.stderr" state=() status digits
+    local exe="$1.exe" report="$1.stderr" state=() status digits restarts=0
     cp -- "$1" "$exe"
     trap 'rm -f -- "$exe" "$report"' EXIT
+    trap 'end_runner; exit 143' TERM
+    trap 'end_runner; exit 130' INT
     while :; do
         status=0
-        "$exe" --headless --silent --unthrottled --test-runner "${state[@]}" 2> "$report" || status=$?
+        # In the background, so that a TERM or an INT reaches its trap while
+        # the runner runs (bash runs a trap only after a foreground command).
+        "$exe" --headless --silent --unthrottled --test-runner "${state[@]}" 2> "$report" &
+        runner=$!
+        wait "$runner" || status=$?
+        runner=
         cat -- "$report" >&2
         [ "$status" -eq "$crash_reboot_exit_code" ] || break
         digits=$(sed -n -E "s/^crash_reboot: .* $crash_reboot_option ([0-9a-f]{$crash_reboot_state_digits})\r?\$/\1/p" \
@@ -66,6 +96,11 @@ run_on_windows() {
             echo "native-rom-test: exit code $crash_reboot_exit_code without a crash report on standard error" >&2
             break
         fi
+        if [ "$restarts" -ge "$max_crash_restarts" ]; then
+            echo "native-rom-test: the runner crashed $((restarts + 1)) times; not started again after $max_crash_restarts restarts" >&2
+            break
+        fi
+        restarts=$((restarts + 1))
         state=("$crash_reboot_option" "$digits")
     done
     exit "$status"
