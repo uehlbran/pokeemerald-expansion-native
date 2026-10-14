@@ -517,6 +517,27 @@ every executable after the first crash test exits with status 126
 ("cannot execute"), one cause hiding the rest. These are the W8 worker's
 step 1, in flight.
 
+**Independent code review** (the owner's order of 2026-10-14, started
+at 10:55 local): twelve fresh Fable reviewers, read-only, 30 minutes
+each, given only ARCHITECTURE.md, C-RULES.md, a scope and one brief (no
+STATUS, PLAN or prior review notes; DECISIONS.md to be challenged, not
+accepted): seven area scopes (core emulation; graphics; audio;
+persistence and time; host and process; tooling and tests; build and
+CI), two halves of the upstream PLATFORM_NATIVE guards against
+UPSTREAM_MODIFICATIONS.md, and three cross-cutting scopes (concurrency
+and signal safety; security and resource handling; the public face of
+the repository). Files changed by the in-flight Windows-runner work are
+excluded and get the same review after they merge. Reports go to an
+untracked folder outside the repository; the orchestrator deduplicates,
+verifies every finding against the code before accepting it, rejects
+false positives with a reason, and dispatches accepted fixes through the
+normal workers and gates. Two findings known beforehand are being fixed
+by a Sonnet worker now (the POSIX watchdog's wait on CLOCK_REALTIME
+instead of a monotonic clock; replay_parse's fact-name message omitting
+the ':' the code accepts). The summary (findings by severity and area;
+accepted, rejected, fixed; what needs the owner) is written here when
+the pass is complete.
+
 **In flight.** Tasks W8 and W9 as one Opus worker (branch m8-winci): the
 Windows runner's unit tests and smoke made to pass, then the replays, the
 suite through a driver that restarts on exit code 75, and the cross-OS
