@@ -1,10 +1,23 @@
-# The native build's gate, as docs/STATUS.md records it, on a Linux runner:
-# the platform gate, the native executables at both widths plain and
-# sanitized, both replays on each, expansion's suite at both widths plain
-# and sanitized, the cross-width save gate, and the GBA ROM with its sha1
-# (docs/PLAN.md "Milestone 8 plan"; docs/DECISIONS.md says why this runs on
-# pushes to main and by hand only). Upstream's build.yml is not this file's
-# concern: it triggers on branches this repository does not have.
+# The native build's gate on a Linux runner, in two tiers (docs/DECISIONS.md,
+# "CI runs in two tiers"; the local pre-merge gate stays the full check at
+# both widths, and CI is the backstop that proves a clean clone builds and
+# passes on a documented image). One file, because the tiers share their
+# environment and setup; the `if:` on each job picks the tier.
+#
+# Per-push tier (`push` to main and ci/**; docs-only pushes are ignored; a
+# newer push to a ref cancels the older run): job `push`: the 64-bit native
+# build, the platform gate (which also builds and tests the 32-bit platform
+# library, so the i386 SDL2 workaround below stays), both 64-bit replays,
+# and the plain 64-bit suite. ccache and the tools are cached between runs.
+#
+# Nightly tier (`schedule`, plus `workflow_dispatch`): parallel jobs `gba`
+# (the ROM and its sha1), `native32` (32-bit build, both replays, the suite),
+# `native32-san` and `native64-san` (the sanitized build, both replays and
+# the suite), `cross-width` (gate h, the save made at one width loaded at the
+# other, plain and sanitized, both ways).
+#
+# Upstream's build.yml is not this file's concern: it triggers on branches
+# this repository does not have.
 name: native
 
 on:
@@ -12,19 +25,121 @@ on:
     branches:
       - main
       - 'ci/**'
+    paths-ignore:
+      - 'docs/**'
+      - '**.md'
+  schedule:
+    - cron: '17 4 * * *'
   workflow_dispatch:
+
+concurrency:
+  group: native-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'push' }}
 
 env:
   # The GBA ROM this repository's main must produce (docs/STATUS.md, gate c).
   ROM_SHA1: e2d4600d4e7b1269ac50c28bc96ece2b758ded9e
-  # The replays and the suite run headless; the sanitized runs list every
-  # finding rather than stop at the first (tests/smoke/lib.sh).
+  # The replays and the suite run headless.
   SDL_VIDEODRIVER: dummy
   SDL_AUDIODRIVER: dummy
 
 jobs:
+  push:
+    name: Per-push gate (64-bit build, platform gate, replays, suite)
+    if: github.event_name == 'push'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      # docs/BUILDING.md installs libsdl2-dev:i386 for the 32-bit build. On the
+      # runner image apt cannot install it: it pulls in libglib2.0-dev:i386,
+      # whose -dev-bin part cannot coexist with the image's amd64 one. The
+      # 32-bit build needs only the i386 runtime library and, from the -dev
+      # package, the i386 configuration header (SIZEOF_VOIDP 4) and the
+      # libSDL2.so links; those two are taken from the downloaded package
+      # without its dependencies.
+      - name: Prerequisites (docs/BUILDING.md, the native lines; the i386 SDL2 as the comment above says)
+        run: |
+          sudo dpkg --add-architecture i386
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends build-essential gcc-multilib g++-multilib libc6-dev-i386 pkg-config git python3 libpng-dev libsdl2-dev ccache clang clang-format clang-tidy cppcheck cmake ninja-build
+          sudo apt-get install -y --no-install-recommends libsdl2-2.0-0:i386
+          mkdir -p /tmp/sdl2-i386 && cd /tmp/sdl2-i386 && apt-get download libsdl2-dev:i386 && dpkg-deb -x libsdl2-dev_*_i386.deb unpacked
+          sudo cp -a unpacked/usr/include/i386-linux-gnu /usr/include/
+          sudo cp -a unpacked/usr/lib/i386-linux-gnu/libSDL2.so unpacked/usr/lib/i386-linux-gnu/libSDL2-2.0.so /usr/lib/i386-linux-gnu/
+          cd "$GITHUB_WORKSPACE"
+          pkg-config --cflags --libs sdl2; ls -l /usr/lib/i386-linux-gnu/libSDL2.so /usr/include/i386-linux-gnu/SDL2/_real_SDL_config.h
+
+      - name: Cache the build tools
+        uses: actions/cache@v4
+        with:
+          path: |
+            tools/bin2c/bin2c
+            tools/gbafix/gbafix
+            tools/gbagfx/gbagfx
+            tools/jsonproc/jsonproc
+            tools/mapjson/mapjson
+            tools/mid2agb/mid2agb
+            tools/preproc/preproc
+            tools/ramscrgen/ramscrgen
+            tools/rsfont/rsfont
+            tools/scaninc/scaninc
+            tools/trainerproc/trainerproc
+            tools/compresSmol/compresSmol
+            tools/compresSmol/compresSmolTilemap
+            tools/wav2agb/wav2agb
+            tools/patchelf/patchelf
+            tools/mgba-rom-test-hydra/mgba-rom-test-hydra
+          key: tools-native-${{ runner.os }}-${{ hashFiles('tools/*/Makefile', 'tools/**/*.c', 'tools/**/*.cpp', 'tools/**/*.h', 'make_tools.mk') }}
+
+      # Put ccache's compiler links first on PATH so gcc and g++ go through it.
+      - name: Cache the compiler cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ccache
+          key: ccache-push-${{ runner.os }}-${{ github.sha }}
+          restore-keys: |
+            ccache-push-${{ runner.os }}-
+
+      - name: Use ccache
+        run: |
+          echo /usr/lib/ccache >> "$GITHUB_PATH"
+          ccache --max-size=1G --zero-stats
+
+      - name: Native build, 64-bit (with the three link-time data checks)
+        run: |
+          make -f Makefile.native -j"$(nproc)" native BITS=64
+
+      - name: The platform gate (format, lint, the sanitized unit tests at both widths, tools-test, glue-test)
+        run: |
+          make -C platform gate
+
+      - name: Gates d and e, 64-bit
+        run: |
+          tests/smoke/run.sh build/native64/pokeemerald-native out/open64
+          tests/smoke/run_debug_menu.sh build/native64/pokeemerald-native out/dbg64
+
+      - name: Gate b, the suite at 64 bits
+        run: |
+          make -f Makefile.native -j"$(nproc)" check BITS=64
+
+
+      - name: ccache statistics
+        if: always()
+        run: ccache -s
+
+      - name: Keep the replay outputs of a failed run
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: replay-outputs-push
+          path: out/
+          if-no-files-found: ignore
+
   gba:
     name: GBA ROM (gate c)
+    if: github.event_name != 'push'
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     steps:
@@ -63,10 +178,11 @@ jobs:
           sha1sum pokeemerald.gba
           echo "$ROM_SHA1  pokeemerald.gba" | sha1sum -c -
 
-  native:
-    name: Native gate (platform, a, b, d, e, f, h at both widths)
+  native32:
+    name: Nightly, 32-bit build, replays, suite
+    if: github.event_name != 'push'
     runs-on: ubuntu-24.04
-    timeout-minutes: 180
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
 
@@ -77,17 +193,16 @@ jobs:
       # package, the i386 configuration header (SIZEOF_VOIDP 4) and the
       # libSDL2.so links; those two are taken from the downloaded package
       # without its dependencies.
-      - name: Prerequisites (docs/BUILDING.md, the native lines; the i386 SDL2 as the comment says)
+      - name: Prerequisites (docs/BUILDING.md, the native lines; the i386 SDL2 as the comment above says)
         run: |
           sudo dpkg --add-architecture i386
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends build-essential gcc-multilib g++-multilib clang clang-format clang-tidy cppcheck cmake ninja-build pkg-config git python3 libpng-dev
-          sudo apt-get install -y --no-install-recommends libsdl2-dev libsdl2-2.0-0:i386 libc6-dev-i386
+          sudo apt-get install -y --no-install-recommends build-essential gcc-multilib g++-multilib libc6-dev-i386 pkg-config git python3 libpng-dev libsdl2-dev ccache
+          sudo apt-get install -y --no-install-recommends libsdl2-2.0-0:i386
           mkdir -p /tmp/sdl2-i386 && cd /tmp/sdl2-i386 && apt-get download libsdl2-dev:i386 && dpkg-deb -x libsdl2-dev_*_i386.deb unpacked
           sudo cp -a unpacked/usr/include/i386-linux-gnu /usr/include/
           sudo cp -a unpacked/usr/lib/i386-linux-gnu/libSDL2.so unpacked/usr/lib/i386-linux-gnu/libSDL2-2.0.so /usr/lib/i386-linux-gnu/
           cd "$GITHUB_WORKSPACE"
-          gcc --version | head -1; clang-format --version; clang-tidy --version | head -1; cppcheck --version
           pkg-config --cflags --libs sdl2; ls -l /usr/lib/i386-linux-gnu/libSDL2.so /usr/include/i386-linux-gnu/SDL2/_real_SDL_config.h
 
       - name: Cache the build tools
@@ -112,66 +227,311 @@ jobs:
             tools/mgba-rom-test-hydra/mgba-rom-test-hydra
           key: tools-native-${{ runner.os }}-${{ hashFiles('tools/*/Makefile', 'tools/**/*.c', 'tools/**/*.cpp', 'tools/**/*.h', 'make_tools.mk') }}
 
-      - name: Native build, 32-bit
-        run: make -f Makefile.native -j"$(nproc)" native BITS=32
+      # Put ccache's compiler links first on PATH so gcc and g++ go through it.
+      - name: Cache the compiler cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ccache
+          key: ccache-native32-${{ runner.os }}-${{ github.sha }}
+          restore-keys: |
+            ccache-native32-${{ runner.os }}-
 
-      # After the 32-bit build: the gate lints the files that read the game's
-      # headers, some of which the build generates (include/constants/map_groups.h).
-      - name: The platform gate (format, lint, the sanitized unit tests at both widths, tools-test, glue-test)
-        run: make -C platform gate
+      - name: Use ccache
+        run: |
+          echo /usr/lib/ccache >> "$GITHUB_PATH"
+          ccache --max-size=1G --zero-stats
+
+      - name: Native build, 32-bit
+        run: |
+          make -f Makefile.native -j"$(nproc)" native BITS=32
 
       - name: Gates d and e, 32-bit
         run: |
           tests/smoke/run.sh build/native32/pokeemerald-native out/open32
           tests/smoke/run_debug_menu.sh build/native32/pokeemerald-native out/dbg32
 
-      - name: Native build, 64-bit (with the three link-time data checks)
-        run: make -f Makefile.native -j"$(nproc)" native BITS=64
-
-      - name: Gates d and e, 64-bit
+      - name: Gate b, the suite at 32 bits
         run: |
-          tests/smoke/run.sh build/native64/pokeemerald-native out/open64
-          tests/smoke/run_debug_menu.sh build/native64/pokeemerald-native out/dbg64
+          make -f Makefile.native -j"$(nproc)" check BITS=32
 
-      - name: Gate h, the cross-width save, both ways
+
+      - name: ccache statistics
+        if: always()
+        run: ccache -s
+
+      - name: Keep the replay outputs of a failed run
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: replay-outputs-native32
+          path: out/
+          if-no-files-found: ignore
+
+  native32-san:
+    name: Nightly, 32-bit sanitized build, replays, suite
+    if: github.event_name != 'push'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      # docs/BUILDING.md installs libsdl2-dev:i386 for the 32-bit build. On the
+      # runner image apt cannot install it: it pulls in libglib2.0-dev:i386,
+      # whose -dev-bin part cannot coexist with the image's amd64 one. The
+      # 32-bit build needs only the i386 runtime library and, from the -dev
+      # package, the i386 configuration header (SIZEOF_VOIDP 4) and the
+      # libSDL2.so links; those two are taken from the downloaded package
+      # without its dependencies.
+      - name: Prerequisites (docs/BUILDING.md, the native lines; the i386 SDL2 as the comment above says)
         run: |
-          tests/smoke/run_cross_width.sh build/native32/pokeemerald-native build/native64/pokeemerald-native out/x3264
-          tests/smoke/run_cross_width.sh build/native64/pokeemerald-native build/native32/pokeemerald-native out/x6432
+          sudo dpkg --add-architecture i386
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends build-essential gcc-multilib g++-multilib libc6-dev-i386 pkg-config git python3 libpng-dev libsdl2-dev ccache
+          sudo apt-get install -y --no-install-recommends libsdl2-2.0-0:i386
+          mkdir -p /tmp/sdl2-i386 && cd /tmp/sdl2-i386 && apt-get download libsdl2-dev:i386 && dpkg-deb -x libsdl2-dev_*_i386.deb unpacked
+          sudo cp -a unpacked/usr/include/i386-linux-gnu /usr/include/
+          sudo cp -a unpacked/usr/lib/i386-linux-gnu/libSDL2.so unpacked/usr/lib/i386-linux-gnu/libSDL2-2.0.so /usr/lib/i386-linux-gnu/
+          cd "$GITHUB_WORKSPACE"
+          pkg-config --cflags --libs sdl2; ls -l /usr/lib/i386-linux-gnu/libSDL2.so /usr/include/i386-linux-gnu/SDL2/_real_SDL_config.h
+
+      - name: Cache the build tools
+        uses: actions/cache@v4
+        with:
+          path: |
+            tools/bin2c/bin2c
+            tools/gbafix/gbafix
+            tools/gbagfx/gbagfx
+            tools/jsonproc/jsonproc
+            tools/mapjson/mapjson
+            tools/mid2agb/mid2agb
+            tools/preproc/preproc
+            tools/ramscrgen/ramscrgen
+            tools/rsfont/rsfont
+            tools/scaninc/scaninc
+            tools/trainerproc/trainerproc
+            tools/compresSmol/compresSmol
+            tools/compresSmol/compresSmolTilemap
+            tools/wav2agb/wav2agb
+            tools/patchelf/patchelf
+            tools/mgba-rom-test-hydra/mgba-rom-test-hydra
+          key: tools-native-${{ runner.os }}-${{ hashFiles('tools/*/Makefile', 'tools/**/*.c', 'tools/**/*.cpp', 'tools/**/*.h', 'make_tools.mk') }}
+
+      # Put ccache's compiler links first on PATH so gcc and g++ go through it.
+      - name: Cache the compiler cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ccache
+          key: ccache-native32-san-${{ runner.os }}-${{ github.sha }}
+          restore-keys: |
+            ccache-native32-san-${{ runner.os }}-
+
+      - name: Use ccache
+        run: |
+          echo /usr/lib/ccache >> "$GITHUB_PATH"
+          ccache --max-size=1G --zero-stats
 
       - name: Native build, 32-bit sanitized
-        run: make -f Makefile.native -j"$(nproc)" native BITS=32 SANITIZE=1
+        run: |
+          make -f Makefile.native -j"$(nproc)" native BITS=32 SANITIZE=1
 
-      - name: Native build, 64-bit sanitized
-        run: make -f Makefile.native -j"$(nproc)" native BITS=64 SANITIZE=1
-
-      - name: Gates d, e and h sanitized, both widths
+      - name: Gates d and e sanitized, 32-bit
         env:
           ASAN_OPTIONS: halt_on_error=0
           UBSAN_OPTIONS: print_stacktrace=1
         run: |
           tests/smoke/run.sh build/native32-san/pokeemerald-native out/open32s
           tests/smoke/run_debug_menu.sh build/native32-san/pokeemerald-native out/dbg32s
-          tests/smoke/run.sh build/native64-san/pokeemerald-native out/open64s
-          tests/smoke/run_debug_menu.sh build/native64-san/pokeemerald-native out/dbg64s
-          tests/smoke/run_cross_width.sh build/native32-san/pokeemerald-native build/native64-san/pokeemerald-native out/x3264s
-          tests/smoke/run_cross_width.sh build/native64-san/pokeemerald-native build/native32-san/pokeemerald-native out/x6432s
-
-      - name: Gate b, the suite at 32 bits
-        run: make -f Makefile.native -j"$(nproc)" check BITS=32
-
-      - name: Gate b, the suite at 64 bits
-        run: make -f Makefile.native -j"$(nproc)" check BITS=64
 
       - name: Gate b sanitized, 32 bits
-        run: make -f Makefile.native -j"$(nproc)" check BITS=32 SANITIZE=1
+        run: |
+          make -f Makefile.native -j"$(nproc)" check BITS=32 SANITIZE=1
 
-      - name: Gate b sanitized, 64 bits
-        run: make -f Makefile.native -j"$(nproc)" check BITS=64 SANITIZE=1
+
+      - name: ccache statistics
+        if: always()
+        run: ccache -s
 
       - name: Keep the replay outputs of a failed run
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: replay-outputs
+          name: replay-outputs-native32-san
+          path: out/
+          if-no-files-found: ignore
+
+  native64-san:
+    name: Nightly, 64-bit sanitized build, replays, suite
+    if: github.event_name != 'push'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Prerequisites (docs/BUILDING.md, the native lines)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends build-essential gcc-multilib g++-multilib libc6-dev-i386 pkg-config git python3 libpng-dev libsdl2-dev ccache
+
+      - name: Cache the build tools
+        uses: actions/cache@v4
+        with:
+          path: |
+            tools/bin2c/bin2c
+            tools/gbafix/gbafix
+            tools/gbagfx/gbagfx
+            tools/jsonproc/jsonproc
+            tools/mapjson/mapjson
+            tools/mid2agb/mid2agb
+            tools/preproc/preproc
+            tools/ramscrgen/ramscrgen
+            tools/rsfont/rsfont
+            tools/scaninc/scaninc
+            tools/trainerproc/trainerproc
+            tools/compresSmol/compresSmol
+            tools/compresSmol/compresSmolTilemap
+            tools/wav2agb/wav2agb
+            tools/patchelf/patchelf
+            tools/mgba-rom-test-hydra/mgba-rom-test-hydra
+          key: tools-native-${{ runner.os }}-${{ hashFiles('tools/*/Makefile', 'tools/**/*.c', 'tools/**/*.cpp', 'tools/**/*.h', 'make_tools.mk') }}
+
+      # Put ccache's compiler links first on PATH so gcc and g++ go through it.
+      - name: Cache the compiler cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ccache
+          key: ccache-native64-san-${{ runner.os }}-${{ github.sha }}
+          restore-keys: |
+            ccache-native64-san-${{ runner.os }}-
+
+      - name: Use ccache
+        run: |
+          echo /usr/lib/ccache >> "$GITHUB_PATH"
+          ccache --max-size=1G --zero-stats
+
+      - name: Native build, 64-bit sanitized
+        run: |
+          make -f Makefile.native -j"$(nproc)" native BITS=64 SANITIZE=1
+
+      - name: Gates d and e sanitized, 64-bit
+        env:
+          ASAN_OPTIONS: halt_on_error=0
+          UBSAN_OPTIONS: print_stacktrace=1
+        run: |
+          tests/smoke/run.sh build/native64-san/pokeemerald-native out/open64s
+          tests/smoke/run_debug_menu.sh build/native64-san/pokeemerald-native out/dbg64s
+
+      - name: Gate b sanitized, 64 bits
+        run: |
+          make -f Makefile.native -j"$(nproc)" check BITS=64 SANITIZE=1
+
+
+      - name: ccache statistics
+        if: always()
+        run: ccache -s
+
+      - name: Keep the replay outputs of a failed run
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: replay-outputs-native64-san
+          path: out/
+          if-no-files-found: ignore
+
+  cross-width:
+    name: Nightly, cross-width save (gate h), plain and sanitized
+    if: github.event_name != 'push'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      # docs/BUILDING.md installs libsdl2-dev:i386 for the 32-bit build. On the
+      # runner image apt cannot install it: it pulls in libglib2.0-dev:i386,
+      # whose -dev-bin part cannot coexist with the image's amd64 one. The
+      # 32-bit build needs only the i386 runtime library and, from the -dev
+      # package, the i386 configuration header (SIZEOF_VOIDP 4) and the
+      # libSDL2.so links; those two are taken from the downloaded package
+      # without its dependencies.
+      - name: Prerequisites (docs/BUILDING.md, the native lines; the i386 SDL2 as the comment above says)
+        run: |
+          sudo dpkg --add-architecture i386
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends build-essential gcc-multilib g++-multilib libc6-dev-i386 pkg-config git python3 libpng-dev libsdl2-dev ccache
+          sudo apt-get install -y --no-install-recommends libsdl2-2.0-0:i386
+          mkdir -p /tmp/sdl2-i386 && cd /tmp/sdl2-i386 && apt-get download libsdl2-dev:i386 && dpkg-deb -x libsdl2-dev_*_i386.deb unpacked
+          sudo cp -a unpacked/usr/include/i386-linux-gnu /usr/include/
+          sudo cp -a unpacked/usr/lib/i386-linux-gnu/libSDL2.so unpacked/usr/lib/i386-linux-gnu/libSDL2-2.0.so /usr/lib/i386-linux-gnu/
+          cd "$GITHUB_WORKSPACE"
+          pkg-config --cflags --libs sdl2; ls -l /usr/lib/i386-linux-gnu/libSDL2.so /usr/include/i386-linux-gnu/SDL2/_real_SDL_config.h
+
+      - name: Cache the build tools
+        uses: actions/cache@v4
+        with:
+          path: |
+            tools/bin2c/bin2c
+            tools/gbafix/gbafix
+            tools/gbagfx/gbagfx
+            tools/jsonproc/jsonproc
+            tools/mapjson/mapjson
+            tools/mid2agb/mid2agb
+            tools/preproc/preproc
+            tools/ramscrgen/ramscrgen
+            tools/rsfont/rsfont
+            tools/scaninc/scaninc
+            tools/trainerproc/trainerproc
+            tools/compresSmol/compresSmol
+            tools/compresSmol/compresSmolTilemap
+            tools/wav2agb/wav2agb
+            tools/patchelf/patchelf
+            tools/mgba-rom-test-hydra/mgba-rom-test-hydra
+          key: tools-native-${{ runner.os }}-${{ hashFiles('tools/*/Makefile', 'tools/**/*.c', 'tools/**/*.cpp', 'tools/**/*.h', 'make_tools.mk') }}
+
+      # Put ccache's compiler links first on PATH so gcc and g++ go through it.
+      - name: Cache the compiler cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ccache
+          key: ccache-cross-width-${{ runner.os }}-${{ github.sha }}
+          restore-keys: |
+            ccache-cross-width-${{ runner.os }}-
+
+      - name: Use ccache
+        run: |
+          echo /usr/lib/ccache >> "$GITHUB_PATH"
+          ccache --max-size=1G --zero-stats
+
+      - name: Native builds, both widths
+        run: |
+          make -f Makefile.native -j"$(nproc)" native BITS=32
+          make -f Makefile.native -j"$(nproc)" native BITS=64
+
+      - name: Gate h, the cross-width save, both ways
+        run: |
+          tests/smoke/run_cross_width.sh build/native32/pokeemerald-native build/native64/pokeemerald-native out/x3264
+          tests/smoke/run_cross_width.sh build/native64/pokeemerald-native build/native32/pokeemerald-native out/x6432
+
+      - name: Native builds, both widths, sanitized
+        run: |
+          make -f Makefile.native -j"$(nproc)" native BITS=32 SANITIZE=1
+          make -f Makefile.native -j"$(nproc)" native BITS=64 SANITIZE=1
+
+      - name: Gate h sanitized, both ways
+        env:
+          ASAN_OPTIONS: halt_on_error=0
+          UBSAN_OPTIONS: print_stacktrace=1
+        run: |
+          tests/smoke/run_cross_width.sh build/native32-san/pokeemerald-native build/native64-san/pokeemerald-native out/x3264s
+          tests/smoke/run_cross_width.sh build/native64-san/pokeemerald-native build/native32-san/pokeemerald-native out/x6432s
+
+
+      - name: ccache statistics
+        if: always()
+        run: ccache -s
+
+      - name: Keep the replay outputs of a failed run
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: replay-outputs-cross-width
           path: out/
           if-no-files-found: ignore
