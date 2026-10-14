@@ -43,18 +43,19 @@
  *     with exit code 75 for the parent to start the program again with
  *     --persistent-state <512 hex digits>
  * on one line. The reboot is the parent's, the program that started this
- * one and waits for it (the Windows test driver): on exit code 75 it starts
- * the program again with the same arguments, any earlier --persistent-state
- * dropped, plus the option and the digits from the last line of stderr
- * that begins "crash_reboot: ". A run on Windows with no such parent ends at
- * a crash with exit code 75 and no reboot. Two crashes end the run without a
- * report or a reboot on Windows: abort(), which is not an exception there
- * (the C runtime raises SIGABRT in its own signal table and exits with
- * status 3), and an overflow of the battle runner's stack (game_hooks), which
- * runs into the image's read-only headers, where the system cannot write the
- * exception's records, so no handler runs. The report names a Windows fault
- * by its exception code in hexadecimal ("crash_reboot: exception 0xC0000005
- * at ..."), a Linux one by its signal ("crash_reboot: signal 11 at ...").
+ * one and waits for it (in the suite, test_runner/native-rom-test): on exit
+ * code 75 it starts the program again with the same arguments, any earlier
+ * --persistent-state dropped, plus the option and the digits from the last
+ * line of stderr that begins "crash_reboot: ". A run on Windows with no such
+ * parent ends at a crash with exit code 75 and no reboot. Two crashes end the
+ * run without a report or a reboot on Windows: abort(), which is not an
+ * exception there (the C runtime raises SIGABRT in its own signal table and
+ * exits with status 3), and an overflow of the battle runner's stack
+ * (game_hooks), which runs into the image's read-only headers, where the
+ * system cannot write the exception's records, so no handler runs. The
+ * report names a Windows fault by its exception code in hexadecimal
+ * ("crash_reboot: exception 0xC0000005 at ..."), a Linux one by its signal
+ * ("crash_reboot: signal 11 at ...").
  *
  * A crash with the persistent bytes unchanged since the process started
  * (zero, or what crash_reboot_restore put there) would reboot into the same

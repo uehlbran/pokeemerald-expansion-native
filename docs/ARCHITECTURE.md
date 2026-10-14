@@ -240,8 +240,8 @@ handles, waits for it and ends with its exit status, so whoever waits for the
 process sees the restarted run. The crash reboot starts no process from the
 filter, where creating one would allocate from a heap the crash may have
 corrupted: the filter writes the report with the persistent state and ends
-the process with exit code 75, and the parent, the Windows test driver,
-starts the program again with that state (`DECISIONS.md`, "A crash on
+the process with exit code 75, and the parent (in the suite,
+`platform/test_runner/native-rom-test`) starts the program again with that state (`DECISIONS.md`, "A crash on
 Windows ends the process for its parent to start again"). And the battle runner's
 stack switch is not a fiber, which cannot run on a stack of the caller's
 choosing, but a Win64 switch in assembly that saves the callee-saved

@@ -1225,7 +1225,16 @@ temporary directory find `SDL2.dll`). The comparison,
 Windows' `\r` and requires the two sorted lists of "test name: result" lines
 to be equal. The Windows workflow runs the Linux suite of the same commit in a
 parallel job for it, rather than comparing with a committed list that would
-have to follow every change to the tests.
+have to follow every change to the tests. Two things MSYS2 needed besides: the
+test runner's `setvbuf` asks for a buffer size msvcrt accepts (it refuses 0,
+and every runner ended at its start), and the hydra takes a read of nothing
+for a runner's end, since MSYS2's `poll` reports a pipe whose writer has gone
+as readable and never as `POLLHUP` (an `UPSTREAM_MODIFICATIONS.md` row);
+without it the hydra spun after the first runner ended. Result (run
+38616861484): the 5866 results on Windows equal Linux's line for line (5409
+passed, 2 expected crashes, 7 expected failures, 18 known failing, 9 failed
+assumptions, 421 to do), in 6.5 minutes with two runners on the 2-vCPU
+runner.
 
 ## 2026-10-14: The Windows unit tests run from copies removed after them
 

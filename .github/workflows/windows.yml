@@ -20,10 +20,18 @@
 #                      save the Windows build wrote
 #
 # Artifacts carry the builds and the stages' directories between the jobs.
-# Windows minutes count double.
+# Windows minutes count double. Nightly, an hour after native.yml's nightly
+# tier, and by hand. The time limits keep a whole run within 40 minutes: the
+# longest chain is a cross-build (20), the Windows job (15) and the
+# comparison (5), or the Linux suite (35) and the comparison; measured warm
+# (run 38616861484): 8, 12 and 13 minutes for the Linux jobs, 10 for the
+# Windows job (the suite 6.5 of them), half a minute for the comparison, 23
+# for the run.
 name: windows
 
 on:
+  schedule:
+    - cron: '17 5 * * *'
   workflow_dispatch:
 
 concurrency:
@@ -39,7 +47,7 @@ jobs:
   cross-build:
     name: Cross-build the game and the unit tests; the Linux save
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
 
@@ -157,7 +165,7 @@ jobs:
   cross-build-suite:
     name: Cross-build the test runner (TEST=1)
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
 
@@ -232,7 +240,7 @@ jobs:
   linux-suite:
     name: The suite on Linux, 64-bit (the results to equal)
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
 
@@ -298,7 +306,7 @@ jobs:
     name: Run on Windows (unit tests, smoke, replays, save, suite)
     needs: [cross-build, cross-build-suite]
     runs-on: windows-latest
-    timeout-minutes: 40
+    timeout-minutes: 15
     defaults:
       run:
         shell: bash
@@ -339,8 +347,10 @@ jobs:
         if: always()
         run: tests/smoke/run_cross_os.sh load build/native64-windows/pokeemerald-native.exe out/cross-os/save/work/from out/cross-os/load
 
-      - name: Keep the logs and the outputs so far
-        if: always()
+      # Before the suite too, so that a suite that runs out of time cannot
+      # take these with it.
+      - name: Keep the logs and the outputs of a failed step so far
+        if: failure()
         uses: actions/upload-artifact@v4
         with:
           name: windows-logs-before-the-suite
@@ -364,12 +374,12 @@ jobs:
           make -C tools/mgba-rom-test-hydra
 
       # The test runner's own tests first, two of which crash on purpose: a
-      # minute that shows the hydra, the restart on exit code 75 and the
+      # few seconds that show the hydra, the restart on exit code 75 and the
       # protocol work before the whole suite is run.
       - name: The test runner's own tests through the hydra (its crashes included)
         id: suite_check
         if: always()
-        timeout-minutes: 5
+        timeout-minutes: 2
         shell: C:\msys64\usr\bin\bash.exe -l -e -o pipefail {0}
         env:
           MSYSTEM: MSYS
@@ -380,7 +390,7 @@ jobs:
 
       - name: Gate b, the suite through the hydra
         if: always() && steps.suite_check.outcome == 'success'
-        timeout-minutes: 25
+        timeout-minutes: 10
         shell: C:\msys64\usr\bin\bash.exe -l -e -o pipefail {0}
         env:
           MSYSTEM: MSYS
@@ -398,8 +408,8 @@ jobs:
             out/cross-os/load/work/again/
           if-no-files-found: ignore
 
-      - name: Keep the logs and the outputs
-        if: always()
+      - name: Keep the logs and the outputs of a failed run
+        if: failure()
         uses: actions/upload-artifact@v4
         with:
           name: windows-logs
@@ -413,7 +423,7 @@ jobs:
     needs: [cross-build, linux-suite, windows]
     if: always() && needs.cross-build.result == 'success'
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
 
