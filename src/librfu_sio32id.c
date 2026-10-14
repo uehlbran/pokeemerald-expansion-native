@@ -1,9 +1,7 @@
 #include "librfu.h"
 
 #if PLATFORM_NATIVE
-// A busy delay of `cycles` CPU cycles, provided by the platform layer
-// (platform/game_hooks.h), for the timer-polling delay below.
-void PlatformWaitCycles(u32 cycles);
+#include "platform/game_hooks.h"
 #endif
 #line 2
 
