@@ -21,6 +21,7 @@
 #include "decompress_asm.h"
 #include "game_hooks.h"
 #include "gba_memmap.h"
+#include "host_memory.h"
 #include "interrupt.h"
 #include "ptest.h"
 
@@ -46,15 +47,15 @@ static uintptr_t address_of(const volatile void *pointer)
     return address;
 }
 
-/* On the platform's call stack, which gba_regions.ld puts below 2^27 so that
- * the battle runner's 27-bit address fields hold its locals' addresses
- * (include/test/battle.h, QueuedSubHitEvent). */
+/* On the platform's call stack, where the link put it (host_memory.h), below
+ * 2^27 so that the battle runner's 27-bit address fields hold its locals'
+ * addresses (include/test/battle.h, QueuedSubHitEvent). */
 #define BATTLE_RUNNER_ADDRESS_LIMIT (UINT32_C(1) << 27)
 
 static bool on_call_stack(uintptr_t address)
 {
-    return address >= GAME_HOOKS_CALL_STACK_ADDRESS
-           && address < GAME_HOOKS_CALL_STACK_ADDRESS + GAME_HOOKS_CALL_STACK_SIZE
+    const struct host_span stack = host_memory_call_stack();
+    return address >= stack.start && address < stack.start + GAME_HOOKS_CALL_STACK_SIZE
            && address < BATTLE_RUNNER_ADDRESS_LIMIT;
 }
 

@@ -147,11 +147,10 @@ __attribute__((noinline, no_sanitize("address"))) static void call_entry_below_g
 
 /* The stack's place and size are the link's (host_memory); this checks they
  * are what the header says. */
-static bool call_stack_is_linked(void)
+static bool call_stack_is_linked(struct host_span stack)
 {
-    const struct host_span stack = host_memory_call_stack();
-    return stack.start == GAME_HOOKS_CALL_STACK_ADDRESS && stack.end - stack.start == GAME_HOOKS_CALL_STACK_SIZE
-           && stack.start % GAME_HOOKS_STACK_ALIGNMENT == 0;
+    return stack.start != 0 && stack.end - stack.start == GAME_HOOKS_CALL_STACK_SIZE
+           && stack.end <= GAME_HOOKS_CALL_STACK_LIMIT && stack.start % GAME_HOOKS_STACK_ALIGNMENT == 0;
 }
 
 void PlatformCallWithStack(void (*entry)(void *context), void *context, void *stackTop)
@@ -166,17 +165,18 @@ void PlatformCallWithStack(void (*entry)(void *context), void *context, void *st
         entry(context);
         return;
     }
-    if (!call_stack_is_linked()) {
-        (void)fprintf(stderr, "game_hooks: the call stack is not linked at %#x with %zu bytes (gba_regions.ld)\n",
-                      GAME_HOOKS_CALL_STACK_ADDRESS, GAME_HOOKS_CALL_STACK_SIZE);
+    const struct host_span stack = host_memory_call_stack();
+    if (!call_stack_is_linked(stack)) {
+        (void)fprintf(stderr,
+                      "game_hooks: the call stack is not linked as %zu bytes below %#x (host_memory_call_stack)\n",
+                      GAME_HOOKS_CALL_STACK_SIZE, GAME_HOOKS_CALL_STACK_LIMIT);
         return;
     }
     call.entry = entry;
     call.context = context;
     call.unwind_target = NULL;
     call.active = true;
-    const int ran = host_stack_run((void *)host_memory_call_stack().start, GAME_HOOKS_CALL_STACK_SIZE,
-                                   call_entry_below_gap, NULL);
+    const int ran = host_stack_run((void *)stack.start, GAME_HOOKS_CALL_STACK_SIZE, call_entry_below_gap, NULL);
     call.active = false;
     if (ran != 0) /* reported */
         return;

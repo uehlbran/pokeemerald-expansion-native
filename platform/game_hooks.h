@@ -29,11 +29,14 @@
 #include <stdint.h>
 
 /* Bytes of the stack PlatformCallWithStack runs the battle tests' functions
- * on (see there), and where it is: gba_regions.ld's .platform_call_stack,
- * below 2^27 so that the addresses of the functions' locals fit the 27-bit
- * fields the battle runner keeps them in (include/test/battle.h). */
+ * on (see there), and the address it must end below: 2^27, so that the
+ * addresses of the functions' locals fit the 27-bit fields the battle runner
+ * keeps them in (include/test/battle.h, QueuedSubHitEvent). Where it is, is
+ * the link's (host_memory_call_stack): 0x01800000 on Linux
+ * (gba_regions.ld's .platform_call_stack), 0x01801000 on Windows
+ * (gba_regions.pe.ld's .callstk; the image's headers take 0x01800000). */
 #define GAME_HOOKS_CALL_STACK_SIZE ((size_t)1024u * 1024u)
-#define GAME_HOOKS_CALL_STACK_ADDRESS UINT32_C(0x01800000)
+#define GAME_HOOKS_CALL_STACK_LIMIT (UINT32_C(1) << 27)
 
 /* The value game_hooks longjmps to main's exit target with (non-zero, since
  * setjmp's first return is 0). */
@@ -138,7 +141,7 @@ bool PlatformIsRomPointer(uintptr_t address);
  * larger again under AddressSanitizer), and overflowing it would overwrite
  * the runner state it lives in; so stackTop is not used: every call starts
  * at the top of one platform-owned stack of GAME_HOOKS_CALL_STACK_SIZE
- * bytes at GAME_HOOKS_CALL_STACK_ADDRESS, which nothing else uses, so locals
+ * bytes below GAME_HOOKS_CALL_STACK_LIMIT, which nothing else uses, so locals
  * survive between calls and land at the same addresses each time, which is
  * what the runner relies on (and their addresses fit its 27-bit fields). The
  * switch is host_stack's, annotated for AddressSanitizer's fiber support.

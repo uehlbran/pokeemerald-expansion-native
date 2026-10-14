@@ -2,10 +2,11 @@
  * test_host_memory.c: memory at fixed addresses (host_memory.h). The places
  * are written out here, independently of gba_memmap.h's table: each GBA
  * region at its GBATEK base, its size rounded up to whole 4 KiB pages
- * (GBATEK "GBA Memory Map"), and the battle runner's stack at 0x01800000,
- * 1 MiB. A page mapped at run time is zero-filled and writable, and mapping
- * over anything already there, a region or another mapped page, is refused
- * and leaves it as it was.
+ * (GBATEK "GBA Memory Map"), and the battle runner's stack, 1 MiB in whole
+ * pages below the lowest region (0x01800000 on Linux, 0x01801000 on Windows,
+ * where the image's headers take 0x01800000). A page mapped at run time is
+ * zero-filled and writable, and mapping over anything already there, a region
+ * or another mapped page, is refused and leaves it as it was.
  */
 #include <stdbool.h>
 #include <stddef.h>
@@ -33,8 +34,12 @@ static const struct {
 _Static_assert(EXPECTED_REGION_COUNT == GBA_REGION_COUNT - 1, "a region has no expected place");
 
 /* An address no region, no stack and nothing else in a test binary uses,
- * below the linked blocks (the page the m4a tests map). */
+ * below the linked blocks (the page the m4a tests map), and a multiple of
+ * 64 KiB, which Windows needs (host_windows.c). */
 #define FREE_PAGE_ADDRESS 0x01000000u
+
+/* The lowest region's base (EWRAM), which the call stack ends at or below. */
+#define LOWEST_REGION_BASE 0x02000000u
 
 PTEST(every_region_is_linked_at_its_base_in_whole_pages)
 {
@@ -56,8 +61,10 @@ PTEST(a_value_that_names_no_region_has_no_memory)
 PTEST(the_call_stack_is_linked_below_the_regions)
 {
     const struct host_span stack = host_memory_call_stack();
-    PT_ASSERT(stack.start == 0x01800000u);
+    PT_ASSERT(stack.start >= FREE_PAGE_ADDRESS + PAGE);
+    PT_ASSERT(stack.start % PAGE == 0);
     PT_ASSERT(stack.end - stack.start == MIB);
+    PT_ASSERT(stack.end <= LOWEST_REGION_BASE);
 }
 
 static volatile uint8_t *byte_at(uintptr_t address)

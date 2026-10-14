@@ -5,10 +5,12 @@
 # HOST_OS is the system building it, named as `uname -s` does (it defaults to
 # that); only Linux builds so far. TARGET_OS (target.mk, included below) is the
 # system the executable runs on: HOST_OS, or `windows` for the cross build.
-# Each target OS has one source for the host layer beside the one every POSIX
-# system shares (platform/host_*.h are the interface; docs/ARCHITECTURE.md,
-# "The host layer"), so a port adds its file and its value here. Named HOST_OS,
-# not OS, because Windows sets OS in every environment and make would take it.
+# Each target OS has its sources for the host layer (platform/host_*.h are the
+# interface; docs/ARCHITECTURE.md, "The host layer"): Linux the one every POSIX
+# system shares and its own, Windows its own; both host_linked.c, which reads
+# the symbols the GNU ld scripts define. A port adds its files and its value
+# here. Named HOST_OS, not OS, because Windows sets OS in every environment and
+# make would take it.
 HOST_OS ?= $(shell uname -s)
 
 ifneq ($(HOST_OS),Linux)
@@ -46,12 +48,12 @@ write_symbol_map = rm -f $(2) $(2).nm $(2).tmp \
 # script gave the value zero (gba_game.pe.ld), not a function.
 ifeq ($(TARGET_OS),Linux)
 
-HOST_SRCS := host_posix.c host_linux.c
+HOST_SRCS := host_posix.c host_linux.c host_linked.c
 SYMBOL_MAP_SELECT = $$4 == "FUNC" && $$5 != "" && $$1 != ""
 
 else ifeq ($(TARGET_OS),windows)
 
-HOST_SRCS := host_windows.c
+HOST_SRCS := host_windows.c host_linked.c
 SYMBOL_MAP_SELECT = $$4 == "Function" && $$1 != "" && $$2 !~ /^0+$$/
 
 endif
