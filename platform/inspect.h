@@ -65,11 +65,13 @@
  *   party_name:N      its species name ("none" when empty)
  *   party_level:N     its level
  *   party_extras:N    "shiny=S dynamax=D gmax=G tera=T": what the debug menu's complex give sets
+ *   party_move:SLOT:MOVE  move number MOVE (0 to 3) of party slot SLOT, 0 for an empty slot or move
  *   bag_item_count:ID quantity of item ID in the bag (CountTotalItemQuantityInBag)
  *   pc_box_count:N    Pokemon in PC box N (0 to 13)
  *   pc_box_species:N  species in PC box N, by position, comma separated ("none" when empty)
  *   flag:ID           FlagGet(ID), 0 or 1 (ID below FLAGS_COUNT)
- *   var:ID            VarGet(ID) (ID from VARS_START to 65535)
+ *   var:ID            VarGet(ID) (ID from VARS_START to VARS_END, or a special variable,
+ *                     SPECIAL_VARS_START to SPECIAL_VARS_END; inspect_args.c)
  */
 #ifndef PLATFORM_INSPECT_H
 #define PLATFORM_INSPECT_H
@@ -81,7 +83,8 @@
 
 /* Loads the executable's symbol map for naming callbacks. A failure is
  * reported and is not fatal: callbacks outside the table then read
- * "unknown:0x...". Returns 0 or -1 for that. */
+ * "unknown:0x...". The debug menu facts (inspect_menu.c) depend on the map
+ * entirely: without it they read 0 and "none". Returns 0 or -1 for that. */
 int inspect_init(void);
 
 /* Releases what inspect_init loaded. Safe before it and twice. */
