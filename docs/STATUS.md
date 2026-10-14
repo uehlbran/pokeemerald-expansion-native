@@ -46,7 +46,15 @@ Linux only and why not every push) and, from the Opus inventory of the Windows a
 order), the first tasks: the loader probes on the Windows and macOS
 runners (W1, M0) and the host layer on Linux as a pure refactor (W2).
 
-**Broke and fixed.** Milestone 7: the 64-bit plain debug-menu replay
+**Broke and fixed.** Milestone 8: the first per-push CI run on main
+after the test-timeout merge failed in one new test (run 38577112419):
+the Linux thread-count test found the stopped watchdog still listed in
+/proc/self/task after the join. pthread_join returns when the kernel
+clears the thread's id at the end of its exit, which is before the task
+leaves the list, so the count can lag the join for a moment (seen once
+in 300 local runs with the old binary). The test now waits up to two
+seconds for the count to settle; 600 runs at both widths, no failure
+(the fix is on main after e517db1ee3). Milestone 7: the 64-bit plain debug-menu replay
 failed on main right after the alignment merge while the sanitized one
 passed. Cause: the platform's inspect objects (the replay facts, which read
 the game's structs) were compiled before task.h changed and their
