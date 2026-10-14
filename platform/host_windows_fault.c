@@ -16,7 +16,8 @@
  * before any frame's handler, gives those two and nothing else to the divide
  * handler. One it passes on, like every other exception no frame takes,
  * reaches the unhandled-exception filter: the crash handler, then the end of
- * the process. A crash handler that returns lets it end as without one.
+ * the process. A crash handler that returns lets it end with the exception's
+ * code, as without one (the filter ends it, on_unhandled_exception says why).
  *
  * What a handler may do (docs/C-RULES.md, "Concurrency"). It runs on the
  * thread that faulted, the game's or, rarely, one of SDL's, so the handler
@@ -129,17 +130,22 @@ static struct {
 } crash;
 
 /* The filter the system calls for an exception no frame took, after the
- * vectored handlers. Returning EXCEPTION_CONTINUE_SEARCH hands it to the
- * system's default, which ends the process with the exception's code as its
- * exit status (with no dialog, keep_error_dialogs_off). */
+ * vectored handlers. When the handler returns, the filter ends the process
+ * itself, with the exception's code as its exit status, which is the status
+ * the system's default would give. It does not hand the exception back to that
+ * default: the default unwinds to the thread's first frame, and the unwind
+ * refuses a frame above its target, which every frame on the battle runner's
+ * stack is when the main stack lies below it (host_windows_stack.c), so a
+ * fault there would end with another code or come back here. */
 static LONG WINAPI on_unhandled_exception(EXCEPTION_POINTERS *exception)
 {
     const host_fault_crash_handler handler = atomic_load_explicit(&crash.handler, memory_order_acquire);
-    if (handler != NULL) {
-        const struct host_fault fault = {.exception = exception};
-        handler(&fault);
-    }
-    return EXCEPTION_CONTINUE_SEARCH;
+    if (handler == NULL)
+        return EXCEPTION_CONTINUE_SEARCH;
+    const struct host_fault fault = {.exception = exception};
+    handler(&fault);
+    (void)TerminateProcess(GetCurrentProcess(), exception->ExceptionRecord->ExceptionCode);
+    return EXCEPTION_CONTINUE_SEARCH; /* not reached: TerminateProcess ends this thread with its process */
 }
 
 int host_fault_install_crash(host_fault_crash_handler handler)

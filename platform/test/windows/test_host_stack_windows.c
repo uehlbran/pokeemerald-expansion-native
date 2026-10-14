@@ -5,9 +5,10 @@
  * hold both stacks, and afterwards they are the caller's again; a division by
  * zero there completes through the divide handler; a crash there is
  * dispatched up to the crash handler, through the switch's unwind
- * information (in a child, windows_support.h); and the registers a Win64
- * callee keeps, the SSE and x87 control words among them, are the caller's
- * after an entry that changed them and left early.
+ * information, and a crash handler that returns there lets the process end
+ * with the fault's code (in children, windows_support.h); and the registers
+ * a Win64 callee keeps, the SSE and x87 control words among them, are the
+ * caller's after an entry that changed them and left early.
  */
 #include <intrin.h>
 #include <stdbool.h>
@@ -131,6 +132,24 @@ PTEST(a_crash_on_the_given_stack_reaches_the_crash_handler)
     PT_ASSERT_EQ_U32(code, CHILD_CRASH_HANDLED);
 }
 
+static void return_from_the_crash_handler(const struct host_fault *fault)
+{
+    (void)fault;
+}
+
+static void return_after_a_crash_on_the_call_stack(void)
+{
+    if (host_fault_install_crash(return_from_the_crash_handler) == 0)
+        (void)run_on_the_call_stack(store_to_an_unmapped_address, NULL);
+}
+
+PTEST(a_crash_handler_that_returns_on_the_given_stack_ends_the_process_with_the_faults_code)
+{
+    uint32_t code = 0;
+    PT_ASSERT(wsup_run_child("return_on_stack", &code));
+    PT_ASSERT_EQ_U32(code, EXCEPTION_ACCESS_VIOLATION);
+}
+
 /* --- the registers a callee keeps ---------------------------------------------------- */
 
 /* MXCSR with its rounding control (bits 13 and 14, Intel SDM vol. 1, 10.2.3)
@@ -233,5 +252,7 @@ int main(void)
         return ptest_main_for(&ptest_tests, stdout);
     if (strcmp(name, "crash_on_stack") == 0)
         crash_on_the_call_stack();
+    if (strcmp(name, "return_on_stack") == 0)
+        return_after_a_crash_on_the_call_stack();
     return (int)WSUP_CHILD_RETURNED;
 }

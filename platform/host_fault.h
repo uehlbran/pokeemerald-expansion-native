@@ -54,7 +54,8 @@ typedef bool (*host_fault_divide_handler)(struct host_fault *fault);
 
 /* A crash handler: reports, and may start the program again
  * (host_process_restart). When it returns, the fault ends the process as it
- * would have without a handler. */
+ * would have without a handler (Windows: with the exception's code as the
+ * exit status). */
 typedef void (*host_fault_crash_handler)(const struct host_fault *fault);
 
 /* Installs handler for the integer divide error (x86 #DE: a division by zero
