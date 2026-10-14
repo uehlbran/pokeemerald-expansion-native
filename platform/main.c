@@ -177,7 +177,7 @@ static int start_sdl(const struct options *o)
 }
 static int start_audio(const struct options *o)
 {
-    return audio_init(FRAME_AUDIO_SAMPLE_RATE_HZ, o->silent);
+    return audio_init(FRAME_AUDIO_SAMPLE_RATE_HZ, o->silent ? AUDIO_SILENT : AUDIO_DEVICE);
 }
 
 /* --rtc-fixed: the clock's base time (fixed_clock.h); the source reads the

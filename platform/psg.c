@@ -22,18 +22,14 @@
  * frame after the VBlank handler, where m4a's CgbSound writes the registers,
  * so register changes land on frame boundaries, as the m4a engine intends.
  *
- * TRIGGERS. NRx4 bit 7 ("Initial (1=Restart Sound)") is write-only: on the
- * GBA each write of a 1 restarts the channel once, and the bit never reads
- * back as 1. Plain memory keeps the 1, so the module must remember what it
- * has acted on. It does so in the register itself: when a call finds the bit
- * set it triggers the channel and clears the bit in the I/O region, so the
- * register then reads as the hardware's does and the game's next write of the
- * bit is seen as a new trigger, even if the value written is the same. A
- * shadow copy compared between calls would not do: m4a writes NRx4 with bit 7
- * set on every volume change and every note (src/m4a.c, CgbSound, and
- * CgbOscOff's NRx4 = 80h), usually the same value as before, and each of those
- * writes restarts the envelope on hardware. Writes of the bit between two
- * calls count as one trigger. NRx4's other bits are left as written.
+ * TRIGGERS. NRx4 bit 7 ("Initial (1=Restart Sound)") is write-only on
+ * hardware and reads 0. Plain memory keeps the 1, so this module clears it
+ * after acting on it: the register then reads as on hardware and the next
+ * write of the bit is a new trigger. A shadow copy would miss m4a's habit of
+ * rewriting the same NRx4 value with bit 7 set on every volume change and
+ * note (src/m4a.c CgbSound, CgbOscOff), each of which restarts the envelope
+ * on hardware. Writes between two calls count as one trigger. NRx4's other
+ * bits are left as written.
  *
  * OTHER WRITE-ONLY AND READ-ONLY BITS. The frequency (NRx3, NRx4 bits 0-2)
  * and length fields are write-only on hardware but are left as written here,
@@ -88,7 +84,8 @@
  * 4 * 15 * 10h = 3C0h units. This module writes 16 int16_t steps per unit,
  * so its maximum is 3C0h * 16 = 15360 (PSG_MAX_OUTPUT_LEVEL), and the GBA's
  * whole digital mix, two FIFOs at +/-200h each plus the PSG's 0..3C0h, spans
- * -16384..31744 at the same scale: the audio module can add the FIFO output
+ * -16384..31616 at the same scale (a FIFO sample is at most 127, so
+ * 2 * 127 * 4 units, not the nominal 200h the assertion below uses): the audio module can add the FIFO output
  * at 16 steps per unit (a FIFO sample s at 100% is 4s units) and never
  * overflow int16_t. (The GBA clips that sum to its 10-bit range after adding
  * SOUNDBIAS; the host has more room, so nothing clips.) The output carries
@@ -179,7 +176,7 @@ static const uint8_t psg_volume_quarters[] = {1, 2, 4, 4};
 #define GBA_FIFO_UNITS 0x200u /* one FIFO's full swing */
 #define GBA_FIFO_COUNT 2u
 
-_Static_assert(CHANNEL_COUNT *PSG_LEVEL_MAX *GBA_UNITS_PER_LEVEL *INT16_PER_GBA_UNIT == PSG_MAX_OUTPUT_LEVEL,
+_Static_assert((CHANNEL_COUNT * PSG_LEVEL_MAX * GBA_UNITS_PER_LEVEL * INT16_PER_GBA_UNIT) == PSG_MAX_OUTPUT_LEVEL,
                "PSG_MAX_OUTPUT_LEVEL follows from the scale");
 _Static_assert((GBA_FIFO_COUNT * GBA_FIFO_UNITS + CHANNEL_COUNT * PSG_LEVEL_MAX * GBA_UNITS_PER_LEVEL)
                        * INT16_PER_GBA_UNIT

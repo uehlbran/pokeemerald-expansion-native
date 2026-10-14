@@ -85,7 +85,7 @@ static int open_device(void)
     return 0; /* SDL opens devices paused */
 }
 
-int audio_init(uint32_t sample_rate_hz, bool silent)
+int audio_init(uint32_t sample_rate_hz, enum audio_output output)
 {
     if (sample_rate_hz == 0u || sample_rate_hz > AUDIO_MAX_SAMPLE_RATE_HZ) {
         (void)fprintf(stderr, MODULE ": audio_init: sample rate %u Hz out of range 1..%u\n", sample_rate_hz,
@@ -97,13 +97,13 @@ int audio_init(uint32_t sample_rate_hz, bool silent)
         return -1;
     }
     state.sample_rate_hz = sample_rate_hz;
-    state.silent = silent;
+    state.silent = (output == AUDIO_SILENT);
     state.paused = true;
     state.dropped_frames = 0;
     state.underruns = 0;
     state.total_frames = 0;
     state.initialised = true;
-    if (!silent && open_device() != 0) {
+    if (!state.silent && open_device() != 0) {
         audio_shutdown();
         return -1;
     }
