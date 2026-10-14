@@ -10,8 +10,8 @@
 #include "save_file_fixture.h"
 
 /* A file the process may not read: the open fails with something other than
- * ENOENT, which is corrupt (reported), not a new game. Root can read it, so
- * the expectation follows access(). */
+ * ENOENT, which is corrupt (reported), not a new game. Root can read it, and
+ * a headerless file it reads is refused, so the expectation follows access(). */
 PTEST(a_file_that_cannot_be_opened_is_rejected_not_treated_as_new)
 {
     struct scratch scratch;
@@ -30,7 +30,7 @@ PTEST(a_file_that_cannot_be_opened_is_rejected_not_treated_as_new)
     PT_ASSERT(written);
     PT_ASSERT(locked);
     PT_ASSERT_EQ_INT(init, SAVE_FILE_OK);
-    PT_ASSERT_EQ_INT(load, readable ? SAVE_FILE_LEGACY : SAVE_FILE_CORRUPT);
+    PT_ASSERT_EQ_INT(load, readable ? SAVE_FILE_REFUSED : SAVE_FILE_CORRUPT);
     PT_ASSERT(readable || erased);
     PT_ASSERT(removed);
 }

@@ -8,8 +8,8 @@
  * version, pointer width, layout id, image size and the image's CRC-32, each
  * a little-endian u32), then the chip image byte for byte (sector s at
  * 28 + s * 4096), 131072 bytes for Emerald's 1 Mbit chip (GBATEK "GBA Cart
- * Backup Flash ROM"). A bare 131072-byte image, what GBA emulators write, is
- * a legacy file.
+ * Backup Flash ROM"). A file without the header, such as the bare 131072-byte
+ * image GBA emulators write, is refused.
  *
  * Each test works in a fresh directory under the temporary directory that it
  * creates and removes. It gathers what it checks into locals, cleans up, and
@@ -61,6 +61,7 @@ _Static_assert(SAVE_FILE_FORMAT_VERSION == 1, "these tests describe format versi
  * they are 128 KiB each. */
 static uint8_t expected_image[CHIP_BYTES] __attribute__((unused));
 static uint8_t file_bytes[FILE_BYTES + 1] __attribute__((unused));
+static uint8_t expected_file[FILE_BYTES + 1] __attribute__((unused));
 
 struct scratch {
     char dir[SAVE_FILE_PATH_SIZE];  /* a fresh directory */

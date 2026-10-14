@@ -10,40 +10,65 @@
 // deps: save_file.c gba_memmap.c flash.c
 #include "save_file_fixture.h"
 
-/* A legacy file loads, and the next store writes it back with a header and
- * this build's tag; loading that gives SAVE_FILE_OK. */
-PTEST(a_legacy_file_is_upgraded_by_the_next_store)
+/* A refused file (an emulator's save) is never written over: the store that
+ * follows the refusal reports it, writes nothing, leaves no tmp file, and the
+ * file is byte for byte what it was. A later init re-arms the store. */
+PTEST(the_store_never_touches_a_refused_file)
 {
     struct scratch scratch;
     if (!scratch_create(&scratch))
         PT_FAIL("cannot create a scratch directory");
-    fill_pattern(expected_image, CHIP_BYTES, 0x2A);
-    const bool written = write_file(scratch.path, expected_image, CHIP_BYTES);
+    fill_pattern(expected_file, CHIP_BYTES, 0x2A);
+    const bool written = write_file(scratch.path, expected_file, CHIP_BYTES);
     flash_init();
     const int init = save_file_init(scratch.path);
-    const int first_load = save_file_load();
+    const int load = save_file_load();
     const int store = save_file_store();
-    const bool read = read_file(scratch.path, FILE_BYTES);
-    const bool has_magic = memcmp(file_bytes, MAGIC, MAGIC_BYTES) == 0;
-    const bool image_after_header = memcmp(file_bytes + HEADER_BYTES, expected_image, CHIP_BYTES) == 0;
-    memset(flash_image(), 0x00, CHIP_BYTES);
-    const int second_load = save_file_load();
-    const bool loaded = image_is_expected();
-    struct save_file_layout layout = {0};
-    const bool has_layout = save_file_loaded_layout(&layout);
+    const bool tmp_made = exists(scratch.tmp);
+    const bool unchanged = read_file(scratch.path, CHIP_BYTES) && memcmp(file_bytes, expected_file, CHIP_BYTES) == 0;
+    const int init_again = save_file_init(scratch.path);
+    const int store_again = save_file_store();
     save_file_shutdown();
     const bool removed = scratch_remove(&scratch);
     PT_ASSERT(written);
     PT_ASSERT_EQ_INT(init, SAVE_FILE_OK);
-    PT_ASSERT_EQ_INT(first_load, SAVE_FILE_LEGACY);
+    PT_ASSERT_EQ_INT(load, SAVE_FILE_REFUSED);
+    PT_ASSERT_EQ_INT(store, SAVE_FILE_REFUSED);
+    PT_ASSERT(!tmp_made);
+    PT_ASSERT(unchanged);
+    PT_ASSERT_EQ_INT(init_again, SAVE_FILE_OK);
+    PT_ASSERT_EQ_INT(store_again, SAVE_FILE_OK);
+    PT_ASSERT(removed);
+}
+
+/* A file loaded after a refusal is not refused: the store works again once the
+ * path holds a valid save. */
+PTEST(the_store_works_after_a_refused_file_is_replaced_by_a_save)
+{
+    struct scratch scratch;
+    if (!scratch_create(&scratch))
+        PT_FAIL("cannot create a scratch directory");
+    fill_pattern(expected_file, CHIP_BYTES, 0x2A);
+    const bool written = write_file(scratch.path, expected_file, CHIP_BYTES);
+    set_image(0x2F);
+    const int init = save_file_init(scratch.path);
+    const int refused = save_file_load();
+    const bool removed_file = tsup_remove_file(scratch.path);
+    const int missing = save_file_load();
+    memcpy(flash_image(), expected_image, CHIP_BYTES);
+    const int store = save_file_store();
+    const bool read = read_file(scratch.path, FILE_BYTES);
+    const bool image_stored = memcmp(file_bytes + HEADER_BYTES, expected_image, CHIP_BYTES) == 0;
+    save_file_shutdown();
+    const bool removed = scratch_remove(&scratch);
+    PT_ASSERT(written);
+    PT_ASSERT_EQ_INT(init, SAVE_FILE_OK);
+    PT_ASSERT_EQ_INT(refused, SAVE_FILE_REFUSED);
+    PT_ASSERT(removed_file);
+    PT_ASSERT_EQ_INT(missing, SAVE_FILE_NEW);
     PT_ASSERT_EQ_INT(store, SAVE_FILE_OK);
     PT_ASSERT(read);
-    PT_ASSERT(has_magic);
-    PT_ASSERT(image_after_header);
-    PT_ASSERT_EQ_INT(second_load, SAVE_FILE_OK);
-    PT_ASSERT(loaded);
-    PT_ASSERT(has_layout);
-    PT_ASSERT_EQ_U32(layout.pointer_bits, native_pointer_bits());
+    PT_ASSERT(image_stored);
     PT_ASSERT(removed);
 }
 

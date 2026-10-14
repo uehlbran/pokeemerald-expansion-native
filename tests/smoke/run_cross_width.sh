@@ -15,8 +15,8 @@
 #              the same, for the dumps and screenshots after the restart (26_continue_menu,
 #              27_continued); what was saved (25_saved) is what Continue loaded; stderr says the
 #              save was converted; the file is unchanged (the conversion is not a game write).
-#   3. bare/   only when FROM is 32-bit: step 2 on the image without its header (what an
-#              emulator writes), which the 64-bit build takes to have the 32-bit layout.
+#   3. headerless/  TO_BINARY on the image without its header (what an emulator writes): refused
+#              at start (exit status 1, "has no save header" on stderr), the file unchanged.
 #      other/  TO_BINARY on a copy whose header names layout id 2: refused at start (exit status
 #              1, the refusal on stderr), the file unchanged.
 #   4. again/  TO_BINARY on another copy, cross_width_save.replay: Continue, save again, restart,
@@ -41,7 +41,7 @@ opening="$here/opening.replay"
 expected="$here/expected"
 work="$outdir/work"
 rm -rf "$work" || die "cannot remove $work"
-mkdir -p "$work/from" "$work/to" "$work/bare" "$work/other" "$work/again" || die "cannot create $work"
+mkdir -p "$work/from" "$work/to" "$work/headerless" "$work/other" "$work/again" || die "cannot create $work"
 
 # platform/save_file.h: the 8-byte magic, then version, pointer width and layout id, u32 LE.
 save_header_magic="PENSAVE"
@@ -132,16 +132,22 @@ grep -q "has a $from_bits-bit build's save layout; converted 1 save slot" "$work
     || fail "to: TO did not report converting the save from $from_bits bits"
 cmp -s "$work/from/pokeemerald.sav" "$work/to/pokeemerald.sav" || fail "to: the save file changed, but the game did not save"
 
-# ---- 3. TO on the bare image (a 32-bit save without its header) ---------------------------------
-if [ "$from_bits" = 32 ]; then
-    tail -c "$save_image_size" "$work/from/pokeemerald.sav" > "$work/bare/pokeemerald.sav" || die "cannot strip the header"
-    cp "$work/from/pokeemerald.rtc" "$work/bare/" || die "cannot copy the RTC file"
-    [ "$(($(stat -c %s "$work/from/pokeemerald.sav") - save_header_size))" -eq "$save_image_size" ] \
-        || fail "bare: the save file is not a header and a $save_image_size-byte image"
-    continue_on "$work/bare"
-    grep -q "has no header" "$work/bare/stderr.log" || fail "bare: TO did not take the image for a bare one"
-else
-    echo "== bare: skipped (only a 32-bit save is ever bare)"
+# ---- 3. TO refuses the image without its header ------------------------------------------------
+# Not converted or taken for any layout: the file looks like an emulator's save (save_file.h).
+tail -c "$save_image_size" "$work/from/pokeemerald.sav" > "$work/headerless/pokeemerald.sav" || die "cannot strip the header"
+[ "$(($(stat -c %s "$work/from/pokeemerald.sav") - save_header_size))" -eq "$save_image_size" ] \
+    || fail "headerless: the save file is not a header and a $save_image_size-byte image"
+cp "$work/headerless/pokeemerald.sav" "$work/headerless/before.sav" || die "cannot copy the save"
+echo "== headerless: $to_binary on a save without its header"
+"$to_binary" --headless --silent --unthrottled --frames 60 --save "$work/headerless/pokeemerald.sav" \
+    --rtc-offset "$work/headerless/pokeemerald.rtc" > "$work/headerless/stdout.log" 2> "$work/headerless/stderr.log"
+status=$?
+[ "$status" -eq "$main_exit_failure" ] || fail "headerless: TO ended with status $status, not $main_exit_failure"
+grep -q "has no save header, so it looks like an emulator or cartridge save" "$work/headerless/stderr.log" \
+    || fail "headerless: TO did not report refusing the file"
+cmp -s "$work/headerless/before.sav" "$work/headerless/pokeemerald.sav" || fail "headerless: the refused save file changed"
+if new_sanitizer_reports "$work/headerless/stderr.log" "$work/headerless/sanitizer-new.log"; then
+    fail "headerless: sanitizer reports in $work/headerless/stderr.log"
 fi
 
 # ---- 3b. TO refuses a save whose layout id it does not know -------------------------------------

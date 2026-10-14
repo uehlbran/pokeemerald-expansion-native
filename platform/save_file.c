@@ -10,9 +10,10 @@
  * (docs/research/port-*.md): reads from a second file handle, unflushed
  * writes, no atomic replacement, and regionalidades' rename without fsync.
  *
- * Load accepts a versioned file whose header, size and CRC all agree, or a
- * bare 128 KiB image (legacy); anything else is reported and leaves the chip
- * erased, never half-loaded. Store writes <path>.tmp, syncs it, renames it
+ * Load accepts a versioned file whose header, size and CRC all agree;
+ * anything else is reported and leaves the chip erased, never half-loaded. A
+ * file without the header is refused as an emulator's or cartridge's save,
+ * and store then leaves it alone. Store writes <path>.tmp, syncs it, renames it
  * over <path> and syncs the directory (host_file.h), so a crash at any point
  * leaves either the old file or the new one, and a failed store removes its
  * tmp file and leaves <path> untouched.
@@ -42,10 +43,6 @@
 
 /* Appended to the save path for the file a store writes before renaming. */
 #define SAVE_FILE_TMP_SUFFIX ".tmp"
-
-/* GBATEK "GBA Cart Backup Flash ROM": "64 KBytes - 512Kbits Flash ROM", the
- * smaller chip; a .sav of this size is from a different cartridge type. */
-#define FLASH_512K_CHIP_SIZE 0x10000u
 
 /* CRC-32/ISO-HDLC: reflected polynomial 0x04C11DB7, initial value and final
  * XOR all ones. */
@@ -94,6 +91,7 @@ static struct {
     char path[SAVE_FILE_PATH_SIZE];
     char tmp_path[SAVE_FILE_PATH_SIZE]; /* path + SAVE_FILE_TMP_SUFFIX */
     bool has_loaded_layout;             /* the last load read a valid header */
+    bool refused;                       /* the last load refused the file; store leaves it alone */
     struct save_file_layout loaded_layout;
 } state;
 
@@ -161,6 +159,7 @@ int save_file_init(const char *path)
 {
     state.initialised = false;
     state.has_loaded_layout = false;
+    state.refused = false;
     if (path == NULL) {
         state.persistent = false;
         state.initialised = true;
@@ -271,24 +270,23 @@ static int read_versioned(FILE *file, intmax_t file_size, const struct header_by
     return SAVE_FILE_FOREIGN_LAYOUT;
 }
 
-/* A file without the magic, positioned at its start: a bare chip image. */
-static int read_legacy(FILE *file, intmax_t file_size)
+/* A file without the magic is what an emulator or a flash cartridge dump
+ * writes (or something else entirely). The game's sector checksum is a sum
+ * over raw bytes, so nothing in such a file tells a GBA-layout image from a
+ * native one, and it is never loaded or converted. */
+static int refuse_headerless(void)
 {
-    if (file_size == FLASH_512K_CHIP_SIZE)
-        return corrupt("%u bytes is a save from a 512 Kbit flash cartridge, but Emerald's chip "
-                       "is 1 Mbit (%llu bytes)",
-                       FLASH_512K_CHIP_SIZE, (unsigned long long)FLASH_CHIP_SIZE);
-    if (file_size != (intmax_t)FLASH_CHIP_SIZE)
-        return corrupt("%lld bytes, with no header, but a bare 1 Mbit flash image is %llu bytes", (long long)file_size,
-                       (unsigned long long)FLASH_CHIP_SIZE);
-    if (!read_exactly(file, flash_image(), FLASH_CHIP_SIZE))
-        return SAVE_FILE_CORRUPT;
-    return SAVE_FILE_LEGACY;
+    (void)fprintf(stderr,
+                  "save_file: %s: has no save header, so it looks like an emulator or cartridge save; importing "
+                  "those is not supported yet; the file is left untouched\n",
+                  state.path); /* best-effort */
+    state.refused = true;
+    return SAVE_FILE_REFUSED;
 }
 
-/* Reads the open save file into the image: SAVE_FILE_OK, SAVE_FILE_LEGACY,
- * SAVE_FILE_FOREIGN_LAYOUT, or SAVE_FILE_CORRUPT with the reason printed
- * (the image may then hold part of the file). */
+/* Reads the open save file into the image: SAVE_FILE_OK,
+ * SAVE_FILE_FOREIGN_LAYOUT, SAVE_FILE_REFUSED, or SAVE_FILE_CORRUPT, with the
+ * reason printed (the image may then hold part of the file). */
 static int read_save(FILE *file)
 {
     struct stat info;
@@ -304,13 +302,9 @@ static int read_save(FILE *file)
     const size_t header_length = file_size < (intmax_t)sizeof header ? (size_t)file_size : sizeof header;
     if (!read_exactly(file, &header, header_length))
         return SAVE_FILE_CORRUPT;
-    if (header_length >= MAGIC_SIZE && memcmp(header.magic, magic, MAGIC_SIZE) == 0)
-        return read_versioned(file, file_size, &header, header_length);
-    if (fseek(file, 0, SEEK_SET) != 0) {
-        report("fseek", state.path, errno);
-        return SAVE_FILE_CORRUPT;
-    }
-    return read_legacy(file, file_size);
+    if (header_length < MAGIC_SIZE || memcmp(header.magic, magic, MAGIC_SIZE) != 0)
+        return refuse_headerless();
+    return read_versioned(file, file_size, &header, header_length);
 }
 
 int save_file_load(void)
@@ -320,6 +314,7 @@ int save_file_load(void)
         return SAVE_FILE_ERR_NOT_INITIALISED;
     }
     state.has_loaded_layout = false;
+    state.refused = false;
     if (!state.persistent) {
         flash_erase_image();
         return SAVE_FILE_NEW;
@@ -338,7 +333,7 @@ int save_file_load(void)
         report("fclose", state.path, errno);
         status = SAVE_FILE_CORRUPT;
     }
-    if (status == SAVE_FILE_CORRUPT) {
+    if (status == SAVE_FILE_CORRUPT || status == SAVE_FILE_REFUSED) {
         state.has_loaded_layout = false;
         flash_erase_image();
     }
@@ -414,6 +409,11 @@ int save_file_store(void)
     }
     if (!state.persistent)
         return SAVE_FILE_OK;
+    if (state.refused) {
+        (void)fprintf(stderr, "save_file: %s was refused as a headerless save; not storing over it\n",
+                      state.path); /* best-effort */
+        return SAVE_FILE_REFUSED;
+    }
     const int written = write_tmp();
     if (written != SAVE_FILE_OK)
         return written;
@@ -437,4 +437,5 @@ void save_file_shutdown(void)
     state.initialised = false;
     state.persistent = false;
     state.has_loaded_layout = false;
+    state.refused = false;
 }
