@@ -12,7 +12,7 @@
 # and -san appended with SANITIZE=1), mirroring the source tree. `native`
 # links them with the platform layer into pokeemerald-native in that
 # directory (pokeemerald-native-test with TEST=1, the test runner build),
-# and writes the executable's function map beside it
+# and its link writes the executable's function map beside it
 # (pokeemerald-native.symbols, which the replays name callbacks with).
 # HOST_OS (platform/host.mk) is the system it runs on: Linux.
 #
@@ -432,7 +432,7 @@ NATIVE_LDFLAGS := -m$(BITS) -no-pie -Wl,-Ttext-segment=0x40000000 \
                   -Wl,--defsym,gba_game_objects_linked=1 $(NATIVE_LINK_SANITIZERS)
 NATIVE_LDLIBS := $(shell pkg-config --libs sdl2) -lm
 
-native: $(NATIVE_EXE) $(NATIVE_EXE).symbols
+native: $(NATIVE_EXE)
 
 # Seeds $(ASSETS_DIR_NAME) from the GBA build's build/assets so that the first native build converts
 # only what differs: copies it (preserving times, so make sees the files as up to date) and deletes
@@ -461,14 +461,15 @@ platform-lib:
 
 $(PLATFORM_LIB): platform-lib ;
 
+# The link also writes the function map platform/symbols.c reads to name the
+# game's callbacks in the replays (symbols.h), beside the executable: one
+# recipe, so that every way of building the executable writes its map, and a
+# map that cannot be written fails the link (.DELETE_ON_ERROR removes the
+# executable).
 $(NATIVE_EXE): $(OBJS) $(PLATFORM_LIB) $(NATIVE_LINKER_SCRIPTS) | check-palette-padding $(DATA_LAYOUT_CHECKS)
 	@echo "$(HOST_CC) <link> -o $@"
 	@$(HOST_CC) $(NATIVE_LDFLAGS) -o $@ $(OBJS) $(PLATFORM_LIB) $(NATIVE_LDLIBS)
-
-# The function map platform/symbols.c reads to name the game's callbacks in
-# the replays (symbols.h), beside the executable it describes.
-$(NATIVE_EXE).symbols: $(NATIVE_EXE)
-	$(call write_symbol_map,$<,$@)
+	@$(call write_symbol_map,$@,$@.symbols)
 
 # --------------------------------------------------------------------------
 # check: expansion's test suite against the native test runner, through

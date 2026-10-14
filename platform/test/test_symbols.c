@@ -16,8 +16,9 @@
 #include <string.h>
 #include <unistd.h>
 
-/* Room for every fixture map below. */
+/* Room for every fixture map below, and for a temporary file's path. */
 #define MAP_TEXT_SIZE 1024u
+#define TEMP_PATH_SIZE 512u
 
 /* Named, global and never inlined, so that they have a symbol of their own. */
 __attribute__((noinline)) int symbols_test_function_alpha(int x)
@@ -52,8 +53,11 @@ static void add_line(char *text, uintptr_t address, const char *name)
  * removed again. 99: the fixture could not be written. */
 static int load_bytes(const char *bytes, size_t size)
 {
-    char path[64];
-    (void)snprintf(path, sizeof path, "/tmp/test_symbols_XXXXXX");
+    const char *base = getenv("TMPDIR");
+    char path[TEMP_PATH_SIZE];
+    const int length = snprintf(path, sizeof path, "%s/test_symbols_XXXXXX", base != NULL ? base : "/tmp");
+    if (length <= 0 || (size_t)length >= sizeof path)
+        return 99;
     const int fd = mkstemp(path);
     if (fd < 0)
         return 99;
@@ -127,13 +131,6 @@ PTEST(upper_case_digits_read_as_lower_case_ones)
     symbols_unload();
 }
 
-PTEST(an_empty_map_loads_no_functions)
-{
-    PT_ASSERT_EQ_INT(load_text(""), 0);
-    PT_ASSERT_EQ_U32(symbols_count(), 0);
-    PT_ASSERT(symbols_name_at(0) == NULL);
-    symbols_unload();
-}
 
 /* --- Refused maps, each leaving nothing loaded ----------------------------------- */
 
@@ -154,6 +151,12 @@ PTEST(a_missing_map_is_an_error_and_unloads)
 {
     PT_ASSERT_EQ_INT(load_ends_and_alias(), 0);
     PT_ASSERT_EQ_INT(symbols_load("/nonexistent/for/test.symbols"), -1);
+    PT_ASSERT(nothing_loaded());
+}
+
+PTEST(an_empty_map_is_refused)
+{
+    PT_ASSERT_EQ_INT(load_after_a_good_map(""), -1);
     PT_ASSERT(nothing_loaded());
 }
 

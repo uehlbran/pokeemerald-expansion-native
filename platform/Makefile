@@ -166,6 +166,10 @@ $(GAME_FLAG_OBJS): CFLAGS_ALL := $(subst -MMD,-MD,$(CFLAGS_ALL))
 # the object is rebuilt once).
 $(GAME_FLAG_OBJS): Makefile game_flags.mk
 
+# The tests whose link also writes the binary's function map (host.mk's
+# write_symbol_map), as the game's does: test_symbols reads its own.
+SYMBOL_MAP_TESTS := test_symbols
+
 # The files a test names on its "// deps:" line.
 test_deps = $(shell sed -n -E 's@^//[[:space:]]*\#?[[:space:]]*deps:@@p' test/$(1).c)
 # The module under test, if the test is named after one, plus its deps.
@@ -175,18 +179,15 @@ define TEST_LINK_RULE
 $(foreach dep,$(call test_deps,$(1)),$(if $(wildcard $(dep)),,$(error test/$(1).c lists '$(dep)' on its deps line, but platform/$(dep) does not exist)))
 $(BUILD_DIR)/$(1): $(OBJ_DIR)/test/$(1).o $(patsubst %.c,$(OBJ_DIR)/%.o,$(call test_inputs,$(1))) $(HOST_OBJS) $(REGIONS_LD) $(GAME_LD)
 	$$(CC) $$(LDFLAGS_ALL) -o $$@ $$(filter %.o,$$^) $$(SDL_LIBS)
+	$$(if $$(filter $$(SYMBOL_MAP_TESTS),$(1)),$$(call write_symbol_map,$$@,$$@.symbols) || { rm -f $$@; exit 1; })
 endef
 $(foreach name,$(TEST_NAMES),$(eval $(call TEST_LINK_RULE,$(name))))
 
-# test_symbols reads the function map the link writes next to an executable
-# (symbols.h); its own is written as the game's is (host.mk).
-$(BUILD_DIR)/test_symbols.symbols: $(BUILD_DIR)/test_symbols
-	$(call write_symbol_map,$<,$@)
-
-# Runs every test even after a failure, then fails if any test exited non-zero
-# or printed a sanitizer report (a report that did not change the exit status
-# still fails the run).
-test: $(TEST_BINS) $(BUILD_DIR)/test_symbols.symbols
+# Runs every test even after a failure, then fails if any test exited non-zero,
+# printed a sanitizer report (a report that did not change the exit status
+# still fails the run), or ended without ptest's "N passed, 0 failed" line (a
+# binary that exits early, from a test, passes no test).
+test: $(TEST_BINS)
 	@status=0; \
 	for bin in $(TEST_BINS); do \
 		echo "== $$bin"; \
@@ -196,6 +197,8 @@ test: $(TEST_BINS) $(BUILD_DIR)/test_symbols.symbols
 			echo "FAILED: $$bin exited with status $$code"; status=1; \
 		elif grep -qE 'Sanitizer|runtime error:' $$bin.log; then \
 			echo "FAILED: $$bin printed a sanitizer report"; status=1; \
+		elif ! grep -qE '^[0-9]+ passed, 0 failed$$' $$bin.log; then \
+			echo "FAILED: $$bin ended without its summary line"; status=1; \
 		fi; \
 	done; \
 	if [ $$status -eq 0 ]; then echo "all platform tests passed (BITS=$(BITS))"; fi; \

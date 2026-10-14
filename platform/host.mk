@@ -17,16 +17,23 @@ ifeq ($(HOST_OS),Linux)
 HOST_SRCS := host_posix.c host_linux.c
 
 # $(call write_symbol_map,EXECUTABLE,MAP): the function map symbols.c reads
-# to name the game's callbacks (symbols.h has the format), written after the
-# link. nm's System V format names each symbol's type, so the map holds what
-# the ELF symbol table calls a function with a size; -p keeps the table's
-# order, which the stable sort by address keeps among aliases (the first is
-# the name the replays have always shown). The addresses are nm's
-# fixed-width lower-case hexadecimal, so a text sort is a numeric one.
-write_symbol_map = $(NM) -p --defined-only --format=sysv $(1) > $(2).nm \
-	&& awk -F'|' '{ for (i = 1; i <= 5; i++) gsub(/ /, "", $$i) } $$4 == "FUNC" && $$5 != "" && $$1 != "" { print $$2, $$1 }' $(2).nm \
-	| LC_ALL=C sort -s -k1,1 > $(2).tmp \
-	&& rm -f $(2).nm && mv $(2).tmp $(2)
+# to name the game's callbacks (symbols.h has the format), written by the
+# executable's own link recipe, so that the two never part. nm's System V
+# format names each symbol's type, so the map holds what the ELF symbol table
+# calls a function with a size; -p keeps the table's order, which the stable
+# sort by address keeps among aliases (the first is the name the replays have
+# always shown). The addresses are nm's fixed-width lower-case hexadecimal,
+# so a text sort is a numeric one. No pipe, so that every step's failure is
+# the recipe's (sh has no pipefail): any failure, or a map with no function,
+# removes the old map and the temporaries and fails, never leaving an empty
+# or a stale map behind.
+write_symbol_map = rm -f $(2) $(2).nm $(2).tmp \
+	&& $(NM) -p --defined-only --format=sysv $(1) > $(2).nm \
+	&& awk -F'|' '{ for (i = 1; i <= 5; i++) gsub(/ /, "", $$i) } $$4 == "FUNC" && $$5 != "" && $$1 != "" { print $$2, $$1 }' $(2).nm > $(2).tmp \
+	&& LC_ALL=C sort -s -k1,1 -o $(2).tmp $(2).tmp \
+	&& test -s $(2).tmp \
+	&& rm -f $(2).nm && mv $(2).tmp $(2) \
+	|| { rm -f $(2) $(2).nm $(2).tmp; echo "write_symbol_map: no function map for $(1)" >&2; false; }
 
 else
 $(error HOST_OS must be Linux (the only port so far), not '$(HOST_OS)')

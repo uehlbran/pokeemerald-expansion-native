@@ -162,6 +162,10 @@ static bool parse_map(const char *path, size_t length)
         }
         loaded.symbols[loaded.count++] = symbol;
     }
+    if (loaded.count == 0) { /* every executable has functions: an empty map is a failed nm */
+        (void)fprintf(stderr, "symbols: %s names no function\n", path);
+        return false;
+    }
     return true;
 }
 

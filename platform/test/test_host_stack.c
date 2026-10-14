@@ -13,6 +13,11 @@
 #include "host_stack.h"
 #include "ptest.h"
 
+/* How far below the top of the stack the entry's frame may start: the
+ * switch's first frame and the entry's own (48 bytes at 64 bits and 56 at 32,
+ * measured under the sanitizers), so the whole size reached the switch. */
+#define ENTRY_DEPTH_LIMIT 1024u
+
 /* What the last entry did. */
 static struct {
     int calls;
@@ -84,6 +89,14 @@ PTEST(leave_returns_to_the_caller_at_once_and_the_next_call_works)
     PT_ASSERT_EQ_INT(run_on_the_call_stack(record, NULL), 0);
     PT_ASSERT_EQ_INT(ran.calls, 3);
     PT_ASSERT(ran.frame == depth);
+}
+
+PTEST(the_entry_starts_at_the_top_of_the_whole_stack)
+{
+    forget();
+    PT_ASSERT_EQ_INT(run_on_the_call_stack(record, NULL), 0);
+    const struct host_span stack = host_memory_call_stack();
+    PT_ASSERT(stack.end - ran.frame <= ENTRY_DEPTH_LIMIT);
 }
 
 PTEST_MAIN()

@@ -49,8 +49,8 @@ COMMON_OBJS := $(ENGINE_SRCS:%.c=$(BUILD)/obj/%.o) $(SUPPORT_SRCS:%.c=$(BUILD)/o
 
 all: $(TEST_BINS)
 
-# Runs every test binary, then fails if any exited non-zero or printed a
-# sanitizer report.
+# Runs every test binary, then fails if any exited non-zero, printed a
+# sanitizer report, or ended without ptest's "N passed, 0 failed" line.
 test: $(TEST_BINS)
 	@status=0; \
 	for bin in $(TEST_BINS); do \
@@ -61,6 +61,8 @@ test: $(TEST_BINS)
 			echo "FAILED: $$bin exited with status $$code"; status=1; \
 		elif grep -qE 'Sanitizer|runtime error:' $$bin.log; then \
 			echo "FAILED: $$bin printed a sanitizer report"; status=1; \
+		elif ! grep -qE '^[0-9]+ passed, 0 failed$$' $$bin.log; then \
+			echo "FAILED: $$bin ended without its summary line"; status=1; \
 		fi; \
 	done; \
 	if [ $$status -eq 0 ]; then echo "all m4a tests passed (BITS=$(BITS))"; fi; \

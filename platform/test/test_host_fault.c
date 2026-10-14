@@ -15,26 +15,36 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
+#include <sys/resource.h>
 #include <sys/wait.h>
 #include <unistd.h>
 
 #include "host_fault.h"
+#include "host_image.h"
 #include "ptest.h"
 
-/* DIV ECX: F7 /6 with ModRM 11 110 001 (Intel SDM vol. 2), the same bytes
+/* DIV EDI: F7 /6 with ModRM 11 110 111 (Intel SDM vol. 2), the same bytes
  * on i386 and x86-64 (no REX). */
-static const uint8_t div_ecx[] = {0xF7, 0xF1};
+static const uint8_t div_edi[] = {0xF7, 0xF7};
 
 /* ModRM register numbers (Intel SDM vol. 2, table 2-2). */
 #define MODRM_EAX 0u
 #define MODRM_ECX 1u
 #define MODRM_EDX 2u
+#define MODRM_EBX 3u
 #define MODRM_ESI 6u
+#define MODRM_EDI 7u
 #define MODRM_R9 9u
 /* A multiple of the register count at both widths (8 and 16). */
 #define REGISTER_COUNT_MULTIPLE 16u
 
+/* A different value in every register the division names or marks, so that
+ * a slot read from the wrong register shows. The divisor, EDI, is zero; EDX
+ * is the dividend's high half (a division by zero faults whatever it is). */
 #define DIVIDEND_LOW 0x12345678u
+#define ECX_MARK 0x0C0C0C0Cu
+#define EDX_MARK 0x0D0D0D0Du
+#define EBX_MARK 0x0B0B0B0Bu
 #define ESI_MARK 0x5E5E5E5Eu
 #define R9_MARK 0x0909090909090909u
 #define QUOTIENT_MARK 0xAAAA5555u
@@ -46,7 +56,7 @@ static struct {
     bool divide_error;
     int number;
     uintptr_t pc, accumulator, data;
-    uintptr_t eax, ecx, edx, esi, esi_wrapped, r9;
+    uintptr_t eax, ecx, edx, ebx, esi, edi, esi_wrapped, r9;
 } seen;
 
 static bool complete_with_marks(struct host_fault *fault)
@@ -60,32 +70,37 @@ static bool complete_with_marks(struct host_fault *fault)
     seen.eax = host_fault_general_register(fault, MODRM_EAX);
     seen.ecx = host_fault_general_register(fault, MODRM_ECX);
     seen.edx = host_fault_general_register(fault, MODRM_EDX);
+    seen.ebx = host_fault_general_register(fault, MODRM_EBX);
     seen.esi = host_fault_general_register(fault, MODRM_ESI);
+    seen.edi = host_fault_general_register(fault, MODRM_EDI);
     seen.esi_wrapped = host_fault_general_register(fault, MODRM_ESI + REGISTER_COUNT_MULTIPLE);
     seen.r9 = host_fault_general_register(fault, MODRM_R9);
-    if (memcmp((const void *)seen.pc, div_ecx, sizeof div_ecx) != 0)
+    if (memcmp((const void *)seen.pc, div_edi, sizeof div_edi) != 0)
         return false; /* not the division below: pass it on */
     host_fault_set_register(fault, HOST_FAULT_ACCUMULATOR, QUOTIENT_MARK);
     host_fault_set_register(fault, HOST_FAULT_DATA, REMAINDER_MARK);
-    host_fault_set_register(fault, HOST_FAULT_PC, seen.pc + sizeof div_ecx);
+    host_fault_set_register(fault, HOST_FAULT_PC, seen.pc + sizeof div_edi);
     return true;
 }
 
-/* DIVIDEND_LOW / 0 with ESI (and on x86-64 R9) marked; *quotient and
- * *remainder are EAX and EDX after it. */
+/* EDX:EAX / EDI, EDI zero, with ECX, EBX, ESI (and on x86-64 R9) marked;
+ * *quotient and *remainder are EAX and EDX after it. */
 static void divide_by_zero(uint32_t *quotient, uint32_t *remainder)
 {
     uint32_t eax = DIVIDEND_LOW;
-    uint32_t edx = 0;
+    uint32_t edx = EDX_MARK;
     const uint32_t zero = 0;
 #if defined(__x86_64__)
     register uint64_t r9 __asm__("r9") = R9_MARK;
     __asm__ volatile("divl %[divisor]"
                      : "+a"(eax), "+d"(edx)
-                     : [divisor] "c"(zero), "S"(ESI_MARK), "r"(r9)
+                     : [divisor] "D"(zero), "c"(ECX_MARK), "b"(EBX_MARK), "S"(ESI_MARK), "r"(r9)
                      : "cc", "memory");
 #else
-    __asm__ volatile("divl %[divisor]" : "+a"(eax), "+d"(edx) : [divisor] "c"(zero), "S"(ESI_MARK) : "cc", "memory");
+    __asm__ volatile("divl %[divisor]"
+                     : "+a"(eax), "+d"(edx)
+                     : [divisor] "D"(zero), "c"(ECX_MARK), "b"(EBX_MARK), "S"(ESI_MARK)
+                     : "cc", "memory");
 #endif
     *quotient = eax;
     *remainder = edx;
@@ -115,11 +130,13 @@ PTEST(the_register_accessors_return_what_the_context_holds)
     divide_by_zero(&quotient, &remainder);
     host_fault_uninstall_divide_error();
     PT_ASSERT(seen.accumulator == DIVIDEND_LOW);
-    PT_ASSERT(seen.data == 0);
+    PT_ASSERT(seen.data == EDX_MARK);
     PT_ASSERT(seen.eax == DIVIDEND_LOW);
-    PT_ASSERT(seen.ecx == 0);
-    PT_ASSERT(seen.edx == 0);
+    PT_ASSERT(seen.ecx == ECX_MARK);
+    PT_ASSERT(seen.edx == EDX_MARK);
+    PT_ASSERT(seen.ebx == EBX_MARK);
     PT_ASSERT(seen.esi == ESI_MARK);
+    PT_ASSERT(seen.edi == 0);
     PT_ASSERT(seen.esi_wrapped == ESI_MARK);
 #if defined(__x86_64__)
     PT_ASSERT(seen.r9 == R9_MARK);
@@ -146,6 +163,9 @@ PTEST(uninstall_is_safe_twice_and_without_install)
 #define CHILD_DIVIDE_HANDLER 4     /* the divide handler ran after it was uninstalled */
 #define CHILD_FAULT_ADDRESS_OK 5   /* the crash handler saw the expected fault address */
 #define CHILD_FAULT_ADDRESS_BAD 6  /* ... and another one */
+#define CHILD_PLAIN_PREVIOUS 7     /* a previous handler without SA_SIGINFO got the fault */
+#define CHILD_ON_ALTERNATE_STACK 8 /* the divide handler ran off the main stack */
+#define CHILD_ON_MAIN_STACK 9      /* ... and on it */
 #define CHILD_CRASH_DIVIDE 10      /* the crash handler got a divide error */
 #define CHILD_CRASH_NUMBER_BASE 64 /* the crash handler got fault number n: 64 + n */
 
@@ -153,7 +173,8 @@ PTEST(uninstall_is_safe_twice_and_without_install)
  * at the faulting instruction again would loop forever. */
 #define CHILD_TIME_LIMIT_SECONDS 10u
 
-/* Runs body in a forked child; its wait status, or -1. */
+/* Runs body in a forked child, which writes no core file when a fault ends
+ * it; its wait status, or -1. */
 static int in_child(void (*body)(void))
 {
     (void)fflush(stdout);
@@ -161,6 +182,9 @@ static int in_child(void (*body)(void))
     if (pid < 0)
         return -1;
     if (pid == 0) {
+        const struct rlimit no_core = {0, 0};
+        if (setrlimit(RLIMIT_CORE, &no_core) != 0)
+            _exit(CHILD_RETURNED);
         (void)signal(SIGALRM, SIG_DFL); /* not ptest's timeout: this child just ends */
         (void)alarm(CHILD_TIME_LIMIT_SECONDS);
         body();
@@ -230,6 +254,54 @@ static void divide_after_uninstalling(void)
 PTEST(uninstall_gives_divide_errors_back_to_the_handler_installed_before)
 {
     PT_ASSERT_EQ_INT(exit_code(in_child(divide_after_uninstalling)), CHILD_CRASH_DIVIDE);
+}
+
+/* A previous handler installed without SA_SIGINFO, a plain one. */
+static void exit_from_a_plain_handler(int signal_number)
+{
+    (void)signal_number;
+    _exit(CHILD_PLAIN_PREVIOUS);
+}
+
+static void pass_on_to_a_plain_handler(void)
+{
+    struct sigaction plain;
+    memset(&plain, 0, sizeof plain);
+    plain.sa_handler = exit_from_a_plain_handler;
+    if (sigemptyset(&plain.sa_mask) != 0 || sigaction(SIGFPE, &plain, NULL) != 0
+        || host_fault_install_divide_error(pass_everything_on) != 0)
+        return;
+    divide_by_zero_in_child();
+}
+
+PTEST(a_divide_error_passed_on_reaches_a_previous_handler_without_siginfo)
+{
+    PT_ASSERT_EQ_INT(exit_code(in_child(pass_on_to_a_plain_handler)), CHILD_PLAIN_PREVIOUS);
+}
+
+/* The main thread's stack, taken before the fault (host_image). */
+static struct host_span main_stack;
+
+static bool exit_by_where_the_handler_runs(struct host_fault *fault)
+{
+    (void)fault;
+    const uintptr_t frame = (uintptr_t)__builtin_frame_address(0);
+    _exit(frame >= main_stack.start && frame < main_stack.end ? CHILD_ON_MAIN_STACK : CHILD_ON_ALTERNATE_STACK);
+}
+
+static void divide_with_an_alternate_stack(void)
+{
+    if (host_image_main_stack(&main_stack) != 0 || host_fault_install_crash(exit_with_divide_or_number) != 0
+        || host_fault_install_divide_error(exit_by_where_the_handler_runs) != 0)
+        return;
+    divide_by_zero_in_child();
+}
+
+/* The crash handler's alternate stack is there for a stack overflow; a
+ * divide error on an exhausted stack needs its handler there too. */
+PTEST(the_divide_handler_runs_on_the_alternate_stack)
+{
+    PT_ASSERT_EQ_INT(exit_code(in_child(divide_with_an_alternate_stack)), CHILD_ON_ALTERNATE_STACK);
 }
 
 /* The default actions, as host_fault_uninstall_crash leaves them (and not

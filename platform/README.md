@@ -19,8 +19,9 @@ make -C platform clean           # remove platform/build/
 Every object is compiled with `-std=gnu17 -Wall -Wextra -Wshadow
 -Wstrict-prototypes -Wconversion -Werror -O1 -g` and AddressSanitizer,
 LeakSanitizer and UndefinedBehaviorSanitizer. `make test` runs every test
-binary, prints its output, and fails if any binary exits non-zero or prints
-a sanitizer report. The 32-bit build needs the i386 C library and sanitizer
+binary, prints its output, and fails if any binary exits non-zero, prints
+a sanitizer report, or ends without ptest's `N passed, 0 failed` line (a
+binary that exits early passes no test). The 32-bit build needs the i386 C library and sanitizer
 runtimes (`gcc-multilib`). The tests run on Linux only for now: the region
 layout needs GNU ld and a non-PIE ELF executable (see below), and `HOST_OS`
 (`host.mk`, default `uname -s`) accepts `Linux` only (the host layer,

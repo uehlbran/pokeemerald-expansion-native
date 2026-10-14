@@ -31,8 +31,8 @@
 
 /* Reads the map at path. Replaces anything loaded before. Returns 0, or -1
  * after printing the reason (cannot open or read it; a line, named by its
- * number, that is not as above or is out of address order). After a failure
- * nothing is loaded. */
+ * number, that is not as above or is out of address order; no line at all,
+ * which no executable's map is). After a failure nothing is loaded. */
 int symbols_load(const char *path);
 
 /* Reads the running executable's map: its path (host_process) plus
