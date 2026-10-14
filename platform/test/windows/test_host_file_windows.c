@@ -95,13 +95,15 @@ PTEST(a_handlers_write_writes_everything_and_leaves_errno_whether_it_writes_or_f
         PT_FAIL("cannot create a scratch directory");
     const int writer = host_file_open(scratch.path, O_WRONLY | O_CREAT | O_TRUNC);
     errno = ERRNO_BEFORE;
-    const bool written = writer >= 0 && host_file_write_from_handler(writer, LINES, sizeof LINES - 1u);
+    const bool written = writer >= 0
+                         && host_file_write_from_handler(host_file_for_handler(writer), LINES, sizeof LINES - 1u);
     const int error_after_writing = errno;
     const bool writer_closed = writer >= 0 && _close(writer) == 0;
     const intmax_t size = tsup_file_size(scratch.path);
     const int reader = host_file_open(scratch.path, O_RDONLY);
     errno = ERRNO_BEFORE;
-    const bool refused = reader >= 0 && !host_file_write_from_handler(reader, LINES, sizeof LINES - 1u);
+    const bool refused = reader >= 0
+                         && !host_file_write_from_handler(host_file_for_handler(reader), LINES, sizeof LINES - 1u);
     const int error_after_failing = errno;
     const bool reader_closed = reader >= 0 && _close(reader) == 0;
     const bool removed = scratch_remove(&scratch);

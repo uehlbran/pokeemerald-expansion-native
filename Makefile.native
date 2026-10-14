@@ -206,8 +206,8 @@ SHELL := bash -o pipefail
 # --------------------------------------------------------------------------
 # Host toolchain
 
-HOST_CC ?= gcc
-HOST_AS ?= as
+TARGET_CC ?= gcc
+TARGET_AS ?= as
 PYTHON ?= python3
 
 # A newline, for recipes that run one command per word of a list:
@@ -222,7 +222,7 @@ endef
 include platform/game_flags.mk
 ARCH_FLAGS := -m$(BITS) $(GAME_CHAR_FLAGS) $(TARGET_CFLAGS)
 
-CPP := $(HOST_CC) -E $(ARCH_FLAGS)
+CPP := $(TARGET_CC) -E $(ARCH_FLAGS)
 
 INCLUDE_DIRS := include
 # The repository root is also on the quote path: the guarded modifications of
@@ -298,7 +298,7 @@ ASM_FILTER_MODULES := $(GLUE_DIR)/asm_syntax.py $(GLUE_DIR)/check_support.py
 ASM_FILTER_CHECKED := $(OBJ_DIR)/asm_filter.checked
 # The assembler reads the filtered program on stdin, as every recipe that
 # uses $(AS) pipes into it (expansion's data rules and map_data_rules.mk).
-AS = $(ASM_FILTER) $(ASM_FILTER_POINTERS) | $(HOST_AS)
+AS = $(ASM_FILTER) $(ASM_FILTER_POINTERS) | $(TARGET_AS)
 # --noexecstack: the data needs no executable stack (ld warns otherwise).
 ASFLAGS := --$(BITS) --noexecstack --defsym MODERN=1 --defsym $(GAME_VERSION)=1 --defsym PLATFORM_NATIVE=1
 
@@ -550,8 +550,8 @@ $(PLATFORM_LIB) $(PLATFORM_GAPS): platform-lib ;
 # map that cannot be written fails the link (.DELETE_ON_ERROR removes the
 # executable).
 $(NATIVE_EXE): $(OBJS) $(PLATFORM_GAPS) $(NATIVE_RESOURCES) $(PLATFORM_LIB) $(NATIVE_LINKER_SCRIPTS) | check-palette-padding $(DATA_LAYOUT_CHECKS)
-	@echo "$(HOST_CC) <link> -o $@"
-	@$(HOST_CC) $(NATIVE_LDFLAGS) -o $@ $(OBJS) $(PLATFORM_GAPS) $(NATIVE_RESOURCES) $(PLATFORM_LIB) $(NATIVE_LDLIBS)
+	@echo "$(TARGET_CC) <link> -o $@"
+	@$(TARGET_CC) $(NATIVE_LDFLAGS) -o $@ $(OBJS) $(PLATFORM_GAPS) $(NATIVE_RESOURCES) $(PLATFORM_LIB) $(NATIVE_LDLIBS)
 	@$(call write_symbol_map,$@,$@.symbols)
 	$(NATIVE_EXE_CHECK)
 
@@ -707,11 +707,11 @@ $(C_BUILDDIR)/pokemon.o: $(C_SUBDIR)/pokemon.c $(DATA_SRC_SUBDIR)/pokemon/teacha
 # preprocessing step from reaching the compiler.
 C_PREPROCESSED = $(@:.o=.i)
 COMPILE_C = $(CPP) $(CPPFLAGS) $< | $(PREPROC) -i -g $(ASSETS_DIR_NAME) $< charmap.txt | $(C_FILTER) > $(C_PREPROCESSED) \
-            && $(HOST_CC) $(CFLAGS) -c -x c -o $@ $(C_PREPROCESSED); status=$$?; rm -f $(C_PREPROCESSED); exit $$status
+            && $(TARGET_CC) $(CFLAGS) -c -x c -o $@ $(C_PREPROCESSED); status=$$?; rm -f $(C_PREPROCESSED); exit $$status
 SCAN_C = $(SCANINC) -M $@ -g $(ASSETS_DIR_NAME) $(INCLUDE_SCANINC_ARGS) $<
 
 $(C_BUILDDIR)/%.o: $(C_SUBDIR)/%.c $(C_FILTER_SCRIPT)
-	@echo "$(HOST_CC) <flags> -o $@ $<"
+	@echo "$(TARGET_CC) <flags> -o $@ $<"
 	@$(COMPILE_C)
 
 $(C_BUILDDIR)/%.d: $(C_SUBDIR)/%.c
@@ -743,7 +743,7 @@ $(OVERWORLD_SCRIPT_FLAT): $(OVERWORLD_SCRIPT_MACRO_SRCS) $(DATA_ASM_SUBDIR)/scri
 
 $(OVERWORLD_SCRIPT_MACROS): $(OVERWORLD_SCRIPT_FLAT) $(OVERWORLD_MACROS_SCRIPT)
 	$(PYTHON) -I $(OVERWORLD_MACROS_SCRIPT) --self-test
-	$(PYTHON) -I $(OVERWORLD_MACROS_SCRIPT) --as "$(HOST_AS) --$(BITS)" $< $@ $(OVERWORLD_SCRIPT_X86_MACROS) $(OVERWORLD_SCRIPT_X86_PURGE)
+	$(PYTHON) -I $(OVERWORLD_MACROS_SCRIPT) --as "$(TARGET_AS) --$(BITS)" $< $@ $(OVERWORLD_SCRIPT_X86_MACROS) $(OVERWORLD_SCRIPT_X86_PURGE)
 
 # overworld_macros.py writes all three files in one run. GNU make before 4.3
 # (which Makefile.native still supports) has no grouped targets, and an empty
@@ -768,7 +768,7 @@ $(TEST_OBJS): CFLAGS += $(GAME_TEST_SANITIZER_FLAGS)
 endif
 
 $(TEST_BUILDDIR)/%.o: $(TEST_SUBDIR)/%.c $(C_FILTER_SCRIPT)
-	@echo "$(HOST_CC) <flags> -o $@ $<"
+	@echo "$(TARGET_CC) <flags> -o $@ $<"
 	@$(COMPILE_C)
 
 $(TEST_BUILDDIR)/%.d: $(TEST_SUBDIR)/%.c
@@ -806,7 +806,7 @@ endif
 MPLAYDEF_NATIVE := $(OBJ_DIR)/sound/MPlayDef.s
 
 $(MID_BUILDDIR)/%.o: $(MID_ASM_DIR)/%.s
-	$(ASM_FILTER) $(ASM_FILTER_POINTERS) < $< | $(HOST_AS) $(ASFLAGS) -I $(dir $(MPLAYDEF_NATIVE)) -o $@
+	$(ASM_FILTER) $(ASM_FILTER_POINTERS) < $< | $(TARGET_AS) $(ASFLAGS) -I $(dir $(MPLAYDEF_NATIVE)) -o $@
 
 $(MID_OBJS): $(MPLAYDEF_NATIVE)
 $(MID_OBJS): private ASM_FILTER_INPUT := song
@@ -878,7 +878,7 @@ DATA_LAYOUTS := $(OBJ_DIR)/data_layout32.txt $(OBJ_DIR)/data_layout64.txt
 
 $(OBJ_DIR)/data_layout%.txt: $(DATA_LAYOUT_PROBE)
 	@mkdir -p $(@D)
-	$(HOST_CC) -m$* $(GAME_CHAR_FLAGS) $(CPPFLAGS) -MMD -MP -MT $@ -MF $(@:.txt=.d) -o $(@:.txt=.probe) $<
+	$(TARGET_CC) -m$* $(GAME_CHAR_FLAGS) $(CPPFLAGS) -MMD -MP -MT $@ -MF $(@:.txt=.d) -o $(@:.txt=.probe) $<
 	$(@:.txt=.probe) > $@
 
 ifneq ($(NODEP),1)
@@ -1009,6 +1009,6 @@ WINDOWS_FLAT_DIR := $(ELF_OBJ_DIR)/flat/coff-x86_64
 
 $(COFF_DATA_OBJS): $(OBJ_DIR)/coff/%.o: $(WINDOWS_FLAT_DIR)/%.s
 	@mkdir -p $(@D)
-	$(HOST_AS) -o $@ $<
+	$(TARGET_AS) -o $@ $<
 
 endif

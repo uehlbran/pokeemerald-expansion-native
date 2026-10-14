@@ -232,7 +232,7 @@ lib: $(GAPS_OBJ)
 
 $(GAPS_OBJ): gba_gaps.pe.s
 	@mkdir -p $(@D)
-	$(HOST_AS) -o $@ $<
+	$(TARGET_AS) -o $@ $<
 	$(OBJCOPY) $(GAP_SECTIONS:%=--set-section-flags %=alloc,readonly) $@
 endif
 

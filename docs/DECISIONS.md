@@ -1129,9 +1129,10 @@ restarted run, and which needs a suspended helper of its own.
 
 (a) is taken, as the simpler here. It leaves the filter two system calls,
 neither of which allocates: `WriteFile` (`host_file_write_from_handler`, on
-the handle `_get_osfhandle` reads from the C runtime's table without a lock;
-a failed write is left at that, with no `GetLastError` and no `errno`, which
-msvcrt would allocate a block for on a thread that had not used it) and
+the handle `host_file_for_handler` resolved at install time with
+`_get_osfhandle`, so that no C runtime call runs in the filter; a failed write
+is left at that, with no `GetLastError` and no `errno`, which msvcrt would
+allocate a block for on a thread that had not used it) and
 `TerminateProcess`. The report line is built on the handler's stack. The
 state it carries is encoded into the module's one static buffer, which two
 threads crashing at once would both write, with the same persistent bytes:

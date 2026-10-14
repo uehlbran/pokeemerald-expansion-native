@@ -193,7 +193,7 @@ static void write_through_interruptions(void *context)
     (void)close(fds[0]);
     bool written_all;
     if (from_handler)
-        written_all = host_file_write_from_handler(fds[1], bytes, sizeof bytes);
+        written_all = host_file_write_from_handler(host_file_for_handler(fds[1]), bytes, sizeof bytes);
     else
         written_all = host_file_write_all(fds[1], bytes, sizeof bytes) == 0;
     (void)close(fds[1]);
@@ -232,12 +232,15 @@ PTEST(a_handlers_write_leaves_errno_as_it_was_whether_it_writes_or_fails)
         PT_FAIL("cannot create a scratch directory");
     const int writer = host_file_open(scratch.path, O_WRONLY | O_CREAT | O_TRUNC);
     errno = ERRNO_BEFORE;
-    const bool written = writer >= 0 && host_file_write_from_handler(writer, TEXT, sizeof TEXT - 1u);
+    const bool written = writer >= 0
+                         && host_file_write_from_handler(host_file_for_handler(writer), TEXT, sizeof TEXT - 1u);
     const int error_after_writing = errno;
     const bool writer_closed = writer >= 0 && close(writer) == 0;
     const int reader = host_file_open(scratch.path, O_RDONLY);
     errno = ERRNO_BEFORE;
-    const bool refused = reader >= 0 && !host_file_write_from_handler(reader, TEXT, sizeof TEXT - 1u); /* EBADF */
+    const bool refused = reader >= 0
+                         && !host_file_write_from_handler(host_file_for_handler(reader), TEXT,
+                                                          sizeof TEXT - 1u); /* EBADF */
     const int error_after_failing = errno;
     const bool reader_closed = reader >= 0 && close(reader) == 0;
     const bool contents = strcmp(read_text(scratch.path), TEXT) == 0;
