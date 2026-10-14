@@ -81,11 +81,15 @@
 #
 #   gcc -E <CPPFLAGS> src.c | preproc -i -g build/assets src.c charmap.txt
 #     | sed -f platform/build_glue/c_filter.sed
-#     | gcc -c -x c <CFLAGS> -o obj -
+#     > obj.i/<stdin>
+#   gcc -c -x c <CFLAGS> -o obj obj.i/<stdin>
 #
 # Expansion pipes into cc1 without -fpreprocessed, so cc1 preprocesses the
 # already-preprocessed text a second time; `gcc -x c` does the same and
-# keeps the gcc driver (and so -m32/-m64). `-x cpp-output` was tried and
+# keeps the gcc driver (and so -m32/-m64). The text goes through a file
+# because ccache cannot cache a compile from standard input; the file is
+# named <stdin> so that the object's file symbol, and with it the executable,
+# stays what the pipe gave (see COMPILE_C). `-x cpp-output` was tried and
 # rejected: it changes which file gcc takes as the main file, and with it
 # the diagnostics (204 -Wunused-const-variable warnings expansion's build
 # does not show).

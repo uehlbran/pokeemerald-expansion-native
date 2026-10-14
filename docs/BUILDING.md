@@ -141,6 +141,19 @@ ASAN_OPTIONS=halt_on_error=0 tests/smoke/run_debug_menu.sh build/native64-san/po
 sanitized run compares widths with `ASAN_OPTIONS=suppress_equal_pcs=0`
 (`platform/test_runner/SUITE-LOG.md`).
 
+#### The game's C and ccache
+
+Each game and test source goes through `gcc -E`, `preproc` and
+`platform/build_glue/c_filter.sed` as in expansion's build, and the result is written
+to a file, `<object>.i/<stdin>` beside the object, which `gcc -c -x c` then compiles.
+It is a file because ccache cannot cache a compile whose source is standard input.
+The name `<stdin>` is the one the compiler used for the pipe; it ends up as the
+object's file symbol, and with it the objects and the executable are byte-identical to
+those built from a pipe. The directory exists only for the compile and is removed
+after it, whether the compile fails or not (`COMPILE_C` in `Makefile.native`). With
+`ccache` installed, put `/usr/lib/ccache` first on `PATH` (the CI jobs do) and the
+second build of unchanged sources is served from the cache.
+
 #### Assets of the native build
 
 The native build keeps the graphics it converts (`.4bpp`, `.smol`, `.gbapal`, ... from
