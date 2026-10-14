@@ -63,7 +63,11 @@ be DeepSeek 4.1 Flash, because the Agent tool of this session offers
 only Sonnet, Opus, Haiku and Fable (checked again 2026-10-14; DECISIONS.md).
 Plain code, build glue, tests and docs drafts go to Sonnet, hard pieces
 to Opus, with your escalation rule; the table at the end records the
-model per branch. Otherwise nothing new. The three milestone 8 items were
+model per branch. One optional install, when convenient: Wine, so the
+Windows cross-build can run its unit tests and replays here instead of
+only on the Windows runner (minutes counting double):
+`sudo apt-get install -y wine64`. Without it, task W4 proves the link
+only and the first runs happen in CI. Otherwise nothing new. The three milestone 8 items were
 settled on 2026-10-14: the MinGW cross-compiler is installed (GCC 13 for
 x86_64-w64-mingw32, binutils 2.41; Wine is not, so cross-built
 executables run only on the Windows runner); macOS ships as x86_64
