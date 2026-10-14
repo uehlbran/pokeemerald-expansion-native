@@ -468,7 +468,12 @@ the platform library, 682 misses to fill). The next run (38598380204, the push
 of the Windows merge, the compiler cache restored from the run before,
 the assets cache empty since that key was new) was green in 11 minutes 32
 seconds: build 284 s (611 hits, 300 misses: the merge changed platform
-headers the game includes), platform gate 294 s, replays 46 s. Measured here too (ccache
+headers the game includes), platform gate 294 s, replays 46 s. The first run with the
+review's composite setup action (38611677952, the push of the eight fix
+merges) was green in 15 minutes 19 seconds: setup 74 s, build 183 s
+(477 hits, 443 misses after many platform headers changed), the platform
+gate 580 s (now the largest step: the sanitized tests at both widths,
+ThreadSanitizer, lint), replays 72 s. Measured here too (ccache
 4.9.1 installed by the owner, an empty cache directory, the game's 384
 objects and the executable removed before each build, 32 jobs): the cold
 build 23.4 s with 384 misses; the same build again 7.5 s with 384 hits
