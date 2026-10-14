@@ -263,14 +263,32 @@ PTEST(source_out_of_range_is_an_error)
 {
     struct rtc_datetime d;
     pin_utc();
-    g_now = INT64_MIN;
+    g_now = INT64_MIN + 1;
     PT_ASSERT_EQ_INT(rtc_init(fake_source, NULL), -1); /* first-run offset needs a valid reading */
     start_at(EPOCH_2000_01_01);
-    g_now = INT64_MIN;
+    g_now = INT64_MIN + 1;
     PT_ASSERT_EQ_INT(rtc_get_datetime(&d), -1);
     g_now = INT64_MAX;
     PT_ASSERT_EQ_INT(rtc_get_datetime(&d), -1);
     rtc_shutdown();
+}
+
+static void read_with_failed_source(void *context)
+{
+    g_now = RTC_TIME_SOURCE_FAILED;
+    PT_ASSERT_EQ_INT(rtc_get_datetime(context), -1);
+}
+
+/* The source reports its own failure; the chip fails without a second,
+ * misleading "out of range" report of the sentinel. */
+PTEST(a_source_that_failed_is_an_error_reported_once_by_the_source)
+{
+    struct rtc_datetime d;
+    char message[256];
+    start_at(EPOCH_2000_01_01);
+    PT_ASSERT(tsup_capture_stderr(read_with_failed_source, &d, message, sizeof message));
+    rtc_shutdown();
+    PT_ASSERT_EQ_STR(message, "");
 }
 
 /* ---- setting the time -------------------------------------------------- */

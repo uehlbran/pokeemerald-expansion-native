@@ -84,7 +84,7 @@ static int64_t system_clock(void)
     time_t now = time(NULL);
     if (now == (time_t)-1) {
         rtc_report_call_failure("time");
-        return INT64_MIN;
+        return RTC_TIME_SOURCE_FAILED;
     }
     return (int64_t)now;
 }
@@ -94,6 +94,8 @@ static int host_utc_seconds(int64_t *out)
 {
     int64_t utc = chip.source();
 
+    if (utc == RTC_TIME_SOURCE_FAILED)
+        return -1; /* the source has said why */
     if (utc < -RTC_OFFSET_LIMIT || utc > RTC_OFFSET_LIMIT) {
         (void)fprintf(stderr, "rtc: time source returned %lld, out of range\n", (long long)utc);
         return -1;

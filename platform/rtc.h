@@ -46,8 +46,12 @@ struct rtc_datetime {
     uint8_t second_bcd;      /* 00h..59h (bit 7 is the chip's test-mode flag, never set) */
 };
 
-/* Seconds since the Unix epoch, UTC. Injectable so tests control time. */
+/* Seconds since the Unix epoch, UTC. Injectable so tests control time. A
+ * source that cannot read its clock reports why itself and returns
+ * RTC_TIME_SOURCE_FAILED, which the chip treats as an error without a second
+ * report; the type has no other way to say so. */
 typedef int64_t (*rtc_time_source)(void);
+#define RTC_TIME_SOURCE_FAILED INT64_MIN
 
 /* Starts the clock. source NULL means the system clock. offset_file_path NULL
  * means no persistence; otherwise it names the file holding the offset (one
