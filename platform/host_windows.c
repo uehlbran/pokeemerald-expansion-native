@@ -1,7 +1,9 @@
 /*
  * host_windows.c: the host layer on Windows, a stub until task W5 writes it
- * (research/m8-inventory.md, 5.2). Every function that can fail returns its
- * error value and prints nothing; the others return an empty answer. It
+ * (research/m8-inventory.md, 5.2). Every function returns its error value
+ * and prints nothing: -1, an empty span, or, where the header has no error
+ * value, an answer no real one can be mistaken for (UINTPTR_MAX for a register
+ * or an address, "read-only" for any address). It
  * exists so that the Windows cross-build links (Makefile.native,
  * TARGET_OS=windows): the executable it makes starts and then fails in the
  * first host call, in gba_memmap_init, and must not be taken for a port.
@@ -81,14 +83,14 @@ int host_fault_number(const struct host_fault *fault)
 uintptr_t host_fault_address(const struct host_fault *fault)
 {
     (void)fault;
-    return 0;
+    return UINTPTR_MAX;
 }
 
 uintptr_t host_fault_register(const struct host_fault *fault, enum host_fault_register name)
 {
     (void)fault;
     (void)name;
-    return 0;
+    return UINTPTR_MAX;
 }
 
 void host_fault_set_register(struct host_fault *fault, enum host_fault_register name, uintptr_t value)
@@ -102,7 +104,7 @@ uintptr_t host_fault_general_register(const struct host_fault *fault, unsigned n
 {
     (void)fault;
     (void)number;
-    return 0;
+    return UINTPTR_MAX;
 }
 
 int host_process_executable_path(char *out, size_t size)
@@ -131,7 +133,7 @@ struct host_span host_image_writable(void)
 bool host_image_is_read_only(uintptr_t address)
 {
     (void)address;
-    return false;
+    return true;
 }
 
 int host_image_main_stack(struct host_span *out)

@@ -38,10 +38,12 @@ IMAGE_BASE = 0x01800000
 CODE_ADDRESS = 0x40001000
 MACHINE_AMD64 = 0x8664
 PE32_PLUS_MAGIC = 0x20B
-FILE_RELOCS_STRIPPED = 0x0001
-DLL_HIGH_ENTROPY_VA = 0x0020
-DLL_DYNAMIC_BASE = 0x0040
-SECTION_MEM_WRITE = 0x80000000
+# Microsoft PE format, "COFF File Header (Object and Image)" and "DLL Characteristics".
+IMAGE_FILE_RELOCS_STRIPPED = 0x0001
+IMAGE_DLLCHARACTERISTICS_HIGH_ENTROPY_VA = 0x0020
+IMAGE_DLLCHARACTERISTICS_DYNAMIC_BASE = 0x0040
+# "Section Flags".
+IMAGE_SCN_MEM_WRITE = 0x80000000
 BASE_RELOCATION_DIRECTORY = 5
 MAX_PROBLEMS = 20
 
@@ -58,20 +60,33 @@ REGIONS = (
     ("SRAM", 0x0E000000, 0x20000),
 )
 
+# Offsets in the headers (Microsoft PE format): the DOS header's pointer to the PE
+# signature; the optional header's fields (PE32+: "Optional Header Windows-Specific
+# Fields (Image Only)" and "Optional Header Data Directories").
 DOS_POINTER_OFFSET = 0x3C
 FILE_HEADER_SIZE = 20
-SECTION_HEADER = struct.Struct("<8sIIIIIIHHI")   # name, size, rva, rawsize, rawptr, 3 x pointers/counts, flags
+OPTIONAL_IMAGE_BASE = 24
+OPTIONAL_SECTION_ALIGNMENT = 32
+OPTIONAL_DLL_CHARACTERISTICS = 70
+OPTIONAL_DIRECTORY_COUNT = 108
+OPTIONAL_DIRECTORIES = 112
+# name, virtual size, rva, raw size, raw pointer, relocations, line numbers, their counts, flags
+SECTION_HEADER = struct.Struct("<8sIIIIIIHHI")
 SECTION_HEADER_SIZE = SECTION_HEADER.size
 DATA_DIRECTORY_SIZE = 8
 
 
 class Section:
-    def __init__(self, name, address, size, flags):
-        self.name, self.address, self.size, self.flags = name, address, size, flags
+    def __init__(self, name, address, size, flags, raw_size=0):
+        self.name, self.address, self.size, self.flags, self.raw_size = name, address, size, flags, raw_size
 
     @property
     def writable(self):
-        return bool(self.flags & SECTION_MEM_WRITE)
+        return bool(self.flags & IMAGE_SCN_MEM_WRITE)
+
+    @property
+    def stored(self):
+        return self.raw_size != 0
 
 
 class Image:
@@ -92,19 +107,20 @@ def read_image(data):
         optional = pe + 4 + FILE_HEADER_SIZE
         if machine != MACHINE_AMD64 or struct.unpack_from("<H", data, optional)[0] != PE32_PLUS_MAGIC:
             raise CheckError("not a PE32+ x86-64 file")
-        base = struct.unpack_from("<Q", data, optional + 24)[0]
-        section_alignment = struct.unpack_from("<I", data, optional + 32)[0]
-        dll_characteristics = struct.unpack_from("<H", data, optional + 70)[0]
-        directory_count = struct.unpack_from("<I", data, optional + 108)[0]
-        directory = optional + 112
+        base = struct.unpack_from("<Q", data, optional + OPTIONAL_IMAGE_BASE)[0]
+        section_alignment = struct.unpack_from("<I", data, optional + OPTIONAL_SECTION_ALIGNMENT)[0]
+        dll_characteristics = struct.unpack_from("<H", data, optional + OPTIONAL_DLL_CHARACTERISTICS)[0]
+        directory_count = struct.unpack_from("<I", data, optional + OPTIONAL_DIRECTORY_COUNT)[0]
+        directory = optional + OPTIONAL_DIRECTORIES
         relocation_size = 0
         if directory_count > BASE_RELOCATION_DIRECTORY:
-            relocation_size = struct.unpack_from("<II", data, directory + DATA_DIRECTORY_SIZE * BASE_RELOCATION_DIRECTORY)[1]
+            relocation_entry = directory + DATA_DIRECTORY_SIZE * BASE_RELOCATION_DIRECTORY
+            relocation_size = struct.unpack_from("<II", data, relocation_entry)[1]
         sections = []
         for index in range(section_count):
             fields = SECTION_HEADER.unpack_from(data, optional + optional_size + SECTION_HEADER_SIZE * index)
             sections.append(Section(fields[0].rstrip(b"\0").decode("ascii", "replace"), base + fields[2], fields[1],
-                                    fields[9]))
+                                    fields[9], fields[3]))
         return Image(base, section_alignment, characteristics, dll_characteristics, relocation_size, sections)
     except struct.error:
         raise CheckError("the PE headers are cut short")
@@ -119,11 +135,11 @@ def check_image(image):
     problems = []
     if image.base != IMAGE_BASE:
         problems.append("the image base is %#x, not %#x" % (image.base, IMAGE_BASE))
-    if image.dll_characteristics & DLL_DYNAMIC_BASE:
+    if image.dll_characteristics & IMAGE_DLLCHARACTERISTICS_DYNAMIC_BASE:
         problems.append("DYNAMIC_BASE is set: the loader may move the image")
-    if image.dll_characteristics & DLL_HIGH_ENTROPY_VA:
+    if image.dll_characteristics & IMAGE_DLLCHARACTERISTICS_HIGH_ENTROPY_VA:
         problems.append("HIGH_ENTROPY_VA is set")
-    if not image.characteristics & FILE_RELOCS_STRIPPED:
+    if not image.characteristics & IMAGE_FILE_RELOCS_STRIPPED:
         problems.append("the relocations-stripped flag is not set")
     if image.relocation_directory_size != 0:
         problems.append("the base relocation directory is not empty")
@@ -146,8 +162,12 @@ def check_image(image):
             problems.append("%s: %s is not writable" % (what, section.name))
     region_addresses = {address for _, address, _ in REGIONS}
     for section in image.sections:
-        if section.address < CODE_ADDRESS and section.address not in region_addresses and section.writable:
-            problems.append("%s, between the regions, is writable" % section.name)
+        if section.address < CODE_ADDRESS and section.address not in region_addresses:
+            if section.writable:
+                problems.append("%s, between the regions, is writable" % section.name)
+            if section.stored:
+                problems.append("%s, between the regions, is stored in the file (%#x bytes)" % (section.name,
+                                                                                                 section.raw_size))
     code = by_address.get(CODE_ADDRESS)
     if code is None or code.name != ".text":
         problems.append(".text is not at %#x" % CODE_ADDRESS)
@@ -161,24 +181,29 @@ def self_test():
         if not problems_match(wanted, actual):
             failures.append("%s\n  expected %r\n  got      %r" % (name, wanted, actual))
 
+    # Section flags written out from the specification, so a wrong constant above fails here:
+    # uninitialised data (0x80) readable (0x40000000), and writable (0x80000000) for a region.
+    READ_ONLY_UNINITIALISED = 0x00000080 | 0x40000000
+    READ_WRITE_UNINITIALISED = 0x00000080 | 0x40000000 | 0x80000000
+
     def layout():
         sections = []
         address = IMAGE_BASE + 0x1000
         for what, region_address, size in REGIONS:
             if region_address != address:
-                sections.append(Section(".gap", address, region_address - address, 0x40000080))
-            sections.append(Section(".gba", region_address, size, 0xC0000080))
+                sections.append(Section(".gap", address, region_address - address, READ_ONLY_UNINITIALISED))
+            sections.append(Section(".gba", region_address, size, READ_WRITE_UNINITIALISED))
             address = region_address + round_up(size, 0x1000)
-        sections.append(Section(".gap", address, CODE_ADDRESS - address, 0x40000080))
+        sections.append(Section(".gap", address, CODE_ADDRESS - address, READ_ONLY_UNINITIALISED))
         sections.append(Section(".text", CODE_ADDRESS, 0x1234, 0x60000020))
-        return Image(IMAGE_BASE, 0x1000, FILE_RELOCS_STRIPPED | 0x2, 0x100, 0, sections)
+        return Image(IMAGE_BASE, 0x1000, 0x0001 | 0x0002, 0x0100, 0, sections)
 
     expect("a good layout", check_image(layout()), [])
     image = layout()
     image.base = 0x400000
     expect("the base", check_image(image), ["image base is 0x400000", "is at 0x1801000, not 0x401000"])
     image = layout()
-    image.dll_characteristics |= DLL_DYNAMIC_BASE | DLL_HIGH_ENTROPY_VA
+    image.dll_characteristics |= 0x0040 | 0x0020   # the specification's values, not the constants under test
     expect("randomisation", check_image(image), ["DYNAMIC_BASE", "HIGH_ENTROPY_VA"])
     image = layout()
     image.characteristics = 0x2
@@ -193,10 +218,14 @@ def self_test():
     expect("a region of the wrong size", check_image(image),
            ["is at 0x2040000, not 0x2041000", "EWRAM: .gba is 0x41000 bytes"])
     image = layout()
-    image.sections[1].flags = 0xC0000080
+    image.sections[1].flags = READ_WRITE_UNINITIALISED
     expect("a writable gap", check_image(image), [".gap, between the regions, is writable"])
     image = layout()
-    image.sections[2].flags = 0x40000080
+    image.sections[1].raw_size = 0x1000
+    expect("a gap stored in the file", check_image(image),
+           [".gap, between the regions, is stored in the file (0x1000 bytes)"])
+    image = layout()
+    image.sections[2].flags = READ_ONLY_UNINITIALISED
     expect("a read-only region", check_image(image), ["EWRAM: .gba is not writable"])
     image = layout()
     image.sections[-1].name = ".code"
