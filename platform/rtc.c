@@ -20,15 +20,13 @@
  * port is copied; this is written from GBATEK and expansion's own sources.
  *
  * DECISIONS.
- *  - UTC plus a fixed offset, initialised from local time. A cartridge
- *    clock is set once by the player to the wall clock in front of them,
- *    knows no time zones and never jumps at daylight saving. So the chip's
- *    seconds are the time source (UTC) plus the persisted offset. On first
- *    run, when no offset file exists (or none is configured), the offset is
- *    initialised to the host's local-minus-UTC difference at that instant
- *    (host_file_local_time, used only for this) so the in-game clock reads local wall
- *    time, and it is persisted. After that a host zone or DST change does not
- *    move the clock; the player's set operations adjust the offset.
+ *  - UTC plus a persisted offset. A cartridge clock is set once to the wall
+ *    clock in front of the player and never jumps at DST, so the chip's
+ *    seconds are the source's UTC plus an offset. On first run the offset is
+ *    the host's local-minus-UTC at that instant (host_file_local_time, its
+ *    only use), so the game shows wall time; after that only the player's
+ *    set operations move it. With no offset file configured, the offset
+ *    starts the same way and is not saved.
  *  - Calendar and BCD: rtc_calendar.c (year range and the 2099 -> 2000 wrap,
  *    leap years, the computed day of week).
  *  - Hour register: see rtc.h (PM flag in bit 7, derived).
@@ -68,10 +66,10 @@ _Static_assert(sizeof(time_t) >= 8, "rtc.c needs a 64-bit time_t (-D_TIME_BITS=6
 struct rtc_state {
     bool initialised;
     rtc_time_source source;
-    int64_t offset;             /* seconds added to the time source's UTC */
+    int64_t offset;                        /* seconds added to the time source's UTC */
     char offset_path[HOST_FILE_PATH_SIZE]; /* empty: no persistence */
-    uint8_t status;             /* RTC_STATUS_* */
-    uint8_t alarm_hour_bcd;     /* with the PM flag */
+    uint8_t status;                        /* RTC_STATUS_* */
+    uint8_t alarm_hour_bcd;                /* with the PM flag */
     uint8_t alarm_minute_bcd;
 };
 

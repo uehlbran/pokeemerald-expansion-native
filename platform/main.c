@@ -249,6 +249,13 @@ static int adopt_save_layout(const char *path, uint32_t pointer_bits)
                       path, (unsigned)pointer_bits);
         return -1;
     }
+    if (converted == 0) {
+        (void)fprintf(stderr,
+                      "main: %s has no save slot this build recognises as a %u-bit layout; loading it unconverted "
+                      "(the game will validate it)\n",
+                      path, (unsigned)pointer_bits);
+        return 0;
+    }
     (void)fprintf(stderr,
                   "main: %s has a %u-bit build's save layout; converted %d save slot(s) to this build's (the file "
                   "keeps the old layout until the game saves)\n",
@@ -269,8 +276,10 @@ static int start_save_file(const struct options *o)
     case SAVE_FILE_NEW:
         return 0;
     case SAVE_FILE_LEGACY:
-        (void)fprintf(stderr, "main: %s has no header (an emulator's .sav or an older build's); loading it\n",
-                      o->save_path);
+        (void)fprintf(stderr,
+                      "main: %s has no header; loading it as a %u-bit native save (an emulator's .sav will be "
+                      "rejected by the game and overwritten on its first save)\n",
+                      o->save_path, SAVE_CONVERT_BARE_IMAGE_POINTER_BITS);
         return adopt_save_layout(o->save_path, SAVE_CONVERT_BARE_IMAGE_POINTER_BITS);
     case SAVE_FILE_FOREIGN_LAYOUT:
         if (save_file_loaded_layout(&layout) && layout.layout_id == SAVE_FILE_LAYOUT_ID)

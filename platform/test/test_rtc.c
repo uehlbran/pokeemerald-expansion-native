@@ -502,6 +502,7 @@ static void make_path_of_length(char *path, size_t length)
     path[length] = '\0';
 }
 
+// cppcheck-suppress constParameterCallback ; tsup_capture_stderr's action takes a non-const void *
 static void save_to_overlong_path(void *context)
 {
     PT_ASSERT_EQ_INT(rtc_offset_store_save(context, 0), -1);
@@ -515,7 +516,7 @@ PTEST(the_offset_path_limit_is_the_host_file_limit_with_room_for_the_tmp_name)
 
     make_path_of_length(path, LONGEST_PATH + 1);
     PT_ASSERT(tsup_capture_stderr(save_to_overlong_path, path, message, sizeof message));
-    (void)snprintf(expected, sizeof expected, "path is longer than %zu bytes", LONGEST_PATH);
+    (void)snprintf(expected, sizeof expected, "path is longer than %llu bytes", (unsigned long long)LONGEST_PATH);
     PT_ASSERT(strstr(message, expected) != NULL);
 
     make_path_of_length(path, LONGEST_PATH); /* fits; it names no directory, so only the open fails */

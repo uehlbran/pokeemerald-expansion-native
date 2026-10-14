@@ -13,6 +13,9 @@
  * store goes to <path>.tmp, is flushed and fsynced, and is renamed over
  * <path>, then the directory is fsynced, so a crash or a full disk leaves
  * either the old file or the new one, never a torn one.
+ * That holds for one process per save path: the temporary name is fixed, so
+ * two instances storing to the same path can rename each other's half-written
+ * file over the save, and nothing locks the path.
  *
  * FILE FORMAT, version 1. A SAVE_FILE_HEADER_SIZE (28) byte header, every
  * integer an unsigned 32-bit little-endian value, then the chip image:
@@ -25,10 +28,15 @@
  *     offset 24  CRC-32/ISO-HDLC of the image (save_file_crc32)
  *     offset 28  the image: byte n is byte n of the chip, sector s at
  *                28 + s * 4096, bank 1 from 28 + 0x10000
- * The image is the .sav GBA emulators use for a 1 Mbit flash cartridge, so
- * an emulator's save loads here as a legacy file (SAVE_FILE_LEGACY: no
- * header, layout unknown) and is given a header by the next store; for an
- * emulator, ours is the last 131072 bytes of the file (tail -c 131072).
+ * A bare 131072-byte image (an emulator's .sav, or a native build's from
+ * before the header) loads as SAVE_FILE_LEGACY and is taken to be the 32-bit
+ * native layout (save_convert.h). An emulator's save is in the GBA's layout,
+ * which no native build reads: the game finds its checksums wrong and starts
+ * a new game (a 64-bit build first runs the 32-bit converter over it), and
+ * the next store overwrites the file. Nothing here probes a bare image for the
+ * GBA layout, so copy an emulator's save before trying it.
+ * The image in a file this build wrote is its last 131072 bytes
+ * (tail -c 131072).
  * The layout tag says which ABI's struct layout the game data in the image
  * has, so a 64-bit build can recognise a 32-bit build's save and refuse or
  * convert it rather than misread it. No checks of the game's sector footers:
@@ -45,14 +53,11 @@
  *     each frame boundary:  if (flash_take_dirty()) save_file_store();
  *     at exit:              if (flash_take_dirty()) save_file_store();
  *                           save_file_shutdown(); flash_shutdown();
- * save_file_store must be called whenever flash_take_dirty() is true: every
- * path that writes flash goes through the driver functions that set the
- * dirty flag (TrySavingData, the link and record-mixing saves that write a
- * sector at a time, TryWriteSpecialSaveSector, the clear-save and
- * save-failed screens), so this one rule persists all of them. A multi-frame
- * save is stored after each frame it writes, as a real cartridge holds
- * whatever was written when the power goes. If a store fails, the image is
- * still newer than the file; main reports it and decides whether to retry.
+ * Every flash write marks its sector dirty (flash.h), so storing whenever
+ * flash_take_dirty() is true persists all of them, the multi-frame saves
+ * included: after each frame that writes, as a cartridge holds whatever was
+ * written when the power goes. If a store fails, the image is still newer
+ * than the file; main reports it and decides whether to retry.
  * A store always writes the running build's layout tag: after
  * SAVE_FILE_FOREIGN_LAYOUT, main must refuse to run the game or convert the
  * image first, or the next store labels a foreign image as native.
@@ -84,10 +89,9 @@
  * expansion's structs, which is not the GBA's (the GBA rounds SaveBlock1 to
  * 15568 bytes, i386 to 15496; docs/DECISIONS.md, "Native structs follow the
  * host ABI"), so an emulator's .sav is not interchangeable. The 32- and
- * 64-bit layouts
- * share the id; the pointer width tells them apart, and main moves a save
- * from one to the other with save_convert.h. A build that changes the
- * layout any other way uses a new value. */
+ * 64-bit layouts share the id; the pointer width tells them apart, and main
+ * moves a save from one to the other with save_convert.h. A build that
+ * changes the layout any other way uses a new value. */
 #define SAVE_FILE_LAYOUT_ID 1u
 
 /* The ABI an image was written with. */
@@ -102,9 +106,10 @@ enum save_file_status {
     /* No file at the path (or a NULL path): the image is an erased chip and
      * the game starts without a save. */
     SAVE_FILE_NEW = 1,
-    /* Loaded a bare FLASH_CHIP_SIZE-byte image with no header (from an
-     * emulator, a cartridge dump, or an older build): its layout is unknown;
-     * the next store writes it back with a header. */
+    /* Loaded a bare FLASH_CHIP_SIZE-byte image with no header (an older
+     * build's, or an emulator's or a cartridge dump's): the layout is not
+     * recorded, and main takes it to be the 32-bit native one; the next store
+     * writes it back with a header. */
     SAVE_FILE_LEGACY = 2,
     /* Loaded an intact version-1 file whose layout tag is not this build's
      * (save_file_loaded_layout says which). The image is in the chip, but

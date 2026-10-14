@@ -11,6 +11,7 @@
 // deps: save_file.c gba_memmap.c flash.c
 #include <signal.h>
 #include <sys/resource.h>
+#include <sys/stat.h>
 
 #include "save_file_fixture.h"
 
@@ -49,6 +50,30 @@ PTEST(a_write_that_fails_part_way_leaves_the_old_file)
     PT_ASSERT(read);
     PT_ASSERT(old_intact);
     PT_ASSERT(!tmp_left);
+    PT_ASSERT(removed);
+}
+
+/* The save is opened as every file the platform keeps is (host_file_open):
+ * readable by everyone and writable by its owner whatever the umask says, as
+ * host_file.h promises, where fopen would give 0666 less the umask. */
+PTEST(the_save_file_is_created_the_way_every_kept_file_is)
+{
+    struct scratch scratch;
+    if (!scratch_create(&scratch))
+        PT_FAIL("cannot create a scratch directory");
+    set_image(0x0E);
+    const mode_t old_mask = umask(0);
+    const int init = save_file_init(scratch.path);
+    const int store = save_file_store();
+    (void)umask(old_mask);
+    struct stat info = {0};
+    const bool statted = stat(scratch.path, &info) == 0;
+    save_file_shutdown();
+    const bool removed = scratch_remove(&scratch);
+    PT_ASSERT_EQ_INT(init, SAVE_FILE_OK);
+    PT_ASSERT_EQ_INT(store, SAVE_FILE_OK);
+    PT_ASSERT(statted);
+    PT_ASSERT_EQ_U32(info.st_mode & 0777u, 0644u);
     PT_ASSERT(removed);
 }
 

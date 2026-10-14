@@ -30,13 +30,14 @@ void rtc_report_call_failure(const char *call)
 }
 
 /* The path and the ".tmp" a save writes beside it must fit host_file.h's
- * path size, as the save file's do. */
+ * path size, as the save file's do. Sizes are printed as unsigned long long
+ * (%llu) with a cast: the Windows build links msvcrt, which lacks %zu. */
 static bool path_fits(const char *path)
 {
     if (strlen(path) + sizeof TEMP_SUFFIX <= HOST_FILE_PATH_SIZE)
         return true;
-    (void)fprintf(stderr, "rtc: offset file path is longer than %zu bytes\n",
-                  (size_t)HOST_FILE_PATH_SIZE - sizeof TEMP_SUFFIX);
+    (void)fprintf(stderr, "rtc: offset file path is longer than %llu bytes\n",
+                  (unsigned long long)(HOST_FILE_PATH_SIZE - sizeof TEMP_SUFFIX));
     return false;
 }
 
