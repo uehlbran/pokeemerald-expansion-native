@@ -7900,21 +7900,16 @@ static const u32 sCriticalHitOdds[]     = {16,  8,  4,  3,   2}; // 1/X, Gens 3,
 static const u32 sGen2CriticalHitOdds[] = {17, 32, 64, 85, 128}; // X/256
 
 #if PLATFORM_NATIVE
-// ShouldCalcCritDamage passes CRITICAL_HIT_BLOCKED (-1) here, and the tables are
-// indexed with the wrapped u32. The GBA reads the word before sGen7CriticalHitOdds
-// (0x0843F0B0, not 1, so BLOCKED never becomes a guaranteed crit); natively that
-// read is 16 GiB away at 64 bits. CRITICAL_HIT_ALWAYS (-2) is tested first by
-// that caller, so its constant is for a future one. Indices 5 and up exist only
-// under B_CRIT_CHANCE == GEN_1, which the Gen7 ROM gives no evidence for.
-#define CRIT_ODDS_GBA_READ_BLOCKED 0x02000301
-#define CRIT_ODDS_GBA_READ_ALWAYS  0x00623530
+// ShouldCalcCritDamage passes CRITICAL_HIT_BLOCKED (-1), which indexes the tables as a
+// huge u32; the GBA reads the word before sGen7CriticalHitOdds (0x0843F0B0), natively
+// 16 GiB away at 64 bits. That word is never 1, so BLOCKED never forces a crit. Indices
+// 5 and up (B_CRIT_CHANCE == GEN_1 only, no ROM evidence) get it too, for want of better.
+#define CRIT_ODDS_GBA_READ_OUT_OF_TABLE 0x02000301
 
 u32 GetCriticalHitOdds(u32 critChance)
 {
-    if (critChance == (u32)CRITICAL_HIT_ALWAYS)
-        return CRIT_ODDS_GBA_READ_ALWAYS;
     if (critChance >= ARRAY_COUNT(sGen7CriticalHitOdds))
-        return CRIT_ODDS_GBA_READ_BLOCKED;
+        return CRIT_ODDS_GBA_READ_OUT_OF_TABLE;
 #else
 u32 GetCriticalHitOdds(u32 critChance)
 {

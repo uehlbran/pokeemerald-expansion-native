@@ -428,6 +428,8 @@ static inline void CopyFuncToIwram(void *funcBuffer, const void *funcStartAddres
 // The word fetched here is look-ahead: when the last symbol of the bitstream ends exactly on a
 // word boundary (bitIndex == 0) it is never used, but on the GBA it was read from the bytes
 // after the stream. Native reads zero past sDataEnd instead of past the end of the asset.
+// SmolDecompressData sets sDataEnd before it calls the decoders; they are static and no other
+// path reaches them, so a decoder called without it would read every look-ahead word as 0.
 static const u32 *sDataEnd;
 #define LOOP_BITADVANCE() \
 {   \

@@ -15,6 +15,12 @@ TEST("GetCriticalHitOdds of CRITICAL_HIT_BLOCKED is the word the GBA reads, not 
     EXPECT_EQ(odds, 0x02000301);
 }
 
+TEST("GetCriticalHitOdds of CRITICAL_HIT_ALWAYS and of a stage past the table take the same word")
+{
+    EXPECT_EQ(GetCriticalHitOdds((u32)CRITICAL_HIT_ALWAYS), 0x02000301);
+    EXPECT_EQ(GetCriticalHitOdds(5), 0x02000301);
+}
+
 TEST("GetCriticalHitOdds of a stage inside the table is unchanged")
 {
     EXPECT_EQ(GetCriticalHitOdds(0), 24);

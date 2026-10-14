@@ -814,14 +814,10 @@ static void GiveParentSharedLevelUpMoves(struct Pokemon *egg, enum Move *fatherM
 
     const struct LevelUpMove *levelupLearnset = GetSpeciesLevelUpLearnset(species);
 #if PLATFORM_NATIVE
-    // The inner loop of the #else branch advances i, not j, so it compares
-    // levelupLearnset[0].move with sharedMoves[i], sharedMoves[i + 1], ...
-    // on past the array until a halfword equals it. The GBA can read any
-    // address and always finds one (at the latest the learnset itself, in
-    // ROM); it then adds that move, levelupLearnset[0].move, again for each
-    // later shared move (a no-op once the egg knows it), and the outer loop
-    // ends. Natively the read runs off the stack, so this does what the GBA
-    // ends up doing.
+    // Upstream's inner loop (the #else branch) advances i, not j, so it scans sharedMoves and
+    // the stack after it until a halfword equals levelupLearnset[0].move, then adds that move.
+    // The GBA always finds one; natively the scan runs off the stack. Net effect kept: the
+    // first level-up move is added once when there is a shared move.
     if (sharedMoves[0] != MOVE_NONE && levelupLearnset[0].move != LEVEL_UP_MOVE_END)
     {
         ADD_OR_REPLACE_MOVE(levelupLearnset[0].move)

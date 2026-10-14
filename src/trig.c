@@ -324,6 +324,13 @@ const s16 gSineTable[] =
     Q_8_8(0.99609375),  // sin(317*(π/128))
     Q_8_8(0.99609375),  // sin(318*(π/128))
     Q_8_8(0.99609375),  // sin(319*(π/128))
+#if PLATFORM_NATIVE
+    // Index 320, one past the table: what the GBA reads there (0x08DE3B78, the low half of a
+    // jump-table address, bytes 1e 04). Extrasensory's stage 1 and Cos with an unmasked angle
+    // reach it; natively the word after the table differs by build and width.
+    0x041E,
+#endif
+#line 327
 };
 
 // values of sin(x) as Q4.12 fixed-point numbers from x = 0° to x = 179°
@@ -520,15 +527,6 @@ s16 Sin(s16 index, s16 amplitude)
 // amplitude * cos(index*(π/128))
 s16 Cos(s16 index, s16 amplitude)
 {
-#if PLATFORM_NATIVE
-    // AnimZapCannonSpark_Step passes an unmasked angle, so index + 64 can be
-    // 320, the same one-past-the-end read as AnimTask_ExtrasensoryDistortion_Step;
-    // the GBA gets 0x041E there (include/trig.h). Other out-of-table indices
-    // (336 and on, and Sin's -64) have no ROM evidence collected and are left.
-    if (index + 64 == SINE_TABLE_LENGTH)
-        return (amplitude * SINE_TABLE_GBA_READ_END) >> 8;
-#endif
-#line 523
     return (amplitude * gSineTable[index + 64]) >> 8;
 }
 
