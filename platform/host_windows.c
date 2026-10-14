@@ -267,7 +267,9 @@ int host_file_open(const char *path, int flags)
 
 /* The system's handle behind a C runtime descriptor. _get_osfhandle reads the
  * runtime's table without its lock (_write would take the descriptor's), and
- * gives the handle as an integer, which is turned back into one here. */
+ * gives the handle as an integer, which is turned back into one here. It sets
+ * errno for a descriptor that is not open, so a handler never calls it: see
+ * host_file_for_handler. */
 static HANDLE handle_of(int descriptor)
 {
     const intptr_t handle = _get_osfhandle(descriptor);
@@ -302,11 +304,17 @@ int host_file_write_all(int descriptor, const void *bytes, size_t size)
     return 0;
 }
 
-/* No GetLastError and no errno: on a thread that has not used the C runtime,
- * msvcrt's _errno would allocate the thread's runtime block. */
-bool host_file_write_from_handler(int descriptor, const void *bytes, size_t size)
+host_handler_file host_file_for_handler(int descriptor)
 {
-    HANDLE handle = handle_of(descriptor);
+    return (host_handler_file)handle_of(descriptor);
+}
+
+/* The handle was resolved at install time, so nothing of the C runtime runs
+ * here: no _get_osfhandle, whose error path sets errno through msvcrt's
+ * _errno, and no GetLastError. */
+bool host_file_write_from_handler(host_handler_file file, const void *bytes, size_t size)
+{
+    HANDLE handle = (HANDLE)file;
     const unsigned char *next = bytes;
     while (handle != INVALID_HANDLE_VALUE && size > 0) {
         const DWORD chunk = size > MAXDWORD ? MAXDWORD : (DWORD)size;

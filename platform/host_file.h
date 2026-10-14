@@ -52,16 +52,31 @@ int host_file_open(const char *path, int flags);
  * host_file_write_from_handler instead. */
 int host_file_write_all(int descriptor, const void *bytes, size_t size);
 
+/* An open file as a fault handler writes to it: the descriptor on POSIX, the
+ * system's handle on Windows, resolved by host_file_for_handler before any
+ * handler runs. */
+typedef intptr_t host_handler_file;
+
+/* What host_file_for_handler gives for a descriptor that is not open, and the
+ * value to hold before a module has installed its handler. */
+#define HOST_HANDLER_FILE_NONE ((host_handler_file) - 1)
+
+/* The descriptor as host_file_write_from_handler takes it. Call it at install
+ * time, never from a handler: on Windows it asks the C runtime for the
+ * descriptor's handle, which sets errno if the descriptor is not open. Returns
+ * HOST_HANDLER_FILE_NONE for a descriptor that is not open, and the write
+ * then fails. */
+host_handler_file host_file_for_handler(int descriptor);
+
 /* host_file_write_all for a fault handler: the same writes, but errno is
  * left as it was, whatever happens, so that a handler neither changes what
  * the interrupted code sees in errno nor, on Windows, makes the C runtime
  * set it up on a thread that has not used it (msvcrt allocates a thread's
  * errno block on first use). POSIX: write(2) with errno saved and restored,
- * async-signal-safe. Windows: WriteFile on the descriptor's handle and
- * nothing else; msvcrt's _get_osfhandle reads the handle from its table
- * without a lock (it sets errno only for a descriptor that is not open).
- * Returns true if every byte was written. */
-bool host_file_write_from_handler(int descriptor, const void *bytes, size_t size);
+ * async-signal-safe. Windows: WriteFile on the handle and nothing else, so
+ * that nothing of the C runtime runs in the handler. Returns true if every
+ * byte was written. */
+bool host_file_write_from_handler(host_handler_file file, const void *bytes, size_t size);
 
 /* Writes what the open file descriptor holds through to the disk. Returns 0,
  * or -1 with errno set. */

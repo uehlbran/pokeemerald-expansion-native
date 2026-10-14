@@ -293,10 +293,15 @@ int host_file_write_all(int descriptor, const void *bytes, size_t size)
 
 /* errno is saved and put back: a handler that changed it would change what
  * the interrupted code reads after a failed call of its own. */
-bool host_file_write_from_handler(int descriptor, const void *bytes, size_t size)
+host_handler_file host_file_for_handler(int descriptor)
+{
+    return descriptor;
+}
+
+bool host_file_write_from_handler(host_handler_file file, const void *bytes, size_t size)
 {
     const int saved_errno = errno;
-    const bool written = host_file_write_all(descriptor, bytes, size) == 0;
+    const bool written = host_file_write_all((int)file, bytes, size) == 0;
     errno = saved_errno;
     return written;
 }

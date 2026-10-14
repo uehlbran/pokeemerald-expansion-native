@@ -372,6 +372,9 @@ static bool complete(struct host_fault *fault)
 #define HEX_DIGIT_MASK 0xFu
 #define PC_HEX_DIGITS (sizeof(uintptr_t) * 2u)
 
+/* stderr as the handler writes to it, resolved by arm_division_init. */
+static host_handler_file report_file = HOST_HANDLER_FILE_NONE;
+
 /* "arm_division: undecodable divide error at pc 0x12345678, passed on
  * (...)\n", 16 digits on x86-64, formatted without stdio and written with
  * host_file_write_from_handler, which a fault handler may call. */
@@ -388,7 +391,7 @@ static void report_passed_on(const struct host_fault *fault)
         line[sizeof head - 1 + i] = hex[(pc >> shift) & HEX_DIGIT_MASK];
     }
     memcpy(line + sizeof head - 1 + PC_HEX_DIGITS, tail, sizeof tail - 1);
-    (void)host_file_write_from_handler(STDERR_FILENO, line, sizeof line); /* nothing to do if stderr is gone */
+    (void)host_file_write_from_handler(report_file, line, sizeof line); /* nothing to do if stderr is gone */
 }
 
 /* Completes a divide error, or reports the one it cannot complete (so that
@@ -406,6 +409,7 @@ static bool on_divide_error(struct host_fault *fault)
 
 int arm_division_init(void)
 {
+    report_file = host_file_for_handler(STDERR_FILENO);
     if (host_fault_install_divide_error(on_divide_error) != 0)
         return ARM_DIVISION_ERR_SIGNAL;
     return ARM_DIVISION_OK;

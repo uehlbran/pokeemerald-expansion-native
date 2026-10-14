@@ -114,10 +114,13 @@ static void report_add_hex(struct report *report, uintptr_t value)
     report_add(report, text);
 }
 
+/* stderr as the handler writes to it, resolved by crash_reboot_init. */
+static host_handler_file report_file = HOST_HANDLER_FILE_NONE;
+
 /* Best-effort: there is nothing to do if stderr is gone. */
 static void report_write(const struct report *report)
 {
-    (void)host_file_write_from_handler(STDERR_FILENO, report->text, report->length);
+    (void)host_file_write_from_handler(report_file, report->text, report->length);
 }
 
 /* "crash_reboot: signal 11 at 0x..., fault address 0x...: " (Windows:
@@ -215,6 +218,7 @@ int crash_reboot_init(int argc, char *const argv[])
     const volatile uint8_t *bytes = persistent_bytes();
     for (size_t i = 0; i < CRASH_REBOOT_PERSISTENT_SIZE; i++)
         reboot.started_with[i] = bytes[i];
+    report_file = host_file_for_handler(STDERR_FILENO);
     if (host_fault_install_crash(on_crash) != 0)
         return CRASH_REBOOT_ERR_SIGNAL;
     return CRASH_REBOOT_OK;

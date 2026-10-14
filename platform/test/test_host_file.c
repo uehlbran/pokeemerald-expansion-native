@@ -108,6 +108,15 @@ PTEST(a_lock_on_a_descriptor_that_is_not_open_fails_for_that_reason)
     PT_ASSERT_EQ_INT(errno, EBADF); /* not EWOULDBLOCK: nobody holds anything */
 }
 
+PTEST(a_handler_cannot_write_to_a_descriptor_that_is_not_open_and_leaves_errno)
+{
+    const host_handler_file file = host_file_for_handler(-1);
+    PT_ASSERT_EQ_INT(file, HOST_HANDLER_FILE_NONE);
+    errno = EDOM;
+    PT_ASSERT(!host_file_write_from_handler(file, "x", 1u));
+    PT_ASSERT_EQ_INT(errno, EDOM);
+}
+
 PTEST(a_directory_under_a_missing_one_is_not_created)
 {
     struct scratch scratch;
