@@ -1,0 +1,24 @@
+# Gate (h) across operating systems, the last stage (run_cross_os.sh back): the
+# Linux build continues on the save the Windows build wrote with
+# cross_width_save.replay (its second save, in Professor Birch's lab), which
+# carried the Linux build's first one.
+
+wait-until callback2=MainCB2_Intro max 1000
+wait-until callback2=MainCB2 max 20000
+wait-until task_first=Task_TitleScreenPhase3 max 600
+press START
+wait-until task_first=Task_HandleMainMenuInput max 600
+# a saved game: CONTINUE is the first entry
+press A
+wait-until callback2=CB2_Overworld max 1200
+wait 10  # settle
+wait-until controls_locked=0 max 600
+dump 30_continued_back
+screenshot 30_continued_back
+expect save_counter=2
+expect flash_dirty_writes=0
+expect player_name=Ab
+expect party_count=1
+expect party0_species=252
+expect party0_name=Treecko
+expect map_name=MAP_LITTLEROOT_TOWN_PROFESSOR_BIRCHS_LAB
