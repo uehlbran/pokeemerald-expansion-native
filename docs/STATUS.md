@@ -1,6 +1,6 @@
 # Status
 
-Last updated 2026-10-14 (milestone 7 done: **64-bit done**, every gate green at both widths on main at 94f3c70f62; milestone 8 in progress: Linux CI on main, the probes decided, the host layer and the data converter in review).
+Last updated 2026-10-14 (milestone 7 done: **64-bit done**, every gate green at both widths on main at 94f3c70f62; milestone 8 in progress: the two-tier Linux CI, the host layer, the data converter and the Windows cross-build merged; the test timeout and the Windows host layer in flight).
 
 This file is the honest ledger. A thing is listed as verified only with
 the gate that proved it. Anything without a gate is unverified, whatever
@@ -375,8 +375,7 @@ suppressed warning on the handler path, the PE checker's self-test
 pinned to the specification's literals, a gap-content check) merged.
 
 **In flight.** The test harness's timeout without SIGALRM and the
-per-OS split of the POSIX-bound tests (task W3, review fixes); the CI
-workflow in two tiers (measuring); the Windows host layer (tasks W5 to
+per-OS split of the POSIX-bound tests (task W3, review fixes); the Windows host layer (tasks W5 to
 W7: memory, image, process and files, the vectored exception handler
 and the crash respawn, the stack switch, the watchdog, the cross-built
 unit tests for the Windows runner).
