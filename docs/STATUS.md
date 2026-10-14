@@ -325,9 +325,29 @@ the save file and the RTC offset), reviewers check races, signal safety,
 lock order, fork/exec and file races explicitly. The task W3 in flight
 was re-briefed under them.
 
-**In flight.** The data converter for Mach-O and COFF (task M1, in
-review); the test harness's timeout without SIGALRM and the per-OS split
-of the POSIX-bound tests (task W3); the CI workflow in two tiers.
+**The data converter** (task M1, merged 2026-10-14 at 0b86a3454c): the
+Linux 64-bit build's 544 assembled data objects (14 data, 530 songs)
+are converted from their ELF form into assembler listings for Mach-O
+and COFF (`platform/build_glue/elf_to_flat.py`, with `macho_object.py`
+and `coff_object.py` as readers), and `check_flat.py` assembles each
+listing with clang and compares bytes, relocations, symbols and
+alignment with the ELF object: 544 of 544 equal on both targets
+(19,208 eight-byte words, 41,946 four-byte words, 8 sixteen-bit words
+given their values from a table over all objects; about 5 s per target
+at -j32). The game's bss and data get their own section names so the
+other links can bracket them as the Linux one does; absolute symbols
+are local. `make -f Makefile.native data-flat TARGET=... check-flat
+TARGET=...`; the five self-tests run in the platform gate (which now
+needs clang and GNU as). Reviewed with an independent byte-level audit
+over all objects and 58 mutants; the Linux executables unchanged. The
+orchestrator's gate after the merge: platform gate, the 64-bit build,
+both conversions and checks, the opening replay, all green (0b86a3454c).
+
+**In flight.** The test harness's timeout without SIGALRM and the
+per-OS split of the POSIX-bound tests (task W3); the CI workflow in two
+tiers; the Windows cross-build glue (task W4: the target-OS switch, SDL2
+for MinGW, the PE linker scripts with the probe's filled layout, the
+COFF data from the converter, the link).
 
 ## Verified by a gate
 
