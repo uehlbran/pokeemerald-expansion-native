@@ -1,0 +1,92 @@
+# The setup every native job in native.yml shares, after the checkout: the
+# packages (docs/BUILDING.md, the native lines), the caches of the build tools,
+# of the compiler and of the converted graphics, and ccache on PATH. One copy,
+# because six pasted ones had already drifted apart.
+name: Native setup
+description: Install the native build's prerequisites and restore its caches.
+
+inputs:
+  i386:
+    description: "'true' for the 32-bit build: adds the i386 SDL2 (the comment on that step says how)."
+    default: 'false'
+  lint-tools:
+    description: "'true' for the platform gate: adds clang, clang-format, clang-tidy and cppcheck."
+    default: 'false'
+  ccache-name:
+    description: Names the job's compiler cache, so that jobs building different things do not evict each other's.
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Prerequisites (docs/BUILDING.md, the native lines)
+      shell: bash
+      env:
+        I386: ${{ inputs.i386 }}
+        LINT_TOOLS: ${{ inputs.lint-tools }}
+      run: |
+        packages="build-essential gcc-multilib g++-multilib libc6-dev-i386 pkg-config git python3 libpng-dev libsdl2-dev ccache"
+        if [ "$LINT_TOOLS" = true ]; then
+          packages="$packages clang clang-format clang-tidy cppcheck"
+        fi
+        if [ "$I386" = true ]; then
+          sudo dpkg --add-architecture i386
+        fi
+        sudo apt-get update
+        sudo apt-get install -y --no-install-recommends $packages
+        # docs/BUILDING.md installs libsdl2-dev:i386 for the 32-bit build. On
+        # the runner image apt cannot install it: it pulls in
+        # libglib2.0-dev:i386, whose -dev-bin part cannot coexist with the
+        # image's amd64 one. The 32-bit build needs only the i386 runtime
+        # library and, from the -dev package, the i386 configuration header
+        # (SIZEOF_VOIDP 4) and the libSDL2.so links; those two are taken from
+        # the downloaded package without its dependencies.
+        if [ "$I386" = true ]; then
+          sudo apt-get install -y --no-install-recommends libsdl2-2.0-0:i386
+          mkdir -p /tmp/sdl2-i386 && cd /tmp/sdl2-i386 && apt-get download libsdl2-dev:i386 && dpkg-deb -x libsdl2-dev_*_i386.deb unpacked
+          sudo cp -a unpacked/usr/include/i386-linux-gnu /usr/include/
+          sudo cp -a unpacked/usr/lib/i386-linux-gnu/libSDL2.so unpacked/usr/lib/i386-linux-gnu/libSDL2-2.0.so /usr/lib/i386-linux-gnu/
+          cd "$GITHUB_WORKSPACE"
+          pkg-config --cflags --libs sdl2; ls -l /usr/lib/i386-linux-gnu/libSDL2.so /usr/include/i386-linux-gnu/SDL2/_real_SDL_config.h
+        fi
+
+    - name: Cache the build tools
+      uses: actions/cache@v4
+      with:
+        path: |
+          tools/bin2c/bin2c
+          tools/gbafix/gbafix
+          tools/gbagfx/gbagfx
+          tools/jsonproc/jsonproc
+          tools/mapjson/mapjson
+          tools/mid2agb/mid2agb
+          tools/preproc/preproc
+          tools/ramscrgen/ramscrgen
+          tools/rsfont/rsfont
+          tools/scaninc/scaninc
+          tools/trainerproc/trainerproc
+          tools/compresSmol/compresSmol
+          tools/compresSmol/compresSmolTilemap
+          tools/wav2agb/wav2agb
+          tools/patchelf/patchelf
+          tools/mgba-rom-test-hydra/mgba-rom-test-hydra
+        key: tools-native-${{ runner.os }}-${{ hashFiles('tools/*/Makefile', 'tools/**/*.c', 'tools/**/*.cpp', 'tools/**/*.h', 'make_tools.mk') }}
+
+    - name: Cache the compiler cache
+      uses: actions/cache@v4
+      with:
+        path: ~/.cache/ccache
+        key: ccache-${{ inputs.ccache-name }}-${{ runner.os }}-${{ github.sha }}
+        restore-keys: |
+          ccache-${{ inputs.ccache-name }}-${{ runner.os }}-
+
+    # ccache's compiler links first on PATH, so gcc and g++ go through it.
+    - name: Use ccache
+      shell: bash
+      run: |
+        echo /usr/lib/ccache >> "$GITHUB_PATH"
+        ccache --max-size=1G --zero-stats
+
+    # The converted graphics (native.yml's header says why; the action, what keys them).
+    - name: Cache the converted assets
+      uses: ./.github/actions/native-assets
