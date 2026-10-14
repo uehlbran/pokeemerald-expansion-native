@@ -22,11 +22,22 @@
 # there, about 1 GiB for this layout's (the image spans 0x01800000 to
 # 0x41xxxxxx); the runner's commit ran out after two dozen of them
 # (docs/DECISIONS.md, "The Windows unit tests run from copies removed after
-# them").
+# them"). A copy that cannot be removed is named in a warning.
 set -u
 
 TEST_SECONDS=600
 KILL_SECONDS=10
+# timeout's status when the limit ended the test, and when the test had to
+# be killed KILL_SECONDS after that.
+TIMEOUT_EXPIRED=124
+TIMEOUT_KILLED=137
+# Windows refuses to delete an image that is still mapped, and a test can
+# leave a process of its copy for a moment after it ends:
+# test_host_process_windows starts its own executable again, and when the
+# test is ended early the close of its job object ends that child without
+# waiting for it. So the removal is tried again before it is given up.
+REMOVE_ATTEMPTS=5
+REMOVE_RETRY_SECONDS=1
 
 if [ $# -ne 1 ] || [ ! -d "$1" ]; then
     echo "usage: run_windows_tests.sh DIR (the directory of the cross-built test_*.exe)" >&2
@@ -45,6 +56,18 @@ rm -rf "$run_dir" && mkdir "$run_dir" && cp -- "$dir/SDL2.dll" "$run_dir/" || {
     echo "run_windows_tests.sh: cannot set up $run_dir" >&2
     exit 1
 }
+
+# Removes test $1's copy from DIR/run, trying again while Windows holds it.
+remove_copy() {
+    local name=$1 attempt
+    for ((attempt = 1; attempt <= REMOVE_ATTEMPTS; attempt++)); do
+        rm -f -- "$run_dir/$name.exe" "$run_dir/$name.exe.symbols" 2> /dev/null
+        [ -e "$run_dir/$name.exe" ] || return 0
+        [ $attempt -eq $REMOVE_ATTEMPTS ] || sleep $REMOVE_RETRY_SECONDS
+    done
+    echo "WARNING: $name's copy $run_dir/$name.exe could not be removed; its commit charge stays"
+}
+
 failed=0
 for test in "${tests[@]}"; do
     name=$(basename "$test" .exe)
@@ -58,18 +81,24 @@ for test in "${tests[@]}"; do
     }
     (cd "$dir" && timeout --kill-after=$KILL_SECONDS $TEST_SECONDS "$run_dir/$name.exe") > "$log" 2> "$errors"
     code=$?
-    rm -f -- "$run_dir/$name.exe" "$run_dir/$name.exe.symbols"
     cat "$log"
     if [ -s "$errors" ]; then
         echo "-- standard error"
         cat "$errors"
     fi
-    # The C runtime writes "\r\n" for "\n" on a text-mode stream.
-    if [ $code -ne 0 ]; then
-        echo "FAILED: $name exited with status $code"
-        failed=$((failed + 1))
-    elif ! grep -qE $'^[0-9]+ passed, 0 failed\r?$' "$log"; then
-        echo "FAILED: $name ended without its summary line"
+    remove_copy "$name"
+    verdict=
+    case $code in
+    0)
+        # The C runtime writes "\r\n" for "\n" on a text-mode stream.
+        grep -qE $'^[0-9]+ passed, 0 failed\r?$' "$log" || verdict="ended without its summary line"
+        ;;
+    "$TIMEOUT_EXPIRED") verdict="outlasted $TEST_SECONDS s" ;;
+    "$TIMEOUT_KILLED") verdict="outlasted $TEST_SECONDS s and was killed $KILL_SECONDS s later" ;;
+    *) verdict="exited with status $code" ;;
+    esac
+    if [ -n "$verdict" ]; then
+        echo "FAILED: $name $verdict"
         failed=$((failed + 1))
     fi
 done
