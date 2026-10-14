@@ -254,13 +254,13 @@ PTEST(without_a_previous_handler_an_undecodable_divide_error_reports_and_kills_t
     PT_ASSERT_EQ_INT(psup_terminating_signal(status), SIGFPE);
 
     static const char head[] = "arm_division: undecodable divide error at pc 0x";
-    static const char tail[] = ", passed on";
+    static const char tail[] = ", passed on (not a DIV or IDIV by zero, nor INT_MIN / -1)\n";
     const size_t digits = sizeof(uintptr_t) * 2;
-    PT_ASSERT(got > 0);
+    PT_ASSERT_EQ_INT(got, (ssize_t)(sizeof head - 1 + digits + sizeof tail - 1)); /* one whole line */
     PT_ASSERT(strncmp(line, head, sizeof head - 1) == 0);
     for (size_t i = 0; i < digits; i++)
         PT_ASSERT(strchr("0123456789abcdef", line[sizeof head - 1 + i]) != NULL);
-    PT_ASSERT(strncmp(line + sizeof head - 1 + digits, tail, sizeof tail - 1) == 0);
+    PT_ASSERT_EQ_STR(line + sizeof head - 1 + digits, tail);
 }
 
 #if defined(__x86_64__)

@@ -820,6 +820,8 @@ PTEST(save_over_a_longer_stale_temporary_file_writes_exactly_the_offset)
     write_file(g_tmp_path, "stale stale stale stale stale stale stale stale stale stale stale stale\n");
     g_now = EPOCH_2024_03_15_13_45_30;
     PT_ASSERT_EQ_INT(rtc_init(fake_source, g_path), 0);
+    read_file(g_path, text, sizeof text); /* the first run's offset, saved over the stale file */
+    PT_ASSERT_EQ_STR(text, "0\n");
     PT_ASSERT_EQ_INT(rtc_set_datetime(&in), 0);
     rtc_shutdown();
     read_file(g_path, text, sizeof text);

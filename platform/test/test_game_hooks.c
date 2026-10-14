@@ -51,7 +51,9 @@ static uintptr_t address_of(const volatile void *pointer)
 /* On the platform's call stack, where the link put it (host_memory.h), below
  * 2^27 so that the battle runner's 27-bit address fields hold its locals'
  * addresses (include/test/battle.h, QueuedSubHitEvent). */
-#define BATTLE_RUNNER_ADDRESS_LIMIT (UINT32_C(1) << 27)
+#define BATTLE_RUNNER_ADDRESS_LIMIT UINT32_C(0x08000000) /* 2^27, written apart from game_hooks.h */
+_Static_assert(GAME_HOOKS_CALL_STACK_LIMIT == BATTLE_RUNNER_ADDRESS_LIMIT,
+               "the call stack must end below the battle runner's 27-bit address fields");
 
 static bool on_call_stack(uintptr_t address)
 {
