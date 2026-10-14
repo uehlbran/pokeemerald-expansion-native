@@ -1,10 +1,26 @@
 # The Windows runner (milestone 8, tasks W8 and W9; docs/PLAN.md "Milestone 8
-# plan"): nothing built for Windows can run on the Linux build machine, so a
-# Linux job cross-builds the executable and the unit tests with MinGW-w64
-# (docs/BUILDING.md, "Windows (cross-build from Linux)") and a Windows job
-# runs them (docs/BUILDING.md, "Running it on Windows"). Manual only for now:
-# Windows minutes count double, and the job list grows with task W9 (the
-# replays, the suite through the hydra, the cross-OS save gate).
+# plan"; docs/BUILDING.md, "Running it on Windows"). Nothing built for Windows
+# runs on the Linux build machine, so Linux jobs cross-build with MinGW-w64
+# (docs/BUILDING.md, "Windows (cross-build from Linux)") and one Windows job
+# runs what they built:
+#
+#   cross-build        the game for Windows and the unit tests; patchelf on a
+#                      PE file; the Linux 64-bit game and the save it writes
+#                      (gate h's first stage, tests/smoke/run_cross_os.sh)
+#   cross-build-suite  the Windows test runner build (TEST=1)
+#   linux-suite        expansion's suite on the Linux 64-bit build, the
+#                      results the Windows ones must equal (gate b)
+#   windows            the unit tests, the start-up smoke, the replays (gates
+#                      d and e), gate h's second stage on the Linux save, and
+#                      the suite through expansion's hydra under MSYS2
+#                      (docs/DECISIONS.md, "The suite on Windows runs under
+#                      MSYS2")
+#   compare            the Windows suite's results against Linux's, test by
+#                      test, and gate h's last stage: the Linux build on the
+#                      save the Windows build wrote
+#
+# Artifacts carry the builds and the stages' directories between the jobs.
+# Windows minutes count double.
 name: windows
 
 on:
@@ -14,11 +30,16 @@ concurrency:
   group: windows-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  # The replays and the suite run headless.
+  SDL_VIDEODRIVER: dummy
+  SDL_AUDIODRIVER: dummy
+
 jobs:
   cross-build:
-    name: Cross-build on Linux (the executable and the unit tests)
+    name: Cross-build the game and the unit tests; the Linux save
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
 
@@ -58,16 +79,16 @@ jobs:
         uses: ./.github/actions/native-assets
 
       # The game's C reaches the compiler as a file (Makefile.native,
-      # COMPILE_C), which ccache can cache: the MinGW compile of the game is
-      # most of this job without it. Linked as the MinGW compiler's name, first
-      # on PATH, so that ccache finds the real one after it.
+      # COMPILE_C), which ccache can cache: the compiles are most of this job
+      # without it. Linked as the MinGW compiler's name, first on PATH, so that
+      # ccache finds the real one after it.
       - name: Cache the compiler cache
         uses: actions/cache@v4
         with:
           path: ~/.cache/ccache
-          key: ccache-windows-${{ runner.os }}-${{ github.sha }}
+          key: ccache-windows-game-${{ runner.os }}-${{ github.sha }}
           restore-keys: |
-            ccache-windows-${{ runner.os }}-
+            ccache-windows-game-${{ runner.os }}-
 
       - name: Use ccache
         run: |
@@ -83,17 +104,26 @@ jobs:
           path: build/sdl2-mingw
           key: sdl2-mingw-${{ hashFiles('Makefile.native') }}
 
-      - name: Cross-build the executable (the Linux data, converted; the PE layout check)
+      - name: The Linux 64-bit game (gate h's first stage plays it)
+        run: make -f Makefile.native -j"$(nproc)" native BITS=64
+
+      - name: Gate h across operating systems, the first stage (the Linux save)
+        run: tests/smoke/run_cross_os.sh save build/native64/pokeemerald-native out/cross-os/save
+
+      - name: Cross-build the game (the Linux data, converted; the PE layout check)
         run: make -f Makefile.native -j"$(nproc)" native BITS=64 TARGET_OS=windows
 
       - name: Cross-build the unit tests
         run: make -C platform -j"$(nproc)" test TARGET_OS=windows BITS=64
 
+      - name: patchelf on a PE file
+        run: make -C platform tools-test TARGET_OS=windows BITS=64
+
       - name: ccache statistics
         if: always()
         run: ccache -s
 
-      - name: Upload the executable and the tests
+      - name: Upload the Windows build and the Linux save
         uses: actions/upload-artifact@v4
         with:
           name: windows-build
@@ -103,13 +133,172 @@ jobs:
             build/native64-windows/pokeemerald-native.exe.symbols
             build/native64-windows/SDL2.dll
             platform/build/64-windows/test/*.exe
+            platform/build/64-windows/test/*.symbols
             platform/build/64-windows/test/SDL2.dll
+            out/cross-os/save/work/from/
 
-  run:
-    name: Run on Windows (the unit tests, the start-up smoke)
-    needs: cross-build
-    runs-on: windows-latest
+      - name: Upload the Linux game (gate h's last stage plays it)
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-build
+          if-no-files-found: error
+          path: |
+            build/native64/pokeemerald-native
+            build/native64/pokeemerald-native.symbols
+
+      - name: Keep the outputs of a failed stage
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cross-os-save-outputs
+          path: out/
+          if-no-files-found: ignore
+
+  cross-build-suite:
+    name: Cross-build the test runner (TEST=1)
+    runs-on: ubuntu-latest
     timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Prerequisites (docs/BUILDING.md, the native and the Windows lines)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends build-essential gcc-multilib libc6-dev-i386 pkg-config git python3 libpng-dev libsdl2-dev clang ccache gcc-mingw-w64-x86-64 binutils-mingw-w64-x86-64 mingw-w64-tools
+
+      - name: Cache the build tools
+        uses: actions/cache@v4
+        with:
+          path: |
+            tools/bin2c/bin2c
+            tools/gbafix/gbafix
+            tools/gbagfx/gbagfx
+            tools/jsonproc/jsonproc
+            tools/mapjson/mapjson
+            tools/mid2agb/mid2agb
+            tools/preproc/preproc
+            tools/ramscrgen/ramscrgen
+            tools/rsfont/rsfont
+            tools/scaninc/scaninc
+            tools/trainerproc/trainerproc
+            tools/compresSmol/compresSmol
+            tools/compresSmol/compresSmolTilemap
+            tools/wav2agb/wav2agb
+            tools/patchelf/patchelf
+            tools/mgba-rom-test-hydra/mgba-rom-test-hydra
+          key: tools-native-${{ runner.os }}-${{ hashFiles('tools/*/Makefile', 'tools/**/*.c', 'tools/**/*.cpp', 'tools/**/*.h', 'make_tools.mk') }}
+
+      - name: Cache the converted assets
+        uses: ./.github/actions/native-assets
+
+      - name: Cache the compiler cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ccache
+          key: ccache-windows-suite-${{ runner.os }}-${{ github.sha }}
+          restore-keys: |
+            ccache-windows-suite-${{ runner.os }}-
+
+      - name: Use ccache
+        run: |
+          mkdir -p ~/.local/ccache-bin
+          ln -sf /usr/bin/ccache ~/.local/ccache-bin/x86_64-w64-mingw32-gcc
+          echo ~/.local/ccache-bin >> "$GITHUB_PATH"
+          echo /usr/lib/ccache >> "$GITHUB_PATH"
+          ccache --max-size=2G --zero-stats
+
+      - name: Cache SDL2 for MinGW (pinned in Makefile.native by sha256)
+        uses: actions/cache@v4
+        with:
+          path: build/sdl2-mingw
+          key: sdl2-mingw-${{ hashFiles('Makefile.native') }}
+
+      - name: Cross-build the test runner (the Linux TEST=1 data, converted)
+        run: make -f Makefile.native -j"$(nproc)" native BITS=64 TARGET_OS=windows TEST=1
+
+      - name: ccache statistics
+        if: always()
+        run: ccache -s
+
+      - name: Upload the test runner
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-suite-build
+          if-no-files-found: error
+          path: |
+            build/native64-test-windows/pokeemerald-native-test.exe
+            build/native64-test-windows/SDL2.dll
+
+  linux-suite:
+    name: The suite on Linux, 64-bit (the results to equal)
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Prerequisites (docs/BUILDING.md, the native lines)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends build-essential gcc-multilib libc6-dev-i386 pkg-config git python3 libpng-dev libsdl2-dev ccache
+
+      - name: Cache the build tools
+        uses: actions/cache@v4
+        with:
+          path: |
+            tools/bin2c/bin2c
+            tools/gbafix/gbafix
+            tools/gbagfx/gbagfx
+            tools/jsonproc/jsonproc
+            tools/mapjson/mapjson
+            tools/mid2agb/mid2agb
+            tools/preproc/preproc
+            tools/ramscrgen/ramscrgen
+            tools/rsfont/rsfont
+            tools/scaninc/scaninc
+            tools/trainerproc/trainerproc
+            tools/compresSmol/compresSmol
+            tools/compresSmol/compresSmolTilemap
+            tools/wav2agb/wav2agb
+            tools/patchelf/patchelf
+            tools/mgba-rom-test-hydra/mgba-rom-test-hydra
+          key: tools-native-${{ runner.os }}-${{ hashFiles('tools/*/Makefile', 'tools/**/*.c', 'tools/**/*.cpp', 'tools/**/*.h', 'make_tools.mk') }}
+
+      - name: Cache the converted assets
+        uses: ./.github/actions/native-assets
+
+      - name: Cache the compiler cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ccache
+          key: ccache-windows-linux-suite-${{ runner.os }}-${{ github.sha }}
+          restore-keys: |
+            ccache-windows-linux-suite-${{ runner.os }}-
+
+      - name: Use ccache
+        run: |
+          echo /usr/lib/ccache >> "$GITHUB_PATH"
+          ccache --max-size=1G --zero-stats
+
+      - name: Gate b, the suite at 64 bits
+        shell: bash -e -o pipefail {0}
+        run: make -f Makefile.native -j"$(nproc)" check BITS=64 | tee suite-linux64.log
+
+      - name: ccache statistics
+        if: always()
+        run: ccache -s
+
+      - name: Upload the results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: suite-linux64
+          path: suite-linux64.log
+
+  windows:
+    name: Run on Windows (unit tests, smoke, replays, save, suite)
+    needs: [cross-build, cross-build-suite]
+    runs-on: windows-latest
+    timeout-minutes: 40
     defaults:
       run:
         shell: bash
@@ -125,26 +314,11 @@ jobs:
         with:
           name: windows-build
 
-      # DIAGNOSTIC (temporary, task W8/W9 iteration): the system's commit
-      # charge as executables start, exit, are copied and deleted.
-      - name: Commit charge (diagnostic)
-        shell: pwsh
-        run: |
-          function Commit($what) { $m = Get-CimInstance Win32_PerfRawData_PerfOS_Memory; "{0,-44} committed {1,6} MiB of {2,6} MiB" -f $what, [math]::Round($m.CommittedBytes/1MB), [math]::Round($m.CommitLimit/1MB) }
-          Get-CimInstance Win32_ComputerSystem | Format-List TotalPhysicalMemory, NumberOfLogicalProcessors
-          Get-CimInstance Win32_PageFileUsage | Format-List Name, AllocatedBaseSize, CurrentUsage
-          Get-CimInstance Win32_PageFileSetting | Format-List Name, InitialSize, MaximumSize
-          $d = 'platform\build\64-windows\test'
-          Commit 'start'
-          & "$d\test_bios.exe" *> $null; Commit "test_bios.exe exited $LASTEXITCODE"
-          & "$d\test_bios.exe" *> $null; Commit "test_bios.exe again"
-          & "$d\test_dma.exe" *> $null; Commit "test_dma.exe exited $LASTEXITCODE"
-          & "$d\test_flash.exe" *> $null; Commit "test_flash.exe exited $LASTEXITCODE"
-          Copy-Item "$d\test_flash.exe" "$d\copy_flash.exe"
-          & "$d\copy_flash.exe" *> $null; Commit "a copy of test_flash.exe exited $LASTEXITCODE"
-          Remove-Item "$d\copy_flash.exe"; Commit 'the copy deleted'
-          Start-Sleep -Seconds 2; Commit 'two seconds later'
-          & build\native64-windows\pokeemerald-native.exe --headless --silent --frames 1 *> $null; Commit "the game exited $LASTEXITCODE"
+      - name: Download the test runner
+        uses: actions/download-artifact@v4
+        with:
+          name: windows-suite-build
+          path: build/native64-test-windows
 
       - name: The unit tests
         run: platform/test_runner/run_windows_tests.sh platform/build/64-windows/test
@@ -153,35 +327,112 @@ jobs:
         if: always()
         run: platform/test_runner/run_windows_smoke.sh build/native64-windows/pokeemerald-native.exe
 
-      - name: Commit charge after the tests (diagnostic)
+      - name: Gates d and e, the replays
         if: always()
-        shell: pwsh
         run: |
-          $m = Get-CimInstance Win32_PerfRawData_PerfOS_Memory; "committed {0} MiB of {1} MiB" -f [math]::Round($m.CommittedBytes/1MB), [math]::Round($m.CommitLimit/1MB)
-          Get-Process | Sort-Object PagedMemorySize64 -Descending | Select-Object -First 12 Name, Id, PagedMemorySize64, VirtualMemorySize64 | Format-Table
+          status=0
+          tests/smoke/run.sh build/native64-windows/pokeemerald-native.exe out/open64 || status=1
+          tests/smoke/run_debug_menu.sh build/native64-windows/pokeemerald-native.exe out/dbg64 || status=1
+          exit $status
 
-      # DIAGNOSTIC (temporary): MSYS2 for the hydra (task W8, route i).
-      - name: MSYS2 probe (diagnostic)
+      - name: Gate h across operating systems, the second stage (the Windows build on the Linux save)
         if: always()
-        continue-on-error: true
+        run: tests/smoke/run_cross_os.sh load build/native64-windows/pokeemerald-native.exe out/cross-os/save/work/from out/cross-os/load
+
+      # Expansion's hydra needs fork, poll and stdbuf: MSYS2's, which the
+      # image has at C:\msys64, with its gcc (docs/DECISIONS.md, "The suite
+      # on Windows runs under MSYS2").
+      - name: MSYS2's gcc, and the hydra and patchelf built with it
+        if: always()
         shell: C:\msys64\usr\bin\bash.exe -l -e -o pipefail {0}
         env:
           MSYSTEM: MSYS
           CHERE_INVOKING: 1
         run: |
-          uname -a
-          command -v stdbuf gcc make || true
-          time pacman -S --noconfirm --needed gcc make
-          command -v stdbuf gcc make
-          gcc --version | head -1
-          ls /usr/lib/coreutils /usr/libexec/coreutils 2>/dev/null || true
+          pacman -S --noconfirm --needed gcc make
           make -C tools/patchelf
           make -C tools/mgba-rom-test-hydra
-          ls -l tools/patchelf tools/mgba-rom-test-hydra
 
-      - name: Keep the test logs
+      - name: Gate b, the suite through the hydra
+        if: always()
+        shell: C:\msys64\usr\bin\bash.exe -l -e -o pipefail {0}
+        env:
+          MSYSTEM: MSYS
+          CHERE_INVOKING: 1
+        run: |
+          mkdir -p out
+          MAKEFLAGS=-j"$(nproc)" platform/test_runner/run_windows_suite.sh build/native64-test-windows/pokeemerald-native-test.exe | tee out/suite-windows.log
+
+      - name: Upload the suite's results and gate h's second stage
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: windows-test-logs
-          path: platform/build/64-windows/test/*.log
+          name: windows-results
+          path: |
+            out/suite-windows.log
+            out/cross-os/load/work/again/
+          if-no-files-found: ignore
+
+      - name: Keep the logs and the outputs of a failed run
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-logs
+          path: |
+            platform/build/64-windows/test/*.log
+            out/
+          if-no-files-found: ignore
+
+  compare:
+    name: Compare the suites; gate h's last stage on Linux
+    needs: [cross-build, linux-suite, windows]
+    if: always() && needs.cross-build.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Prerequisites (the Linux game's libraries)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libsdl2-2.0-0
+
+      - name: Download the Linux game
+        uses: actions/download-artifact@v4
+        with:
+          name: linux-build
+          path: build/native64
+
+      - name: Download the Linux save
+        uses: actions/download-artifact@v4
+        with:
+          name: windows-build
+          path: windows-build
+
+      - name: Download the Windows results
+        uses: actions/download-artifact@v4
+        with:
+          name: windows-results
+          path: out
+
+      - name: Download the Linux results
+        uses: actions/download-artifact@v4
+        with:
+          name: suite-linux64
+
+      - name: Gate b on Windows, test by test against Linux 64-bit
+        run: platform/test_runner/compare_suite_results.sh suite-linux64.log out/suite-windows.log
+
+      - name: Gate h across operating systems, the last stage (the Linux build on the Windows save)
+        if: always()
+        run: |
+          chmod +x build/native64/pokeemerald-native
+          tests/smoke/run_cross_os.sh back build/native64/pokeemerald-native windows-build/out/cross-os/save/work/from out/cross-os/load/work/again out/cross-os/back
+
+      - name: Keep the outputs of a failed stage
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: compare-outputs
+          path: out/
+          if-no-files-found: ignore
