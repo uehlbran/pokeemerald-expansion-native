@@ -144,6 +144,7 @@ returned to the caller (`main` decides what to do; modules never call
 | `interrupt` | `IntrMain` and the IE/IF/IME logic | GBA Interrupt Control | yes |
 | `timer` | Timers 0 to 3 | GBA Timers | yes |
 | `rtc` | the S-3511A clock chip's registers and offset | GBA Cart Real-Time Clock | yes |
+| `rtc_siirtc` | expansion's `SiiRtc*` API (`include/siirtc.h`) on top of `rtc`, in place of `src/siirtc.c`, which the native build leaves out | GBA Cart Real-Time Clock | yes (through the game's tests, `test/siirtc.c`) |
 | `rtc_offset_store` | the battery-backed RTC setting, as a one-integer text file (internal to `rtc`) | GBA Cart Real-Time Clock | yes (through `rtc`) |
 | `fixed_clock` | nothing: a deterministic clock for the replay, `--rtc-fixed` | n/a | yes |
 | `rtc_calendar` | the chip's calendar arithmetic (BCD, leap years, the 2000 to 2099 cycle) | GBA Cart Real-Time Clock | yes |
@@ -192,9 +193,9 @@ not include expansion's headers; the exceptions are `gba_memmap.h`, which may in
 and assert ours match, `m4a_output.c`, which reads the m4a engine's
 `struct SoundInfo` (`gba/m4a_internal.h`) as the DMA did, `flash.c`, which is an
 entry of expansion's flash driver table (`gba/flash_internal.h`), the `m4a/`
-engine, which is game code, and `inspect.c`, `inspect_menu.c` and
-`inspect_args.c`, which read the game's variables and are compiled with the
-game's defines (`platform/game_flags.mk`). The host layer depends on no
+engine, which is game code, `rtc_siirtc.c`, which fills the game's
+`struct SiiRtcInfo`, and `inspect.c`, `inspect_menu.c` and `inspect_args.c`,
+which read the game's variables and are compiled with the game's defines (`platform/game_flags.mk`). The host layer depends on no
 module (`host_memory.h` takes `gba_memmap.h`'s region numbers, nothing
 more), and only the modules of the next section depend on it.
 

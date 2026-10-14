@@ -12,8 +12,8 @@
  * alarm. A battery kept it counting while the console was off.
  *
  * WHAT THIS MODEL DOES. It is the chip at the level of those registers, which
- * is all the game observes through the SiiRtc* API (under PLATFORM_NATIVE
- * src/siirtc.c calls this module instead of toggling GPIO pins). The
+ * is all the game observes through the SiiRtc* API (the native build's
+ * rtc_siirtc.c calls this module instead of src/siirtc.c's GPIO pin toggling). The
  * counters are not stored: the chip time is the host's UTC time plus a
  * persisted offset in seconds, so the clock keeps running while the
  * game is off and "set the time" means "compute the offset". No reference
