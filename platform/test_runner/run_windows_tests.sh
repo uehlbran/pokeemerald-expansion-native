@@ -12,9 +12,10 @@
 # its standard error in <name>.stderr.log, both shown; one fails if it exits
 # non-zero, if its standard output has no ptest's "N passed, 0 failed" line
 # (a binary that ends early passes no test), or if it outlasts
-# TEST_SECONDS (ptest's own time limit ends a stuck test; this one catches a
-# hang outside a test). The last line says how many ran and whether all
-# passed; the exit status is 0 only then.
+# TEST_SECONDS (ptest's own limit, 60 seconds a test, ends a stuck test at
+# its next assertion; this one catches a hang that reaches none). The last
+# line says how many ran and whether all passed; the exit status is 0 only
+# then.
 #
 # Each runs from a copy under its own name in DIR/run/ (with what it needs
 # beside it), removed when it ends: Windows keeps the image of an executable
@@ -25,7 +26,10 @@
 # them"). A copy that cannot be removed is named in a warning.
 set -u
 
-TEST_SECONDS=600
+# Two minutes an executable, where all 70 take 40 seconds together (run
+# 38629824732): a hang costs the Windows job little of its 15 minutes, and
+# the suite and the uploads after it still run (.github/workflows/windows.yml).
+TEST_SECONDS=120
 KILL_SECONDS=10
 # timeout's status when the limit ended the test, and when the test had to
 # be killed KILL_SECONDS after that.

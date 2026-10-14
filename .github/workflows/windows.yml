@@ -334,6 +334,9 @@ jobs:
           name: windows-suite-build
           path: build/native64-test-windows
 
+      # Each executable has 2 minutes (run_windows_tests.sh's TEST_SECONDS; all
+      # 70 take 40 seconds), so a hung one costs the job little of its 15
+      # minutes: the suite's steps (2 and 10) and the uploads still run.
       - name: The unit tests
         run: platform/test_runner/run_windows_tests.sh platform/build/64-windows/test
 
