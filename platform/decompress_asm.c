@@ -14,6 +14,12 @@
  * in its header. gbagfx never produces such a stream; this version writes
  * exactly the header's size. A back-reference reaching before the output's
  * first byte (garbage the assembly would copy) stops it, with a report.
+ *
+ * The other, for the same reason: the header and the destination
+ * [dest, dest + size) are checked with transfer_bounds before any byte is
+ * touched, as the BIOS twin LZ77UnCompWram does (bios.h), because the size
+ * comes from the data and can be up to 16 MiB. A refused range writes nothing
+ * and is reported by bios_range_ok().
  */
 #include <stdbool.h>
 #include <stddef.h>
@@ -21,7 +27,9 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "bios_internal.h"
 #include "decompress_asm.h"
+#include "transfer_bounds.h"
 
 /* LZ77 header: bits 8-31 the decompressed size (GBATEK "Data header"). */
 #define LZ77_SIZE_SHIFT 8u
@@ -50,12 +58,16 @@ void FastUnsafeCopy32(void *dest, const void *src, uint32_t size)
 void LZ77UnCompWRAMOptimized(const uint32_t *src, void *dest)
 {
     uint32_t header;
+    if (!bios_range_ok("LZ77UnCompWRAMOptimized", "header", src, sizeof header, TRANSFER_READ))
+        return;
     memcpy(&header, src, sizeof header);
     const uint8_t *in = (const uint8_t *)src + sizeof header;
     uint8_t *out = dest;
     size_t size = header >> LZ77_SIZE_SHIFT;
     size_t written = 0;
 
+    if (size != 0 && !bios_range_ok("LZ77UnCompWRAMOptimized", "destination", dest, size, TRANSFER_WRITE))
+        return;
     while (written < size) {
         uint8_t flags = *in++;
         for (unsigned block = 0; block < LZ77_BLOCKS_PER_FLAG && written < size; block++) {
