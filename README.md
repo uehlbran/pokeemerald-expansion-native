@@ -15,8 +15,8 @@ suite expansion runs on the GBA.
 
 ## Status
 
-Verified by an automated gate (details, dates and commands in
-[docs/STATUS.md](docs/STATUS.md)):
+Verified by an automated gate (the gates and their commands are in
+[docs/BUILDING.md](docs/BUILDING.md#gates)):
 
 - The 32-bit build boots through the intro to the title screen, and
   plays the opening from New Game through the first battle and a save, a
@@ -35,8 +35,11 @@ Verified by an automated gate (details, dates and commands in
 
 Not working or not verified:
 
-- Windows and macOS: not attempted; Linux (built under WSL2 Ubuntu 24.04)
-  is the only platform tried.
+- Windows: cross-built from Linux (x86-64 only); its unit tests and a
+  start-up smoke run on a Windows runner through a manual workflow, and no
+  replay or suite run has happened there yet (docs/BUILDING.md, "Windows").
+- macOS: not attempted. Linux (built under WSL2 Ubuntu 24.04) is the
+  platform the gates run on.
 - GBA save interchange: native saves use the host's struct layout and are
   not GBA `.sav` files.
 - Nothing past Birch's lab in play, the windowed path with a real display
@@ -65,7 +68,7 @@ regression reference.
 ## Documentation
 
 - [docs/BUILDING.md](docs/BUILDING.md): prerequisites, every build variant
-  and every gate.
+  and the gates.
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): the platform layer, its
   boundary with expansion, the memory model and the frame.
 - [docs/STATUS.md](docs/STATUS.md): what is verified, by which gate.
