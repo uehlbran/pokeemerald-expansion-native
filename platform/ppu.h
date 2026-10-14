@@ -62,7 +62,11 @@ void ppu_shutdown(void);
  * does (GBATEK "LCD I/O BG Rotation/Scaling", Internal Reference Point
  * Registers). A write to one of those registers after this call and before
  * line 0 (the game's VBlank handler flushing its buffered registers) is
- * picked up at line 0 as well. */
+ * picked up at line 0 as well. Writes are noticed by their value changing
+ * (the registers are plain memory): rewriting the value already there is not
+ * a re-copy, as it is on hardware. The game never does that mid-frame; a
+ * future H-Blank effect that needs it wants a write hook in the I/O write
+ * path (DMA to 0x04000028-0x0400003C), not this comparison. */
 void ppu_latch_vblank(void);
 
 /* Renders one line (0..159) into out[PPU_SCREEN_WIDTH] as BGR555 with bit 15

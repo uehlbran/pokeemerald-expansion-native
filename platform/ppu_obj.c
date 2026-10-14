@@ -17,20 +17,19 @@
  * Here: one pass over OAM per line builds the list of OBJs on the line and
  * how many of their columns the budget lets through; then each is drawn.
  *
- * THE CYCLE BUDGET (GBATEK "Maximum Number of Sprites per Line"): 1210 cycles
- * per line, 954 with DISPCNT's H-Blank Interval Free; a regular OBJ costs its
- * width, a rotation/scaling OBJ 10 + 2 x the width of its area (doubled for
- * double size). Interpretations: (1) An OBJ costs only on lines it covers
- * vertically (GBATEK asks "Does the above also apply for VERTICALLY OFFSCREEN
- * ... sprites?" and does not answer; mGBA charges only OBJs on the line), but
- * does cost when it is horizontally off screen on that line (GBATEK's
- * caution; mGBA does not charge those, we follow GBATEK). Disabled OBJs and
- * the prohibited shape and mode cost nothing. (2) The OBJ that the budget
- * runs out in is drawn for as many columns of its area, from the left, as
- * the cycles left pay for (after the 10-cycle setup for rotation/scaling),
- * and the OBJs after it are not drawn: the hardware stops mid-OBJ (mGBA
- * draws that OBJ whole and leaves partial drawing as a TODO). Not modelled:
- * the OAM attribute fetch time GBATEK's formula leaves out.
+ * THE CYCLE BUDGET (GBATEK "Maximum Number of Sprites per Line"): 1210
+ * cycles a line, 954 with H-Blank Interval Free. A regular OBJ costs its
+ * width, a rotation/scaling OBJ 10 + 2 x its area width (doubled for double
+ * size). Choices where GBATEK is silent or mGBA differs:
+ *   - only OBJs covering the line cost (GBATEK leaves vertically off-screen
+ *     OBJs open; mGBA agrees); OBJs horizontally off screen still cost
+ *     (GBATEK's caution; mGBA does not charge them);
+ *   - disabled OBJs and the prohibited shape and mode cost nothing;
+ *   - the OBJ the budget runs out in is drawn only for the columns of its
+ *     area, from the left, that the remaining cycles pay for (after the
+ *     10-cycle setup for rotation/scaling); later OBJs are not drawn (mGBA
+ *     draws it whole and leaves partial drawing as a TODO);
+ *   - the OAM fetch time GBATEK's formula omits is not modelled.
  *
  * OTHER INTERPRETATIONS. Y: an OBJ whose area would cross line 255 starts at
  * Y - 256 (GBATEK's caution about 128-dot OBJs below Y=128 is this rule). X:
