@@ -8,7 +8,7 @@
 #
 # Passes, exit status 0, only if the executable exits 0, its standard output
 # is the one line "main: 60 frames", its standard error is empty (every module
-# start that fails says so there), and pokeemerald.rtc holds one decimal
+# start that fails says so there), and pokeemerald.rtc holds exactly one decimal
 # number and a "\n" with no "\r" (the file is written in binary mode). SDL2.dll
 # must be beside the executable, as the build leaves it.
 set -u
@@ -34,7 +34,9 @@ fail() {
 [ $code -eq 0 ] || fail "exit status $code"
 [ "$(tr -d '\r' < "$scratch/stdout")" = "main: $FRAMES frames" ] || fail "standard output is not \"main: $FRAMES frames\""
 [ ! -s "$scratch/stderr" ] || fail "standard error is not empty"
-grep -qE '^-?[0-9]+$' "$scratch/pokeemerald.rtc" 2>/dev/null || fail "pokeemerald.rtc does not hold one number"
+rtc=$(cat "$scratch/pokeemerald.rtc" 2>/dev/null; printf x) # the x keeps the trailing newline
+one_number=$'^-?[0-9]+\n$'
+[[ ${rtc%x} =~ $one_number ]] || fail "pokeemerald.rtc is not one number and a newline"
 ! grep -q $'\r' "$scratch/pokeemerald.rtc" 2>/dev/null || fail "pokeemerald.rtc has a \\r (not written in binary mode)"
 for stream in stdout stderr; do
     echo "-- $stream"

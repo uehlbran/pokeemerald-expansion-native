@@ -129,20 +129,14 @@ int host_memory_unmap_fixed(uintptr_t address, size_t size)
  * so that from it to the end everything is writable. */
 extern const unsigned char __text_start__[], __data_start__[], __bss_end__[];
 
-/* Pointers to integers: the image's bounds are compared with addresses. */
-static struct host_span span_of(const unsigned char *start, const unsigned char *end)
-{
-    return (struct host_span){.start = (uintptr_t)start, .end = (uintptr_t)end};
-}
-
 struct host_span host_image_whole(void)
 {
-    return span_of(__text_start__, __bss_end__);
+    return host_span_of(__text_start__, __bss_end__);
 }
 
 struct host_span host_image_writable(void)
 {
-    return span_of(__data_start__, __bss_end__);
+    return host_span_of(__data_start__, __bss_end__);
 }
 
 /* The low byte of a page's protection is its access; the bits above it

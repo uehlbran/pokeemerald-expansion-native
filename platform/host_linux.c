@@ -136,20 +136,14 @@ int host_memory_unmap_fixed(uintptr_t address, size_t size)
 
 extern const unsigned char __executable_start[], __data_start[], _end[]; /* GNU ld / glibc crt1 */
 
-/* Pointers to integers: the image's bounds are compared with addresses. */
-static struct host_span span_of(const unsigned char *start, const unsigned char *end)
-{
-    return (struct host_span){.start = (uintptr_t)start, .end = (uintptr_t)end};
-}
-
 struct host_span host_image_whole(void)
 {
-    return span_of(__executable_start, _end);
+    return host_span_of(__executable_start, _end);
 }
 
 struct host_span host_image_writable(void)
 {
-    return span_of(__data_start, _end);
+    return host_span_of(__data_start, _end);
 }
 
 /* The read-only PT_LOAD segments, from the program headers the kernel passed

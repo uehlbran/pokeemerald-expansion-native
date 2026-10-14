@@ -214,10 +214,11 @@ git diff OLD NEW -- tools/mgba-rom-test-hydra tools/patchelf tools/scaninc tools
   "The Windows image links its writable sections last"): a new writable
   section name in expansion's output (as `script_data` is) is placed there
   too; where the linker would put it before `.rdata`, `check_pe_layout.py`
-  fails the link with "is read-only but follows the writable". A format string checked by `format(printf, ...)` in our
-  code takes `%llu` with a cast, not `%zu`: MinGW checks it against msvcrt's
-  formats. The pinned SDL2 for MinGW (`SDL2_MINGW_VERSION` and its sha256 in
-  `Makefile.native`) is bumped by hand.
+  fails the link with "is read-only but follows the writable". A format
+  string checked by `format(printf, ...)` in our code takes `%llu` with a
+  cast, not `%zu`: MinGW checks it against msvcrt's formats. The pinned SDL2
+  for MinGW (`SDL2_MINGW_VERSION` and its sha256 in `Makefile.native`) is
+  bumped by hand.
 - The assembly translated or replaced in `platform/`: `src/m4a_1.s`
   (`platform/m4a/`; its differential test against the ARM original is run by
   hand: `make -C platform/m4a/difftest run`, needs qemu-arm, see

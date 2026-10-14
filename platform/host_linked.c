@@ -40,20 +40,14 @@ static const struct linked_section linked_regions[GBA_REGION_COUNT] = {
     [GBA_REGION_SRAM] = {gba_linked_sram_start, gba_linked_sram_end},
 };
 
-/* Pointers to integers: the linked addresses are compared with GBA addresses. */
-static struct host_span span_of(const unsigned char *start, const unsigned char *end)
-{
-    return (struct host_span){.start = (uintptr_t)start, .end = (uintptr_t)end};
-}
-
 struct host_span host_memory_region(enum gba_region region)
 {
     if (region <= GBA_REGION_NONE || region >= GBA_REGION_COUNT)
         return (struct host_span){.start = 0, .end = 0};
-    return span_of(linked_regions[region].start, linked_regions[region].end);
+    return host_span_of(linked_regions[region].start, linked_regions[region].end);
 }
 
 struct host_span host_memory_call_stack(void)
 {
-    return span_of(platform_call_stack_start, platform_call_stack_end);
+    return host_span_of(platform_call_stack_start, platform_call_stack_end);
 }

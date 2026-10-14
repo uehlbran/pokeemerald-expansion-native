@@ -33,6 +33,13 @@ struct host_span {
     uintptr_t end;
 };
 
+/* [start, end) as integers, for linker symbols: the linked addresses are
+ * compared with GBA addresses and with other addresses. */
+static inline struct host_span host_span_of(const unsigned char *start, const unsigned char *end)
+{
+    return (struct host_span){.start = (uintptr_t)start, .end = (uintptr_t)end};
+}
+
 /* Where the executable holds GBA region `region`'s memory, as the link put
  * it (the linker script's gba_linked_<region>_start and _end); gba_memmap_init
  * checks that it is at the region's base, whole pages long. {0, 0} for

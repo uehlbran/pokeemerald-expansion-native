@@ -5,7 +5,7 @@
  * stores true in the caller's flag, once.
  *
  * Followed: Microsoft's documentation of CreateThread, CreateEventW, SetEvent,
- * WaitForSingleObject and GetTickCount64.
+ * WaitForSingleObject and GetTickCount64, and "Thread Stack Size".
  *
  * The deadline is on GetTickCount64's clock, milliseconds since boot, which
  * no one can set (the POSIX source follows the wall clock). What the two
@@ -33,6 +33,13 @@
 #define WATCHDOG_START_MILLISECONDS 10000u
 
 #define MILLISECONDS_PER_SECOND 1000u
+
+/* The address space the watchdog's thread reserves for its stack, instead of
+ * the image's 2 MiB (SizeOfStackReserve), which it would hold for nothing:
+ * the thread only waits, reads the tick count and stores atomics, a few
+ * frames deep. Windows rounds a reserve up to the 64 KiB allocation
+ * granularity (Microsoft, "Thread Stack Size"). */
+#define WATCHDOG_STACK_RESERVE ((SIZE_T)64 * 1024u)
 
 struct host_watchdog {
     HANDLE thread;
@@ -109,7 +116,8 @@ struct host_watchdog *host_watchdog_start(unsigned seconds, atomic_bool *expired
         release(watchdog);
         return NULL;
     }
-    watchdog->thread = CreateThread(NULL, 0, watchdog_thread, watchdog, 0, NULL);
+    watchdog->thread = CreateThread(NULL, WATCHDOG_STACK_RESERVE, watchdog_thread, watchdog,
+                                    STACK_SIZE_PARAM_IS_A_RESERVATION, NULL);
     if (watchdog->thread == NULL) {
         watchdog_report("CreateThread");
         release(watchdog);
