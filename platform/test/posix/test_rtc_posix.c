@@ -15,6 +15,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
+#include "host_file.h"
 #include "ptest.h"
 #include "rtc.h"
 #include "rtc_offset_store.h"
@@ -133,6 +134,41 @@ PTEST(a_first_run_whose_directory_sync_failed_starts_on_the_offset_the_file_has)
     PT_ASSERT_EQ_INT(get_result, 0);
     PT_ASSERT_EQ_U32(read.hour_bcd, 0x93); /* 13:45:30 UTC on the first-run seed; PM flag set in 24-hour mode */
     PT_ASSERT(strcmp(text, "0\n") == 0);
+}
+
+/* As ../test_rtc.c: the offset file's path and the ".tmp" beside it must fit
+ * host_file.h's HOST_FILE_PATH_SIZE. */
+#define TMP_SUFFIX_SIZE sizeof ".tmp"
+#define LONGEST_PATH (HOST_FILE_PATH_SIZE - TMP_SUFFIX_SIZE)
+
+/* POSIX only: repeated slashes pad a path to the limit and still name the
+ * file, which Windows' file calls refuse past MAX_PATH (260 characters). */
+PTEST(an_offset_path_just_under_the_limit_is_saved_and_loaded)
+{
+    static char path[HOST_FILE_PATH_SIZE];
+    struct locked_directory scratch = {0};
+    int64_t offset = 0;
+    int found = 0;
+
+    PT_ASSERT(make_directory(&scratch));
+    /* Repeated slashes name the same file, so the directory the test owns
+     * reaches the longest accepted path without nesting directories. */
+    const size_t dir_length = strlen(scratch.dir);
+    const char *const name = "offset";
+    (void)snprintf(path, sizeof path, "%s", scratch.dir);
+    memset(path + dir_length, '/', LONGEST_PATH - dir_length);
+    memcpy(path + LONGEST_PATH - strlen(name), name, strlen(name) + 1);
+    const int saved = rtc_offset_store_save(path, 4242);
+    const int loaded = rtc_offset_store_load(path, &offset, &found);
+    const bool by_short_name = tsup_exists(scratch.path); /* the same file, by its short name */
+    (void)tsup_remove_file(scratch.path);
+    (void)tsup_remove_directory(scratch.dir);
+    PT_ASSERT_EQ_INT((int)strlen(path), (int)LONGEST_PATH);
+    PT_ASSERT_EQ_INT(saved, 0);
+    PT_ASSERT_EQ_INT(loaded, 0);
+    PT_ASSERT_EQ_INT(found, 1);
+    PT_ASSERT_EQ_INT((int)offset, 4242);
+    PT_ASSERT(by_short_name);
 }
 
 PTEST_MAIN()

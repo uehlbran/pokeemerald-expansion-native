@@ -526,29 +526,6 @@ PTEST(the_offset_path_limit_is_the_host_file_limit_with_room_for_the_tmp_name)
     PT_ASSERT(strstr(message, "path is longer") == NULL);
 }
 
-PTEST(an_offset_path_just_under_the_limit_is_saved_and_loaded)
-{
-    static char path[HOST_FILE_PATH_SIZE];
-    int64_t offset = 0;
-    int found = 0;
-
-    new_scratch();
-    /* Repeated slashes name the same file, so the directory the test owns
-     * reaches the longest accepted path without nesting directories. */
-    const size_t dir_length = strlen(g_dir);
-    const char *const name = "offset";
-    (void)snprintf(path, sizeof path, "%s", g_dir);
-    memset(path + dir_length, '/', LONGEST_PATH - dir_length);
-    memcpy(path + LONGEST_PATH - strlen(name), name, strlen(name) + 1);
-    PT_ASSERT_EQ_INT((int)strlen(path), (int)LONGEST_PATH);
-
-    PT_ASSERT_EQ_INT(rtc_offset_store_save(path, 4242), 0);
-    PT_ASSERT_EQ_INT(rtc_offset_store_load(path, &offset, &found), 0);
-    PT_ASSERT_EQ_INT(found, 1);
-    PT_ASSERT_EQ_INT((int)offset, 4242);
-    PT_ASSERT(file_exists(g_path)); /* the same file, by its short name */
-}
-
 /* ---- invalid input ------------------------------------------------------ */
 
 PTEST(invalid_bcd_and_ranges_are_rejected_without_changing_the_offset)
