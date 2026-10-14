@@ -76,8 +76,32 @@ Windows cross-build can run its unit tests and replays here instead of
 only on the Windows runner (minutes counting double):
 `sudo apt-get install -y wine64`. Without it, task W4 proves the link
 only and the first runs happen in CI. A second optional install, so the
-ccache follow-up (in flight) can be measured here as well as on the
-runner: `sudo apt-get install -y ccache`. Otherwise nothing new. The three milestone 8 items were
+ccache follow-up (merged) can be measured here as well as on the
+runner: `sudo apt-get install -y ccache`.
+
+Two Windows rulings, written up by the Windows host-layer worker in
+DECISIONS.md (entries of 2026-10-14, "A crash on Windows restarts
+through CreateProcessW in the unhandled-exception filter" and "Narrow
+strings on Windows are in the ANSI code page"); the branch is under
+review and will be merged under these entries unless you rule
+otherwise, since a merge can be undone and the Windows runner has not
+yet run anything. (1) The crash reboot on Windows starts the new
+process from inside the crash handler with CreateProcessW, which
+allocates and takes locks, against the C-RULES handler rule. The
+worker's reasons: Windows has no exec; the heap and loader locks are
+re-entrant on the faulting thread, and other threads keep running, so
+the call cannot deadlock against the crash; if the heap is corrupt the
+call fails and the run ends with no reboot, which is no worse than no
+handler. The rule-keeping design is a supervisor process that starts
+the game as its child and restarts it when told through a pipe; it
+changes the process model of every Windows run for a path only the
+crashing tests take. Recommendation: accept the exception as written,
+and revisit only if the Windows runner shows a hang in a crash test.
+(2) Paths and arguments on Windows stay in the ANSI code page rather
+than UTF-8, because the C runtime hands main its arguments and opens
+files in that code page; a path the code page cannot carry is refused,
+never altered. Recommendation: accept; a UTF-8 manifest can change it
+later without touching the code. Otherwise nothing new. The three milestone 8 items were
 settled on 2026-10-14: the MinGW cross-compiler is installed (GCC 13 for
 x86_64-w64-mingw32, binutils 2.41; Wine is not, so cross-built
 executables run only on the Windows runner); macOS ships as x86_64
@@ -415,6 +439,25 @@ the outcome kept when a limit expires inside a capture) fixed by the
 author and merged. The Windows source of host_thread.h is declared and
 not written (task W5 to W7).
 
+**The ccache follow-up** (branch m8-ccache, merged 2026-10-14 at
+0c99a7e26b): the game's C reaches gcc as a file beside the object
+(`obj.i`, written by the cpp-preproc-sed chain, removed after the
+compile whether it succeeds or not) instead of standard input, which
+ccache cannot cache; the executables differ from before only in their
+ELF file symbols (`<name>.i` where the pipe gave `<stdin>`: symbols minus
+the file rows, the disassembly and every loadable section equal at both
+widths; the diagnostics equal, 433 warning lines). CI also caches the
+converted graphics (`build/assets-native`, about 130 MB) under a key of
+every conversion input (a local action, `.github/actions/native-assets`;
+mutation-tested by hand: a png byte, an INCGFX option, a converter source
+and a tileset each change the key, a code or map edit does not). Reviewed
+by Sonnet (no correctness bug; the key narrowed to data/tilesets and the
+padding files, the docs' unmeasured claim removed, a name). The cache's
+effect is measured on the runner by the runs after this merge and
+recorded here. The orchestrator's gate on the branch was green (the
+platform gate, both builds, both 64-bit replays, the Windows link, the
+suite at 5409).
+
 **In flight.** The Windows host layer (tasks W5 to W7: memory, image,
 process and files, the vectored exception handler and the crash respawn,
 the stack switch, the watchdog, the cross-built unit tests for the Windows
@@ -567,6 +610,7 @@ Nothing yet; nothing exists to be broken.
 | m8-dataconv (milestone 8, task M1: the ELF-to-flat data converter) | Opus | Sonnet (mutation testing), orchestrator merge gate |
 | m8-winglue (milestone 8, task W4: the Windows cross-build glue) | Opus | Sonnet (mutation testing), orchestrator merge gate |
 | m8-ptest (milestone 8, task W3: the watchdog timeout, the per-OS test split) | Sonnet | Sonnet (mutation testing), orchestrator merge gate |
+| m8-ccache (milestone 8: the game's C compiled through a file for ccache; the assets cache in CI) | Sonnet | Sonnet (mutation testing of the cache key), orchestrator merge gate |
 | ci-tiers (milestone 8: the CI workflow in two tiers) | Sonnet | orchestrator (the runs on the runner) |
 | battle-glyph (milestone 6: the trainer party seed and the nickname padding, root cause of the screenshot flake) | Opus | orchestrator |
 | upstream-report (seven issues drafted, triaged against upstream) | Sonnet | Fable (orchestrator) |

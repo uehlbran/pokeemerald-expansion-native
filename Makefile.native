@@ -693,8 +693,9 @@ $(C_BUILDDIR)/pokemon.o: $(C_SUBDIR)/pokemon.c $(DATA_SRC_SUBDIR)/pokemon/teacha
 # a file beside the object (obj.i) and the compiler reads that file, because
 # ccache cannot cache a compile whose source is standard input. The compiler
 # puts the name of its input file into the object as the file symbol, so the
-# symbol is obj.i where the pipe gave <stdin>; nothing else in the object or
-# the executable changes. The file exists only for the compile: it is
+# symbol is obj.i where the pipe gave <stdin> (and, with DINFO=1, so is the
+# debug information's name for it); nothing else in the object or the
+# executable changes. The file exists only for the compile: it is
 # removed whether the compile succeeds or not, and `&&` keeps a failed
 # preprocessing step from reaching the compiler.
 C_PREPROCESSED = $(@:.o=.i)

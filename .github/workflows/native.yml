@@ -10,7 +10,12 @@
 # library, so the i386 SDL2 workaround below stays) and both 64-bit replays;
 # the suite is not here (10 minutes warm against a 15-minute target; the
 # local pre-merge gate runs it, and `native64` below runs it nightly).
-# ccache, the tools and the converted assets are cached between runs.
+# ccache, the tools and the converted assets are cached between runs:
+# the game's C reaches gcc as a file (Makefile.native, COMPILE_C), the one
+# form ccache can cache, and with no -g the cache hits across commits and
+# checkout paths; the converted graphics are keyed on all of their inputs
+# (.github/actions/native-assets says which), since the full conversion is
+# repeated on every run without the cache.
 #
 # Nightly tier (`schedule`, plus `workflow_dispatch`): parallel jobs `gba`
 # (the ROM and its sha1), `native64` (the plain 64-bit build and suite),
@@ -97,9 +102,6 @@ jobs:
           key: tools-native-${{ runner.os }}-${{ hashFiles('tools/*/Makefile', 'tools/**/*.c', 'tools/**/*.cpp', 'tools/**/*.h', 'make_tools.mk') }}
 
       # Put ccache's compiler links first on PATH so gcc and g++ go through it.
-      # The game's C reaches gcc as a file (Makefile.native, COMPILE_C), the one
-      # form ccache can cache; the cache hits across commits and, with no -g,
-      # without regard to the checkout path (the runner's is fixed anyway).
       - name: Cache the compiler cache
         uses: actions/cache@v4
         with:
@@ -113,9 +115,7 @@ jobs:
           echo /usr/lib/ccache >> "$GITHUB_PATH"
           ccache --max-size=1G --zero-stats
 
-      # The converted graphics, keyed on all of their inputs (the action says
-      # which); the full conversion is a fraction of a cold build, but all of it
-      # is repeated on every run without this.
+      # The converted graphics (the header above says why; the action, what keys them).
       - name: Cache the converted assets
         uses: ./.github/actions/native-assets
 
@@ -236,9 +236,6 @@ jobs:
           key: tools-native-${{ runner.os }}-${{ hashFiles('tools/*/Makefile', 'tools/**/*.c', 'tools/**/*.cpp', 'tools/**/*.h', 'make_tools.mk') }}
 
       # Put ccache's compiler links first on PATH so gcc and g++ go through it.
-      # The game's C reaches gcc as a file (Makefile.native, COMPILE_C), the one
-      # form ccache can cache; the cache hits across commits and, with no -g,
-      # without regard to the checkout path (the runner's is fixed anyway).
       - name: Cache the compiler cache
         uses: actions/cache@v4
         with:
@@ -252,9 +249,7 @@ jobs:
           echo /usr/lib/ccache >> "$GITHUB_PATH"
           ccache --max-size=1G --zero-stats
 
-      # The converted graphics, keyed on all of their inputs (the action says
-      # which); the full conversion is a fraction of a cold build, but all of it
-      # is repeated on every run without this.
+      # The converted graphics (the header above says why; the action, what keys them).
       - name: Cache the converted assets
         uses: ./.github/actions/native-assets
 
@@ -320,9 +315,6 @@ jobs:
           key: tools-native-${{ runner.os }}-${{ hashFiles('tools/*/Makefile', 'tools/**/*.c', 'tools/**/*.cpp', 'tools/**/*.h', 'make_tools.mk') }}
 
       # Put ccache's compiler links first on PATH so gcc and g++ go through it.
-      # The game's C reaches gcc as a file (Makefile.native, COMPILE_C), the one
-      # form ccache can cache; the cache hits across commits and, with no -g,
-      # without regard to the checkout path (the runner's is fixed anyway).
       - name: Cache the compiler cache
         uses: actions/cache@v4
         with:
@@ -336,9 +328,7 @@ jobs:
           echo /usr/lib/ccache >> "$GITHUB_PATH"
           ccache --max-size=1G --zero-stats
 
-      # The converted graphics, keyed on all of their inputs (the action says
-      # which); the full conversion is a fraction of a cold build, but all of it
-      # is repeated on every run without this.
+      # The converted graphics (the header above says why; the action, what keys them).
       - name: Cache the converted assets
         uses: ./.github/actions/native-assets
 
@@ -414,9 +404,6 @@ jobs:
           key: tools-native-${{ runner.os }}-${{ hashFiles('tools/*/Makefile', 'tools/**/*.c', 'tools/**/*.cpp', 'tools/**/*.h', 'make_tools.mk') }}
 
       # Put ccache's compiler links first on PATH so gcc and g++ go through it.
-      # The game's C reaches gcc as a file (Makefile.native, COMPILE_C), the one
-      # form ccache can cache; the cache hits across commits and, with no -g,
-      # without regard to the checkout path (the runner's is fixed anyway).
       - name: Cache the compiler cache
         uses: actions/cache@v4
         with:
@@ -430,9 +417,7 @@ jobs:
           echo /usr/lib/ccache >> "$GITHUB_PATH"
           ccache --max-size=1G --zero-stats
 
-      # The converted graphics, keyed on all of their inputs (the action says
-      # which); the full conversion is a fraction of a cold build, but all of it
-      # is repeated on every run without this.
+      # The converted graphics (the header above says why; the action, what keys them).
       - name: Cache the converted assets
         uses: ./.github/actions/native-assets
 
@@ -501,9 +486,6 @@ jobs:
           key: tools-native-${{ runner.os }}-${{ hashFiles('tools/*/Makefile', 'tools/**/*.c', 'tools/**/*.cpp', 'tools/**/*.h', 'make_tools.mk') }}
 
       # Put ccache's compiler links first on PATH so gcc and g++ go through it.
-      # The game's C reaches gcc as a file (Makefile.native, COMPILE_C), the one
-      # form ccache can cache; the cache hits across commits and, with no -g,
-      # without regard to the checkout path (the runner's is fixed anyway).
       - name: Cache the compiler cache
         uses: actions/cache@v4
         with:
@@ -517,9 +499,7 @@ jobs:
           echo /usr/lib/ccache >> "$GITHUB_PATH"
           ccache --max-size=1G --zero-stats
 
-      # The converted graphics, keyed on all of their inputs (the action says
-      # which); the full conversion is a fraction of a cold build, but all of it
-      # is repeated on every run without this.
+      # The converted graphics (the header above says why; the action, what keys them).
       - name: Cache the converted assets
         uses: ./.github/actions/native-assets
 
@@ -602,9 +582,6 @@ jobs:
           key: tools-native-${{ runner.os }}-${{ hashFiles('tools/*/Makefile', 'tools/**/*.c', 'tools/**/*.cpp', 'tools/**/*.h', 'make_tools.mk') }}
 
       # Put ccache's compiler links first on PATH so gcc and g++ go through it.
-      # The game's C reaches gcc as a file (Makefile.native, COMPILE_C), the one
-      # form ccache can cache; the cache hits across commits and, with no -g,
-      # without regard to the checkout path (the runner's is fixed anyway).
       - name: Cache the compiler cache
         uses: actions/cache@v4
         with:
@@ -618,9 +595,7 @@ jobs:
           echo /usr/lib/ccache >> "$GITHUB_PATH"
           ccache --max-size=1G --zero-stats
 
-      # The converted graphics, keyed on all of their inputs (the action says
-      # which); the full conversion is a fraction of a cold build, but all of it
-      # is repeated on every run without this.
+      # The converted graphics (the header above says why; the action, what keys them).
       - name: Cache the converted assets
         uses: ./.github/actions/native-assets
 
