@@ -490,4 +490,21 @@ PTEST(huffman_errors)
     teardown();
 }
 
+PTEST(huffman_tree_table_running_off_the_region_is_refused)
+{
+    setup();
+    /* The game-facing call has no source size: only the range check stops a
+     * tree-size byte of 0xFF (a 512-byte table) at the end of IWRAM. */
+    uint8_t *tail = (uint8_t *)(uintptr_t)(GBA_IWRAM_BASE + GBA_IWRAM_SIZE - 8);
+    static const uint8_t start[] = {0x28, 0x04, 0x00, 0x00, 0xFF};
+    memcpy(tail, start, sizeof start);
+    uint8_t out[8];
+    memset(out, STALE, sizeof out);
+    HuffUnComp((const uint32_t *)(void *)tail, out);
+    for (size_t i = 0; i < sizeof out; i++)
+        PT_ASSERT_EQ_INT(out[i], STALE);
+    PT_ASSERT_EQ_INT(bios_huff_uncomp_bounded(tail, 1000, out), BIOS_ERR_RANGE);
+    teardown();
+}
+
 PTEST_MAIN()
