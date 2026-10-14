@@ -168,6 +168,9 @@ endif
 # report off (report_signal_unsafe=0); races are still reported, and every
 # other binary keeps the report.
 SIGNAL_JUMP_TESTS := test_arm_division_posix
+# The same list as one shell case pattern (*/a|*/b), for the test recipe.
+space := $(subst ,, )
+SIGNAL_JUMP_PATTERN := $(subst $(space),|,$(addprefix */,$(SIGNAL_JUMP_TESTS)))
 SIGNAL_JUMP_ENV := $(if $(filter 1,$(TSAN)),TSAN_OPTIONS=halt_on_error=1:exitcode=66:report_signal_unsafe=0)
 
 PLATFORM_SRCS := $(filter-out host_%.c,$(wildcard *.c)) $(HOST_SRCS)
@@ -298,7 +301,7 @@ test: $(TEST_BINS)
 	@status=0; \
 	for bin in $(TEST_BINS); do \
 		echo "== $$bin"; \
-		extra=; case $$bin in $(addprefix */,$(SIGNAL_JUMP_TESTS))) extra='$(SIGNAL_JUMP_ENV)';; esac; \
+		extra=; case $$bin in $(SIGNAL_JUMP_PATTERN)) extra='$(SIGNAL_JUMP_ENV)';; esac; \
 		env $(SANITIZER_ENV) $$extra ./$$bin > $$bin.log 2>&1; code=$$?; \
 		cat $$bin.log; \
 		if [ $$code -ne 0 ]; then \
@@ -394,9 +397,14 @@ lint-tidy: $(LINT_DIR)/compile_commands.json
 		echo "clang-tidy: $$(wc -l < $(LINT_DIR)/clang-tidy.log) findings (full text in $(LINT_DIR)/logs)"; exit 1; fi; \
 	echo "clang-tidy: clean"
 
+# cppcheck has no system-include notion, so it is given expansion's headers
+# with -I ../include (the build's -idirafter; with -I .. alone <gba/...> and
+# "global.h" do not resolve, checked with --debug-warnings) and the suppression
+# keeps their findings out. The missing standard headers are cppcheck's own
+# builtin knowledge, hence missingIncludeSystem.
 lint-cppcheck:
 	$(call require_tool,cppcheck,make lint)
-	cppcheck --std=c11 --enable=warning,style,performance,portability --inline-suppr -I . -I .. \
+	cppcheck --std=c11 --enable=warning,style,performance,portability --inline-suppr -I . -I ../include \
 		--suppress='*:../include/*' --suppress=missingIncludeSystem --error-exitcode=1 -q -j $(LINT_JOBS) $(LINT_SRCS)
 
 lint: lint-tidy lint-cppcheck
@@ -409,9 +417,13 @@ tools-test:
 .PHONY: tools-test
 
 # The self-test of every build glue script and module (each takes --self-test);
-# Makefile.native runs the ones the 64-bit link needs, this runs them all.
+# Makefile.native runs the ones the 64-bit link needs, this runs them all. The
+# object-file readers' self-tests assemble fixtures with `as` and compile them
+# with `clang` for the ELF, Mach-O and COFF targets.
 GLUE_SCRIPTS := $(sort $(wildcard build_glue/*.py))
 glue-test:
+	$(call require_tool,clang,make glue-test)
+	$(call require_tool,as,make glue-test)
 	@set -e; for script in $(GLUE_SCRIPTS); do \
 		echo "python3 -I $$script --self-test"; python3 -I $$script --self-test; \
 	done
