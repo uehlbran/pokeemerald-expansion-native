@@ -567,8 +567,15 @@ main on 2026-10-14 with the orchestrator's gate green after each batch
 (the platform gate with ThreadSanitizer, both builds, both replays, the
 Windows build and tests, the suite now at 5418 passed with nine new
 test files, the cross-width save); a combined Sonnet review with
-mutation testing over the behavioural fixes follows the merges and is
-recorded here when done. The three highs: the heap's allocation-site
+mutation testing over the behavioural fixes followed the merges (47
+mutants over the first seven groups, 9 over the concurrency group): it
+found one real gap, the Huffman decoder reading its tree-size byte
+before the new range check (a header in a region's last four bytes
+faulted), fixed with a test, and ten fixes whose tests let a mutant
+through, each now with a test that fails without the fix (a ninth
+branch, merged); nothing blocking in the concurrency merge, where the
+signal-mask, errno, unblock and expired-limit fixes all fail their tests
+when mutated. The three highs: the heap's allocation-site
 encoding in src/malloc.c assumed the whole image within 512 MiB of the
 image base, which the Windows layout breaks (now measured from a base
 symbol small on both links, with a no-location rule and a round-trip
