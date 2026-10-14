@@ -93,7 +93,35 @@ driver, task W8) restarts it; an unsupervised Windows run ends on a crash
 with that code. (2) No ANSI code page: the executable carries a manifest
 that sets the active code page to UTF-8, the minimum Windows version that
 honours it is recorded in BUILDING.md, and a Windows-runner test saves
-and loads through a non-ASCII path. Otherwise nothing new. The three milestone 8 items were
+and loads through a non-ASCII path. Five decisions from the independent review, each with the
+orchestrator's recommendation: (1) the audio rate: the PSG decision
+entry said never to point-sample at 13379 Hz, yet that is the shipped
+rate (it keeps the FIFO frame mixing sample for sample); the entry is
+amended to say so, and whether to run the device at the GBA's 32768 Hz
+with a resampled FIFO is yours: recommended later, after Windows, with
+an A/B recording of a cry. (2) A bare 131072-byte save (an emulator's
+.sav or an old native build's) is adopted as a 32-bit native image with
+no check; the header and message now say so, and the reviewer proposes
+probing the fourth chunk's checksum at the GBA size to refuse a GBA
+save instead of converting it into garbage with valid checksums in the
+64-bit build: recommended, a small task. (3) Two instances on one save
+path can tear the save (the temporary name is fixed): the single-writer
+assumption is now documented; a lock file is yours to want: recommended
+no, until a player asks. (4) src/siirtc.c carries the largest upstream
+modification (102 lines) where the policy's first option, filtering the
+file out of the native build and providing the SiiRtc API from
+platform/, is available: recommended yes, as its own task. (5) Where
+the project logs live: the public-face reviewer classes STATUS.md,
+PLAN.md, research/m8-inventory.md and the build-glue logs (BOOT-LOG.md,
+LINK-NEEDS.md) as internal notes that should leave the public tree or
+sit under one marked directory; README no longer sends a reader to
+STATUS for the gates (BUILDING has them now): recommended a
+`docs/log/` directory with a one-line README saying what it is, moved
+after milestone 8, since your process reads these files where they are.
+One applied change you should see: LICENSE's scope sentence now names
+platform/, tests/, the native build files and the enumerated documents
+instead of a src/platform/ that never existed; nothing else in LICENSE
+changed. Otherwise nothing new. The three milestone 8 items were
 settled on 2026-10-14: the MinGW cross-compiler is installed (GCC 13 for
 x86_64-w64-mingw32, binutils 2.41; Wine is not, so cross-built
 executables run only on the Windows runner); macOS ships as x86_64
@@ -517,32 +545,44 @@ every executable after the first crash test exits with status 126
 ("cannot execute"), one cause hiding the rest. These are the W8 worker's
 step 1, in flight.
 
-**Independent code review** (the owner's order of 2026-10-14, started
-at 10:55 local): twelve fresh Fable reviewers, read-only, 30 minutes
-each, given only ARCHITECTURE.md, C-RULES.md, a scope and one brief (no
-STATUS, PLAN or prior review notes; DECISIONS.md to be challenged, not
-accepted): seven area scopes (core emulation; graphics; audio;
-persistence and time; host and process; tooling and tests; build and
-CI), two halves of the upstream PLATFORM_NATIVE guards against
-UPSTREAM_MODIFICATIONS.md, and three cross-cutting scopes (concurrency
-and signal safety; security and resource handling; the public face of
-the repository). Files changed by the in-flight Windows-runner work are
-excluded and get the same review after they merge. Reports go to an
-untracked folder outside the repository; the orchestrator deduplicates,
-verifies every finding against the code before accepting it, rejects
-false positives with a reason, and dispatches accepted fixes through the
-normal workers and gates. Two findings known beforehand are being fixed
-by a Sonnet worker now (the POSIX watchdog's wait on CLOCK_REALTIME
-instead of a monotonic clock; replay_parse's fact-name message omitting
-the ':' the code accepts). The summary (findings by severity and area;
-accepted, rejected, fixed; what needs the owner) is written here when
-the pass is complete.
-
-**Order from the owner (2026-10-14):** macOS (M2 to M5) does not start
-until Windows is fully done and the owner has verified it by hand on a
-Windows machine (DECISIONS.md). After the Windows runner work merges, the
-next tasks are the review fixes and the re-review of the in-flight files,
-not macOS.
+**Independent code review** (the owner's order of 2026-10-14; twelve
+fresh Fable reviewers, read-only, capped at 15 minutes each after the
+owner cut the cap mid-run, given only ARCHITECTURE.md, C-RULES.md, a
+scope and one brief; reports in an untracked folder outside the
+repository; files changed by the in-flight Windows-runner work excluded
+and reviewed after their merge). Every one of the 115 findings was
+verified against the code by the orchestrator before its verdict (the
+triage sits beside the reports). By severity: 3 high, 19 medium, 93
+low. By area: core emulation 11, graphics 6, audio 7, persistence and
+time 9, host and process 11, tooling and tests 10, build and CI 11,
+upstream guards 15 (two halves), concurrency and signal safety 8,
+security and resource handling 9, the public face 18. Of the 115: 6 are
+duplicates across reviewers, 2 were rejected (a style call on a GNU
+idiom the project's dialect allows; a probe call that is documented,
+idempotent and relied on by a test), 1 is deferred until the
+Windows-runner branch merges because it edits a file that branch owns
+(the three meanings of "host" across the make fragments), and 106 were
+accepted and fixed by eight workers in eight branches, all merged on
+main on 2026-10-14 with the orchestrator's gate green after each batch
+(the platform gate with ThreadSanitizer, both builds, both replays, the
+Windows build and tests, the suite now at 5418 passed with nine new
+test files, the cross-width save); a combined Sonnet review with
+mutation testing over the behavioural fixes follows the merges and is
+recorded here when done. The three highs: the heap's allocation-site
+encoding in src/malloc.c assumed the whole image within 512 MiB of the
+image base, which the Windows layout breaks (now measured from a base
+symbol small on both links, with a no-location rule and a round-trip
+test); README said Windows was not attempted; LICENSE's scope named a
+directory that does not exist. The mediums fixed: unchecked Huffman
+tree-table reads and the game's fast LZ77 decoder writing with no bounds
+check; the RTC offset diverging from disk on a directory-sync failure;
+the watchdog thread inheriting an open signal mask (a process-directed
+signal could run a test's handler on it) and printing on error paths;
+inspect.h's fact list contradicting the code; upstream's build workflow
+firing on every pull request; the CI setup pasted six times; a dozen
+public-document contradictions. Five findings need the owner (below).
+Two follow-ups the fixes surfaced are in PLAN.md (the native soft reset
+with the combination held; macOS's missing pthread_condattr_setclock).
 
 **In flight.** Tasks W8 and W9 as one Opus worker (branch m8-winci): the
 Windows runner's unit tests and smoke made to pass, then the replays, the
