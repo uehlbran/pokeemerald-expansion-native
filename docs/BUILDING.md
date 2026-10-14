@@ -207,3 +207,61 @@ written by the 32-bit build is converted in memory when the 64-bit build loads i
 and the file is rewritten with the 64-bit tag at the game's next save; a 64-bit
 save loads in the 32-bit build the same way (`platform/README.md`;
 `tests/smoke/run_cross_width.sh` plays it).
+
+## Windows (cross-build from Linux)
+
+The Windows executable is x86-64 only and is built on Linux with MinGW-w64
+(`TARGET_OS=windows`, `platform/target.mk`); the build machine needs nothing
+Windows. i686 is not attempted (`research/m8-inventory.md` 2.3). Nothing built
+this way can be run on the build machine without Wine, which is not part of
+the project: what is checked here is the link and the file it writes.
+
+```
+sudo apt-get install -y gcc-mingw-w64-x86-64 binutils-mingw-w64-x86-64 mingw-w64-tools
+make -f Makefile.native -j32 sdl2-mingw TARGET_OS=windows BITS=64   # SDL2 for MinGW, once
+make -f Makefile.native -j32 native TARGET_OS=windows BITS=64       # build/native64-windows/pokeemerald-native.exe
+```
+
+`native` fetches SDL2 itself when it is missing (`sdl2-mingw` is only for doing it
+alone). The fetch is the newest 2.30 release's `SDL2-devel-2.30.12-mingw.tar.gz`
+from github.com/libsdl-org/SDL, checked against the sha256 recorded in
+`Makefile.native` before anything is unpacked (a mismatch removes the download
+and stops), into `build/sdl2-mingw/` (not committed); SDL is under the zlib
+licence, which allows this and shipping `SDL2.dll` beside the executable. The
+build uses the package's headers and import library directly, not its
+`sdl2.pc`, which carries another machine's prefix and asks for `-mwindows` and
+SDL's `WinMain` shim; `SDL_MAIN_HANDLED` and `-mconsole` take their place.
+
+What the build does, in two makes (`Makefile.native`, "The Windows
+cross-build"): the first is the Linux 64-bit data (`build/native64/`) with its
+three checks, converted to COFF listings and compared with the ELF objects
+(`check-flat TARGET=coff-x86_64`, above); the second compiles the game and the
+platform layer with `x86_64-w64-mingw32-gcc` into `build/native64-windows/`,
+assembles the listings there with MinGW's `as`, and links with
+`platform/gba_regions.pe.ld` and `platform/gba_game.pe.ld`. The flags (the
+bit-field layout `-mno-ms-bitfields`, so that saves stay interchangeable with
+Linux's, and the image layout) are in `platform/target.mk`. The link
+writes `pokeemerald-native.exe`, its function map `pokeemerald-native.exe.symbols`
+and a copy of `SDL2.dll` beside it, and checks the result with
+`platform/build_glue/check_pe_layout.py`: image base `0x01800000`; no dynamic
+base, no high-entropy VA, no relocations; every GBA region a section at its GBA
+address and size; the sections adjacent; `.text` at `0x40001000`. To look at it
+yourself:
+
+```
+x86_64-w64-mingw32-objdump -h build/native64-windows/pokeemerald-native.exe   # sections
+x86_64-w64-mingw32-objdump -p build/native64-windows/pokeemerald-native.exe | grep -E 'ImageBase|DllCharacteristics|Base Relocation'
+x86_64-w64-mingw32-nm -u build/native64-windows/pokeemerald-native.exe        # no output: nothing undefined
+```
+
+The platform library alone: `make -C platform lib TARGET_OS=windows BITS=64`
+(`platform/build/64-windows/`); the unit tests are not cross-built.
+`SANITIZE=1` and `TEST=1` are errors with `TARGET_OS=windows` (MinGW's GCC has no
+sanitizers; the test runner is not ported). `BITS=32` is an error.
+
+What cannot be verified without Windows (or Wine): that the loader maps the
+image, which the probe on `windows-latest` showed for this layout
+(`research/probes/README.md`, W1) but not for this executable; that anything
+runs. `platform/host_windows.c` is a stub (task W5 replaces it): every call
+fails, so the executable stops in its first host call. Running it needs
+`SDL2.dll` beside it (the Makefile copies it) and 64-bit Windows.

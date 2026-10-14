@@ -30,11 +30,23 @@
 # Tests include "ptest.h" (platform/test/ptest.h) and their module's header.
 
 include game_flags.mk
-include host.mk
 
 BITS ?= 32
 ifeq ($(filter $(BITS),32 64),)
 $(error BITS must be 32 or 64, not '$(BITS)')
+endif
+
+include host.mk
+
+# TARGET_OS=windows (target.mk) builds libplatform.a for Windows with MinGW-w64,
+# which has no sanitizers, and nothing else: the unit tests run where the
+# executable does, and the host layer they exercise is still a stub there
+# (host_windows.c).
+ifeq ($(TARGET_OS),windows)
+ifneq ($(filter-out lib clean,$(or $(MAKECMDGOALS),all)),)
+$(error TARGET_OS=windows builds the lib goal only: MinGW-w64 has no sanitizers, and the unit tests are not cross-built yet)
+endif
+NOSAN := 1
 endif
 
 # NOSAN=1 builds libplatform.a without the sanitizers, for the native game
@@ -49,6 +61,9 @@ ifneq ($(filter-out lib clean,$(or $(MAKECMDGOALS),all)),)
 $(error NOSAN=1 is for the lib goal only; the unit tests always run under the sanitizers)
 endif
 BUILD_DIR := build/$(BITS)-nosan
+ifeq ($(TARGET_OS),windows)
+BUILD_DIR := build/$(BITS)-windows
+endif
 else ifeq ($(NOSAN),0)
 BUILD_DIR := build/$(BITS)
 else
@@ -92,26 +107,30 @@ INCLUDES := -I. -iquote .. -idirafter ../include
 
 # SDL2, for the modules that talk to the host (input, video, audio) and their
 # tests; harmless for the others. The i386 and amd64 dev packages share flags.
-SDL_CFLAGS := $(shell pkg-config --cflags sdl2)
-SDL_LIBS   := $(shell pkg-config --libs sdl2)
+# SDL_CFLAGS and SDL_LIBS come from target.mk.
 ifeq ($(SDL_LIBS),)
 $(error pkg-config cannot find sdl2; install libsdl2-dev (and libsdl2-dev:i386 for BITS=32))
 endif
+ifeq ($(TARGET_OS),windows)
+ifeq ($(wildcard $(SDL2_MINGW_DIR)/include/SDL2/SDL.h),)
+$(error SDL2 for MinGW is not in $(SDL2_MINGW_DIR): make -f Makefile.native sdl2-mingw TARGET_OS=windows BITS=64)
+endif
+endif
 
 CFLAGS_ALL := -m$(BITS) -std=gnu17 $(WARNINGS) $(OPTIMISATION) $(SANITIZERS) $(INCLUDES) \
-              $(SDL_CFLAGS) -MMD -MP
+              $(SDL_CFLAGS) $(TARGET_CFLAGS) -MMD -MP
 
 # The GBA memory regions exist because the ELF loader maps them: gba_regions.ld
 # adds them as sections at their GBA addresses (see gba_memmap.c), which needs
 # a non-PIE executable whose own image starts at 0x40000000, clear of every
 # region on both bit widths (docs/research/memory-map-experiment.md).
 # Makefile.native must link the game with these same flags.
-REGIONS_LD := gba_regions.ld
+REGIONS_LD := $(REGIONS_LD_NAME)
 # gba_game.ld adds what expansion's linker scripts give the game (symbols,
 # the test table, the brackets around the game's variables); in a unit test
 # its sections are empty, but its symbols exist, as crt0.c needs.
-GAME_LD := gba_game.ld
-GBA_LDFLAGS := -no-pie -Wl,-Ttext-segment=0x40000000 -Wl,-T,$(REGIONS_LD) -Wl,-T,$(GAME_LD)
+GAME_LD := $(GAME_LD_NAME)
+GBA_LDFLAGS := $(GBA_LAYOUT_LDFLAGS) -Wl,-T,$(REGIONS_LD) -Wl,-T,$(GAME_LD)
 LDFLAGS_ALL := -m$(BITS) $(SANITIZERS) $(GBA_LDFLAGS)
 
 # The sanitizer options every test runs under, set here so the environment
@@ -140,6 +159,34 @@ $(LIB): $(MODULE_OBJS)
 $(OBJ_DIR)/%.o: %.c
 	@mkdir -p $(@D)
 	$(CC) $(CFLAGS_ALL) -c $< -o $@
+
+# The Windows executable's filler between the GBA regions (gba_regions.pe.ld
+# says why): gba_gaps.pe.s assembled, then every `gap` section made read-only,
+# which the assembler cannot say. A link of the library's users names it
+# beside libplatform.a, since an archive member nothing refers to is not pulled.
+ifeq ($(TARGET_OS),windows)
+GAPS_OBJ := $(BUILD_DIR)/gba_gaps.o
+GAP_SECTIONS := $(shell sed -n 's/^[[:space:]]*gap[[:space:]][[:space:]]*\(\.gap[0-9]*\),.*/\1/p' gba_gaps.pe.s)
+
+lib: $(GAPS_OBJ)
+
+# Three modules reach the C runtime in ways MinGW's headers do not allow. Each
+# gets a force-included header from build_glue/, for the Windows build only, so
+# the Linux build is unchanged and every warning stays on: mingw_write.h for
+# rtc_offset_store.c and crash_reboot.c (write's count, O_CLOEXEC), mingw_printf.h
+# for save_file.c (%zu and %jd against the C runtime's formats). Owners:
+# rtc_offset_store and save_file are task W5's, crash_reboot task W6's; each
+# header says what removes it.
+WINDOWS_GLUE := -include build_glue/
+$(OBJ_DIR)/crash_reboot.o: CFLAGS_ALL += $(WINDOWS_GLUE)mingw_write.h
+$(OBJ_DIR)/rtc_offset_store.o: CFLAGS_ALL += $(WINDOWS_GLUE)mingw_write.h
+$(OBJ_DIR)/save_file.o: CFLAGS_ALL += $(WINDOWS_GLUE)mingw_printf.h
+
+$(GAPS_OBJ): gba_gaps.pe.s
+	@mkdir -p $(@D)
+	$(HOST_AS) -o $@ $<
+	$(OBJCOPY) $(GAP_SECTIONS:%=--set-section-flags %=alloc,readonly) $@
+endif
 
 # test_arm_division divides by a global through an absolute address with an
 # index and no base register (divl sym(,%ebx,4); on x86-64 sym(,%rbx,4) and a
@@ -213,6 +260,9 @@ clean:
 # difftest, arm_division's libgcc record, tests and their headers. The build's
 # own output is not ours.
 FORMAT_FILES := $(shell find . -path ./build -prune -o \( -name '*.c' -o -name '*.h' \) -print | sort)
+# host_windows.c is compiled only for TARGET_OS=windows, so it is not in this list;
+# it is linted when W5 makes the real file and a cross lint (clang-tidy with the
+# MinGW headers) possible. clang-format still covers it (FORMAT_FILES).
 LINT_SRCS    := $(PLATFORM_SRCS) $(wildcard m4a/*.c) $(wildcard m4a/difftest/*.c) $(wildcard arm_division_libgcc/*.c) \
                 $(wildcard test/*.c)
 

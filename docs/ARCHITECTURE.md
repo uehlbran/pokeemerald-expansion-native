@@ -46,6 +46,23 @@ Not GBA memory, placed below 2^27 so its addresses fit the battle test
 runner's 27-bit fields: the stack `PlatformCallWithStack` runs the battle
 tests' functions on, 1 MiB at 0x01800000 (`gba_regions.ld`).
 
+On Windows (a cross-build from Linux with MinGW-w64, x86-64 only) the
+regions are sections of the PE image, because a PE section's address is an
+offset above the image base and the image cannot start at 0x40000000 with the
+regions below it. The image is based at 0x01800000, below the lowest region,
+with no address randomisation and no base relocations, so that the loader maps
+it there or refuses it; the code is at 0x40001000, where the Linux build's is
+(`platform/gba_regions.pe.ld`, `platform/gba_game.pe.ld`, `platform/target.mk`).
+The loader refuses an image whose sections are not adjacent, so the stretches
+between the regions are sections of their own, uninitialised and read-only
+(`platform/gba_gaps.pe.s`): the image spans 1 GiB of address space, but the
+gaps are not stored in the file and the probe measured no commit charge for
+them. The battle runner's stack is the first section, at 0x01801000, because
+the headers take 0x01800000. The probe that showed the loader accepts this
+layout, and refuses the one with holes: `research/probes/README.md`, W1. `platform/build_glue/check_pe_layout.py` checks
+every link's result against it, since the executable cannot be run where it is
+built.
+
 The executable is linked at 0x40000000 so it never overlaps a region. The
 two places where expansion takes a pointer to be in the cartridge ROM are
 guarded: the heap's allocation-site encoding (`src/malloc.c`, an offset
@@ -200,9 +217,10 @@ The sources are one per OS family: `host_posix.c` holds what Linux and macOS
 share (the signal handlers' installation and chaining, `execve`, the files),
 and `host_linux.c` the rest (the linker-script symbols, `MAP_FIXED_NOREPLACE`,
 the `gregs` index table, `/proc/self/exe`, `getauxval`, `pthread_getattr_np`,
-the `ucontext` switch); `host_internal.h` is what they share. `HOST_OS`
-(`platform/host.mk`, included by both Makefiles) selects them, Linux its
-only value so far: a port adds its source and its value. `crt0` and `main`
+the `ucontext` switch); `host_internal.h` is what they share. `TARGET_OS`
+(`platform/target.mk`, included by `host.mk`, so by every Makefile) selects them:
+Linux, or `windows` for the cross-build, whose `host_windows.c` is a stub that
+fails every call until the port is written. A port adds its source and its value. `crt0` and `main`
 also use the toolchain (the linker scripts' own symbols, weak references,
 SDL's `main`) but call nothing of the OS's, so they are not users.
 

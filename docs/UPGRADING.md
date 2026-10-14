@@ -199,6 +199,18 @@ git diff OLD NEW -- tools/mgba-rom-test-hydra tools/patchelf tools/scaninc tools
   `TARGETS`), a relocation other than an 8-, 4- or 16-bit absolute word, or
   a 16-bit word whose symbol is not an absolute constant of a data object
   stops the conversion, naming the object, section, offset and symbol.
+- `platform/gba_regions.pe.ld`, `platform/gba_game.pe.ld` and
+  `platform/gba_gaps.pe.s`: the PE counterparts of the two linker scripts, for
+  the Windows cross-build (`docs/BUILDING.md`). A change to `gba_regions.ld`'s
+  regions or to `gba_game.ld` is made in both; the sizes in `gba_gaps.pe.s`
+  and `platform/build_glue/check_pe_layout.py` follow `gba_regions.pe.ld`, and
+  the link fails (an `ASSERT`, or the checker) when they do not. A weak
+  definition added to expansion's code (`__attribute__((weak))` on a
+  definition) is undefined in the Windows link until `gba_game.pe.ld` defines
+  it; a new include of a header MinGW lacks goes in
+  `platform/build_glue/mingw_include/`; a new ELF section-flag trick in
+  preproc's output goes in `c_filter_coff.sed`. The pinned SDL2 for MinGW
+  (`SDL2_MINGW_VERSION` and its sha256 in `Makefile.native`) is bumped by hand.
 - The assembly translated or replaced in `platform/`: `src/m4a_1.s`
   (`platform/m4a/`; its differential test against the ARM original is run by
   hand: `make -C platform/m4a/difftest run`, needs qemu-arm, see
