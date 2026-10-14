@@ -496,8 +496,8 @@ PTEST(a_script_path_of_the_maximum_length_is_described_whole_in_the_documented_b
     /* Repeated slashes pad the directory's path to the longest name a script may have. */
     const char *const name = "main.replay";
     const size_t directory_length = strlen(directory);
-    memset(path, '/', REPLAY_INCLUDE_MAX_NAME);
-    memcpy(path, directory, directory_length);
+    (void)snprintf(path, sizeof path, "%s", directory);
+    memset(path + directory_length, '/', REPLAY_INCLUDE_MAX_NAME - directory_length);
     memcpy(path + REPLAY_INCLUDE_MAX_NAME - strlen(name), name, strlen(name) + 1u);
     PT_ASSERT_EQ_INT((int)strlen(path), (int)REPLAY_INCLUDE_MAX_NAME);
     write_file("main.replay", "wait 1\n");

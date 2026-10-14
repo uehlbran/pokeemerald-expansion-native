@@ -535,8 +535,8 @@ PTEST(an_offset_path_just_under_the_limit_is_saved_and_loaded)
      * reaches the longest accepted path without nesting directories. */
     const size_t dir_length = strlen(g_dir);
     const char *const name = "offset";
-    memset(path, '/', LONGEST_PATH);
-    memcpy(path, g_dir, dir_length);
+    (void)snprintf(path, sizeof path, "%s", g_dir);
+    memset(path + dir_length, '/', LONGEST_PATH - dir_length);
     memcpy(path + LONGEST_PATH - strlen(name), name, strlen(name) + 1);
     PT_ASSERT_EQ_INT((int)strlen(path), (int)LONGEST_PATH);
 
