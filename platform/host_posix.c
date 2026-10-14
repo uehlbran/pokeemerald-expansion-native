@@ -376,9 +376,15 @@ struct host_watchdog {
     bool stopping;
     bool waiting;         /* the thread has started and is about to wait: host_watchdog_start returns only then */
     atomic_bool *expired; /* the caller's flag: the only thing written outside the lock */
+    /* The thread's own failure, which it does not print (host_thread.h):
+     * host_watchdog_stop reports it after the join, which orders the write
+     * before the read. */
+    const char *failed_call;
+    int failure;
 };
 
-/* Reports a failed pthread call (they return the error number, not errno). */
+/* Reports a failed pthread call (they return the error number, not errno).
+ * Never called on the watchdog's thread. */
 static void watchdog_report(const char *call, int error)
 {
     (void)fprintf(stderr, "host_thread: %s failed: %s\n", call, strerror(error)); /* best-effort */
@@ -434,7 +440,8 @@ static void *watchdog_thread(void *argument)
     struct host_watchdog *const watchdog = argument;
     const int locked = pthread_mutex_lock(&watchdog->lock);
     if (locked != 0) {
-        watchdog_report("pthread_mutex_lock", locked); /* host_watchdog_start times out */
+        watchdog->failed_call = "pthread_mutex_lock"; /* host_watchdog_start times out and stops it */
+        watchdog->failure = locked;
         return NULL;
     }
     watchdog->waiting = true;
@@ -447,7 +454,8 @@ static void *watchdog_thread(void *argument)
         /* Woken by a change, by the deadline, or for nothing; the loop decides which. */
         const int waited = pthread_cond_timedwait(&watchdog->changed, &watchdog->lock, &watchdog->deadline);
         if (waited != 0 && waited != ETIMEDOUT) {
-            watchdog_report("pthread_cond_timedwait", waited);
+            watchdog->failed_call = "pthread_cond_timedwait";
+            watchdog->failure = waited;
             break;
         }
     }
@@ -574,6 +582,8 @@ void host_watchdog_stop(struct host_watchdog *watchdog)
         watchdog_report("pthread_join", joined);
         return; /* the thread may still use the watchdog: leak it rather than free it */
     }
+    if (watchdog->failure != 0)
+        watchdog_report(watchdog->failed_call, watchdog->failure);
     (void)pthread_cond_destroy(&watchdog->changed); /* nothing waits on it any more */
     (void)pthread_mutex_destroy(&watchdog->lock);
     free(watchdog);

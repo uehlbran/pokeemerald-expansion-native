@@ -15,7 +15,8 @@
  * deadline and the stop request: behind its mutex on POSIX; on Windows in
  * relaxed C11 atomics whose changes an event announces) and writes exactly one
  * thing outside it: the caller's atomic flag, once. It calls no callback,
- * reads no caller state, prints nothing and allocates nothing. On POSIX it
+ * reads no caller state, prints nothing and allocates nothing (a failure of
+ * its own ends its watch, and host_watchdog_stop reports it). On POSIX it
  * runs with every signal blocked, so that a signal sent to the process is
  * never handled on it: no handler of the caller's runs there. The flag is
  * a C11 atomic_bool: the watchdog stores true (relaxed: the flag carries no
@@ -54,7 +55,9 @@ struct host_watchdog *host_watchdog_start(unsigned seconds, atomic_bool *expired
 int host_watchdog_restart(struct host_watchdog *watchdog, unsigned seconds);
 
 /* Cancels the deadline, waits for the thread to end and releases the
- * watchdog: no thread of it is left. NULL is accepted and does nothing. */
+ * watchdog: no thread of it is left. A failure of the thread's own, which
+ * ended its watch early, is reported on stderr after the join. NULL is
+ * accepted and does nothing. */
 void host_watchdog_stop(struct host_watchdog *watchdog);
 
 #endif /* PLATFORM_HOST_THREAD_H */

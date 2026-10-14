@@ -12,6 +12,12 @@
  * to step the system's wall clock, which needs privileges, and reading the
  * attribute back would need a test-only accessor in host_thread.h, which this
  * module does not carry.
+ *
+ * Also by inspection, for the same reason (no fault can be injected into the
+ * pthread calls without such an accessor): that a failure on the watchdog's
+ * thread (its lock, its wait) is not printed there but recorded, and reported
+ * by host_watchdog_stop after the join (watchdog_thread and host_watchdog_stop
+ * in host_posix.c; no call on the thread's path prints).
  */
 #include <stdatomic.h>
 
