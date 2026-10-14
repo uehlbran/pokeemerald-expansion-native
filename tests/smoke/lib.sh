@@ -53,6 +53,31 @@ grep_or_die() {
     return 0
 }
 
+# What differs between Linux and Git Bash on Windows, where the gates also run
+# (docs/BUILDING.md, "Running it on Windows"), in three functions:
+# md5 checksums in the form Linux's md5sum writes ("<md5>  <name>"; Git
+# Bash's md5sum marks every file as read in binary mode, "<md5> *<name>"),
+# one line per file named in the current directory;
+md5_list() {
+    local file sum
+    for file; do
+        sum="$(md5sum < "$file")" || return 1
+        printf '%s  %s\n' "${sum%% *}" "$file"
+    done
+}
+# the md5 of file $1;
+md5_of() {
+    local sum
+    sum="$(md5sum < "$1")" || return 1
+    echo "${sum%% *}"
+}
+# the size of file $1 in bytes (stat -c is GNU's, wc -c everyone's).
+file_size() {
+    local size
+    size="$(wc -c < "$1")" || return 1
+    echo $((size))
+}
+
 # The facts of dump $1 that are compared: all but the volatile ones.
 facts_of() { grep_or_die -v -E "$volatile_facts" "$1"; }
 
@@ -145,7 +170,7 @@ if [ "$update" -eq 1 ]; then
         [ -f "$dump" ] || die "the replay wrote no dump to $work"
         facts_of "$dump" > "$expected/$(basename "$dump")" || die "cannot write the expectation of $dump"
     done
-    (cd "$work" && md5sum -- *.ppm) > "$expected/screenshots.md5" || die "cannot write the screenshot checksums"
+    (cd "$work" && md5_list *.ppm) > "$expected/screenshots.md5" || die "cannot write the screenshot checksums"
     echo "updated $expected: $(ls "$expected"/*.txt | wc -l) dumps, $(wc -l < "$expected/screenshots.md5") screenshots"
     exit 0
 fi
@@ -173,7 +198,7 @@ for got in "$work"/*.txt; do
 done
 
 # Screenshots, by md5.
-if ! diff <(cd "$work" && md5sum -- *.ppm) "$expected/screenshots.md5" > "$work/screenshots.diff"; then
+if ! diff <(cd "$work" && md5_list *.ppm) "$expected/screenshots.md5" > "$work/screenshots.diff"; then
     fail "screenshots differ (got <, expected >; the PPMs are in $work):"
     cat "$work/screenshots.diff"
 else

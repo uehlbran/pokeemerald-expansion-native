@@ -180,7 +180,9 @@ static void run_write(struct replay *replay, const struct replay_command *comman
     }
     if (!path_for(replay, command, ".txt", path, sizeof path))
         return;
-    FILE *file = fopen(path, "w");
+    /* Binary: a dump is compared byte for byte with the expectations, which
+     * Windows' text mode would give a "\r" on every line. */
+    FILE *file = fopen(path, "wb");
     if (file == NULL) {
         fail(replay, command->line, "dump: could not open %s", path);
         return;
