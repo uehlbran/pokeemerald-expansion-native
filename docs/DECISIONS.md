@@ -1051,7 +1051,11 @@ the run's crashes. Each child is in a job object that ends it when the
 process waiting for it ends (`JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE`), so that a
 time limit that kills the process the runner started kills the whole chain
 and the runner's pipes reach their end, as they do on Linux, where the
-restarted program is the same process.
+restarted program is the same process. And the child inherits the standard
+handles and nothing else (`PROC_THREAD_ATTRIBUTE_HANDLE_LIST`), where `execve`
+keeps every descriptor without `O_CLOEXEC`: a file the C runtime had open
+(its handles are inheritable and do not share deletion) would otherwise stay
+open in the child and refuse the child's own replacement of that file.
 
 For the crash this happens in the unhandled-exception filter, and
 `CreateProcessW` allocates (the process heap) and takes locks (the PEB's, the

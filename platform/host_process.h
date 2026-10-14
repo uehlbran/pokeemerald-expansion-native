@@ -36,9 +36,9 @@ int host_process_executable_path(char *out, size_t size);
  * Linux: execve, so the same process id and all the open descriptors, and
  * async-signal-safe, so a crash handler may call it. Windows: the new run is
  * a child with its own process id, which inherits the standard handles and
- * the descriptors' inheritable handles (host_file_open's are not); this
- * process waits for it and ends with its exit status, so whoever waits for
- * this process sees the child's end. CreateProcessW allocates and takes
+ * no other, in a job that ends it if this process is ended; this process
+ * waits for it and ends with its exit status, so whoever waits for this
+ * process sees the child's end. CreateProcessW allocates and takes
  * locks; a crash handler calls it all the same, the one exception to the
  * handlers' rules (docs/DECISIONS.md, "A crash on Windows restarts through
  * CreateProcessW in the unhandled-exception filter"). */

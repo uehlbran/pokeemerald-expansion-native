@@ -503,13 +503,42 @@ static HANDLE make_kill_on_close_job(void)
     return job;
 }
 
+/* The standard handles, each once and only those that exist, made
+ * inheritable: the one handles the child inherits (PROC_THREAD_ATTRIBUTE_
+ * HANDLE_LIST), so that a file this process has open (the C runtime's fopen
+ * makes inheritable handles, without FILE_SHARE_DELETE) is not held open in
+ * the child, where it would refuse the child's own replacement of that file.
+ * The list takes only inheritable handles; a standard handle not marked so is
+ * marked. Returns how many it wrote to handles. */
+#define STANDARD_HANDLE_COUNT 3u
+
+static size_t standard_handles(HANDLE handles[STANDARD_HANDLE_COUNT])
+{
+    static const DWORD kinds[STANDARD_HANDLE_COUNT] = {STD_INPUT_HANDLE, STD_OUTPUT_HANDLE, STD_ERROR_HANDLE};
+    size_t count = 0;
+    for (size_t i = 0; i < STANDARD_HANDLE_COUNT; i++) {
+        HANDLE handle = GetStdHandle(kinds[i]);
+        bool listed = handle == NULL || handle == INVALID_HANDLE_VALUE;
+        for (size_t j = 0; j < count && !listed; j++)
+            listed = handles[j] == handle;
+        if (!listed && SetHandleInformation(handle, HANDLE_FLAG_INHERIT, HANDLE_FLAG_INHERIT))
+            handles[count++] = handle;
+    }
+    return count;
+}
+
+/* Room for a process attribute list of one attribute (about 48 bytes on
+ * x86-64; InitializeProcThreadAttributeList says how much it needs). */
+#define ATTRIBUTE_LIST_SIZE 256u
+
 /* Windows has no exec: the same program is started as a child with the same
  * arguments, standard handles, environment and working directory, and this
  * process waits for it and ends with its status, so that whoever waits for
  * this process (the test runner, the shell) sees the child's end and its
  * output on the same handles. Unlike execve, the child has a process id of
  * its own and this process stays until it ends; the child is in a job that
- * ends it if this process is ended first (make_kill_on_close_job).
+ * ends it if this process is ended first (make_kill_on_close_job), and it
+ * inherits the standard handles and nothing else (standard_handles).
  *
  * Called from the crash handler too (crash_reboot), where CreateProcessW is
  * the one call on the path that allocates and takes locks (the process heap's,
@@ -522,6 +551,52 @@ static HANDLE make_kill_on_close_job(void)
  *
  * A second call while one runs (a fault on another thread, which only SDL's
  * could be) waits forever: the first call's end ends the process. */
+/* Starts the command line built in `restart` as a suspended child that
+ * inherits the standard handles only. False with errno set. */
+static bool create_child(PROCESS_INFORMATION *child)
+{
+    static _Alignas(16) unsigned char attribute_list[ATTRIBUTE_LIST_SIZE];
+    HANDLE inherited[STANDARD_HANDLE_COUNT];
+    const size_t inherited_count = standard_handles(inherited);
+    STARTUPINFOEXW startup;
+    memset(&startup, 0, sizeof startup);
+    startup.StartupInfo.cb = sizeof startup;
+    startup.StartupInfo.dwFlags = STARTF_USESTDHANDLES;
+    startup.StartupInfo.hStdInput = GetStdHandle(STD_INPUT_HANDLE);
+    startup.StartupInfo.hStdOutput = GetStdHandle(STD_OUTPUT_HANDLE);
+    startup.StartupInfo.hStdError = GetStdHandle(STD_ERROR_HANDLE);
+    startup.lpAttributeList = (LPPROC_THREAD_ATTRIBUTE_LIST)attribute_list; /* an opaque buffer the calls fill */
+    SIZE_T list_size = sizeof attribute_list;
+    if (inherited_count > 0
+        && (!InitializeProcThreadAttributeList(startup.lpAttributeList, 1, 0, &list_size)
+            || !UpdateProcThreadAttribute(startup.lpAttributeList, 0, PROC_THREAD_ATTRIBUTE_HANDLE_LIST, inherited,
+                                          inherited_count * sizeof inherited[0], NULL, NULL))) {
+        errno = errno_of(GetLastError());
+        return false;
+    }
+    const DWORD flags = CREATE_SUSPENDED | (inherited_count > 0 ? EXTENDED_STARTUPINFO_PRESENT : 0u);
+    const bool created = CreateProcessW(restart.executable, restart.command_line, NULL, NULL, inherited_count > 0,
+                                        flags, NULL, NULL, &startup.StartupInfo, child);
+    if (!created)
+        errno = errno_of(GetLastError());
+    if (inherited_count > 0)
+        DeleteProcThreadAttributeList(startup.lpAttributeList);
+    return created;
+}
+
+/* Puts the suspended child in the job and lets it run; it never runs outside
+ * the job. On a failure, ends it. False with errno set. */
+static bool run_in_job(HANDLE job, const PROCESS_INFORMATION *child)
+{
+    if (AssignProcessToJobObject(job, child->hProcess) && ResumeThread(child->hThread) != (DWORD)-1)
+        return true;
+    errno = errno_of(GetLastError());
+    (void)TerminateProcess(child->hProcess, RESTART_STATUS_LOST);
+    (void)CloseHandle(child->hThread);
+    (void)CloseHandle(child->hProcess);
+    return false;
+}
+
 int host_process_restart(char *const argv[])
 {
     /* acquire: if an earlier call failed and let go (release below), its
@@ -531,34 +606,12 @@ int host_process_restart(char *const argv[])
             Sleep(INFINITE);
     }
     const DWORD length = GetModuleFileNameW(NULL, restart.executable, HOST_PROCESS_PATH_SIZE);
-    bool started = false;
-    PROCESS_INFORMATION child;
-    HANDLE job = make_kill_on_close_job();
-    if (job == NULL) {
-        /* errno set */
-    } else if (length == 0 || length >= HOST_PROCESS_PATH_SIZE) {
+    const bool found = length > 0 && length < HOST_PROCESS_PATH_SIZE;
+    if (!found)
         errno = length == 0 ? errno_of(GetLastError()) : ENAMETOOLONG;
-    } else if (build_command_line(argv)) {
-        STARTUPINFOW startup;
-        memset(&startup, 0, sizeof startup);
-        startup.cb = sizeof startup;
-        startup.dwFlags = STARTF_USESTDHANDLES;
-        startup.hStdInput = GetStdHandle(STD_INPUT_HANDLE);
-        startup.hStdOutput = GetStdHandle(STD_OUTPUT_HANDLE);
-        startup.hStdError = GetStdHandle(STD_ERROR_HANDLE);
-        /* Suspended until it is in the job, so that it never runs outside it. */
-        started = CreateProcessW(restart.executable, restart.command_line, NULL, NULL, TRUE, CREATE_SUSPENDED, NULL,
-                                 NULL, &startup, &child);
-        if (!started) {
-            errno = errno_of(GetLastError());
-        } else if (!AssignProcessToJobObject(job, child.hProcess) || ResumeThread(child.hThread) == (DWORD)-1) {
-            errno = errno_of(GetLastError());
-            (void)TerminateProcess(child.hProcess, RESTART_STATUS_LOST);
-            (void)CloseHandle(child.hThread);
-            (void)CloseHandle(child.hProcess);
-            started = false;
-        }
-    }
+    HANDLE job = found && build_command_line(argv) ? make_kill_on_close_job() : NULL;
+    PROCESS_INFORMATION child;
+    const bool started = job != NULL && create_child(&child) && run_in_job(job, &child);
     if (!started) {
         if (job != NULL)
             (void)CloseHandle(job);
@@ -571,5 +624,5 @@ int host_process_restart(char *const argv[])
     if (WaitForSingleObject(child.hProcess, INFINITE) != WAIT_OBJECT_0 || !GetExitCodeProcess(child.hProcess, &status))
         status = RESTART_STATUS_LOST;
     (void)TerminateProcess(GetCurrentProcess(), status);
-    return -1; /* not reached: TerminateProcess ends the calling thread with its process */
+    return -1; /* not reached: TerminateProcess ends the calling thread with its process; the job's handle with it */
 }
