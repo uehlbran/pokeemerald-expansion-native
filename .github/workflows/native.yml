@@ -7,11 +7,14 @@
 # Per-push tier (`push` to main and ci/**; docs-only pushes are ignored; a
 # newer push to a ref cancels the older run): job `push`: the 64-bit native
 # build, the platform gate (which also builds and tests the 32-bit platform
-# library, so the i386 SDL2 workaround below stays), both 64-bit replays,
-# and the plain 64-bit suite. ccache and the tools are cached between runs.
+# library, so the i386 SDL2 workaround below stays) and both 64-bit replays;
+# the suite is not here (10 minutes warm against a 15-minute target; the
+# local pre-merge gate runs it, and `native64` below runs it nightly).
+# ccache and the tools are cached between runs.
 #
 # Nightly tier (`schedule`, plus `workflow_dispatch`): parallel jobs `gba`
-# (the ROM and its sha1), `native32` (32-bit build, both replays, the suite),
+# (the ROM and its sha1), `native64` (the plain 64-bit build and suite),
+# `native32` (32-bit build, both replays, the suite),
 # `native32-san` and `native64-san` (the sanitized build, both replays and
 # the suite), `cross-width` (gate h, the save made at one width loaded at the
 # other, plain and sanitized, both ways).
@@ -45,7 +48,7 @@ env:
 
 jobs:
   push:
-    name: Per-push gate (64-bit build, platform gate, replays, suite)
+    name: Per-push gate (64-bit build, platform gate, replays)
     if: github.event_name == 'push'
     runs-on: ubuntu-24.04
     timeout-minutes: 60
@@ -119,10 +122,6 @@ jobs:
         run: |
           tests/smoke/run.sh build/native64/pokeemerald-native out/open64
           tests/smoke/run_debug_menu.sh build/native64/pokeemerald-native out/dbg64
-
-      - name: Gate b, the suite at 64 bits
-        run: |
-          make -f Makefile.native -j"$(nproc)" check BITS=64
 
 
       - name: ccache statistics
@@ -266,6 +265,77 @@ jobs:
           name: replay-outputs-native32
           path: out/
           if-no-files-found: ignore
+
+  native64:
+    name: Nightly, 64-bit build and suite
+    if: github.event_name != 'push'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Prerequisites (docs/BUILDING.md, the native lines)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends build-essential gcc-multilib g++-multilib libc6-dev-i386 pkg-config git python3 libpng-dev libsdl2-dev ccache
+
+      - name: Cache the build tools
+        uses: actions/cache@v4
+        with:
+          path: |
+            tools/bin2c/bin2c
+            tools/gbafix/gbafix
+            tools/gbagfx/gbagfx
+            tools/jsonproc/jsonproc
+            tools/mapjson/mapjson
+            tools/mid2agb/mid2agb
+            tools/preproc/preproc
+            tools/ramscrgen/ramscrgen
+            tools/rsfont/rsfont
+            tools/scaninc/scaninc
+            tools/trainerproc/trainerproc
+            tools/compresSmol/compresSmol
+            tools/compresSmol/compresSmolTilemap
+            tools/wav2agb/wav2agb
+            tools/patchelf/patchelf
+            tools/mgba-rom-test-hydra/mgba-rom-test-hydra
+          key: tools-native-${{ runner.os }}-${{ hashFiles('tools/*/Makefile', 'tools/**/*.c', 'tools/**/*.cpp', 'tools/**/*.h', 'make_tools.mk') }}
+
+      # Put ccache's compiler links first on PATH so gcc and g++ go through it.
+      - name: Cache the compiler cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ccache
+          key: ccache-native64-${{ runner.os }}-${{ github.sha }}
+          restore-keys: |
+            ccache-native64-${{ runner.os }}-
+
+      - name: Use ccache
+        run: |
+          echo /usr/lib/ccache >> "$GITHUB_PATH"
+          ccache --max-size=1G --zero-stats
+
+      - name: Native build, 64-bit (with the three link-time data checks)
+        run: |
+          make -f Makefile.native -j"$(nproc)" native BITS=64
+
+      - name: Gate b, the suite at 64 bits
+        run: |
+          make -f Makefile.native -j"$(nproc)" check BITS=64
+
+
+      - name: ccache statistics
+        if: always()
+        run: ccache -s
+
+      - name: Keep the replay outputs of a failed run
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: replay-outputs-native64
+          path: out/
+          if-no-files-found: ignore
+
 
   native32-san:
     name: Nightly, 32-bit sanitized build, replays, suite
