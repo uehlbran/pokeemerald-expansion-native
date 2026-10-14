@@ -46,7 +46,15 @@ Linux only and why not every push) and, from the Opus inventory of the Windows a
 order), the first tasks: the loader probes on the Windows and macOS
 runners (W1, M0) and the host layer on Linux as a pure refactor (W2).
 
-**Broke and fixed.** Milestone 8: the first per-push CI run on main
+**Broke and fixed.** Milestone 8: the Windows run on main dispatched for
+the owner's download (run 38645730797) failed in the start-up smoke: its
+non-ASCII directory check listed the names it expected before the save
+lock existed, and the game now creates `<save>.lock` beside the save
+before its modules start (the owner's ruling 3), so the listing held
+`セーブ.sav.lock`. The check accepts the save, the clock file and the lock
+and requires the lock (the fix is on main at ded4c1f843); the run
+dispatched again, 38648131073, is green (22.6 min; the build the owner
+downloads). Also: the first per-push CI run on main
 after the test-timeout merge failed in one new test (run 38577112419):
 the Linux thread-count test found the stopped watchdog still listed in
 /proc/self/task after the join. pthread_join returns when the kernel
@@ -604,8 +612,9 @@ the review: none for the code; for the owner, rulings (1) and (5) wait
 for their moment (after the Windows verification; before the
 repository goes public).
 
-**In flight.** Nothing. The next steps are the owner's hands-on Windows
-check (the checklist below), then the audio-rate task and macOS.
+**In flight.** Nothing. Next is the owner's hands-on Windows check from
+run 38648131073's `windows-build` artifact (the checklist below), then
+the audio-rate task and macOS.
 
 ## Verified by a gate
 
