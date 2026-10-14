@@ -569,8 +569,10 @@ are under that review now.
 **Ready for the owner's hands-on check** (DECISIONS: macOS waits for
 it): download `windows-build` from the latest green run of the windows
 workflow on main, unpack it, and run `pokeemerald-native.exe` from the
-`build/native64-windows` folder (SDL2.dll is beside it); the checklist
-is at the end of this section once the first run on main is green.
+`build/native64-windows` folder (SDL2.dll is beside it). The checklist
+(boot and play; save and reload; the clock; a second instance refused;
+a foreign save refused; a non-ASCII path; scale) was given to the owner
+with the run's link.
 
 **The owner's rulings 2, 3 and 4 are merged** (2026-10-14): a save
 file without this project's header is refused with a message, left
@@ -586,9 +588,24 @@ native build, the SiiRtc API provided by platform/rtc_siirtc.c, the GBA
 ROM's sha1 unchanged. Each branch was reviewed (the lock with a
 32-instance race test) and gated on main (suite 5418).
 
-**In flight.** The Windows follow-ups from the two reviews of the runner
-files (script tests, patchelf's PE cases, the hydra's end-of-output
-rule, the restart bound, stale figures), with their confirmation run.
+**The review pass is complete** (2026-10-14, evening): the Windows
+runner's follow-ups from its two reviews are merged (Linux tests for the
+runner's scripts with their mutants caught, patchelf's PE boundary
+cases, a restart bound and a TERM trap in the suite driver, the hydra
+reading to end of output before it closes a runner's pipe, the copies'
+removal retried, the smoke's refusal check), with a confirmation run
+green on the Windows runner; and the three deferred findings are merged
+(the compiler variables are TARGET_CC and TARGET_AS, with "host" meaning
+the executable's OS; the crash and divide-error handlers write through
+a file handle resolved at install time, so nothing of the C runtime runs
+in a handler on Windows; four host_windows.c comments rewritten). Every
+accepted finding of the independent review is fixed on main. Open from
+the review: none for the code; for the owner, rulings (1) and (5) wait
+for their moment (after the Windows verification; before the
+repository goes public).
+
+**In flight.** Nothing. The next steps are the owner's hands-on Windows
+check (the checklist below), then the audio-rate task and macOS.
 
 ## Verified by a gate
 
