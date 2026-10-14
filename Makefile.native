@@ -227,8 +227,7 @@ CPP := $(HOST_CC) -E $(ARCH_FLAGS)
 INCLUDE_DIRS := include
 # The repository root is also on the quote path: the guarded modifications of
 # expansion's files include the platform hooks by that path, for example
-# "platform/dma_hooks.h" from include/gba/macro.h and "platform/rtc.h" from
-# src/siirtc.c (docs/UPSTREAM_MODIFICATIONS.md).
+# "platform/dma_hooks.h" from include/gba/macro.h.
 INCLUDE_CPP_ARGS := $(INCLUDE_DIRS:%=-iquote %) -iquote .
 INCLUDE_SCANINC_ARGS := $(INCLUDE_DIRS:%=-I %) -I .
 
@@ -404,8 +403,12 @@ endif
 # --------------------------------------------------------------------------
 # Sources: the same wildcards as expansion's Makefile. src/*.s is excluded
 # (ARM code, replaced by the platform layer); asm/*.s does not exist.
+# src/siirtc.c is left out too: it bit-bangs the cartridge's GPIO port, which
+# the native build does not have, and platform/rtc_siirtc.c provides the
+# SiiRtc* API of include/siirtc.h from the platform's clock model instead.
 
-C_SRCS_IN := $(wildcard $(C_SUBDIR)/*.c $(C_SUBDIR)/*/*.c $(C_SUBDIR)/*/*/*.c)
+NATIVE_EXCLUDED_SRCS := $(C_SUBDIR)/siirtc.c
+C_SRCS_IN := $(filter-out $(NATIVE_EXCLUDED_SRCS),$(wildcard $(C_SUBDIR)/*.c $(C_SUBDIR)/*/*.c $(C_SUBDIR)/*/*/*.c))
 C_SRCS := $(foreach src,$(C_SRCS_IN),$(if $(findstring .inc.c,$(src)),,$(src)))
 C_OBJS := $(patsubst $(C_SUBDIR)/%.c,$(C_BUILDDIR)/%.o,$(C_SRCS))
 

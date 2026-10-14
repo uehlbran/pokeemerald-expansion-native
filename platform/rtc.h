@@ -18,7 +18,8 @@
 
 /* Status register bits as expansion's struct SiiRtcInfo.status carries them
  * (include/constants/siirtc.h SIIRTCINFO_*), which is not the chip's own bit
- * order (src/siirtc.c converts between the two on the GPIO path). */
+ * order (src/siirtc.c converts between the two on the GPIO path; the native
+ * build's SiiRtc API, rtc_siirtc.c, does not). */
 #define RTC_STATUS_INTFE 0x01u  /* frequency interrupt enable, read/write */
 #define RTC_STATUS_INTME 0x02u  /* per-minute interrupt enable, read/write */
 #define RTC_STATUS_INTAE 0x04u  /* alarm interrupt enable, read/write */
@@ -29,7 +30,7 @@
  * from the NDS's bit 6 to bit 7). Bits 0-5 hold the hour in BCD (bits 4-5
  * the tens): 00h..23h in 24-hour mode, 00h..11h in 12-hour mode. Bit 7 is
  * the PM flag. In 24-hour mode the flag is read only and set for 12h..23h
- * (src/siirtc.c masks it off, & 0x7F, after a read); in 12-hour mode it is
+ * (the SiiRtc API masks it off, & 0x7F, after a read); in 12-hour mode it is
  * read/write. Bit 6 is always zero. */
 #define RTC_HOUR_PM 0x80u
 #define RTC_HOUR_MASK 0x3Fu
@@ -93,8 +94,9 @@ int rtc_reset(void);
 
 /* Alarm: hour and minute BCD are validated and stored; no alarm ever fires
  * and no interrupt is raised, since expansion never calls it (SiiRtcSetAlarm
- * is static UNUSED in src/siirtc.c). Only the hour and minute fields are
- * used; the PM flag is derived from the hour, as the original code does. */
+ * is static UNUSED in src/siirtc.c and has no native counterpart). Only the
+ * hour and minute fields are used; the PM flag is derived from the hour, as the
+ * original code does. */
 int rtc_set_alarm(const struct rtc_datetime *in);
 /* Reads the stored alarm back (hour with its PM flag, minute); other fields 0. */
 int rtc_get_alarm(struct rtc_datetime *out);

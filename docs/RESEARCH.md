@@ -246,8 +246,8 @@ test runner's Timer 2 timeout and Timer 3 benchmarks work, and gives the
 trainer ID seed real entropy. The RTC follows GBATEK "GBA Cart Real-Time
 Clock (RTC)" at the level of the S-3511A's registers (BCD date and time,
 24-hour status, offset persisted next to the save) rather than the GPIO
-bit-banging in `src/siirtc.c`, which is replaced at its API level under a
-guard, as in every port. Both are unit-tested for rollover, prescaler
+bit-banging in `src/siirtc.c`, which the native build leaves out: its API
+is provided at its own level by `platform/rtc_siirtc.c`. Both are unit-tested for rollover, prescaler
 boundaries and invalid input.
 
 ### Input: write `REG_KEYINPUT`

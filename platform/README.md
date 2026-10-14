@@ -472,6 +472,7 @@ output capacitor removes.
 | File | Stands in for | Notes |
 |---|---|---|
 | `game_hooks.c` | the guarded game code's control flow: `PlatformWaitCycles`, `PlatformJumpToAgbMainLoop`, `PlatformTestRunnerExit`, `PlatformCallWithStack` | `game_hooks.h` says why each behaves as it does; the battle runner's functions run on a 1 MiB platform stack (ucontext, with AddressSanitizer fiber annotations) so their locals stay put between calls |
+| `rtc_siirtc.c` | `src/siirtc.c`, which the native build leaves out (`Makefile.native`): the `SiiRtc*` API of `include/siirtc.h` | on top of `rtc.h`; a failed date and time read answers with zeros; compiled with the game's defines (it fills the game's `struct SiiRtcInfo`); `SiiRtcSetAlarm`, static and unused upstream, is not carried over; pinned by `test/siirtc.c` |
 | `crt0.c` | `src/crt0.s`: `IntrMain` (data: only its address is stored), `ReInitializeEWRAM`, and the soft-reset restart | the copies are taken at `crt0_init` |
 | `decompress_asm.c` | `src/decompress_asm.s`: `FastUnsafeCopy32`, `LZ77UnCompWRAMOptimized` | writes exactly the LZ77 header's size, unlike the assembly |
 | `gcn_multiboot.c` | `src/libgcnmultiboot.s` | no GameCube: the copyright screen takes its "no multiboot" path |
