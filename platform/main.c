@@ -125,12 +125,15 @@ static int start_game_hooks(const struct options *o)
     return game_hooks_init(&exit_target);
 }
 
-/* Test-runner mode only: stdout is the hydra's, one line at a time. */
+/* Test-runner mode only: stdout is the hydra's, one line at a time. The size
+ * is BUFSIZ, not 0, because msvcrt refuses a size below 2; it also buffers a
+ * line-buffered stream fully, so on Windows the lines go out whole because
+ * debug_channel flushes each one itself. */
 static int start_debug_channel(const struct options *o)
 {
     if (!o->test_runner)
         return 0;
-    if (setvbuf(stdout, NULL, _IOLBF, 0) != 0) {
+    if (setvbuf(stdout, NULL, _IOLBF, BUFSIZ) != 0) {
         (void)fprintf(stderr, "main: setvbuf(stdout, line-buffered) failed\n");
         return -1;
     }

@@ -224,6 +224,11 @@ uint64_t tsup_monotonic_milliseconds(void)
     return GetTickCount64();
 }
 
+const char *tsup_executable_suffix(void)
+{
+    return ".exe";
+}
+
 int tsup_divide_error_number(void)
 {
     return (int)EXCEPTION_INT_DIVIDE_BY_ZERO;

@@ -293,9 +293,27 @@ on Windows to `platform/build/64-windows/test/` (the portable ones and
 with the PE scripts and checked by `check_pe_layout.py` like the game. The
 Windows sources' static analysis: `make -C platform lint TARGET_OS=windows
 BITS=64` (clang-tidy for the MinGW-w64 target, with its headers, and cppcheck;
-not in the platform gate, which runs on Linux alone). `SANITIZE=1` and
-`TEST=1` are errors with `TARGET_OS=windows` (MinGW's GCC has no sanitizers; the
-test runner is not ported). `BITS=32` is an error.
+not in the platform gate, which runs on Linux alone). patchelf on a PE file:
+`make -C platform tools-test TARGET_OS=windows BITS=64`
+(`platform/test_runner/test_patchelf_pe.sh`, the twin of the ELF test).
+
+The test runner build, for the suite on Windows:
+
+```
+make -f Makefile.native -j32 native TARGET_OS=windows BITS=64 TEST=1   # build/native64-test-windows/pokeemerald-native-test.exe
+```
+
+It is made as the game is, from the Linux TEST=1 data (`build/native64-test/`)
+converted to COFF, with two differences the tests' event scripts
+(`include/test/overworld_script.h`) need: the COFF listings keep the data's
+global absolute symbols global (`ITEM_POTION`, `SPECIAL_*`: the scripts name
+them and the link resolves them, as on Linux; `elf_to_flat.py` says why Mach-O's
+stay local), and each script is jumped over in its function's own section,
+since COFF's assembler has no section stack to put it in `.rodata` and come
+back (`platform/build_glue/c_filter_coff.sed`). `make ... check` with
+`TARGET_OS=windows` is an error: the suite runs on Windows (below).
+`SANITIZE=1` is an error with `TARGET_OS=windows` (MinGW's GCC has no
+sanitizers), and so is `BITS=32`.
 
 ### Running it on Windows
 

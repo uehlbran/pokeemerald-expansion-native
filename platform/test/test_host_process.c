@@ -13,6 +13,7 @@
 
 #include "host_process.h"
 #include "ptest.h"
+#include "test_support.h"
 
 #define SELF_NAME "test_host_process"
 
@@ -42,10 +43,13 @@ static bool file_holds_marker(const char *path)
 PTEST(the_path_names_this_executables_file)
 {
     char path[HOST_PROCESS_PATH_SIZE];
+    char name[sizeof SELF_NAME + 8u];
     PT_ASSERT_EQ_INT(host_process_executable_path(path, sizeof path), 0);
+    const int name_length = snprintf(name, sizeof name, "%s%s", SELF_NAME, tsup_executable_suffix());
+    PT_ASSERT(name_length > 0 && (size_t)name_length < sizeof name);
     const size_t length = strlen(path);
-    PT_ASSERT(length >= sizeof SELF_NAME - 1u);
-    PT_ASSERT_EQ_STR(path + length - (sizeof SELF_NAME - 1u), SELF_NAME);
+    PT_ASSERT(length >= (size_t)name_length);
+    PT_ASSERT_EQ_STR(path + length - (size_t)name_length, name);
     PT_ASSERT(file_holds_marker(path));
 }
 

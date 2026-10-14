@@ -85,6 +85,11 @@ void tsup_sleep_milliseconds(unsigned milliseconds);
 /* A clock that only goes forward, in milliseconds, from an arbitrary start. */
 uint64_t tsup_monotonic_milliseconds(void);
 
+/* --- executables ------------------------------------------------------------ */
+
+/* What an executable's file name ends with: "" (POSIX), ".exe" (Windows). */
+const char *tsup_executable_suffix(void);
+
 /* --- faults ----------------------------------------------------------------- */
 
 /* host_fault_number's value for an integer divide error: SIGFPE (POSIX); the

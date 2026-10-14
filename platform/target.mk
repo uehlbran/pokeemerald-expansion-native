@@ -75,7 +75,14 @@ TARGET_EXE_SUFFIX := .exe
 # runtime's, which does not know %zu or %llx the C99 way; this one is MinGW's
 # own. Win64 `long` is 32 bits: nothing here assumes otherwise. -idirafter:
 # build_glue/mingw_include has the headers MinGW lacks that expansion includes.
-TARGET_CFLAGS := -mno-ms-bitfields -D__USE_MINGW_ANSI_STDIO=1 \
+# -Wa,--keep-locals: GNU as for x86-64 COFF takes every name that starts with
+# "L" for an assembler-local label (bfd's coff-x86_64.c) and leaves it out of
+# the object, so the game's static functions named so (ListMenuDummyTask,
+# LaunchKOAnimation and 182 more) had no name in the executable's symbol table
+# and its function map, from which the replays name callbacks (symbols.h): the
+# debug-menu replay's task lists showed "unknown:0x..." where Linux names
+# them. GCC's own labels are ".L"; the link drops them again.
+TARGET_CFLAGS := -mno-ms-bitfields -D__USE_MINGW_ANSI_STDIO=1 -Wa,--keep-locals \
                  -idirafter $(abspath $(TARGET_MK_DIR)build_glue/mingw_include)
 
 # The SDL2 development package for MinGW, fetched by Makefile.native
