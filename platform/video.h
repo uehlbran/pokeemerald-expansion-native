@@ -3,8 +3,9 @@
  *
  * Stands in for the GBA's 240x160 LCD (GBATEK "LCD Dimensions and Timings").
  * The PPU draws a frame into a BGR555 buffer; this module shows it. It is the
- * only module that calls SDL's video API (audio and frame_pacer use SDL's
- * audio and timer APIs). Design:
+ * only module that calls SDL's video API; the other modules that use SDL
+ * (audio, input, frame, frame_pacer, main) name what they use in their own
+ * headers. Design:
  * docs/RESEARCH.md "Video".
  *
  * Headless mode creates no window and no SDL state; present just discards.
