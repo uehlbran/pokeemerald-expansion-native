@@ -4,9 +4,9 @@
 #
 # The key is the content of every input of the conversions, taken as git
 # tree hashes so that it costs nothing and cannot miss a file:
-#   - graphics, data (data/tilesets holds the tileset sheets), test/compression:
-#     the sources of every INCGFX and INCBIN in the game and the tests (checked:
-#     no directive names a file outside these);
+#   - graphics, data/tilesets, test/compression: the sources of every INCGFX and
+#     INCBIN in the game and the tests (checked: no directive names a file outside
+#     these; hashing all of data/ would let a map or script edit discard the cache);
 #   - the INCGFX and INCBIN lines of src, include, data and test: the
 #     conversion options live there (scaninc turns them into the recipes), and
 #     a changed option does not change the source file. Hashing the lines and
@@ -14,8 +14,11 @@
 #   - the converters: tools/gbagfx, tools/compresSmol, tools/rsfont, tools/bin2c;
 #   - the rules and glue that run them: graphics_file_rules.mk,
 #     spritesheet_rules.mk, make_tools.mk, Makefile.native (the generic
-#     conversion rules and GFX), platform/build_glue (the palette padding and
-#     its list of exceptions).
+#     conversion rules and GFX; any edit of it discards the cache, accepted over
+#     a list of its lines), and the palette padding with its list of exceptions
+#     (gbagfx_pad.sh, unpadded_palettes.txt).
+# What is not cached: the conversions that write beside the sources (gbagfx,
+# compresSmol, wav2agb, mid2agb, mapjson); they run on every fresh checkout.
 # There is no restore-keys fallback on purpose: make decides what is stale by
 # file times, and a cache of other inputs restored under them would pass as
 # up to date.
@@ -30,9 +33,9 @@ runs:
       shell: bash
       run: |
         {
-          git rev-parse HEAD:graphics HEAD:data HEAD:test/compression \
+          git rev-parse HEAD:graphics HEAD:data/tilesets HEAD:test/compression \
             HEAD:tools/gbagfx HEAD:tools/compresSmol HEAD:tools/rsfont HEAD:tools/bin2c \
-            HEAD:platform/build_glue \
+            HEAD:platform/build_glue/gbagfx_pad.sh HEAD:platform/build_glue/unpadded_palettes.txt \
             HEAD:graphics_file_rules.mk HEAD:spritesheet_rules.mk HEAD:make_tools.mk HEAD:Makefile.native
           git grep -hE 'INCGFX|INCBIN' -- src include data test | LC_ALL=C sort
         } | sha256sum | awk '{ print "hash=" $1 }' >> "$GITHUB_OUTPUT"

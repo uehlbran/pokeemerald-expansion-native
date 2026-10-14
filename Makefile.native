@@ -88,10 +88,9 @@
 # already-preprocessed text a second time; `gcc -x c` does the same and
 # keeps the gcc driver (and so -m32/-m64). The text goes through a file
 # because ccache cannot cache a compile from standard input (see COMPILE_C).
-# `-x cpp-output` was tried and
-# rejected: it changes which file gcc takes as the main file, and with it
-# the diagnostics (204 -Wunused-const-variable warnings expansion's build
-# does not show).
+# `-x cpp-output` was tried and rejected: it changes which file gcc takes as
+# the main file, and with it the diagnostics (204 -Wunused-const-variable
+# warnings expansion's build does not show).
 # c_filter.sed rewrites the one ARM-assembler trick preproc puts into C
 # (the '@' that ends a COMPOUND_STRING section name, see the script).
 # Warnings: expansion's -Wall and its -W/-Wno- flags are kept, -Werror is
@@ -698,9 +697,9 @@ $(C_BUILDDIR)/pokemon.o: $(C_SUBDIR)/pokemon.c $(DATA_SRC_SUBDIR)/pokemon/teacha
 # the executable changes. The file exists only for the compile: it is
 # removed whether the compile succeeds or not, and `&&` keeps a failed
 # preprocessing step from reaching the compiler.
-C_INPUT = $(@:.o=.i)
-COMPILE_C = $(CPP) $(CPPFLAGS) $< | $(PREPROC) -i -g $(ASSETS_DIR_NAME) $< charmap.txt | $(C_FILTER) > $(C_INPUT) \
-            && $(HOST_CC) $(CFLAGS) -c -x c -o $@ $(C_INPUT); status=$$?; rm -f $(C_INPUT); exit $$status
+C_PREPROCESSED = $(@:.o=.i)
+COMPILE_C = $(CPP) $(CPPFLAGS) $< | $(PREPROC) -i -g $(ASSETS_DIR_NAME) $< charmap.txt | $(C_FILTER) > $(C_PREPROCESSED) \
+            && $(HOST_CC) $(CFLAGS) -c -x c -o $@ $(C_PREPROCESSED); status=$$?; rm -f $(C_PREPROCESSED); exit $$status
 SCAN_C = $(SCANINC) -M $@ -g $(ASSETS_DIR_NAME) $(INCLUDE_SCANINC_ARGS) $<
 
 $(C_BUILDDIR)/%.o: $(C_SUBDIR)/%.c $(C_FILTER_SCRIPT)

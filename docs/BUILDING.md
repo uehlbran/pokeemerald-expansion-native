@@ -149,9 +149,11 @@ to a file, `<object>.i` beside the object, which `gcc -c -x c` then compiles. It
 file because ccache cannot cache a compile whose source is standard input. The file
 exists only for the compile and is removed after it, whether the compile fails or not
 (`COMPILE_C` in `Makefile.native`). The one trace in the object is its file symbol,
-`<object>.i` where a pipe gave `<stdin>`. With `ccache` installed, put
-`/usr/lib/ccache` first on `PATH` (the CI jobs do) and the second build of unchanged
-sources is served from the cache.
+`<object>.i` where a pipe gave `<stdin>`. The compile is
+therefore cacheable by ccache: with it installed and `/usr/lib/ccache` first on `PATH`
+(the CI jobs do), a build after `make clean` or in a fresh checkout can be served from
+the cache. (make itself does not recompile unchanged sources.) The effect is measured
+on the CI runner after the merge, not yet.
 
 #### Assets of the native build
 
