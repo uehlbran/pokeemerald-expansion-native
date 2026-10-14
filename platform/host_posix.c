@@ -1,15 +1,15 @@
 /*
  * host_posix.c: the host layer where every POSIX system agrees (Linux today,
  * macOS next): the fault handlers' installation (host_fault.h), the restart
- * of the executable (host_process.h), the files (host_file.h) and the deadline
+ * of the executable and its end (host_process.h), the files (host_file.h) and the deadline
  * thread (host_thread.h). What each system does its own way is in its own
  * source, host_linux.c, reached through host_internal.h.
  *
- * Followed: POSIX (sigaction, sigaltstack, sigprocmask, execve, open, write,
- * fsync, rename, mkdir, localtime_r, pthread_create and
+ * Followed: POSIX (sigaction, sigaltstack, sigprocmask, execve, _exit, open,
+ * write, fsync, rename, mkdir, localtime_r, pthread_create and
  * pthread_cond_timedwait), and signal-safety(7) for what a signal handler may
  * call: everything on the handlers' path here (sigaction, raise, execve,
- * write) is async-signal-safe.
+ * _exit, write) is async-signal-safe.
  */
 #define _FILE_OFFSET_BITS 64 /* with _TIME_BITS: a 64-bit time_t on 32-bit builds, */
 #define _TIME_BITS 64        /* so host_file_local_time converts dates past 2038 */
@@ -236,6 +236,16 @@ int host_process_restart(char *const argv[])
 {
     (void)execve(host_self_executable, argv, environ); /* returns only on failure */
     return -1;
+}
+
+bool host_process_restart_is_handler_safe(void)
+{
+    return true;
+}
+
+void host_process_end(unsigned status)
+{
+    _exit((int)status);
 }
 
 /* --- host_file --------------------------------------------------------------------- */

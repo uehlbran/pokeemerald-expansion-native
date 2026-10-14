@@ -16,8 +16,9 @@
  * saved in the exception's CONTEXT (x86-64). The handlers run in a signal
  * handler or an exception handler: they may call only async-signal-safe
  * functions (signal-safety(7)), which the accessors below, host_file's
- * host_file_write_all and, on Linux, host_process_restart are (on Windows
- * the restart is the one exception, host_process.h). They are installed and
+ * host_file_write_all, host_process_end and, on Linux, host_process_restart
+ * are (on Windows the restart creates a process, which a handler must not:
+ * host_process_restart_is_handler_safe). They are installed and
  * removed from the main thread; a fault of another thread (SDL's) reaches
  * them too, on the thread that faulted.
  */
@@ -53,9 +54,10 @@ enum host_fault_register {
 typedef bool (*host_fault_divide_handler)(struct host_fault *fault);
 
 /* A crash handler: reports, and may start the program again
- * (host_process_restart). When it returns, the fault ends the process as it
- * would have without a handler (Windows: with the exception's code as the
- * exit status). */
+ * (host_process_restart, where host_process_restart_is_handler_safe) or end
+ * the process with a status of its own (host_process_end). When it returns,
+ * the fault ends the process as it would have without a handler (Windows:
+ * with the exception's code as the exit status). */
 typedef void (*host_fault_crash_handler)(const struct host_fault *fault);
 
 /* Installs handler for the integer divide error (x86 #DE: a division by zero

@@ -2,8 +2,8 @@
  * host_windows.c: the host layer on Windows (x86-64, MinGW-w64), the calls
  * made in the ordinary course of a run: the pages mapped at fixed addresses
  * (host_memory.h), the image's and the main stack's bounds (host_image.h),
- * the files (host_file.h), and the executable's path and its restart
- * (host_process.h). The faults are host_windows_fault.c's, the stack switch
+ * the files (host_file.h), and the executable's path, its restart and its
+ * end (host_process.h). The faults are host_windows_fault.c's, the stack switch
  * host_windows_stack.c's, where the link put the regions host_linked.c's.
  *
  * Followed: Microsoft's documentation of VirtualAlloc, VirtualFree and
@@ -20,7 +20,6 @@
 #include <inttypes.h>
 #include <io.h>
 #include <limits.h>
-#include <stdatomic.h>
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -408,17 +407,14 @@ int host_process_executable_path(char *out, size_t size)
  * (EXIT_FAILURE, which the test runner reads as a failed run). */
 #define RESTART_STATUS_LOST 1u
 
-/* The restart's state. Static, not on the stack: host_process_restart may run
- * in the crash handler on the little stack a stack overflow leaves
- * (host_windows_fault.c). `running` lets one thread restart; the buffers are
- * that thread's while it is set. */
+/* The restart's state, static for its size (two command lines of 64 KiB).
+ * The main thread's: the replay's restart is its only caller. */
 static struct {
-    atomic_flag running;
     wchar_t executable[HOST_PROCESS_PATH_SIZE];
     wchar_t argument[COMMAND_LINE_SIZE];
     wchar_t command_line[COMMAND_LINE_SIZE];
     size_t length;
-} restart = {.running = ATOMIC_FLAG_INIT};
+} restart;
 
 /* Appends count copies of c to the command line. False when full. */
 static bool append(wchar_t c, size_t count)
@@ -538,17 +534,11 @@ static size_t standard_handles(HANDLE handles[STANDARD_HANDLE_COUNT])
  * ends it if this process is ended first (make_kill_on_close_job), and it
  * inherits the standard handles and nothing else (standard_handles).
  *
- * Called from the crash handler too (crash_reboot), where CreateProcessW is
- * the one call on the path that allocates and takes locks (the process heap's,
- * the loader's): Windows has no other way to start a process, and the reason
- * it is accepted is in docs/DECISIONS.md ("A crash on Windows restarts through
- * CreateProcessW in the unhandled-exception filter"). Everything else here
- * writes static memory or is a system call that does neither. The process
- * ends with TerminateProcess, not ExitProcess: no DLL is told to detach and no
- * C runtime buffer is flushed (execve, too, drops what was not flushed).
- *
- * A second call while one runs (a fault on another thread, which only SDL's
- * could be) waits forever: the first call's end ends the process. */
+ * The process ends with TerminateProcess, not ExitProcess: no DLL is told to
+ * detach and no C runtime buffer is flushed (execve, too, drops what was not
+ * flushed). No crash handler calls this: CreateProcessW allocates, from a
+ * heap a crash may have corrupted (host_process_restart_is_handler_safe;
+ * crash_reboot ends the process for its parent to start again instead). */
 /* Starts the command line built in `restart` as a suspended child that
  * inherits the standard handles only. False with errno set. */
 static bool create_child(PROCESS_INFORMATION *child)
@@ -597,12 +587,6 @@ static bool run_in_job(HANDLE job, const PROCESS_INFORMATION *child)
 
 int host_process_restart(char *const argv[])
 {
-    /* acquire: if an earlier call failed and let go (release below), its
-     * writes to the buffers are seen before this one writes them. */
-    if (atomic_flag_test_and_set_explicit(&restart.running, memory_order_acquire)) {
-        for (;;)
-            Sleep(INFINITE);
-    }
     const DWORD length = GetModuleFileNameW(NULL, restart.executable, HOST_PROCESS_PATH_SIZE);
     const bool found = length > 0 && length < HOST_PROCESS_PATH_SIZE;
     if (!found)
@@ -613,14 +597,25 @@ int host_process_restart(char *const argv[])
     if (!started) {
         if (job != NULL)
             (void)CloseHandle(job);
-        /* release: pairs with the acquire above, for a later call. */
-        atomic_flag_clear_explicit(&restart.running, memory_order_release);
         return -1;
     }
     (void)CloseHandle(child.hThread);
     DWORD status = RESTART_STATUS_LOST;
     if (WaitForSingleObject(child.hProcess, INFINITE) != WAIT_OBJECT_0 || !GetExitCodeProcess(child.hProcess, &status))
         status = RESTART_STATUS_LOST;
+    host_process_end(status); /* the job's handle closes with the process */
+}
+
+bool host_process_restart_is_handler_safe(void)
+{
+    return false;
+}
+
+/* TerminateProcess, a system call that neither allocates nor takes a lock of
+ * this process's. */
+void host_process_end(unsigned status)
+{
     (void)TerminateProcess(GetCurrentProcess(), status);
-    return -1; /* not reached: TerminateProcess ends the calling thread with its process; the job's handle with it */
+    for (;;) /* not reached: TerminateProcess ends the calling thread with its process */
+        Sleep(INFINITE);
 }

@@ -7,7 +7,8 @@
  * the file the variable names and ends with RESTARTED_CODE, and the child,
  * which waits for it, must end with that code too. The child also holds an
  * inheritable semaphore, which the restarted process must not have: it
- * inherits the standard handles and nothing else.
+ * inherits the standard handles and nothing else. And the end of a process
+ * at once, in a child too.
  */
 #include <stdbool.h>
 #include <stdint.h>
@@ -122,6 +123,35 @@ PTEST(restart_starts_this_executable_with_the_arguments_and_environment_and_ends
     PT_ASSERT_EQ_STR(text, expected);
 }
 
+/* host_process_end's status, a full 32-bit one as Windows keeps it, which no
+ * exit handler may change. */
+#define END_STATUS 0xC0DE0075u
+#define AT_EXIT_STATUS 9u
+
+static void exit_differently(void)
+{
+    wsup_end(AT_EXIT_STATUS);
+}
+
+/* The child: ends through host_process_end with an exit handler set. */
+static void end_this_process(void)
+{
+    (void)atexit(exit_differently); /* end must not run it */
+    host_process_end(END_STATUS);
+}
+
+PTEST(end_ends_the_process_at_once_with_the_status)
+{
+    uint32_t code = 0;
+    PT_ASSERT(wsup_run_child("end", &code));
+    PT_ASSERT_EQ_U32(code, END_STATUS);
+}
+
+PTEST(no_crash_handler_may_restart)
+{
+    PT_ASSERT(!host_process_restart_is_handler_safe()); /* CreateProcessW allocates */
+}
+
 int main(int argc, char **argv)
 {
     if (argc > 1 && strcmp(argv[1], RESTARTED_MODE) == 0)
@@ -129,6 +159,8 @@ int main(int argc, char **argv)
     const char *const name = wsup_child_name();
     if (name != NULL && strcmp(name, "restart") == 0)
         restart_this_executable();
+    if (name != NULL && strcmp(name, "end") == 0)
+        end_this_process();
     if (name != NULL)
         return (int)WSUP_CHILD_RETURNED;
     return ptest_main_for(&ptest_tests, stdout);

@@ -5,8 +5,8 @@
  * Followed: GBATEK "BIOS Reset Functions" (RegisterRamReset keeps the last
  * 200h bytes of IWRAM), expansion's test/test_runner.c (what the runner
  * keeps there and how it resumes), POSIX for what a signal handler may call
- * (signal-safety(7): write in host_file, execve and raise in host_fault and
- * host_process).
+ * (signal-safety(7): write in host_file, execve, _exit and raise in
+ * host_fault and host_process).
  */
 #include "crash_reboot.h"
 
@@ -43,11 +43,13 @@ static const volatile uint8_t *persistent_bytes(void)
     return (const volatile uint8_t *)(uintptr_t)CRASH_REBOOT_PERSISTENT_ADDRESS;
 }
 
-/* The report line the handler writes, built in place and written with one
- * call (host_file_write_all: one write(2), or one WriteFile on Windows) so
- * that the lines of processes sharing stderr do not interleave (the hydra
- * runs up to 32). Async-signal-safe: no allocation, no stdio. */
-#define REPORT_SIZE 256u
+/* The report line the handler writes, built in place on the handler's stack
+ * (each thread that crashes has its own) and written with one call
+ * (host_file_write_all: one write(2), or one WriteFile on Windows) so that
+ * the lines of processes sharing stderr do not interleave (the hydra runs up
+ * to 32). Async-signal-safe: no allocation, no stdio. Room for the longest,
+ * the one that carries the state for the parent. */
+#define REPORT_SIZE 1024u
 
 struct report {
     char text[REPORT_SIZE];
@@ -117,6 +119,10 @@ static void encode_state(void)
     reboot.state_hex[CRASH_REBOOT_STATE_HEX_LENGTH] = '\0';
 }
 
+/* "75", the exit code in the report. */
+#define TEXT_OF(number) #number
+#define DECIMAL_TEXT(number) TEXT_OF(number)
+
 /* The crash handler. When it returns, host_fault lets the fault end the
  * process. */
 static void on_crash(const struct host_fault *fault)
@@ -130,6 +136,15 @@ static void on_crash(const struct host_fault *fault)
         return;
     }
     encode_state();
+    if (!host_process_restart_is_handler_safe()) {
+        report_add(&report, "ending with exit code " DECIMAL_TEXT(
+                                CRASH_REBOOT_EXIT_CODE) " for the parent to start "
+                                                        "the program again with " CRASH_REBOOT_OPTION " ");
+        report_add(&report, reboot.state_hex);
+        report_add(&report, "\n");
+        report_write(&report);
+        host_process_end(CRASH_REBOOT_EXIT_CODE);
+    }
     report_add(&report, "rebooting with the test runner's persistent state\n");
     report_write(&report);
     (void)host_process_restart(reboot.args);

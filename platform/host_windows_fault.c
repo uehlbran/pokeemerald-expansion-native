@@ -26,14 +26,14 @@
  * sees what was set up before it was stored; uninstall clears them (relaxed:
  * the removal of the handler itself orders the rest). Everything on the
  * handlers' own path reads the fault's records or writes the saved context;
- * the crash handler's restart is host_process_restart's (host_process.h).
+ * the crash handler starts no process (host_process_restart_is_handler_safe).
  *
  * What has no counterpart. Windows blocks no faults, so there is nothing to
  * unblock. There is no alternate stack: a handler runs on the faulting
  * thread's own stack. For a stack overflow (EXCEPTION_STACK_OVERFLOW, raised
  * on the main stack's last guard page) SetThreadStackGuarantee keeps
  * HOST_FAULT_ALTERNATE_STACK_SIZE bytes at the end of the installing thread's
- * stack for the handler, which the crash reboot's restart needs. An overflow
+ * stack for the handler, which the crash reboot's report needs. An overflow
  * of the battle runner's stack (game_hooks) runs into the image's read-only
  * headers below it, where the system cannot write the exception's records:
  * the process ends without the handler.

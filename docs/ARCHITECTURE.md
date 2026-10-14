@@ -235,12 +235,14 @@ which hands `EXCEPTION_INT_DIVIDE_BY_ZERO` and `EXCEPTION_INT_OVERFLOW` (x86's
 #DE) to `arm_division` and lets every other exception pass; what it passes on
 reaches the process's unhandled-exception filter, the crash handler, and the
 registers are read and written in the exception's `CONTEXT`. There is no exec:
-the crash reboot and the replay's restart start the executable as a child on
-the same standard handles, wait for it and end with its exit status, so the
-test runner, waiting for the process it started, sees the rebooted run; that
-start is a `CreateProcessW` from the filter, the one call on a handler's path
-that allocates (`DECISIONS.md`, "A crash on Windows restarts through
-CreateProcessW in the unhandled-exception filter"). And the battle runner's
+the replay's restart starts the executable as a child on the same standard
+handles, waits for it and ends with its exit status, so whoever waits for the
+process sees the restarted run. The crash reboot starts no process from the
+filter, where creating one would allocate from a heap the crash may have
+corrupted: the filter writes the report with the persistent state and ends
+the process with exit code 75, and the parent, the Windows test driver,
+starts the program again with that state (`DECISIONS.md`, "A crash on
+Windows ends the process for its parent to start again"). And the battle runner's
 stack switch is not a fiber, which cannot run on a stack of the caller's
 choosing, but a Win64 switch in assembly that saves the callee-saved
 registers, carries unwind information through its frame register, and widens

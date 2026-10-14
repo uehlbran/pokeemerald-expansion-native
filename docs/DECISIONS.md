@@ -1035,49 +1035,62 @@ on every link. Nothing the loader or the C runtime uses moves: `.rdata` with
 its pseudo-relocation list, `.pdata`, `.xdata`, `.idata`, `.CRT` and `.tls`
 keep their names and places.
 
-## 2026-10-14: A crash on Windows restarts through CreateProcessW in the unhandled-exception filter
+## 2026-10-14: A crash on Windows ends the process for its parent to start again
 
-Windows has no exec. The crash reboot (`crash_reboot`) and the replay's
-`restart` start the program again through `host_process_restart`, which on
-Windows creates a child of the same executable with the same arguments,
-standard handles, environment and working directory, waits for it, and ends
-the process with the child's exit status by `TerminateProcess` (no DLL
-detach, no C runtime flush, as `execve` drops unflushed buffers). Whoever
-waits for the process, the hydra or a shell, sees the child's output on the
-same handles and its status; what differs from Linux is that the child has a
-process id of its own and that the crashed process stays, waiting, until it
-ends. A crash inside a child chains another child; the chain is as long as
-the run's crashes. Each child is in a job object that ends it when the
-process waiting for it ends (`JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE`), so that a
-time limit that kills the process the runner started kills the whole chain
-and the runner's pipes reach their end, as they do on Linux, where the
-restarted program is the same process. And the child inherits the standard
-handles and nothing else (`PROC_THREAD_ATTRIBUTE_HANDLE_LIST`), where `execve`
-keeps every descriptor without `O_CLOEXEC`: a file the C runtime had open
-(its handles are inheritable and do not share deletion) would otherwise stay
-open in the child and refuse the child's own replacement of that file.
+Windows has no exec. The replay's `restart` starts the program again through
+`host_process_restart`, which on Windows creates a child of the same
+executable with the same arguments, standard handles, environment and
+working directory, waits for it, and ends the process with the child's exit
+status by `TerminateProcess` (no DLL detach, no C runtime flush, as `execve`
+drops unflushed buffers). Whoever waits for the process, a shell or a test
+driver, sees the child's output on the same handles and its status; what
+differs from Linux is that the child has a process id of its own and that
+the first process stays, waiting, until it ends. The child is in a job object
+that ends it when the process waiting for it ends
+(`JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE`), so that a time limit that kills the
+process a driver started kills the restarted one too and the driver's pipes
+reach their end, as on Linux, where the restarted program is the same
+process. And the child inherits the standard handles and nothing else
+(`PROC_THREAD_ATTRIBUTE_HANDLE_LIST`), where `execve` keeps every descriptor
+without `O_CLOEXEC`: a file the C runtime had open (its handles are
+inheritable and do not share deletion) would otherwise stay open in the
+child and refuse the child's own replacement of that file.
 
-For the crash this happens in the unhandled-exception filter, and
-`CreateProcessW` allocates (the process heap) and takes locks (the PEB's, the
-loader's): docs/C-RULES.md forbids both in a handler. It is accepted as the
-one exception, with these reasons: there is no other way to start a process
-on Windows; the filter runs on the faulting thread after the system's
-dispatch, so the locks it takes are either free, held by another thread that
-is not stopped and will release them (SDL's), or held by this thread itself,
-and the heap and loader locks are re-entrant critical sections, so the call
-cannot deadlock against the crash; and if the crash corrupted the heap, the
-call fails or faults, the run ends without a reboot, and that is what the
-reboot exists to avoid but no worse than no handler. Everything else on the
-path is static memory or a system call that neither allocates nor locks:
-the report goes out through `WriteFile` (`host_file_write_all`), the command
-line is built in static buffers, the wait and the exit are system calls. A
-second fault on another thread while the first restarts parks that thread
-(an atomic flag), so one child is started. The design that keeps the rule
-whole, a supervisor process that starts the game as its child and restarts
-it when told through a pipe (the filter would only write the persistent
-bytes and terminate), was not taken: it changes the process model of every
-run on Windows for a path that only the test runner's crashing tests take.
-The owner may rule otherwise.
+The crash reboot does not start a process. The owner ruled that no exception
+handler creates a process, with no exception to docs/C-RULES.md's handler
+rule: the heap may be corrupt at crash time, and `CreateProcessW` allocates
+from it (Crashpad and Breakpad work out of process for the same reason). Two
+designs keep the rule. (a) The parent restarts: the unhandled-exception
+filter encodes the persistent bytes into a buffer prepared at install time,
+writes the report, which ends with `--persistent-state <512 hex digits>`, to
+stderr with `WriteFile`, and ends the process with `TerminateProcess` and
+exit code 75 (`CRASH_REBOOT_EXIT_CODE`, sysexits' `EX_TEMPFAIL`, which
+nothing else here exits with); the program that started the process (the
+Windows test driver, task W8) starts it again on that code with the same
+arguments plus the state. (b) A helper restarts: at install time the program
+creates a copy of itself, suspended, in the job; the filter writes the state
+through a handle opened then and resumes the helper, which becomes the
+restarted run, and which needs a suspended helper of its own.
+
+(a) is taken, as the simpler here. It leaves the filter two system calls,
+neither of which allocates: `WriteFile` (on the handle `_get_osfhandle` reads
+from the C runtime's table, without a lock) and `TerminateProcess`; the
+report itself is built on the handler's stack, from the static state, so
+that two threads crashing at once do not share a buffer. Nothing changes in
+how a run starts. (b) would create a second process at the start of every
+run on Windows, a player's included, and keep it suspended for the whole
+run; it would need a channel for the state besides the command line, held
+open in both processes (against the restart's rule of inheriting the
+standard handles only); and the crashed process would wait in its handler
+for the helper's end to pass its status on. The cost of (a): a run on
+Windows with no such parent ends at its first crash with exit code 75 and no
+reboot. Only the test runner's crashing tests reboot, and on Windows only
+the driver runs them. A crash with the persistent bytes as the process
+started with them still ends with the exception's code, which no parent
+takes for a reboot. On Linux nothing changed: the handler `execve`s the
+executable, which is async-signal-safe. `host_process_restart_is_handler_safe`
+tells `crash_reboot` which of the two it may do, so that it has no
+conditional compilation.
 
 ## 2026-10-14: Windows has no directory sync
 
