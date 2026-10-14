@@ -17,7 +17,7 @@
 # executable, as the build leaves it: the hydra's copies run from the
 # temporary directory, so that directory is put on PATH, where Windows looks
 # for a DLL its executable's own directory does not have. The output is the
-# hydra's, and so is the exit status.
+# hydra's, and so is the exit status; the patched copy is removed at the end.
 set -u
 
 if [ $# -ne 1 ] || [ ! -f "$1" ]; then
@@ -33,6 +33,7 @@ tests=${TESTS:-}
 tests=${tests%\*}
 
 cp -- "$exe" "$headless" || exit 2
+trap 'rm -f -- "$headless"' EXIT
 tools/patchelf/patchelf "$headless" gTestRunnerArgv "$tests"'\0' gTestRunnerHeadless '\x01' \
     gTestRunnerSkipIsFail "$skip_is_fail" || exit 2
 PATH="$(cd "$(dirname "$exe")" && pwd):$PATH" \
