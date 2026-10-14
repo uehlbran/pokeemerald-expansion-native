@@ -10,7 +10,9 @@
 # library, so the i386 SDL2 workaround below stays) and both 64-bit replays;
 # the suite is not here (10 minutes warm against a 15-minute target; the
 # local pre-merge gate runs it, and `native64` below runs it nightly).
-# ccache, the tools and the converted assets are cached between runs:
+# The setup every native job shares is the composite action
+# .github/actions/native-setup. ccache, the tools and the converted assets are
+# cached between runs:
 # the game's C reaches gcc as a file (Makefile.native, COMPILE_C), the one
 # form ccache can cache, and with no -g the cache hits across commits and
 # checkout paths; the converted graphics are keyed on all of their inputs
@@ -24,8 +26,9 @@
 # the suite), `cross-width` (gate h, the save made at one width loaded at the
 # other, plain and sanitized, both ways).
 #
-# Upstream's build.yml is not this file's concern: it triggers on branches
-# this repository does not have.
+# Upstream's build.yml, docs.yml and labels.yml are not this file's concern:
+# they are filtered to master and upcoming, which this repository does not have
+# (UPSTREAM_MODIFICATIONS.md).
 name: native
 
 on:
@@ -39,6 +42,9 @@ on:
   schedule:
     - cron: '17 4 * * *'
   workflow_dispatch:
+
+permissions:
+  contents: read
 
 concurrency:
   group: native-${{ github.event_name }}-${{ github.ref }}
@@ -60,64 +66,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # docs/BUILDING.md installs libsdl2-dev:i386 for the 32-bit build. On the
-      # runner image apt cannot install it: it pulls in libglib2.0-dev:i386,
-      # whose -dev-bin part cannot coexist with the image's amd64 one. The
-      # 32-bit build needs only the i386 runtime library and, from the -dev
-      # package, the i386 configuration header (SIZEOF_VOIDP 4) and the
-      # libSDL2.so links; those two are taken from the downloaded package
-      # without its dependencies.
-      - name: Prerequisites (docs/BUILDING.md, the native lines; the i386 SDL2 as the comment above says)
-        run: |
-          sudo dpkg --add-architecture i386
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends build-essential gcc-multilib g++-multilib libc6-dev-i386 pkg-config git python3 libpng-dev libsdl2-dev ccache clang clang-format clang-tidy cppcheck cmake ninja-build
-          sudo apt-get install -y --no-install-recommends libsdl2-2.0-0:i386
-          mkdir -p /tmp/sdl2-i386 && cd /tmp/sdl2-i386 && apt-get download libsdl2-dev:i386 && dpkg-deb -x libsdl2-dev_*_i386.deb unpacked
-          sudo cp -a unpacked/usr/include/i386-linux-gnu /usr/include/
-          sudo cp -a unpacked/usr/lib/i386-linux-gnu/libSDL2.so unpacked/usr/lib/i386-linux-gnu/libSDL2-2.0.so /usr/lib/i386-linux-gnu/
-          cd "$GITHUB_WORKSPACE"
-          pkg-config --cflags --libs sdl2; ls -l /usr/lib/i386-linux-gnu/libSDL2.so /usr/include/i386-linux-gnu/SDL2/_real_SDL_config.h
-
-      - name: Cache the build tools
-        uses: actions/cache@v4
+      - uses: ./.github/actions/native-setup
         with:
-          path: |
-            tools/bin2c/bin2c
-            tools/gbafix/gbafix
-            tools/gbagfx/gbagfx
-            tools/jsonproc/jsonproc
-            tools/mapjson/mapjson
-            tools/mid2agb/mid2agb
-            tools/preproc/preproc
-            tools/ramscrgen/ramscrgen
-            tools/rsfont/rsfont
-            tools/scaninc/scaninc
-            tools/trainerproc/trainerproc
-            tools/compresSmol/compresSmol
-            tools/compresSmol/compresSmolTilemap
-            tools/wav2agb/wav2agb
-            tools/patchelf/patchelf
-            tools/mgba-rom-test-hydra/mgba-rom-test-hydra
-          key: tools-native-${{ runner.os }}-${{ hashFiles('tools/*/Makefile', 'tools/**/*.c', 'tools/**/*.cpp', 'tools/**/*.h', 'make_tools.mk') }}
-
-      # Put ccache's compiler links first on PATH so gcc and g++ go through it.
-      - name: Cache the compiler cache
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/ccache
-          key: ccache-push-${{ runner.os }}-${{ github.sha }}
-          restore-keys: |
-            ccache-push-${{ runner.os }}-
-
-      - name: Use ccache
-        run: |
-          echo /usr/lib/ccache >> "$GITHUB_PATH"
-          ccache --max-size=1G --zero-stats
-
-      # The converted graphics (the header above says why; the action, what keys them).
-      - name: Cache the converted assets
-        uses: ./.github/actions/native-assets
+          ccache-name: push
+          i386: true
+          lint-tools: true
 
       - name: Native build, 64-bit (with the three link-time data checks)
         run: |
@@ -194,64 +147,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # docs/BUILDING.md installs libsdl2-dev:i386 for the 32-bit build. On the
-      # runner image apt cannot install it: it pulls in libglib2.0-dev:i386,
-      # whose -dev-bin part cannot coexist with the image's amd64 one. The
-      # 32-bit build needs only the i386 runtime library and, from the -dev
-      # package, the i386 configuration header (SIZEOF_VOIDP 4) and the
-      # libSDL2.so links; those two are taken from the downloaded package
-      # without its dependencies.
-      - name: Prerequisites (docs/BUILDING.md, the native lines; the i386 SDL2 as the comment above says)
-        run: |
-          sudo dpkg --add-architecture i386
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends build-essential gcc-multilib g++-multilib libc6-dev-i386 pkg-config git python3 libpng-dev libsdl2-dev ccache
-          sudo apt-get install -y --no-install-recommends libsdl2-2.0-0:i386
-          mkdir -p /tmp/sdl2-i386 && cd /tmp/sdl2-i386 && apt-get download libsdl2-dev:i386 && dpkg-deb -x libsdl2-dev_*_i386.deb unpacked
-          sudo cp -a unpacked/usr/include/i386-linux-gnu /usr/include/
-          sudo cp -a unpacked/usr/lib/i386-linux-gnu/libSDL2.so unpacked/usr/lib/i386-linux-gnu/libSDL2-2.0.so /usr/lib/i386-linux-gnu/
-          cd "$GITHUB_WORKSPACE"
-          pkg-config --cflags --libs sdl2; ls -l /usr/lib/i386-linux-gnu/libSDL2.so /usr/include/i386-linux-gnu/SDL2/_real_SDL_config.h
-
-      - name: Cache the build tools
-        uses: actions/cache@v4
+      - uses: ./.github/actions/native-setup
         with:
-          path: |
-            tools/bin2c/bin2c
-            tools/gbafix/gbafix
-            tools/gbagfx/gbagfx
-            tools/jsonproc/jsonproc
-            tools/mapjson/mapjson
-            tools/mid2agb/mid2agb
-            tools/preproc/preproc
-            tools/ramscrgen/ramscrgen
-            tools/rsfont/rsfont
-            tools/scaninc/scaninc
-            tools/trainerproc/trainerproc
-            tools/compresSmol/compresSmol
-            tools/compresSmol/compresSmolTilemap
-            tools/wav2agb/wav2agb
-            tools/patchelf/patchelf
-            tools/mgba-rom-test-hydra/mgba-rom-test-hydra
-          key: tools-native-${{ runner.os }}-${{ hashFiles('tools/*/Makefile', 'tools/**/*.c', 'tools/**/*.cpp', 'tools/**/*.h', 'make_tools.mk') }}
-
-      # Put ccache's compiler links first on PATH so gcc and g++ go through it.
-      - name: Cache the compiler cache
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/ccache
-          key: ccache-native32-${{ runner.os }}-${{ github.sha }}
-          restore-keys: |
-            ccache-native32-${{ runner.os }}-
-
-      - name: Use ccache
-        run: |
-          echo /usr/lib/ccache >> "$GITHUB_PATH"
-          ccache --max-size=1G --zero-stats
-
-      # The converted graphics (the header above says why; the action, what keys them).
-      - name: Cache the converted assets
-        uses: ./.github/actions/native-assets
+          ccache-name: native32
+          i386: true
 
       - name: Native build, 32-bit
         run: |
@@ -287,50 +186,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Prerequisites (docs/BUILDING.md, the native lines)
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends build-essential gcc-multilib g++-multilib libc6-dev-i386 pkg-config git python3 libpng-dev libsdl2-dev ccache
-
-      - name: Cache the build tools
-        uses: actions/cache@v4
+      - uses: ./.github/actions/native-setup
         with:
-          path: |
-            tools/bin2c/bin2c
-            tools/gbafix/gbafix
-            tools/gbagfx/gbagfx
-            tools/jsonproc/jsonproc
-            tools/mapjson/mapjson
-            tools/mid2agb/mid2agb
-            tools/preproc/preproc
-            tools/ramscrgen/ramscrgen
-            tools/rsfont/rsfont
-            tools/scaninc/scaninc
-            tools/trainerproc/trainerproc
-            tools/compresSmol/compresSmol
-            tools/compresSmol/compresSmolTilemap
-            tools/wav2agb/wav2agb
-            tools/patchelf/patchelf
-            tools/mgba-rom-test-hydra/mgba-rom-test-hydra
-          key: tools-native-${{ runner.os }}-${{ hashFiles('tools/*/Makefile', 'tools/**/*.c', 'tools/**/*.cpp', 'tools/**/*.h', 'make_tools.mk') }}
-
-      # Put ccache's compiler links first on PATH so gcc and g++ go through it.
-      - name: Cache the compiler cache
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/ccache
-          key: ccache-native64-${{ runner.os }}-${{ github.sha }}
-          restore-keys: |
-            ccache-native64-${{ runner.os }}-
-
-      - name: Use ccache
-        run: |
-          echo /usr/lib/ccache >> "$GITHUB_PATH"
-          ccache --max-size=1G --zero-stats
-
-      # The converted graphics (the header above says why; the action, what keys them).
-      - name: Cache the converted assets
-        uses: ./.github/actions/native-assets
+          ccache-name: native64
 
       - name: Native build, 64-bit (with the three link-time data checks)
         run: |
@@ -362,64 +220,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # docs/BUILDING.md installs libsdl2-dev:i386 for the 32-bit build. On the
-      # runner image apt cannot install it: it pulls in libglib2.0-dev:i386,
-      # whose -dev-bin part cannot coexist with the image's amd64 one. The
-      # 32-bit build needs only the i386 runtime library and, from the -dev
-      # package, the i386 configuration header (SIZEOF_VOIDP 4) and the
-      # libSDL2.so links; those two are taken from the downloaded package
-      # without its dependencies.
-      - name: Prerequisites (docs/BUILDING.md, the native lines; the i386 SDL2 as the comment above says)
-        run: |
-          sudo dpkg --add-architecture i386
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends build-essential gcc-multilib g++-multilib libc6-dev-i386 pkg-config git python3 libpng-dev libsdl2-dev ccache
-          sudo apt-get install -y --no-install-recommends libsdl2-2.0-0:i386
-          mkdir -p /tmp/sdl2-i386 && cd /tmp/sdl2-i386 && apt-get download libsdl2-dev:i386 && dpkg-deb -x libsdl2-dev_*_i386.deb unpacked
-          sudo cp -a unpacked/usr/include/i386-linux-gnu /usr/include/
-          sudo cp -a unpacked/usr/lib/i386-linux-gnu/libSDL2.so unpacked/usr/lib/i386-linux-gnu/libSDL2-2.0.so /usr/lib/i386-linux-gnu/
-          cd "$GITHUB_WORKSPACE"
-          pkg-config --cflags --libs sdl2; ls -l /usr/lib/i386-linux-gnu/libSDL2.so /usr/include/i386-linux-gnu/SDL2/_real_SDL_config.h
-
-      - name: Cache the build tools
-        uses: actions/cache@v4
+      - uses: ./.github/actions/native-setup
         with:
-          path: |
-            tools/bin2c/bin2c
-            tools/gbafix/gbafix
-            tools/gbagfx/gbagfx
-            tools/jsonproc/jsonproc
-            tools/mapjson/mapjson
-            tools/mid2agb/mid2agb
-            tools/preproc/preproc
-            tools/ramscrgen/ramscrgen
-            tools/rsfont/rsfont
-            tools/scaninc/scaninc
-            tools/trainerproc/trainerproc
-            tools/compresSmol/compresSmol
-            tools/compresSmol/compresSmolTilemap
-            tools/wav2agb/wav2agb
-            tools/patchelf/patchelf
-            tools/mgba-rom-test-hydra/mgba-rom-test-hydra
-          key: tools-native-${{ runner.os }}-${{ hashFiles('tools/*/Makefile', 'tools/**/*.c', 'tools/**/*.cpp', 'tools/**/*.h', 'make_tools.mk') }}
-
-      # Put ccache's compiler links first on PATH so gcc and g++ go through it.
-      - name: Cache the compiler cache
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/ccache
-          key: ccache-native32-san-${{ runner.os }}-${{ github.sha }}
-          restore-keys: |
-            ccache-native32-san-${{ runner.os }}-
-
-      - name: Use ccache
-        run: |
-          echo /usr/lib/ccache >> "$GITHUB_PATH"
-          ccache --max-size=1G --zero-stats
-
-      # The converted graphics (the header above says why; the action, what keys them).
-      - name: Cache the converted assets
-        uses: ./.github/actions/native-assets
+          ccache-name: native32-san
+          i386: true
 
       - name: Native build, 32-bit sanitized
         run: |
@@ -458,50 +262,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Prerequisites (docs/BUILDING.md, the native lines)
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends build-essential gcc-multilib g++-multilib libc6-dev-i386 pkg-config git python3 libpng-dev libsdl2-dev ccache
-
-      - name: Cache the build tools
-        uses: actions/cache@v4
+      - uses: ./.github/actions/native-setup
         with:
-          path: |
-            tools/bin2c/bin2c
-            tools/gbafix/gbafix
-            tools/gbagfx/gbagfx
-            tools/jsonproc/jsonproc
-            tools/mapjson/mapjson
-            tools/mid2agb/mid2agb
-            tools/preproc/preproc
-            tools/ramscrgen/ramscrgen
-            tools/rsfont/rsfont
-            tools/scaninc/scaninc
-            tools/trainerproc/trainerproc
-            tools/compresSmol/compresSmol
-            tools/compresSmol/compresSmolTilemap
-            tools/wav2agb/wav2agb
-            tools/patchelf/patchelf
-            tools/mgba-rom-test-hydra/mgba-rom-test-hydra
-          key: tools-native-${{ runner.os }}-${{ hashFiles('tools/*/Makefile', 'tools/**/*.c', 'tools/**/*.cpp', 'tools/**/*.h', 'make_tools.mk') }}
-
-      # Put ccache's compiler links first on PATH so gcc and g++ go through it.
-      - name: Cache the compiler cache
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/ccache
-          key: ccache-native64-san-${{ runner.os }}-${{ github.sha }}
-          restore-keys: |
-            ccache-native64-san-${{ runner.os }}-
-
-      - name: Use ccache
-        run: |
-          echo /usr/lib/ccache >> "$GITHUB_PATH"
-          ccache --max-size=1G --zero-stats
-
-      # The converted graphics (the header above says why; the action, what keys them).
-      - name: Cache the converted assets
-        uses: ./.github/actions/native-assets
+          ccache-name: native64-san
 
       - name: Native build, 64-bit sanitized
         run: |
@@ -540,64 +303,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # docs/BUILDING.md installs libsdl2-dev:i386 for the 32-bit build. On the
-      # runner image apt cannot install it: it pulls in libglib2.0-dev:i386,
-      # whose -dev-bin part cannot coexist with the image's amd64 one. The
-      # 32-bit build needs only the i386 runtime library and, from the -dev
-      # package, the i386 configuration header (SIZEOF_VOIDP 4) and the
-      # libSDL2.so links; those two are taken from the downloaded package
-      # without its dependencies.
-      - name: Prerequisites (docs/BUILDING.md, the native lines; the i386 SDL2 as the comment above says)
-        run: |
-          sudo dpkg --add-architecture i386
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends build-essential gcc-multilib g++-multilib libc6-dev-i386 pkg-config git python3 libpng-dev libsdl2-dev ccache
-          sudo apt-get install -y --no-install-recommends libsdl2-2.0-0:i386
-          mkdir -p /tmp/sdl2-i386 && cd /tmp/sdl2-i386 && apt-get download libsdl2-dev:i386 && dpkg-deb -x libsdl2-dev_*_i386.deb unpacked
-          sudo cp -a unpacked/usr/include/i386-linux-gnu /usr/include/
-          sudo cp -a unpacked/usr/lib/i386-linux-gnu/libSDL2.so unpacked/usr/lib/i386-linux-gnu/libSDL2-2.0.so /usr/lib/i386-linux-gnu/
-          cd "$GITHUB_WORKSPACE"
-          pkg-config --cflags --libs sdl2; ls -l /usr/lib/i386-linux-gnu/libSDL2.so /usr/include/i386-linux-gnu/SDL2/_real_SDL_config.h
-
-      - name: Cache the build tools
-        uses: actions/cache@v4
+      - uses: ./.github/actions/native-setup
         with:
-          path: |
-            tools/bin2c/bin2c
-            tools/gbafix/gbafix
-            tools/gbagfx/gbagfx
-            tools/jsonproc/jsonproc
-            tools/mapjson/mapjson
-            tools/mid2agb/mid2agb
-            tools/preproc/preproc
-            tools/ramscrgen/ramscrgen
-            tools/rsfont/rsfont
-            tools/scaninc/scaninc
-            tools/trainerproc/trainerproc
-            tools/compresSmol/compresSmol
-            tools/compresSmol/compresSmolTilemap
-            tools/wav2agb/wav2agb
-            tools/patchelf/patchelf
-            tools/mgba-rom-test-hydra/mgba-rom-test-hydra
-          key: tools-native-${{ runner.os }}-${{ hashFiles('tools/*/Makefile', 'tools/**/*.c', 'tools/**/*.cpp', 'tools/**/*.h', 'make_tools.mk') }}
-
-      # Put ccache's compiler links first on PATH so gcc and g++ go through it.
-      - name: Cache the compiler cache
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/ccache
-          key: ccache-cross-width-${{ runner.os }}-${{ github.sha }}
-          restore-keys: |
-            ccache-cross-width-${{ runner.os }}-
-
-      - name: Use ccache
-        run: |
-          echo /usr/lib/ccache >> "$GITHUB_PATH"
-          ccache --max-size=1G --zero-stats
-
-      # The converted graphics (the header above says why; the action, what keys them).
-      - name: Cache the converted assets
-        uses: ./.github/actions/native-assets
+          ccache-name: cross-width
+          i386: true
 
       - name: Native builds, both widths
         run: |

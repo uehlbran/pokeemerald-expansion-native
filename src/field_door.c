@@ -1067,15 +1067,13 @@ static void DrawCurrentDoorAnimFrame(const struct DoorGraphics *gfx, u32 x, u32 
     u16 tiles[24];
 
 #if PLATFORM_NATIVE
-    // BuildDoorTiles reads 8 palette entries at every offset it is given (0 and 4 for a 1x2 door; 0, 4, 8
-    // and 12 for a 2x2 one), so the last four entries of the last call lie past an 8-entry table (a 2x2
-    // door's table has 16). The GBA read the next object in ROM; natively that is past the object
-    // (AddressSanitizer). Those entries are the palette number of tile 0, which is transparent in all
-    // three primary tilesets, so substituting the table's last entry for them changes nothing that is
-    // drawn. Entries inside the table are passed through unchanged.
+    // BuildDoorTiles reads 8 entries from each offset (0 and 4; 2x2 doors also 8 and 12), so the
+    // last call reads 4 past the table (8 entries for 1x2, 16 for 2x2). The GBA read the next
+    // object in ROM; those entries colour tile 0, transparent in every primary tileset, so the
+    // table's last entry stands in for them.
     u8 paddedPalettes[20];
-    int tableLength = (gfx->size == DOOR_SIZE_2x2_LEFT || gfx->size == DOOR_SIZE_2x2_RIGHT) ? 16 : 8;
-    for (int i = 0; i < 20; i++)
+    u32 tableLength = (gfx->size == DOOR_SIZE_2x2_LEFT || gfx->size == DOOR_SIZE_2x2_RIGHT) ? 16 : 8;
+    for (u32 i = 0; i < 20; i++)
         paddedPalettes[i] = paletteNums[i < tableLength ? i : tableLength - 1];
     paletteNums = paddedPalettes;
 #endif

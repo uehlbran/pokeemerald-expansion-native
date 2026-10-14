@@ -1,9 +1,7 @@
 #include "global.h"
 #include "malloc.h"
 #if PLATFORM_NATIVE
-// GNU ld's default linker script: the executable's first byte, the base of the
-// native allocation-site offsets (AllocInternal, MemBlockLocation).
-extern const char __executable_start[];
+#include "platform/game_hooks.h"
 #endif
 #line 3
 #if TESTING
@@ -108,13 +106,15 @@ static void *AllocInternal(void *heapStart, u32 size, const char *location)
 
 #if PLATFORM_NATIVE
                 // The GBA stores the location string's address, which is in the ROM, without
-                // ROM_START's bit (MemBlockLocation puts it back). Natively the executable,
-                // strings included, is linked at 0x40000000, so this stores the offset from its
-                // first byte instead, in 29 bits: unused_00 holds the top 4. That holds while the
-                // executable image is under 512 MiB. A NULL location becomes offset 0, the
-                // executable's first byte, as it becomes ROM_START on the GBA.
+                // ROM_START's bit (MemBlockLocation puts it back). Natively this stores the offset
+                // from PlatformAllocationSiteBase, in 29 bits: unused_00 holds the top 4. A NULL
+                // location becomes offset 0, as it becomes ROM_START on the GBA. An offset that does
+                // not fit (a string below the base, or an image over 512 MiB) is stored as 0 too,
+                // "no location", rather than a wild address for the leak report to read.
                 {
-                    uintptr_t offset = location != NULL ? (uintptr_t)location - (uintptr_t)__executable_start : 0;
+                    uintptr_t offset = location != NULL ? (uintptr_t)location - (uintptr_t)PlatformAllocationSiteBase : 0;
+                    if (offset >> PLATFORM_ALLOCATION_SITE_OFFSET_BITS)
+                        offset = 0;
                     pos->unused_00 = offset >> 25;
                     pos->locationHi = offset >> 14;
                     pos->locationLo = offset;
@@ -285,7 +285,7 @@ const char *MemBlockLocation(const struct MemBlock *block)
         return NULL;
 
 #if PLATFORM_NATIVE
-    return __executable_start + (((uintptr_t)block->unused_00 << 25) | (block->locationHi << 14) | block->locationLo);
+    return PlatformAllocationSiteBase + (((uintptr_t)block->unused_00 << 25) | (block->locationHi << 14) | block->locationLo);
 #else
 #line 225
     return (const char *)(ROM_START | (block->locationHi << 14) | block->locationLo);

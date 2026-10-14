@@ -45,7 +45,7 @@ PTEST(no_arguments_give_the_documented_defaults)
     struct options o;
     PT_ASSERT_EQ_INT(PARSE(&o, NULL), OPTIONS_OK);
     PT_ASSERT(!o.headless && !o.silent && !o.unthrottled && !o.help && !o.test_runner && !o.rtc_fixed);
-    PT_ASSERT_EQ_INT(o.scale, VIDEO_DEFAULT_SCALE);
+    PT_ASSERT_EQ_INT(o.scale, 3); /* docs/BUILDING.md: "scale 3" */
     PT_ASSERT_EQ_U32(o.frame_limit, 0);
     PT_ASSERT_EQ_STR(o.save_path, "pokeemerald.sav");
     PT_ASSERT_EQ_STR(o.rtc_offset_path, "pokeemerald.rtc");
@@ -54,6 +54,9 @@ PTEST(no_arguments_give_the_documented_defaults)
     PT_ASSERT_EQ_U32(o.resume_after_line, 0);
 }
 
+/* --silent's effect on the audio device (main.c: AUDIO_SILENT instead of AUDIO_DEVICE) cannot be tested
+ * here, since opening the device needs SDL, and is left to the smoke gates, which run with --silent.
+ * This test pins the flag the mapping reads. */
 PTEST(the_flags_set_their_own_field_only)
 {
     struct options o;
@@ -80,12 +83,16 @@ PTEST(the_options_with_a_value_take_the_next_argument)
     PT_ASSERT_EQ_STR(o.out_dir, "dir");
 }
 
-PTEST(a_value_that_looks_like_an_option_is_still_the_value)
+PTEST(a_string_option_followed_by_another_option_is_refused)
 {
     struct options o;
-    PT_ASSERT_EQ_INT(PARSE(&o, "--save", "--headless"), OPTIONS_OK);
-    PT_ASSERT_EQ_STR(o.save_path, "--headless");
-    PT_ASSERT(!o.headless);
+    static const char *const with_string[] = {"--save", "--rtc-offset", "--screenshot", "--replay", "--out"};
+    for (size_t i = 0; i < sizeof with_string / sizeof with_string[0]; i++)
+        PT_ASSERT_EQ_INT(PARSE(&o, with_string[i], "--headless"), OPTIONS_ERR_USAGE);
+    PT_ASSERT_EQ_INT(PARSE(&o, "--test-runner", "--persistent-state", "--headless"), OPTIONS_ERR_USAGE);
+    /* a path may still start with one dash, or "-" and a name */
+    PT_ASSERT_EQ_INT(PARSE(&o, "--save", "-odd.sav"), OPTIONS_OK);
+    PT_ASSERT_EQ_STR(o.save_path, "-odd.sav");
 }
 
 PTEST(an_option_with_a_value_as_the_last_argument_is_refused)
@@ -107,7 +114,7 @@ PTEST(scale_accepts_one_to_the_maximum_and_nothing_else)
     PT_ASSERT_EQ_INT(PARSE(&o, "--scale", "1"), OPTIONS_OK);
     PT_ASSERT_EQ_INT(o.scale, 1);
     PT_ASSERT_EQ_INT(PARSE(&o, "--scale", "16"), OPTIONS_OK);
-    PT_ASSERT_EQ_INT(o.scale, VIDEO_MAX_SCALE);
+    PT_ASSERT_EQ_INT(o.scale, OPTIONS_MAX_SCALE);
     PT_ASSERT_EQ_INT(PARSE(&o, "--scale", "0"), OPTIONS_ERR_USAGE);
     PT_ASSERT_EQ_INT(PARSE(&o, "--scale", "17"), OPTIONS_ERR_USAGE);
     PT_ASSERT_EQ_INT(PARSE(&o, "--scale", "-1"), OPTIONS_ERR_USAGE);

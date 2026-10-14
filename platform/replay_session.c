@@ -30,7 +30,7 @@ static struct replay_script script;
 static struct replay driver;
 /* Where each line of the (expanded) script came from, for messages. */
 static struct replay_source_map source_map;
-static char failure_text[REPLAY_PATH_SIZE + 16u + REPLAY_MESSAGE_SIZE];
+static char failure_text[REPLAY_SOURCE_WHERE_SIZE + REPLAY_MESSAGE_SIZE];
 
 static int host_get_fact(void *context, const char *name, char *out, size_t size)
 {
@@ -71,7 +71,7 @@ static void make_failure_text(void)
 {
     const char *message = replay_message(&driver);
     const char *reason = strstr(message, ": ");
-    char where[REPLAY_PATH_SIZE + 16u];
+    char where[REPLAY_SOURCE_WHERE_SIZE];
     if (reason == NULL)
         return;
     replay_source_map_describe(&source_map, replay_failed_line(&driver), where, sizeof where);
@@ -107,8 +107,8 @@ static bool make_out_dir(const char *out_dir)
 
 /* The script, includes expanded, in a NUL-terminated heap string the caller
  * frees, or NULL after printing why. When includes were expanded the result
- * is also written to out_dir/EXPANDED_SCRIPT_NAME, because the line numbers of
- * messages and of `restart` are lines of the expansion. */
+ * is also written to out_dir/EXPANDED_SCRIPT_NAME (which must exist), because the
+ * line numbers of messages and of `restart` are lines of the expansion. */
 static char *read_text(const char *path, const char *out_dir, size_t *length_out)
 {
     char *text;
@@ -118,7 +118,7 @@ static char *read_text(const char *path, const char *out_dir, size_t *length_out
         (void)fprintf(stderr, "replay: %s\n", message);
         return NULL;
     }
-    if (expanded && make_out_dir(out_dir)) {
+    if (expanded) {
         char copy_path[REPLAY_PATH_SIZE];
         FILE *copy = NULL;
         int written = snprintf(copy_path, sizeof copy_path, "%s/%s", out_dir, EXPANDED_SCRIPT_NAME);
@@ -139,22 +139,22 @@ int replay_session_start(const char *script_path, const char *out_dir, uint32_t 
 {
     struct replay_parse_error error;
     size_t length;
+    if (snprintf(session_out_dir, sizeof session_out_dir, "%s", out_dir) >= (int)sizeof session_out_dir) {
+        (void)fprintf(stderr, "replay: the output directory path is too long\n");
+        return -1;
+    }
+    if (!make_out_dir(out_dir))
+        return -1;
     char *text = read_text(script_path, out_dir, &length);
     if (text == NULL)
         return -1;
     int parsed = replay_parse_buffer(text, length, &script, &error);
     free(text);
     if (parsed != 0) {
-        char where[REPLAY_PATH_SIZE + 16u];
+        char where[REPLAY_SOURCE_WHERE_SIZE];
         replay_source_map_describe(&source_map, error.line, where, sizeof where);
         (void)fprintf(stderr, "replay: %s: %s\n", where, error.message);
         return -1; /* replay_session_stop releases the map */
-    }
-    if (!make_out_dir(out_dir))
-        return -1;
-    if (snprintf(session_out_dir, sizeof session_out_dir, "%s", out_dir) >= (int)sizeof session_out_dir) {
-        (void)fprintf(stderr, "replay: the output directory path is too long\n");
-        return -1;
     }
     (void)inspect_init(); /* reported; callbacks outside the known table then read "unknown:0x..." */
     const struct replay_host host = {

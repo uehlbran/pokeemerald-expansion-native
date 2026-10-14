@@ -93,7 +93,35 @@ driver, task W8) restarts it; an unsupervised Windows run ends on a crash
 with that code. (2) No ANSI code page: the executable carries a manifest
 that sets the active code page to UTF-8, the minimum Windows version that
 honours it is recorded in BUILDING.md, and a Windows-runner test saves
-and loads through a non-ASCII path. Otherwise nothing new. The three milestone 8 items were
+and loads through a non-ASCII path. Five decisions from the independent review, each with the
+orchestrator's recommendation: (1) the audio rate: the PSG decision
+entry said never to point-sample at 13379 Hz, yet that is the shipped
+rate (it keeps the FIFO frame mixing sample for sample); the entry is
+amended to say so, and whether to run the device at the GBA's 32768 Hz
+with a resampled FIFO is yours: recommended later, after Windows, with
+an A/B recording of a cry. (2) A bare 131072-byte save (an emulator's
+.sav or an old native build's) is adopted as a 32-bit native image with
+no check; the header and message now say so, and the reviewer proposes
+probing the fourth chunk's checksum at the GBA size to refuse a GBA
+save instead of converting it into garbage with valid checksums in the
+64-bit build: recommended, a small task. (3) Two instances on one save
+path can tear the save (the temporary name is fixed): the single-writer
+assumption is now documented; a lock file is yours to want: recommended
+no, until a player asks. (4) src/siirtc.c carries the largest upstream
+modification (102 lines) where the policy's first option, filtering the
+file out of the native build and providing the SiiRtc API from
+platform/, is available: recommended yes, as its own task. (5) Where
+the project logs live: the public-face reviewer classes STATUS.md,
+PLAN.md, research/m8-inventory.md and the build-glue logs (BOOT-LOG.md,
+LINK-NEEDS.md) as internal notes that should leave the public tree or
+sit under one marked directory; README no longer sends a reader to
+STATUS for the gates (BUILDING has them now): recommended a
+`docs/log/` directory with a one-line README saying what it is, moved
+after milestone 8, since your process reads these files where they are.
+One applied change you should see: LICENSE's scope sentence now names
+platform/, tests/, the native build files and the enumerated documents
+instead of a src/platform/ that never existed; nothing else in LICENSE
+changed. Otherwise nothing new. The three milestone 8 items were
 settled on 2026-10-14: the MinGW cross-compiler is installed (GCC 13 for
 x86_64-w64-mingw32, binutils 2.41; Wine is not, so cross-built
 executables run only on the Windows runner); macOS ships as x86_64
@@ -436,8 +464,20 @@ not written (task W5 to W7).
 was green in 19 minutes 39 seconds: build 571 s, platform gate 470 s
 (now with the ThreadSanitizer build), replays 70 s; ccache saw 904
 cacheable calls of 1574 (the game's C is now among them; 222 hits from
-the platform library, 682 misses to fill). The warm figure is the next
-run's and is recorded here when it lands. Measured here too (ccache
+the platform library, 682 misses to fill). The next run (38598380204, the push
+of the Windows merge, the compiler cache restored from the run before,
+the assets cache empty since that key was new) was green in 11 minutes 32
+seconds: build 284 s (611 hits, 300 misses: the merge changed platform
+headers the game includes), platform gate 294 s, replays 46 s. The first run with the
+review's composite setup action (38611677952, the push of the eight fix
+merges) was green in 15 minutes 19 seconds: setup 74 s, build 183 s
+(477 hits, 443 misses after many platform headers changed), the platform
+gate 580 s (now the largest step: the sanitized tests at both widths,
+ThreadSanitizer, lint), replays 72 s. The warm run after it
+(38613903028, a one-file change): 13 minutes 19 seconds, build 171 s
+with 862 hits of 923 cacheable calls, gate 489 s, replays 71 s; so the
+per-push tier is 13 minutes warm against the 15-minute target, and the
+platform gate is where a further cut would come from. Measured here too (ccache
 4.9.1 installed by the owner, an empty cache directory, the game's 384
 objects and the executable removed before each build, 32 jobs): the cold
 build 23.4 s with 384 misses; the same build again 7.5 s with 384 hits
@@ -502,9 +542,68 @@ anywhere yet: the orchestrator's gate on main (below) covers the Linux
 side and the Windows link, lint and layout; the first Windows run is the
 manual workflow `.github/workflows/windows.yml`, added with this merge.
 
-**In flight.** The first Windows run (the workflow dispatched on main);
-then tasks W8 and W9 as one worker: the replays, the suite and the
-cross-OS save on the Windows runner.
+**The first Windows runs** (the manual workflow on main): the first
+(38597933327) failed in the Linux job's own prerequisites (the 32-bit
+headers the data layout probe compiles with; fixed). The second
+(38598389601) cross-built the executable and the 69 tests on Linux in 12
+minutes and ran them on the Windows runner: the first time any of this
+code executed on Windows. Result: test_crt0 fails 6 of 11 (crt0_init
+returns an error on the PE layout), the portable division test expects
+the POSIX signal number where Windows reports an exception code, and
+every executable after the first crash test exits with status 126
+("cannot execute"), one cause hiding the rest. These are the W8 worker's
+step 1, in flight.
+
+**Independent code review** (the owner's order of 2026-10-14; twelve
+fresh Fable reviewers, read-only, capped at 15 minutes each after the
+owner cut the cap mid-run, given only ARCHITECTURE.md, C-RULES.md, a
+scope and one brief; reports in an untracked folder outside the
+repository; files changed by the in-flight Windows-runner work excluded
+and reviewed after their merge). Every one of the 115 findings was
+verified against the code by the orchestrator before its verdict (the
+triage sits beside the reports). By severity: 3 high, 19 medium, 93
+low. By area: core emulation 11, graphics 6, audio 7, persistence and
+time 9, host and process 11, tooling and tests 10, build and CI 11,
+upstream guards 15 (two halves), concurrency and signal safety 8,
+security and resource handling 9, the public face 18. Of the 115: 6 are
+duplicates across reviewers, 2 were rejected (a style call on a GNU
+idiom the project's dialect allows; a probe call that is documented,
+idempotent and relied on by a test), 1 is deferred until the
+Windows-runner branch merges because it edits a file that branch owns
+(the three meanings of "host" across the make fragments), and 106 were
+accepted and fixed by eight workers in eight branches, all merged on
+main on 2026-10-14 with the orchestrator's gate green after each batch
+(the platform gate with ThreadSanitizer, both builds, both replays, the
+Windows build and tests, the suite now at 5418 passed with nine new
+test files, the cross-width save); a combined Sonnet review with
+mutation testing over the behavioural fixes followed the merges (47
+mutants over the first seven groups, 9 over the concurrency group): it
+found one real gap, the Huffman decoder reading its tree-size byte
+before the new range check (a header in a region's last four bytes
+faulted), fixed with a test, and ten fixes whose tests let a mutant
+through, each now with a test that fails without the fix (a ninth
+branch, merged); nothing blocking in the concurrency merge, where the
+signal-mask, errno, unblock and expired-limit fixes all fail their tests
+when mutated. The three highs: the heap's allocation-site
+encoding in src/malloc.c assumed the whole image within 512 MiB of the
+image base, which the Windows layout breaks (now measured from a base
+symbol small on both links, with a no-location rule and a round-trip
+test); README said Windows was not attempted; LICENSE's scope named a
+directory that does not exist. The mediums fixed: unchecked Huffman
+tree-table reads and the game's fast LZ77 decoder writing with no bounds
+check; the RTC offset diverging from disk on a directory-sync failure;
+the watchdog thread inheriting an open signal mask (a process-directed
+signal could run a test's handler on it) and printing on error paths;
+inspect.h's fact list contradicting the code; upstream's build workflow
+firing on every pull request; the CI setup pasted six times; a dozen
+public-document contradictions. Five findings need the owner (below).
+Two follow-ups the fixes surfaced are in PLAN.md (the native soft reset
+with the combination held; macOS's missing pthread_condattr_setclock).
+
+**In flight.** Tasks W8 and W9 as one Opus worker (branch m8-winci): the
+Windows runner's unit tests and smoke made to pass, then the replays, the
+suite through a driver that restarts on exit code 75, and the cross-OS
+save; the workflow extended as it goes.
 
 ## Verified by a gate
 
@@ -539,6 +638,7 @@ cross-OS save on the Windows runner.
 | Every gate in one sequence on main after the last milestone 7 merge (94f3c70f62): the platform gate (format, lint at both widths, the sanitized unit tests at both widths, tools-test, glue-test); at 32 bits the build, the two replays plain and sanitized, `make check` plain and sanitized (5409 passed), the GBA ROM rebuilt; at 64 bits the build plain and sanitized, the two replays plain and sanitized, `make check` plain and sanitized (5409 passed); the cross-width script both ways, plain and sanitized | the 22 steps in order, each exit 0 | green 2026-10-09; the 32-bit half 11 min, the 64-bit half 6 min, the cross-width runs 4 min; ROM sha1 e2d4600d4e7b1269ac50c28bc96ece2b758ded9e |
 | The orchestrator's gate on main after the host-layer merge (fa11bb1506, milestone 8 task W2): the platform gate, the 32-bit build and opening replay, the 64-bit build, both 64-bit replays plain and the opening replay sanitized, the plain 64-bit suite (5409 passed), the cross-width script 32 to 64 | the ten steps in order, each exit 0 | green 2026-10-14; 24 s, 7 s, 29 s, 5 s, 24 s, 23 s, 25 s, 58 s, 36 s, 41 s |
 | The orchestrator's gate on main after the Windows cross-build merge (f25169cdf1, task W4): the platform gate, both Linux builds, the Windows cross-link with the PE layout check, the 64-bit opening replay, the plain 64-bit suite (5409 passed) | the seven steps in order, each exit 0 | green 2026-10-14 |
+| The orchestrator's gate on main after the eight review-fix merges (dca28a524c): the platform gate with ThreadSanitizer, both Linux builds, both 64-bit replays, the Windows build and its 69 tests built, the plain 64-bit suite (5418 passed: nine new native-only test files), the cross-width script | the nine steps in order, each exit 0 | green 2026-10-14 (also green after the first five and the first seven merges) |
 | The orchestrator's gate on main after the Windows host-layer merge (2976d5b13d, tasks W5 to W7): the platform gate with ThreadSanitizer, both Linux builds, both 64-bit replays and the 32-bit opening replay, the Windows build from scratch with the PE layout and manifest check and no undefined symbol, the 69 Windows test executables built and layout-checked, the Windows lint, the plain 64-bit suite (5409 passed), the cross-width script | the twelve steps in order, each exit 0 | green 2026-10-14; 196 s, 4 s, 4 s, 24 s, 23 s, 29 s, 19 s, 0 s, 2 s, 12 s, 30 s, 39 s (the game objects were warm) |
 | The orchestrator's gate on main after the test-timeout merge (0a49ebfa34, task W3): the platform gate with the new ThreadSanitizer build of the tests, both Linux builds, both 64-bit replays and the 32-bit opening replay, the Windows cross-link, the plain 64-bit suite (5409 passed), the cross-width script | the nine steps in order, each exit 0 | green 2026-10-14; 199 s, 6 s, 5 s, 25 s, 35 s, 34 s, 5 s, 30 s, 45 s (the builds were warm) |
 | Every platform module is merged: `gba_memmap` (region layout via linker script), `ptest.h` self-test, `timer`, `transfer_bounds`, `input`, `rtc`, `video`, `audio`, `frame_pacer`, `interrupt`, `psg`, `ppu`, `dma`, `flash`, `save_file`, `bios`, `lcd_status`, `m4a_output`, `sound_mix`, `replay`, `inspect`, `restart`, `symbols`, `debug_channel`, `crash_reboot`, `arm_division`, and the `m4a` engine translation (also proven by a differential test against the ARM original under qemu-arm, run by hand) | `make -C platform test BITS=32` and `BITS=64`, every test under ASan+UBSan with leak detection, after a Sonnet first-pass review and orchestrator merge | green on both widths at merge time |

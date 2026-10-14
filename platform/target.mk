@@ -100,13 +100,10 @@ SDL_LIBS   := -L$(SDL2_MINGW_DIR)/lib -lSDL2
 # and no base relocations, so that the loader maps the image at its base or
 # refuses it; .text at 0x40001000, where the Linux build's code is (the
 # headers take the first page of the image at 0x40000000 there).
-# gba_regions.pe.ld puts the regions and the filled gaps between. The
-# __executable_start alias: src/malloc.c measures the heap's allocation sites
-# from it, GNU ld defines it for ELF, and on PE the image starts at __ImageBase.
+# gba_regions.pe.ld puts the regions and the filled gaps between.
 GBA_LAYOUT_LDFLAGS := -mconsole -static-libgcc -Wl,--image-base=0x01800000 -Wl,--disable-dynamicbase \
                       -Wl,--disable-high-entropy-va -Wl,--disable-reloc-section \
-                      -Wl,--section-start=.text=0x40001000 \
-                      -Wl,--defsym,__executable_start=__ImageBase
+                      -Wl,--section-start=.text=0x40001000
 REGIONS_LD_NAME := gba_regions.pe.ld
 GAME_LD_NAME := gba_game.pe.ld
 

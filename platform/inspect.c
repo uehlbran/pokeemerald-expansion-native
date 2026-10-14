@@ -135,9 +135,10 @@ static void fact_task_last(char *out, size_t size)
 }
 
 /* Every active task's function, by task id, comma separated; cut at the end
- * of the value ("..." marks a cut). */
+ * of the value (cut_mark marks a cut). */
 static void fact_tasks(char *out, size_t size)
 {
+    static const char cut_mark[] = "...";
     size_t used = 0;
     out[0] = '\0';
     for (size_t i = 0; i < NUM_TASKS; i++) {
@@ -147,7 +148,8 @@ static void fact_tasks(char *out, size_t size)
         name_function((uintptr_t)gTasks[i].func, name, sizeof name);
         int written = snprintf(out + used, size - used, "%s%s", used > 0 ? "," : "", name);
         if (written < 0 || (size_t)written >= size - used) {
-            (void)snprintf(out + (size > 4 ? size - 4 : 0), size > 4 ? 4 : size, "...");
+            (void)snprintf(out + (size > sizeof cut_mark ? size - sizeof cut_mark : 0),
+                           size > sizeof cut_mark ? sizeof cut_mark : size, "%s", cut_mark);
             return;
         }
         used += (size_t)written;
@@ -174,20 +176,20 @@ static unsigned var_value(uint32_t var)
 }
 
 /* The story variables of the opening (data/maps/LittlerootTown/scripts.inc
- * describes their states). */
+ * describes their states). var_value gives 0 until the save blocks exist. */
 static void fact_intro_state(char *out, size_t size)
 {
-    (void)snprintf(out, size, "%u", (unsigned)VarGet(VAR_LITTLEROOT_INTRO_STATE));
+    (void)snprintf(out, size, "%u", var_value(VAR_LITTLEROOT_INTRO_STATE));
 }
 
 static void fact_town_state(char *out, size_t size)
 {
-    (void)snprintf(out, size, "%u", (unsigned)VarGet(VAR_LITTLEROOT_TOWN_STATE));
+    (void)snprintf(out, size, "%u", var_value(VAR_LITTLEROOT_TOWN_STATE));
 }
 
 static void fact_rival_state(char *out, size_t size)
 {
-    (void)snprintf(out, size, "%u", (unsigned)VarGet(VAR_LITTLEROOT_RIVAL_STATE));
+    (void)snprintf(out, size, "%u", var_value(VAR_LITTLEROOT_RIVAL_STATE));
 }
 
 static void fact_keys_held(char *out, size_t size)
@@ -352,9 +354,9 @@ static const struct inspect_fact facts[] = {
     {"task_last", fact_task_last, NULL},
     {"tasks", fact_tasks, NULL},
     {"fade_active", fact_fade_active, NULL},
-    {"intro_state", fact_intro_state, "0"},
-    {"town_state", fact_town_state, "0"},
-    {"rival_state", fact_rival_state, "0"},
+    {"intro_state", fact_intro_state, NULL},
+    {"town_state", fact_town_state, NULL},
+    {"rival_state", fact_rival_state, NULL},
     {"keys_held", fact_keys_held, NULL},
     {"keys_new", fact_keys_new, NULL},
     {"player_name", fact_player_name, inspect_none_text},

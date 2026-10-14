@@ -173,13 +173,13 @@ void RegisterRamReset(uint32_t resetFlags)
         clear_registers(sound_registers, sizeof sound_registers / sizeof sound_registers[0]);
     }
     if (resetFlags & BIOS_RESET_REGS) {
-        /* This zeroes REG_IF too, but the interrupt module keeps the pending
-         * requests in its own state and marks the value it last stored in
-         * IF with INTERRUPT_IF_MARKER (bit 15; interrupt.h): to it a zero IF
-         * is a game write acknowledging every request, not a reset of its
-         * state. main's reset path must therefore re-initialise the
-         * interrupt module after a reset; the BIOS does not call it (it
-         * would make bios depend on the interrupt module's internals). */
+        /* This stores 0 at REG_IF, which the interrupt module reads as a game
+         * write clearing nothing (IF is write-1-to-clear; INTERRUPT_IF_MARKER,
+         * interrupt.h, tells its own stores from the game's): its pending
+         * requests survive and are stored back with the marker at the next
+         * raise. main's reset path re-initialises the interrupt module so a
+         * reset starts with no requests; the BIOS does not call it, to keep
+         * bios independent of interrupt. */
         clear_registers(other_registers, sizeof other_registers / sizeof other_registers[0]);
         *gba_io_u16(IO_DISPSTAT) = (uint16_t)(*gba_io_u16(IO_DISPSTAT) & DISPSTAT_READ_ONLY);
     }

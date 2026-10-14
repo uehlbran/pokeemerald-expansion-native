@@ -233,6 +233,51 @@ PTEST(a_chain_of_exactly_the_maximum_depth_is_accepted_and_one_more_is_not)
     remove_all();
 }
 
+/* A file of `count` lines that each include leaf.replay. */
+static void write_fan_out(const char *name, unsigned count)
+{
+    char text[REPLAY_INCLUDE_MAX_FILES * 32u];
+    size_t used = 0;
+    text[0] = '\0';
+    for (unsigned i = 0; i < count; i++)
+        used += (size_t)snprintf(text + used, sizeof text - used, "include leaf.replay\n");
+    write_file(name, text);
+}
+
+PTEST(a_fan_out_of_exactly_the_file_limit_is_accepted_and_one_more_is_not)
+{
+    char message[REPLAY_INCLUDE_MESSAGE_SIZE];
+    char *text;
+    bool expanded;
+    make_directory();
+    write_file("leaf.replay", "");
+    write_fan_out("main.replay", REPLAY_INCLUDE_MAX_FILES - 1u); /* with the script itself, the limit */
+    PT_ASSERT_EQ_INT(expand("main.replay", &text, &expanded, message, sizeof message), 0);
+    free(text);
+    write_fan_out("main.replay", REPLAY_INCLUDE_MAX_FILES);
+    PT_ASSERT_EQ_INT(expand("main.replay", &text, &expanded, message, sizeof message), -1);
+    PT_ASSERT(text == NULL);
+    PT_ASSERT(strstr(message, "too many files") != NULL);
+    remove_all();
+}
+
+PTEST(includes_that_fan_out_within_the_depth_limit_are_stopped_by_the_file_limit)
+{
+    char message[REPLAY_INCLUDE_MESSAGE_SIZE];
+    char *text;
+    bool expanded;
+    make_directory();
+    /* three includes of the next file at each of four levels: 3 + 9 + 27 + 81 openings, no output */
+    write_file("f4.replay", "");
+    write_file("f3.replay", "include f4.replay\ninclude f4.replay\ninclude f4.replay\n");
+    write_file("f2.replay", "include f3.replay\ninclude f3.replay\ninclude f3.replay\n");
+    write_file("f1.replay", "include f2.replay\ninclude f2.replay\ninclude f2.replay\n");
+    write_file("f0.replay", "include f1.replay\ninclude f1.replay\ninclude f1.replay\n");
+    PT_ASSERT_EQ_INT(expand("f0.replay", &text, &expanded, message, sizeof message), -1);
+    PT_ASSERT(strstr(message, "too many files") != NULL);
+    remove_all();
+}
+
 PTEST(an_expansion_larger_than_the_limit_is_refused)
 {
     char message[REPLAY_INCLUDE_MESSAGE_SIZE];
@@ -438,6 +483,33 @@ PTEST(include_names_of_1023_and_1024_characters)
     PT_ASSERT(refused_1024);
     PT_ASSERT_EQ_INT(result_path, -1);
     PT_ASSERT(path_message);
+}
+
+PTEST(a_script_path_of_the_maximum_length_is_described_whole_in_the_documented_buffer)
+{
+    char message[REPLAY_INCLUDE_MESSAGE_SIZE];
+    char where[REPLAY_SOURCE_WHERE_SIZE];
+    char path[REPLAY_INCLUDE_MAX_NAME + 1u];
+    char *text;
+    bool expanded;
+    make_directory();
+    /* Repeated slashes pad the directory's path to the longest name a script may have. */
+    const char *const name = "main.replay";
+    const size_t directory_length = strlen(directory);
+    (void)snprintf(path, sizeof path, "%s", directory);
+    memset(path + directory_length, '/', REPLAY_INCLUDE_MAX_NAME - directory_length);
+    memcpy(path + REPLAY_INCLUDE_MAX_NAME - strlen(name), name, strlen(name) + 1u);
+    PT_ASSERT_EQ_INT((int)strlen(path), (int)REPLAY_INCLUDE_MAX_NAME);
+    write_file("main.replay", "wait 1\n");
+    const int result = expand_path(path, &text, &expanded, message, sizeof message);
+    describe(1, where, sizeof where);
+    const size_t length = strlen(where);
+    free(text);
+    replay_source_map_free(&map);
+    remove_all();
+    PT_ASSERT_EQ_INT(result, 0);
+    PT_ASSERT_EQ_INT((int)length, (int)REPLAY_INCLUDE_MAX_NAME + 2);
+    PT_ASSERT_EQ_STR(where + length - 2u, ":1");
 }
 
 PTEST(including_a_directory_is_a_read_error)

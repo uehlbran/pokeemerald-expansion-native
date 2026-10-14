@@ -153,7 +153,7 @@ LEFT and RIGHT move to the next digit). It uses no cheat of ours.
 
 ```
 tests/smoke/run_debug_menu.sh build/native32/pokeemerald-native out/            # exit 0 if every dump and screenshot matches
-ASAN_OPTIONS=halt_on_error=0 tests/smoke/run_debug_menu.sh build/native32-san/pokeemerald-native-san out-san/
+ASAN_OPTIONS=halt_on_error=0 tests/smoke/run_debug_menu.sh build/native32-san/pokeemerald-native out-san/
 tests/smoke/run_debug_menu.sh build/native32/pokeemerald-native out/ --update   # after a deliberate change
 ```
 
@@ -230,8 +230,8 @@ Between them FROM and TO must write every dump and screenshot of
 `expected/`. The `restart` line is found from the expansion FROM wrote
 (`from/expanded.replay`, the cut script with its include expanded, ends just
 before it) and checked against the one TO wrote. A bare image is taken to have
-the 32-bit layout (R7 of milestone 7: its only producers are GBA emulators and
-native builds from before the header), which `bare/` checks.
+the 32-bit layout (`docs/DECISIONS.md`, "Gate (h) is a platform-side save converter": its
+only producers are GBA emulators and native builds from before the header), which `bare/` checks.
 
 43 seconds plain from 32 to 64 bits (measured on 32 cores, 2026-10-09).
 

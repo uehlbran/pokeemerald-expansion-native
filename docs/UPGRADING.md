@@ -51,7 +51,7 @@ cd -                                                  # back to the main checkou
 `rom.sha1` in the repository root is pret's hash of the original Emerald
 ROM, inherited from pret (`f3ae0881...`). `make compare` sets `COMPARE` and
 checks against it, so it fails by design for expansion; do not use it. The
-reference is the sha1 recorded in `STATUS.md` (`e2d4600d...` for 1.17.1)
+reference is the sha1 recorded in `BUILDING.md`, "Gates" (`e2d4600d...` for 1.17.1)
 and, per upgrade, the fresh build of the new tag made here.
 
 ## 2. Merge

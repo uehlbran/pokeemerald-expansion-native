@@ -10,6 +10,7 @@
  */
 #include "symbols.h"
 
+#include <errno.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -94,6 +95,52 @@ static bool parse_line(char *text, size_t length, size_t *at, struct symbol *out
     return true;
 }
 
+/* "symbols: <call>(<path>): <error>" on stderr. */
+static void report_failure(const char *call, const char *path, int error)
+{
+    (void)fprintf(stderr, "symbols: %s(%s): %s\n", call, path, strerror(error));
+}
+
+/* The size of the open file, or -1 with *failed_call naming the call. */
+static long size_of_file(FILE *file, const char **failed_call)
+{
+    if (fseek(file, 0, SEEK_END) != 0) {
+        *failed_call = "fseek";
+        return -1;
+    }
+    const long end = ftell(file);
+    if (end < 0) {
+        *failed_call = "ftell";
+        return -1;
+    }
+    if (fseek(file, 0, SEEK_SET) != 0) {
+        *failed_call = "fseek";
+        return -1;
+    }
+    return end;
+}
+
+/* The size bytes of the open file in a new buffer with a NUL after them, or
+ * NULL with *failed_call naming the call. A file that is shorter than it was
+ * a moment ago reads as an I/O error. */
+static char *read_text(FILE *file, size_t size, const char **failed_call)
+{
+    char *const text = malloc(size + 1u);
+    if (text == NULL) {
+        *failed_call = "malloc";
+        return NULL;
+    }
+    if (fread(text, 1, size, file) != size) {
+        if (!ferror(file))
+            errno = EIO;
+        *failed_call = "fread";
+        free(text);
+        return NULL;
+    }
+    text[size] = '\0';
+    return text;
+}
+
 /* The whole file at path, NUL-terminated, in a buffer the caller frees, and
  * its length in *length (shorter than UINT32_MAX, so that a name's offset
  * fits); NULL after a report. */
@@ -101,26 +148,22 @@ static char *read_whole(const char *path, size_t *length)
 {
     FILE *file = fopen(path, "rb");
     if (file == NULL) {
-        (void)fprintf(stderr, "symbols: cannot open %s\n", path);
+        report_failure("fopen", path, errno);
         return NULL;
     }
+    const char *failed_call = NULL;
     char *text = NULL;
-    long end = -1;
-    if (fseek(file, 0, SEEK_END) == 0)
-        end = ftell(file);
-    if (end >= 0 && (unsigned long)end < UINT32_MAX && fseek(file, 0, SEEK_SET) == 0) {
-        text = malloc((size_t)end + 1u);
-        if (text != NULL && fread(text, 1, (size_t)end, file) != (size_t)end) {
-            free(text);
-            text = NULL;
-        }
-    }
-    (void)fclose(file); /* read-only: nothing to lose */
-    if (text == NULL) {
-        (void)fprintf(stderr, "symbols: cannot read %s\n", path);
+    const long end = size_of_file(file, &failed_call);
+    if (end >= 0 && (unsigned long)end >= UINT32_MAX)
+        (void)fprintf(stderr, "symbols: %s is %ld bytes; a map must be smaller than 4 GiB\n", path, end);
+    else if (end >= 0)
+        text = read_text(file, (size_t)end, &failed_call);
+    const int error = errno; /* of the call that failed, before fclose can change it */
+    (void)fclose(file);      /* read-only: nothing to lose */
+    if (failed_call != NULL)
+        report_failure(failed_call, path, error);
+    if (text == NULL)
         return NULL;
-    }
-    text[end] = '\0';
     *length = (size_t)end;
     return text;
 }
@@ -151,8 +194,8 @@ static bool parse_map(const char *path, size_t length)
         const uint32_t line = loaded.count + 1u;
         struct symbol symbol;
         if (!parse_line(loaded.text, length, &at, &symbol)) {
-            (void)fprintf(stderr, "symbols: %s:%u: not \"<%zu hexadecimal digits> <name>\" and a newline\n", path, line,
-                          (size_t)SYMBOLS_ADDRESS_DIGITS);
+            (void)fprintf(stderr, "symbols: %s:%u: not \"<%llu hexadecimal digits> <name>\" and a newline\n", path,
+                          line, (unsigned long long)SYMBOLS_ADDRESS_DIGITS);
             return false;
         }
         if (loaded.count > 0 && symbol.address < loaded.symbols[loaded.count - 1u].address) {

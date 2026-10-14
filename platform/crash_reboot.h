@@ -13,55 +13,39 @@
  * the test that crashed as CRASH and carry on with the next one
  * (test/test_runner.c, STATE_INIT; docs/research/test-runner-protocol.md).
  *
- * Natively a crash is a signal: SIGSEGV (a NULL call, a bad pointer), SIGBUS,
- * SIGILL (src/libisagbprn.c's 0xEFFF breakpoint), SIGFPE (a divide error
- * arm_division cannot complete as the GBA would), SIGABRT (the C library's
- * stack-protector and fortify checks: memory corruption the GBA does not
- * notice). With
- * crash_reboot_init, each of them runs a handler (host_fault.h's crash
- * handler, on an alternate stack) that copies the 100h bytes at 03007F00h
- * into the command line and starts the executable again
- * (host_process_restart; Linux: execve of /proc/self/exe) with the process's
- * own arguments plus
+ * Natively a crash is a fault that reaches host_fault.h's crash handler:
+ * SIGSEGV, SIGBUS, SIGILL, SIGFPE (a divide error arm_division cannot
+ * complete as the GBA would), SIGABRT (the C library's own checks); on
+ * Windows an exception no handler took. The handler crash_reboot_init
+ * installs reports the crash on stderr, one line that names the fault
+ * ("crash_reboot: signal 11 at 0x..., fault address 0x...: ..."; Windows:
+ * "exception 0xC0000005"), and the program starts again with its own
+ * arguments, any earlier --persistent-state dropped, plus
  *     --persistent-state <512 hex digits>
- * (any earlier --persistent-state dropped), so the same process (same pid,
- * same stdout, same patched executable) starts again from main;
- * crash_reboot_restore then puts the bytes back at 03007F00h before
- * AgbMain. The handler uses only async-signal-safe calls (execve, sigaction,
- * raise, write) and memory it set up beforehand.
+ * (the 100h bytes at 03007F00h), which crash_reboot_restore puts back before
+ * AgbMain. On Linux the handler restarts it in the same process
+ * (host_process_restart: execve of /proc/self/exe), using async-signal-safe
+ * calls and memory set up beforehand only.
  *
- * On Windows a crash is an exception that no handler took (an access
- * violation, an illegal instruction, a stack overflow, a divide error
- * arm_division passed on, ...), and the handler runs in the process's
- * unhandled-exception filter. There is no exec, and the filter starts no
- * process: creating one allocates, from a heap the crash may have corrupted
- * (docs/DECISIONS.md, "A crash on Windows ends the process for its parent to
- * start again"). The filter encodes the persistent bytes, writes the report,
- * which ends with them, to stderr, and ends the process with exit code
- * CRASH_REBOOT_EXIT_CODE:
+ * On Windows a handler must not start a process (docs/DECISIONS.md, "A crash
+ * on Windows ends the process for its parent to start again"), so the
+ * reboot is the parent's. The report ends with the state, on one line:
  *     crash_reboot: exception 0xC0000005 at 0x..., fault address 0x...: ending
  *     with exit code 75 for the parent to start the program again with
  *     --persistent-state <512 hex digits>
- * on one line. The reboot is the parent's, the program that started this
- * one and waits for it (in the suite, test_runner/native-rom-test): on exit
- * code 75 it starts the program again with the same arguments, any earlier
- * --persistent-state dropped, plus the option and the digits from the last
- * line of stderr that begins "crash_reboot: ". A run on Windows with no such
- * parent ends at a crash with exit code 75 and no reboot. Two crashes end the
- * run without a report or a reboot on Windows: abort(), which is not an
- * exception there (the C runtime raises SIGABRT in its own signal table and
- * exits with status 3), and an overflow of the battle runner's stack
- * (game_hooks), which runs into the image's read-only headers, where the
- * system cannot write the exception's records, so no handler runs. The
- * report names a Windows fault by its exception code in hexadecimal
- * ("crash_reboot: exception 0xC0000005 at ..."), a Linux one by its signal
- * ("crash_reboot: signal 11 at ...").
+ * and the process exits with CRASH_REBOOT_EXIT_CODE (75). The parent (in the
+ * suite, test_runner/native-rom-test) then starts the program again with the
+ * same arguments, any earlier --persistent-state dropped, plus the option and
+ * the digits from the last line of stderr that begins "crash_reboot: ". Without
+ * such a parent the run ends there. abort() and an overflow of the battle
+ * runner's stack never reach the handler on Windows (host_fault.h,
+ * host_windows_fault.c).
  *
  * A crash with the persistent bytes unchanged since the process started
  * (zero, or what crash_reboot_restore put there) would reboot into the same
- * crash forever, as on the GBA; the handler does not reboot then: it reports
- * and lets the fault end the process (Windows: with the exception's code,
- * not CRASH_REBOOT_EXIT_CODE). The same happens if the restart fails.
+ * crash forever, as on the GBA, so the handler reports it and lets the fault
+ * end the process (Windows: with the exception's code, not
+ * CRASH_REBOOT_EXIT_CODE); so does a failed restart.
  *
  * Single-threaded.
  */
@@ -101,9 +85,8 @@ enum crash_reboot_error {
  * must outlive the module, as main's do) and installs the crash handler
  * (host_fault_install_crash, which also unblocks the crash signals: a
  * handler's mask survives execve, so a rebooted process starts with its
- * signal blocked). Returns
- * CRASH_REBOOT_OK, or an error after a report on stderr with nothing
- * installed. */
+ * signal blocked). Returns CRASH_REBOOT_OK, or an error after a report on
+ * stderr with nothing installed. */
 int crash_reboot_init(int argc, char *const argv[]);
 
 /* Puts the bytes a reboot passed (the value of CRASH_REBOOT_OPTION) back at

@@ -3,8 +3,10 @@
  *
  * Stands in for the GBA's sound output (GBATEK "GBA Sound Controller"
  * ends in a 2-channel DAC). The sound mixer produces one video frame of
- * signed 16-bit stereo samples per frame and queues them here. This and
- * video are the only modules that call SDL's audio API. Design:
+ * signed 16-bit stereo samples per frame and queues them here. This is
+ * the only module that calls SDL's audio API; the other modules that use SDL
+ * (video, input, frame, frame_pacer, main) name what they use in their own
+ * headers. Design:
  * docs/RESEARCH.md "Audio".
  *
  * Threading: single-threaded by design. There is no audio callback; SDL's
@@ -25,10 +27,13 @@
 /* Sanity ceiling for the requested rate; the engine's rates are far lower. */
 #define AUDIO_MAX_SAMPLE_RATE_HZ 192000u
 
-/* Returns 0 on success. silent: no device is opened, queue calls only count
- * frames (headless gates). Paused-at-init protocol: the device starts paused,
+/* AUDIO_SILENT opens no device: queue calls only count frames (headless
+ * gates). */
+enum audio_output { AUDIO_DEVICE, AUDIO_SILENT };
+
+/* Returns 0 on success. Paused-at-init protocol: the device starts paused,
  * so queue the first frames, then call audio_set_paused(false). */
-int audio_init(uint32_t sample_rate_hz, bool silent);
+int audio_init(uint32_t sample_rate_hz, enum audio_output output);
 
 /* stereo: frames * 2 interleaved int16_t (left, right). Returns 0 on
  * success, including when the block was dropped because the queue is full

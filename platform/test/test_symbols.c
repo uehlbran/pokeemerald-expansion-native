@@ -149,6 +149,21 @@ PTEST(a_missing_map_is_an_error_and_unloads)
     PT_ASSERT(nothing_loaded());
 }
 
+// cppcheck-suppress constParameterCallback ; tsup_capture_stderr's action takes a non-const void *
+static void load_a_missing_map(void *context)
+{
+    PT_ASSERT_EQ_INT(symbols_load(context), -1);
+}
+
+/* The report names the call and the reason, not just the file. */
+PTEST(a_missing_map_is_reported_with_the_call_and_the_error)
+{
+    static char path[] = "/nonexistent/for/test.symbols";
+    char message[256];
+    PT_ASSERT(tsup_capture_stderr(load_a_missing_map, path, message, sizeof message));
+    PT_ASSERT_EQ_STR(message, "symbols: fopen(/nonexistent/for/test.symbols): No such file or directory\n");
+}
+
 PTEST(an_empty_map_is_refused)
 {
     PT_ASSERT_EQ_INT(load_after_a_good_map(""), -1);

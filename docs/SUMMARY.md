@@ -57,7 +57,7 @@
   - [How to use Random Mon Generation](tutorials/how_to_random_mon_generator.md)
   - [How to use dynamic trainer battle scripts](tutorials/how_to_dynamic_trainer_script.md)
   - [How to use the Dynamic Multichoice](tutorials/how_to_dynmultichoice.md)
-- [Changelog](./CHANGELOG.md)
+- [Changelog]()
     - [1.17.x]()
         - [Version 1.17.1](changelogs/1.17.x/1.17.1.md)
         - [Version 1.17.0](changelogs/1.17.x/1.17.0.md)

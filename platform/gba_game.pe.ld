@@ -5,10 +5,7 @@
  * game with the flags of platform/target.mk and
  *   -Wl,-T,platform/gba_regions.pe.ld -Wl,-T,platform/gba_game.pe.ld
  * and defines gInitialMainCB2 itself (--defsym), because its value depends
- * on TEST. The same link also defines __executable_start as an alias of
- * __ImageBase (--defsym, platform/target.mk): src/malloc.c measures the
- * heap's allocation sites from it, GNU ld defines it for ELF, and a PE image
- * starts at __ImageBase.
+ * on TEST.
  *
  * Followed: ld_script_modern.ld and ld_script_test.ld, through gba_game.ld,
  * which says why each piece exists; only the differences are said here.
@@ -87,6 +84,13 @@ INSERT AFTER .rdata;
  * them (gba_regions.pe.ld), none of them the program's code or data
  * (host_image.h, host_windows.c). */
 __text_start__ = ADDR(.text);
+
+/* The base of src/malloc.c's allocation-site offsets (gba_game.ld says why):
+ * the start of the read-only data, where the __FILE__ ":" __LINE__ strings
+ * are. __ImageBase would not do: the image starts at 0x01800000 and its code
+ * and data at 0x40001000, a distance of about 1 GiB, over the 29 bits the
+ * offset has. */
+PlatformAllocationSiteBase = ADDR(.rdata);
 
 /* The game's own mutable data, bracketed so that platform/crt0.c can do what
  * src/crt0.s does when SoftReset restarts the ROM (gba_game.ld says why and

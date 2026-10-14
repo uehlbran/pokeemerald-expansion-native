@@ -91,6 +91,14 @@ jmp_buf *PlatformAgbMainLoopTarget(void);
  * paces a link-cable transfer, for which there is no hardware. */
 void PlatformWaitCycles(uint32_t cycles);
 
+/* src/malloc.c's allocation-site offsets are measured from this linker
+ * symbol (gba_game.ld, gba_game.pe.ld): an address in the image's read-only
+ * data region, close enough to every __FILE__ ":" __LINE__ string that the
+ * offset fits the bits struct MemBlock has for it (unused_00, locationHi and
+ * locationLo: 4 + 11 + 14). Never dereferenced. */
+extern const char PlatformAllocationSiteBase[];
+#define PLATFORM_ALLOCATION_SITE_OFFSET_BITS 29
+
 /* test/test_runner.c JumpToAgbMainLoop: longjmps to the AgbMainLoop target
  * (from the battle runner's stack too, see PlatformCallWithStack). Without a
  * target (a build without TESTING) it reports and exits the game with

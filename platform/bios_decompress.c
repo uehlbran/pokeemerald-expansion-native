@@ -228,7 +228,6 @@ static int huff_uncomp(const char *function, const void *src, size_t src_size, v
 {
     struct bios_source in;
     struct bios_stream_header header;
-    struct bios_sink out;
     uint8_t tree_size = 0;
     int error = bios_stream_open(&in, function, src, src_size, BIOS_STREAM_HUFFMAN, &header);
     if (error != BIOS_OK) {
@@ -237,6 +236,11 @@ static int huff_uncomp(const char *function, const void *src, size_t src_size, v
     if (!supported_unit(header.unit)) {
         return BIOS_ERR_HEADER;
     }
+    /* The size byte itself may lie past the region when the header ends at its
+     * edge, so it is range-checked before it is read. */
+    if (!bios_range_ok(function, "tree size byte", src, HUFF_TREE_SIZE_OFFSET + 1u, TRANSFER_READ)) {
+        return BIOS_ERR_RANGE;
+    }
     if (!bios_source_byte(&in, &tree_size)) {
         return BIOS_ERR_TRUNCATED;
     }
@@ -244,9 +248,17 @@ static int huff_uncomp(const char *function, const void *src, size_t src_size, v
     if (tree.end > in.size) {
         return BIOS_ERR_TRUNCATED;
     }
+    /* The game-facing call has no source size (in.size is unbounded), but the
+     * table's length is known from its size byte before any of it is read. */
+    if (!bios_range_ok(function, "tree table", src, tree.end, TRANSFER_READ)) {
+        return BIOS_ERR_RANGE;
+    }
     /* GBATEK: "Data is written in units of 32bits": the size is rounded up. */
     size_t words = ((size_t)header.size + HUFF_WORD_SIZE - 1u) / HUFF_WORD_SIZE;
-    error = bios_sink_open(&out, function, dest, words * HUFF_WORD_SIZE, BIOS_WRITE_8BIT);
+    if (words != 0 && !bios_range_ok(function, "destination", dest, words * HUFF_WORD_SIZE, TRANSFER_WRITE)) {
+        return BIOS_ERR_RANGE;
+    }
+    uint8_t *out = dest;
     in.position = tree.end;
     uint32_t bitstream = 0;
     unsigned bits_left = 0;
@@ -259,7 +271,7 @@ static int huff_uncomp(const char *function, const void *src, size_t src_size, v
             output |= (unit & mask) << shift;
         }
         if (error == BIOS_OK) {
-            bios_store32(out.bytes + w * HUFF_WORD_SIZE, output);
+            bios_store32(out + w * HUFF_WORD_SIZE, output);
         }
     }
     return error;

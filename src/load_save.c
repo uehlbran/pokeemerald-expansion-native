@@ -22,14 +22,7 @@
 
 static void ApplyNewEncryptionKeyToAllEncryptedData(u32 encryptionKey);
 
-#if PLATFORM_NATIVE
-#if __SIZEOF_POINTER__ != 8
-#line 25
-#define SAVEBLOCK_MOVE_RANGE    128
-#else
-// Same value as include/load_save.h (256 at 64 bits); not redefined here.
-#endif
-#else
+#if !PLATFORM_NATIVE
 #line 25
 #define SAVEBLOCK_MOVE_RANGE    128
 #endif

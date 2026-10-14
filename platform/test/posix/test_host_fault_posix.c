@@ -3,11 +3,12 @@
  * not complete it (host_fault.h), in forked children, which end by the crash
  * handler's _exit code or by the fault itself: a passed-on divide error
  * reaches the crash handler installed before, an uninstalled handler is not
- * called again, a crash handler gets every crash fault, and a fault whose
- * handler returns ends the process. The handlers here call only _exit,
- * sigaction and raise, which signal-safety(7) allows. The handler that
- * completes a division is tested in ../test_host_fault.c.
+ * called again, a crash handler gets every crash fault, which its install
+ * unblocks, and a fault whose handler returns ends the process. The handlers
+ * here call only _exit, sigaction and raise, which signal-safety(7) allows.
+ * The handler that completes a division is tested in ../test_host_fault.c.
  */
+#include <pthread.h>
 #include <signal.h>
 #include <stdbool.h>
 #include <stdint.h>
@@ -32,7 +33,13 @@
 #define CHILD_ON_ALTERNATE_STACK 8 /* the divide handler ran off the main stack */
 #define CHILD_ON_MAIN_STACK 9      /* ... and on it */
 #define CHILD_CRASH_DIVIDE 10      /* the crash handler got a divide error */
+#define CHILD_CRASH_UNBLOCKED 11   /* the crash handler's install unblocked every crash fault */
+#define CHILD_CRASH_BLOCKED 12     /* ... and left one blocked */
 #define CHILD_CRASH_NUMBER_BASE 64 /* the crash handler got fault number n: 64 + n */
+
+/* The faults host_fault.h names as crashes on POSIX. */
+static const int crash_faults[] = {SIGSEGV, SIGBUS, SIGILL, SIGFPE, SIGABRT};
+#define CRASH_FAULT_COUNT (sizeof crash_faults / sizeof crash_faults[0])
 
 /* A child's body, as psup_run_child takes it. */
 struct child_body {
@@ -186,11 +193,36 @@ static void raise_under_the_crash_handler(void)
 
 PTEST(the_crash_handler_gets_every_crash_fault)
 {
-    static const int crashes[] = {SIGSEGV, SIGBUS, SIGILL, SIGFPE, SIGABRT};
-    for (size_t i = 0; i < sizeof crashes / sizeof crashes[0]; i++) {
-        raised_signal = crashes[i];
-        PT_ASSERT_EQ_INT(psup_exit_code(in_child(raise_under_the_crash_handler)), CHILD_CRASH_NUMBER_BASE + crashes[i]);
+    for (size_t i = 0; i < CRASH_FAULT_COUNT; i++) {
+        raised_signal = crash_faults[i];
+        PT_ASSERT_EQ_INT(psup_exit_code(in_child(raise_under_the_crash_handler)),
+                         CHILD_CRASH_NUMBER_BASE + crash_faults[i]);
     }
+}
+
+/* With the crash faults blocked first, as a process restarted from a crash
+ * handler starts (a handler's mask survives execve), the install unblocks
+ * them. */
+static void install_with_the_crash_faults_blocked(void)
+{
+    sigset_t crashes, after;
+    if (sigemptyset(&crashes) != 0)
+        return;
+    for (size_t i = 0; i < CRASH_FAULT_COUNT; i++)
+        if (sigaddset(&crashes, crash_faults[i]) != 0)
+            return;
+    if (pthread_sigmask(SIG_BLOCK, &crashes, NULL) != 0 || host_fault_install_crash(exit_with_divide_or_number) != 0
+        || pthread_sigmask(SIG_BLOCK, NULL, &after) != 0)
+        return;
+    for (size_t i = 0; i < CRASH_FAULT_COUNT; i++)
+        if (sigismember(&after, crash_faults[i]) != 0)
+            _exit(CHILD_CRASH_BLOCKED);
+    _exit(CHILD_CRASH_UNBLOCKED);
+}
+
+PTEST(installing_the_crash_handler_unblocks_the_crash_faults)
+{
+    PT_ASSERT_EQ_INT(psup_exit_code(in_child(install_with_the_crash_faults_blocked)), CHILD_CRASH_UNBLOCKED);
 }
 
 static void return_from_the_crash_handler(const struct host_fault *fault)

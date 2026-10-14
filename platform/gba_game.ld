@@ -23,6 +23,12 @@ gMaxLines = 0;
  * Memory Map": 08000000h): the debug menu shows 0 KiB used. */
 __rom_end = 0x08000000;
 
+/* src/malloc.c stores an allocation site (a __FILE__ ":" __LINE__ string,
+ * which is in the image's read-only data) as its offset from this address.
+ * The ELF image starts at 0x40000000 (target.mk), so its first byte is
+ * close to every string. gba_game.pe.ld defines the same name for the PE link. */
+PlatformAllocationSiteBase = __executable_start;
+
 /* src/assertf.c's crash screen estimates its free stack as the frame address
  * minus __iwram_end, the end of the GBA's IWRAM data below its stack. The
  * native stack is the host's, far above the IWRAM region, so the end of the

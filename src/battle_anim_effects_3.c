@@ -582,17 +582,22 @@ const struct SpriteTemplate gGreenStarSpriteTemplate =
     .callback = AnimGreenStar,
 };
 
-#if PLATFORM_NATIVE
-#define DOOM_DESIRE_GBA_READ_END 0 // byte 0x083FC72C, see AnimTask_DoomDesireLightBeam
-#endif
-#line 585
 const s8 gDoomDesireLightBeamCoordTable[] =
 {
     0x78,
     0x50,
     0x28,
     0x00,
+#if PLATFORM_NATIVE
+    0x00, // the fifth run (data[2] == 4) reads past the table; the GBA reads gDoomDesireLightBeamDelayTable[0] (0x083FC72C), 0
+#endif
+#line 591
 };
+#if PLATFORM_NATIVE
+// The test (test/gba_table_reads.c) pins the fifth entry's value; only here is the size visible.
+_Static_assert(ARRAY_COUNT(gDoomDesireLightBeamCoordTable) == 5, "the fifth beam run reads past the four-entry table of the GBA: it needs its fifth entry");
+#line 592
+#endif
 
 const u8 gDoomDesireLightBeamDelayTable[] =
 {
@@ -2790,15 +2795,6 @@ void AnimTask_DoomDesireLightBeam(u8 taskId)
         break;
     case 1:
         gTasks[taskId].data[3] = 0;
-#if PLATFORM_NATIVE
-        // The fifth run (data[2] == 4) is past the four-entry table; the GBA
-        // reads the byte after it, the first byte of gDoomDesireLightBeamDelayTable
-        // (0x083FC72C in pokeemerald.elf), 0.
-        if (gTasks[taskId].data[2] >= ARRAY_COUNT(gDoomDesireLightBeamCoordTable))
-            gBattle_BG1_X = gTasks[taskId].data[10] + (IsOnPlayerSide(gBattleAnimTarget) ? -DOOM_DESIRE_GBA_READ_END : DOOM_DESIRE_GBA_READ_END);
-        else
-#endif
-#line 2789
         if (!IsOnPlayerSide(gBattleAnimTarget))
             gBattle_BG1_X = gTasks[taskId].data[10] + gDoomDesireLightBeamCoordTable[gTasks[taskId].data[2]];
         else

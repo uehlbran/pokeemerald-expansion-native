@@ -109,7 +109,9 @@ def scan(root):
     return found, "\n".join(texts)
 
 
-SIZE_TAKEN = re.compile(r'(?:sizeof\s*\(?\s*|ARRAY_COUNT\s*\(\s*)(\w+)')
+# An element's size, sizeof(x[0]), says nothing about the array x being sized,
+# hence the lookahead; \b keeps it from backtracking to a shorter name.
+SIZE_TAKEN = re.compile(r'(?:sizeof\s*\(?\s*|ARRAY_COUNT\s*\(\s*)(\w+)\b(?!\s*\[)')
 
 
 def sized_symbols(code):
@@ -182,6 +184,8 @@ def self_test():
     expect(sized_use("x", False, sized_symbols("sizeof(x)")) is not None, "sizeof(x) is a sized use")
     expect(sized_use("x", False, sized_symbols("sizeof x")) is not None, "sizeof x is a sized use")
     expect(sized_use("x", False, sized_symbols("sizeof(xy)")) is None, "sizeof(xy) is not a use of x")
+    expect(sized_use("x", False, sized_symbols("sizeof(x[0])")) is None, "sizeof(x[0]) is an element size, not a use of x")
+    expect(sized_use("x", False, sized_symbols("sizeof(x [0])")) is None, "sizeof(x [0]) is an element size, not a use of x")
     expect(sized_use("x", False, set()) is None, "a symbol nothing sizes is not a sized use")
     self_test_palette_files()
 

@@ -49,7 +49,7 @@ void options_print_usage(FILE *out)
         "                     so a replay sees the same time every run\n"
         "  --resume-at LINE   (a restart adds it) continue the replay after script line LINE\n"
         "  --help             this text\n",
-        OPTIONS_DEFAULT_SAVE_PATH, OPTIONS_DEFAULT_RTC_OFFSET_PATH, VIDEO_MAX_SCALE, OPTIONS_DEFAULT_SCALE,
+        OPTIONS_DEFAULT_SAVE_PATH, OPTIONS_DEFAULT_RTC_OFFSET_PATH, OPTIONS_MAX_SCALE, OPTIONS_DEFAULT_SCALE,
         OPTIONS_DEFAULT_OUT_DIR);
 }
 
@@ -101,7 +101,9 @@ static bool parse_flag(const char *arg, struct options *out)
 /* Options whose value is a string kept as it is (it points into argv). */
 static bool parse_string_option(const char *arg, const char *value, struct options *out)
 {
-    if (value == NULL)
+    /* A missing value, not a path that starts with "--": `--save --headless`
+     * is a forgotten path, not a save file of that name. */
+    if (value == NULL || (value[0] == '-' && value[1] == '-'))
         return false;
     if (strcmp(arg, CRASH_REBOOT_OPTION) == 0)
         out->persistent_state = value;
@@ -128,7 +130,7 @@ static bool parse_number_option(const char *arg, const char *value, struct optio
         out->rtc_fixed = true;
     } else if (strcmp(arg, "--resume-at") == 0 && parse_unsigned(value, UINT32_MAX, &number)) {
         out->resume_after_line = (uint32_t)number;
-    } else if (strcmp(arg, "--scale") == 0 && parse_unsigned(value, VIDEO_MAX_SCALE, &number) && number >= 1) {
+    } else if (strcmp(arg, "--scale") == 0 && parse_unsigned(value, OPTIONS_MAX_SCALE, &number) && number >= 1) {
         out->scale = (int)number;
     } else if (strcmp(arg, "--frames") == 0 && parse_unsigned(value, UINT32_MAX, &number) && number >= 1) {
         out->frame_limit = (uint32_t)number;

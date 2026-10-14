@@ -2,13 +2,16 @@ name: Labels
 
 on:
   pull_request:
+    branches:
+      - master
+      - upcoming
     types: [opened, synchronize, labeled, unlabeled]
   pull_request_review:
     types: [submitted]
 
 jobs:
   label:
-    if: ${{ github.actor != 'allcontributors[bot]' && github.event.review.state == 'approved' }}
+    if: ${{ github.actor != 'allcontributors[bot]' && github.event.review.state == 'approved' && contains(fromJSON('["master", "upcoming"]'), github.event.pull_request.base.ref) }}
     runs-on: ubuntu-latest
     steps:
       - name: check labels

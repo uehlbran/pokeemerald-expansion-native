@@ -41,12 +41,6 @@
 #include <stdint.h>
 
 #include "gba_irq.h"
-#include "gba_timing.h"
-
-/* One frame in CPU cycles: GBATEK "LCD Dimensions and Timings", 308 dots *
- * 4 cycles * 228 lines = 280896. The frame loop passes this to
- * timer_advance(). */
-#define TIMER_CYCLES_PER_FRAME GBA_CYCLES_PER_FRAME
 
 enum timer_error {
     TIMER_OK = 0,

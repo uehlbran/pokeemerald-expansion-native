@@ -248,6 +248,14 @@ must remove DC after summing, as the GBA's output capacitor did. The PSG
 is generated at the output rate with point sampling and an exact cycle
 remainder, never at m4a's 13379 Hz mixer rate, which would alias badly.
 
+Amendment 2026-10-14: the shipped build does run the PSG at m4a's 13379 Hz
+(`FRAME_AUDIO_SAMPLE_RATE_HZ`), so that the 224-sample FIFO frame mixes
+sample for sample with the PSG output. Point sampling at that rate aliases
+the square and noise channels (platform/psg.c, "RESAMPLING"), which is
+accepted for now. Whether to run the device and the PSG at the GBA's
+32768 Hz PWM grid instead, upsampling the FIFO frame, is an open decision
+for the owner; the rate has not been changed.
+
 ## 2026-10-08: UBSan shift-base is disabled for expansion's objects only
 
 Expansion's DMA macros (`include/gba/macro.h`) and several source files
@@ -398,6 +406,12 @@ refuses 66h/67h-prefixed forms and 64-bit is a hard stop until it is
 redone (milestone 7). Rejected: guarding every division site in
 expansion (nine today, unknown tomorrow) and `-fsanitize=integer-divide-
 by-zero` recovery (which gives x86's result, not ARM's).
+
+Amended 2026-10-14 (independent review, finding 01-11): the handler does not
+report every division. Completed divisions by zero are silent, as they were
+on the GBA; only a divide error the decoder cannot complete is reported, with
+its program counter, before it is passed on. 64-bit operands are decoded now
+(see "The 64-bit division rule is compiled at both widths").
 
 ## 2026-10-09: Native save-block sizes are checked, not the GBA's
 
@@ -798,10 +812,13 @@ next 64-bit build rather than the gate.
 ## 2026-10-09: CI starts on Linux only, in this project's own workflow, on pushes to main
 
 Milestone 8 asks for CI for both targets and for Windows and macOS.
-Upstream's workflows trigger on branches this repository does not have
-(`master`, `upcoming`), so they have never run here and are left as
-they are rather than edited (an edit would be a row in
-UPSTREAM_MODIFICATIONS.md for no gain). This project's workflow,
+Upstream's workflows push-trigger on branches this repository does not
+have (`master`, `upcoming`), so no push has run them here; they were left
+as they were rather than edited. (Amended 2026-10-14: `build.yml` and
+`labels.yml` also triggered on every pull request, which would have started
+upstream's ROM jobs on the first one. They now filter pull requests to the
+same two branches, a row in UPSTREAM_MODIFICATIONS.md; deleting them was
+rejected because every upgrade would conflict on the deletion.) This project's workflow,
 `.github/workflows/native.yml`, runs the gate STATUS.md records, on
 `ubuntu-latest`, on pushes to `main` and by hand only: a run is about
 an hour of a 4-core runner (the suite alone is four runs of 5862 tests)
@@ -994,7 +1011,26 @@ that forks has no thread alive at the fork: `psup_run_child` (posix_child.h)
 stops the watchdog, joining its thread, before the fork and starts it again
 after, so the child inherits no thread and no handle to one. (The
 handshake in `host_watchdog_start`, which returns only when the thread waits,
-stays: it keeps a start from racing a stop.)
+stays: it keeps a start from racing a stop.) The POSIX wait is on
+`CLOCK_MONOTONIC` (the condition variable's clock is set with
+`pthread_condattr_setclock`), so a step of the wall clock cannot move a deadline.
+
+Amended 2026-10-14, after the independent code review. The POSIX watchdog
+thread is created with every signal blocked (`pthread_sigmask` around
+`pthread_create`, the caller's mask put back after it) and keeps that mask. A
+signal sent to the process goes to any thread that does not block it, so
+until then a test's own handler (an `alarm(2)`'s, say) could run on the
+watchdog thread, against the ownership model above.
+`test/posix/test_host_thread_posix.c` sends the process a signal two hundred
+times while the test thread blocks it, and requires every one to wait for the
+test thread. And the thread now prints nothing on its error paths either: a
+failed lock or wait is recorded in the watchdog, and `host_watchdog_stop`
+reports it after the join (it printed through stdio from the thread before).
+The start handshake's reason, more exactly than "it keeps a start from racing
+a stop" above (a stop joins a thread that has not reached its loop just as
+well): `host_watchdog_start` returns only a watchdog whose thread is waiting
+on the deadline, so a thread that cannot take its lock is a reported failed
+start rather than a test that silently has no limit.
 
 The Windows source of `host_thread.h` (`host_windows_thread.c`, written with
 the Windows host layer) is the same thread with Win32 calls: it waits on an
@@ -1181,6 +1217,14 @@ and no `longjmp` across it (game_hooks leaves the stack first, as on Linux).
 What cannot be checked here: that the dispatch and the switch behave as
 reasoned; `test_host_stack`, `test_game_hooks` and the suite's battle tests
 on the Windows runner are the evidence.
+
+## 2026-10-14: macOS waits for the owner's own Windows verification
+
+The owner's ruling: no macOS work (tasks M2 to M5) starts until Windows is
+fully done (the executable, the unit tests, the replays and the suite on
+the Windows runner) and the owner has verified it by hand on a Windows
+machine. The macOS decision of earlier today (x86_64 under Rosetta, arm64
+not started) stands; only its start moves.
 
 ## 2026-10-14: The suite on Windows runs under MSYS2
 

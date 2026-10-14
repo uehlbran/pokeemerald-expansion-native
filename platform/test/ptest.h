@@ -23,37 +23,25 @@
  *                           what PTEST and PTEST_MAIN do, on a registry the
  *                           caller supplies (for testing the runner).
  *
- * Timeout: each test has a wall-clock limit of PTEST_DEFAULT_TIMEOUT_SECONDS
- * (60), so that a stuck test fails instead of blocking the suite. The
- * environment variable PTEST_TIMEOUT_SECONDS (a positive whole number of
- * seconds; anything else is ignored) overrides it for a run, for a slow
- * machine or a debugger session. A watchdog (host_thread.h: a thread that
- * only sets an atomic flag when the limit passes; no signal, no timer of the
- * process) keeps the limit, and the test's own thread looks at the flag: in
- * every assertion, and when the test returns. When it finds the limit past, it
- * abandons the test, which is reported as failed ("timed out after N
- * seconds"), and the next test runs; the binary is not killed. The abandoned
- * test's cleanup does not run, so a test that timed out may leave module
- * state, open files and locks behind: later failures in the same binary are
- * suspect, LeakSanitizer may report what it leaked, and the first failure is
- * the one to read. The reported location is the runner's line in this header;
- * the message carries the test's name. A timeout replaces any failure the
- * test had recorded (a test caught in ptest_capture included): the report is
- * always "timed out".
- * Not covered: a test that never reaches an assertion after the limit (an
- * endless loop or a blocking call with none in it) is not abandoned, because
- * nothing but the test's own thread may touch the test's state. Such a test
- * hangs the binary: give a loop an assertion, and bound a blocking call by
- * its own timeout (test/posix/posix_support.h has a bounded child and a
- * bounded read); the CI job's own time limit is the backstop.
- * ptest_set_timeout(seconds) changes the limit of the running test, counted
- * from the call (a test that is legitimately long, or the test of this
- * mechanism). The runner owns no signal and no process timer, so a test may
- * use its own alarm (test_crash_reboot's children do).
- * ptest_pause_watchdog() and ptest_resume_watchdog() stop the running test's
- * watchdog thread (joined) and start it again with the test's limit counted
- * from the resume: a test that forks must have no thread alive at the fork, so
- * the child inherits none (posix/posix_support.h's psup_run_child does this).
+ * Time limit. A test has PTEST_DEFAULT_TIMEOUT_SECONDS (60) of wall-clock
+ * time. PTEST_TIMEOUT_SECONDS in the environment (a positive whole number;
+ * anything else is ignored) replaces it for a run, and
+ * ptest_set_timeout(seconds) for the running test, counted from the call. A
+ * test over its limit is abandoned at its next assertion or when it returns,
+ * reported "timed out after N seconds" whatever it had recorded before, and
+ * the next test runs; the binary is not killed.
+ *
+ * How: a watchdog thread (host_thread.h) sets an atomic flag when the limit
+ * passes, and every assertion checks it; no signal and no process timer, so
+ * a test may use alarm(2) itself. The abandoned test is left by longjmp, so
+ * its cleanup does not run: later failures in the same binary, leaks
+ * included, are suspect, and the first failure is the one to read. A test
+ * that reaches no assertion after the limit (a loop or a blocking call
+ * without one) is not abandoned, since nothing but its own thread may touch
+ * its state: give the loop an assertion and bound the call
+ * (test/posix/posix_support.h). A test that forks must have no thread alive
+ * at the fork: ptest_pause_watchdog and ptest_resume_watchdog
+ * (posix/posix_child.h's psup_run_child calls them).
  *
  * The registry is static: a test binary is one translation unit including
  * this header. Tests run in definition order with GCC, but must not rely on it.
@@ -237,9 +225,13 @@ static inline unsigned ptest_default_timeout(void)
     return (unsigned)value;
 }
 
-/* Gives the running test seconds (more than 0) from now to finish. */
+/* Gives the running test seconds (more than 0) from now to finish. A limit
+ * that has already passed stays passed: the next assertion abandons the test
+ * with the limit that fired. */
 static inline void ptest_set_timeout(unsigned seconds)
 {
+    if (ptest_limit_passed())
+        return;
     if (host_watchdog_restart(ptest_watchdog, seconds) == 0)
         ptest_timeout_seconds = seconds;
 }
@@ -297,7 +289,8 @@ static inline int ptest_run_cases(const struct ptest_case *cases, size_t count, 
             (void)fprintf(out, "FAIL %s\n", ptest_current.outcome.message); /* ferror below */
         }
     }
-    (void)fprintf(out, "%zu passed, %zu failed\n", count - failed, (size_t)failed); /* ferror below */
+    (void)fprintf(out, "%llu passed, %llu failed\n", (unsigned long long)(count - failed),
+                  (unsigned long long)failed); /* ferror below */
     ptest_timeout_target = outer_target;
     ptest_expired = outer_expired;
     ptest_watchdog = outer_watchdog;

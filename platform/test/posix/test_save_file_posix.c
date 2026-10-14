@@ -9,7 +9,7 @@
 
 #include "save_file_fixture.h"
 
-/* A file the process may not read: fopen fails with something other than
+/* A file the process may not read: the open fails with something other than
  * ENOENT, which is corrupt (reported), not a new game. Root can read it, so
  * the expectation follows access(). */
 PTEST(a_file_that_cannot_be_opened_is_rejected_not_treated_as_new)

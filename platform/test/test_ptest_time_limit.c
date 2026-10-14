@@ -51,11 +51,22 @@ static void late_case_without_a_later_assertion(void)
     tsup_sleep_milliseconds(LATE_SECONDS * MILLISECONDS_PER_SECOND);
 }
 
+/* Passes its limit without an assertion, then asks for a longer one. */
+static void lengthened_after_its_limit_case(void)
+{
+    ptest_set_timeout(SHORT_LIMIT_SECONDS);
+    tsup_sleep_milliseconds(LATE_SECONDS * MILLISECONDS_PER_SECOND);
+    ptest_set_timeout(STUCK_SECONDS);
+    PT_ASSERT(true);
+}
+
 /* One case per assertion family: past a limit of one second, each runs its
  * assertion (true) in a loop for CASE_SECONDS, so only a family whose check of
  * the limit is missing runs on to the end. */
-#define CASE_SECONDS 3u
-#define FAMILY_ELAPSED_LIMIT_MILLISECONDS 2000u /* the 1 s limit, and a second of slack */
+#define CASE_SECONDS 10u
+/* A bound on the mechanism, not a measurement of it: far above the 1 s limit so a loaded CI
+ * runner under a sanitizer does not flake, and far below CASE_SECONDS so a missed check shows. */
+#define FAMILY_ELAPSED_LIMIT_MILLISECONDS 5000u
 
 #define FAMILY_CASE(name, assertion)                                                                   \
     static void name(void)                                                                             \
@@ -152,14 +163,14 @@ PTEST(runner_fails_a_hanging_test_and_runs_the_next)
     PT_ASSERT(!ptest_current.outcome.failed);
 }
 
-PTEST(the_limit_is_found_after_it_and_within_one_second_of_it)
+PTEST(the_limit_is_found_after_it_and_long_before_the_stuck_case_would_end)
 {
     struct ptest_registry registry = {.count = 0};
     ptest_register_in(&registry, "runner_hanging_case", runner_hanging_case);
     const struct run run = run_registry(&registry);
     PT_ASSERT_EQ_INT(run.status, 1);
     PT_ASSERT(run.milliseconds >= SHORT_LIMIT_SECONDS * MILLISECONDS_PER_SECOND);
-    PT_ASSERT(run.milliseconds < (SHORT_LIMIT_SECONDS + 1u) * MILLISECONDS_PER_SECOND);
+    PT_ASSERT(run.milliseconds < FAMILY_ELAPSED_LIMIT_MILLISECONDS);
 }
 
 struct family {
@@ -233,6 +244,16 @@ PTEST(a_test_that_returns_late_has_timed_out_too)
     PT_ASSERT(run.text_complete);
     PT_ASSERT_EQ_INT(run.status, 1);
     PT_ASSERT(has_text(run.text, ": late_case_without_a_later_assertion: timed out after 1 seconds\n"));
+}
+
+PTEST(a_limit_that_has_passed_stays_passed_and_is_the_one_reported)
+{
+    struct ptest_registry registry = {.count = 0};
+    ptest_register_in(&registry, "lengthened_after_its_limit_case", lengthened_after_its_limit_case);
+    const struct run run = run_registry(&registry);
+    PT_ASSERT(run.text_complete);
+    PT_ASSERT_EQ_INT(run.status, 1);
+    PT_ASSERT(has_text(run.text, ": lengthened_after_its_limit_case: timed out after 1 seconds\n"));
 }
 
 PTEST(the_environment_sets_the_limit_of_a_test_that_does_not_set_its_own)

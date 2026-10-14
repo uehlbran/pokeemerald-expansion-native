@@ -14,14 +14,17 @@
 #include <stdint.h>
 #include <stdio.h>
 
-#include "video.h"
-
 /* What an option takes when the command line does not give it. */
 #define OPTIONS_DEFAULT_SAVE_PATH "pokeemerald.sav"
 #define OPTIONS_DEFAULT_RTC_OFFSET_PATH "pokeemerald.rtc"
-#define OPTIONS_DEFAULT_SCALE VIDEO_DEFAULT_SCALE
+#define OPTIONS_DEFAULT_SCALE 3        /* 720x480 */
 #define OPTIONS_DEFAULT_FRAME_LIMIT 0u /* none */
 #define OPTIONS_DEFAULT_OUT_DIR "."
+
+/* The largest --scale, the window's whole multiple of the GBA's 240x160:
+ * 16 gives 3840x2560, beyond any display. video.h takes it as its own
+ * bound. */
+#define OPTIONS_MAX_SCALE 16
 
 struct options {
     bool headless;

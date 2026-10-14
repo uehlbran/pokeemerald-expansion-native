@@ -5,6 +5,22 @@
  * and bad arguments are refused. Deadlines are whole seconds, so these tests
  * wait one or two. That no thread is left behind is counted in
  * linux/test_host_thread_linux.c.
+ *
+ * That the deadline follows the monotonic clock, not the wall clock, is covered
+ * by inspection (WATCHDOG_CLOCK in host_posix.c, the condition variable's
+ * attribute set with pthread_condattr_setclock and checked): a test would have
+ * to step the system's wall clock, which needs privileges, and reading the
+ * attribute back would need a test-only accessor in host_thread.h, which this
+ * module does not carry.
+ *
+ * Also by inspection, for the same reason (no fault can be injected into the
+ * pthread calls or the clock without such an accessor): that a failure on the
+ * watchdog's thread (its lock, its wait) is not printed there but recorded,
+ * and reported by host_watchdog_stop after the join (watchdog_thread and
+ * host_watchdog_stop in host_posix.c; no call on the thread's path prints);
+ * and that a failed or timed-out handshake in host_watchdog_start is
+ * reported, the thread ended and nothing kept, and a failed clock there ends
+ * the wait without reading the time it did not get (watchdog_await_start).
  */
 #include <stdatomic.h>
 
@@ -35,7 +51,7 @@ PTEST(the_flag_is_set_after_the_deadline_and_not_before)
     host_watchdog_stop(watchdog);
     PT_ASSERT(!early);
     PT_ASSERT(flag_set(&expired));
-    PT_ASSERT(elapsed >= MILLISECONDS_PER_SECOND - 50u); /* the wall clock and the monotonic one may differ a little */
+    PT_ASSERT(elapsed >= MILLISECONDS_PER_SECOND - 50u); /* the sleeps and the deadline round differently */
     PT_ASSERT(elapsed < 2 * MILLISECONDS_PER_SECOND);
 }
 

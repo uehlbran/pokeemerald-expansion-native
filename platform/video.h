@@ -2,8 +2,10 @@
  * video.h: the LCD panel, via SDL.
  *
  * Stands in for the GBA's 240x160 LCD (GBATEK "LCD Dimensions and Timings").
- * The PPU draws a frame into a BGR555 buffer; this module shows it. It and
- * audio are the only modules that call SDL's video API. Design:
+ * The PPU draws a frame into a BGR555 buffer; this module shows it. It is the
+ * only module that calls SDL's video API; the other modules that use SDL
+ * (audio, input, frame, frame_pacer, main) name what they use in their own
+ * headers. Design:
  * docs/RESEARCH.md "Video".
  *
  * Headless mode creates no window and no SDL state; present just discards.
@@ -17,15 +19,16 @@
 
 #include <SDL_pixels.h>
 
+#include "options.h"
+
 /* GBATEK "LCD Dimensions and Timings": 240 x 160 pixel visible area. */
 #define VIDEO_WIDTH 240u
 #define VIDEO_HEIGHT 160u
 #define VIDEO_PIXEL_COUNT (VIDEO_WIDTH * VIDEO_HEIGHT)
 
-/* Window scale (integer multiple of 240x160). 3 gives 720x480. */
-#define VIDEO_DEFAULT_SCALE 3
-/* Upper bound: 16 gives 3840x2560, beyond any display; larger is a caller bug. */
-#define VIDEO_MAX_SCALE 16
+/* The largest window scale (a whole multiple of 240x160): the command
+ * line's (options.h); a larger one is a caller bug. */
+#define VIDEO_MAX_SCALE OPTIONS_MAX_SCALE
 
 /* Forward declaration of SDL's event union (SDL_Event is a typedef of it), so
  * the event callback type needs no SDL_events.h. This header does include

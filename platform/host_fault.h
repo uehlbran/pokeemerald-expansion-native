@@ -8,7 +8,7 @@
  * crash_reboot reboots after a crash (both headers say how).
  *
  * Wraps, on Linux: signals (sigaction with SA_SIGINFO and SA_ONSTACK,
- * sigaltstack, sigprocmask, raise; host_posix.c) and the registers the
+ * sigaltstack, pthread_sigmask, raise; host_posix.c) and the registers the
  * kernel saved in the handler's ucontext_t (uc_mcontext.gregs, i386 and
  * x86-64; host_linux.c). On Windows (host_windows_fault.c): a vectored
  * exception handler, called first, for the divide error; the process's
@@ -20,7 +20,9 @@
  * host_process_restart are (on Windows the restart creates a process, which
  * a handler must not: host_process_restart_is_handler_safe). They are
  * installed and removed from the main thread; a fault of another thread
- * (SDL's) reaches them too, on the thread that faulted.
+ * (SDL's) reaches them too, on the thread that faulted and on that thread's
+ * own stack: the alternate stack (Windows: the kept stack) is the installing
+ * thread's, so a stack overflow on another thread is not reported.
  */
 #ifndef PLATFORM_HOST_FAULT_H
 #define PLATFORM_HOST_FAULT_H
@@ -41,10 +43,11 @@ enum host_fault_register {
 };
 
 /* The bytes of the alternate stack the crash handler runs on (a crash may be
- * a stack overflow), which a divide-error handler then runs on too. Far
- * above glibc's MINSIGSTKSZ at both widths, with room for the sanitizers'
+ * a stack overflow), which a divide-error handler then runs on too; it is
+ * the installing thread's alone (sigaltstack is per thread). Far above
+ * glibc's MINSIGSTKSZ at both widths, with room for the sanitizers'
  * interceptors. Windows has no alternate stack: this many bytes at the end of
- * the main thread's stack are kept for the handler of a stack overflow
+ * the installing thread's stack are kept for the handler of a stack overflow
  * (SetThreadStackGuarantee). */
 #define HOST_FAULT_ALTERNATE_STACK_SIZE (64u * 1024u)
 

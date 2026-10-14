@@ -78,9 +78,8 @@ Rules 1 to 4 below are from it; rule 5 is from the policy at the top of
 
 ## Gates
 
-A change is merged when all of these pass. `docs/STATUS.md`, "Gates and
-their state", is the list of gates (a to h); the commands are in
-`docs/BUILDING.md`, the numbers in `docs/STATUS.md`. Gate (a) is
+A change is merged when all of these pass. `docs/BUILDING.md`, "Gates", is
+the list of gates (a to h) with the command for each. Gate (a) is
 milestone-level: a native build from a clean clone with the documented
 prerequisites, run before a milestone is declared done. Gate (h), the
 cross-width save round trip (`tests/smoke/run_cross_width.sh`), is run by
@@ -105,7 +104,7 @@ a change to the save format, `platform/save_*` or `SaveBlock1`.
    `ASAN_OPTIONS=suppress_equal_pcs=0` (`platform/test_runner/SUITE-LOG.md`).
 4. Gate (c), the GBA target: the ROM is unchanged (`make -j"$(nproc)"`, then
    `sha1sum pokeemerald.gba` against the value for 1.17.1 in
-   `docs/STATUS.md`; a change that moves it changes GBA behaviour and is a
+   `docs/BUILDING.md`, "GBA target"; a change that moves it changes GBA behaviour and is a
    bug), and `TEST=1 make -j"$(nproc)" check` equals the baseline.
 5. Format and lint: `make -C platform gate` runs them with the unit tests
    at both widths (`docs/BUILDING.md`).
@@ -189,13 +188,11 @@ decision says why that approach.
 
 ## Upstream
 
-We do not file issues or pull requests upstream without the repository
-owner's decision. The reason is recorded in `docs/STATUS.md`
-("Upstream issues"): rh-hideout's policy rejects work written with LLM
-assistance, and the seven reports already filed were closed on that
-ground. Bugs we find in expansion are fixed under guards here and
-recorded in `docs/UPSTREAM_MODIFICATIONS.md`; where a report exists, the
-row links it.
+Do not file issues or pull requests upstream from this repository's work
+without the repository owner's decision. The seven reports already filed
+were closed by rh-hideout; they are linked from the rows of
+`docs/UPSTREAM_MODIFICATIONS.md` that say "Reported upstream". Bugs we find in
+expansion are fixed under guards here and recorded in that file.
 
 ## What will not be accepted
 

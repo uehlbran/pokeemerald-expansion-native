@@ -1211,14 +1211,7 @@ static void AnimTask_ExtrasensoryDistortion_Step(u8 taskId)
         i = task->data[14];
         while (i <= task->data[15])
         {
-#if PLATFORM_NATIVE
-            // Stage 1 reaches sine index 320, one past gSineTable; the GBA reads
-            // 0x041E there (include/trig.h), not what follows the table natively.
-            s16 var2 = ((sineIndex == SINE_TABLE_LENGTH ? SINE_TABLE_GBA_READ_END : gSineTable[sineIndex]) >> task->data[12]);
-#else
             s16 var2 = (gSineTable[sineIndex] >> task->data[12]);
-#endif
-#line 1215
             if (var2 > 0)
                 var2 += (task->data[1] & 3);
             else if (var2 < 0)

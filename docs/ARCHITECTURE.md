@@ -46,22 +46,25 @@ Not GBA memory, placed below 2^27 so its addresses fit the battle test
 runner's 27-bit fields: the stack `PlatformCallWithStack` runs the battle
 tests' functions on, 1 MiB at 0x01800000 (`gba_regions.ld`).
 
-On Windows (a cross-build from Linux with MinGW-w64, x86-64 only) the
-regions are sections of the PE image, because a PE section's address is an
-offset above the image base and the image cannot start at 0x40000000 with the
-regions below it. The image is based at 0x01800000, below the lowest region,
-with no address randomisation and no base relocations, so that the loader maps
-it there or refuses it; the code is at 0x40001000, where the Linux build's is
-(`platform/gba_regions.pe.ld`, `platform/gba_game.pe.ld`, `platform/target.mk`).
-The loader refuses an image whose sections are not adjacent, so the stretches
-between the regions are sections of their own, uninitialised and read-only
-(`platform/gba_gaps.pe.s`): the image spans 1 GiB of address space, but the
-gaps are not stored in the file and the probe measured no commit charge for
-them. The battle runner's stack is the first section, at 0x01801000, because
-the headers take 0x01800000. The probe that showed the loader accepts this
-layout, and refuses the one with holes: `research/probes/README.md`, W1. `platform/build_glue/check_pe_layout.py` checks
-every link's result against it, since the executable cannot be run where it is
-built.
+On Windows (a cross-build from Linux with MinGW-w64, x86-64 only) the regions
+are sections of the PE image, because a PE section's address is an offset above
+the image base and the image cannot start at 0x40000000 with the regions below
+it (`platform/gba_regions.pe.ld`, `platform/gba_game.pe.ld`,
+`platform/target.mk`):
+
+- The image base is 0x01800000, below the lowest region, with no address
+  randomisation and no base relocations: the loader maps it there or refuses it.
+- The code is at 0x40001000, where the Linux build's is.
+- The stretches between the regions are sections of their own, uninitialised
+  and read-only (`platform/gba_gaps.pe.s`), because the loader refuses an image
+  whose sections are not adjacent. The image spans 1 GiB of address space; the
+  gaps are not stored in the file and cost no commit charge.
+- The battle runner's stack is the first section, at 0x01801000; the headers
+  take 0x01800000.
+- `platform/build_glue/check_pe_layout.py` checks every link's result, because
+  the executable cannot be run where it is built. That the loader accepts the
+  layout, and refuses one with holes, was measured on a Windows runner
+  (`research/probes/README.md`).
 
 The executable is linked at 0x40000000 so it never overlaps a region. The
 two places where expansion takes a pointer to be in the cartridge ROM are
@@ -181,12 +184,14 @@ Header-only: `gba_irq.h` (the fourteen interrupt sources), `gba_timing.h`
 Dependencies point one way: `main` depends on everything; `frame` on the
 modules a frame drives; `ppu`, `dma`, `timer`, `interrupt`, `psg`, `flash`
 depend on `gba_memmap` for addresses and bounds; `bios` depends on
-`gba_memmap` and `interrupt`; nothing but `frame`, `main` and `replay_session` (which writes the
-screenshot) depends on `video` or `audio`, and nothing on `main`. The modules do not include
-expansion's headers; the exceptions are `gba_memmap.h`, which may include
+`gba_memmap` and `interrupt`; nothing but `frame`, `main`, `replay_session`
+(which writes the screenshot) and `options` (which takes `video.h`'s default
+scale) depends on `video` or `audio`, and nothing on `main`. The modules do
+not include expansion's headers; the exceptions are `gba_memmap.h`, which may include
 `gba/defines.h` and `gba/io_reg.h` as system headers to reuse their names
 and assert ours match, `m4a_output.c`, which reads the m4a engine's
-`struct SoundInfo` (`gba/m4a_internal.h`) as the DMA did, the `m4a/`
+`struct SoundInfo` (`gba/m4a_internal.h`) as the DMA did, `flash.c`, which is an
+entry of expansion's flash driver table (`gba/flash_internal.h`), the `m4a/`
 engine, which is game code, and `inspect.c`, `inspect_menu.c` and
 `inspect_args.c`, which read the game's variables and are compiled with the
 game's defines (`platform/game_flags.mk`). The host layer depends on no
@@ -195,20 +200,20 @@ more), and only the modules of the next section depend on it.
 
 ## The host layer
 
-Thirteen modules need something of the operating system beyond the C library
-and SDL, and each need is one of six concerns. Each concern is one header,
-`platform/host_<concern>.h`, which says what it stands in for and which OS
+Eleven modules and two test fixtures need something of the operating system
+beyond the C library and SDL, and each need is one of seven concerns. Each
+concern is one header, `platform/host_<concern>.h`, which says what it stands in for and which OS
 facility it wraps; the modules call it and contain no OS call of their own
 (no `sigaction`, `ucontext`, `/proc`, `getauxval`, `pthread`, `fsync`).
 `research/m8-inventory.md`, sections 1.2, 3 and 5.1, has the counterparts on
 Windows and macOS; `DECISIONS.md`, "The ports share a thin host layer", why
-it is one layer and not `#ifdef`s in the modules. The seventh header,
-`host_thread.h`, is used by the unit tests' time limit only, not by a module.
+it is one layer and not `#ifdef`s in the modules. `host_thread.h` serves only
+the unit tests' time limit.
 
 | Header | Concern | Its users | Linux |
 |---|---|---|---|
 | `host_memory.h` | memory at fixed addresses: where the link put each GBA region and the battle runner's stack; pages mapped at run time | `gba_memmap`, `game_hooks`, `transfer_bounds`, the m4a tests | `gba_regions.ld`'s symbols; `mmap` with `MAP_FIXED_NOREPLACE` |
-| `host_fault.h` | hardware faults with the faulting context: the divide-error and crash handlers' install and uninstall, the registers by name and by ModRM number, the alternate stack | `arm_division`, `crash_reboot` | `sigaction`, `sigaltstack`, `sigprocmask`, `uc_mcontext.gregs` |
+| `host_fault.h` | hardware faults with the faulting context: the divide-error and crash handlers' install and uninstall, the registers by name and by ModRM number, the alternate stack | `arm_division`, `crash_reboot` | `sigaction`, `sigaltstack`, `pthread_sigmask`, `uc_mcontext.gregs` |
 | `host_process.h` | the executable's own file, and starting it again | `crash_reboot`, `restart`, `symbols` | `/proc/self/exe`, `readlink`, `execve` |
 | `host_image.h` | the bounds of the executable's image and of the main thread's stack; its read-only segments | `transfer_bounds`, `game_hooks` (`PlatformIsRomPointer`) | `__executable_start`, `__data_start`, `_end`, `getauxval(AT_PHDR)`, `pthread_getattr_np` |
 | `host_stack.h` | running a function on a stack of the caller's choosing | `game_hooks` (`PlatformCallWithStack`) | `ucontext`, with AddressSanitizer's fiber annotations |
