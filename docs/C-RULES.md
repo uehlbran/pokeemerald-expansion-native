@@ -68,6 +68,58 @@ the audio or main loop needs it, uses SDL's primitives with a documented
 ownership model and no shared mutable state without a lock; prefer
 single-threaded designs where the references prove they suffice.
 
+## Concurrency, non-negotiable (owner's standing addition, 2026-10-14)
+
+The platform is single-threaded by design: push-model audio, no callback
+thread, one thread that runs the game and every module. Keep it that
+way. Any new thread requires a DECISIONS.md entry justifying why a
+single-threaded design cannot work, plus a written ownership model
+naming which thread owns each piece of state.
+
+Signal handlers, and their Windows replacements (structured or vectored
+exception handlers), may only call async-signal-safe functions per
+signal-safety(7); may share state with normal code only through
+`volatile sig_atomic_t` or lock-free C11 atomics; and never allocate,
+print through stdio, or take locks. `volatile` is never a
+synchronization mechanism.
+
+Shared state between threads uses C11 atomics with each memory order
+justified in a comment, or an SDL mutex with a documented lock order.
+
+The test-timeout replacement for SIGALRM must not let a second thread
+touch game state: prefer a design where a timer only sets an atomic flag
+the game thread checks, and if a thread is unavoidable it may do nothing
+else.
+
+Any change that introduces a thread adds a ThreadSanitizer build of the
+affected unit tests and replays to the gate (64-bit, separate from the
+AddressSanitizer build, since the two cannot combine).
+
+Save writes are crash-safe: write to a temporary file, flush, then
+rename, then sync the directory (verified on 2026-10-14 for the two
+durable files, the save file and the RTC offset, both through
+`host_file.h`; the replays' dumps and screenshots are test outputs, not
+durable state). Any new durable write follows `host_file.h`.
+
+Reviewers explicitly check every diff for data races, signal safety,
+lock ordering, fork or exec in a process that may have threads, and
+file-operation races, and report what they checked.
+
+## Code quality for a public repository (owner's standing addition, 2026-10-14)
+
+People will judge this repository for being AI-built. Names read
+clearly without the spec open. Comments explain why, never restate what
+the code does; no generated-sounding filler ("This function handles..."),
+no comment on every line. Small cohesive modules with narrow headers:
+high cohesion, low coupling, no speculative abstraction. Leave everything
+we own better than you found it on every touched call chain. Expansion's
+own files stay untouched except where a hardware assumption forces it
+(UPSTREAM_MODIFICATIONS.md).
+
+Workers receive this file, the concurrency section included, verbatim in
+every task; the first-pass reviewer checks each diff against it line by
+line before it reaches the orchestrator.
+
 ## Testing, non-negotiable
 
 Test-driven development for every piece of the platform layer that can

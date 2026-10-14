@@ -22,9 +22,9 @@
  * src/battle_ai_util.c GetHealthPercentage, src/battle_anim_electric.c
  * AnimSparkElectricityFlashing_Step).
  *
- * x86's div and idiv raise a divide error in both cases, which Linux
- * delivers as SIGFPE. arm_division_init installs a SIGFPE handler that
- * decodes the faulting instruction (opcode F7h, ModRM reg 6 or 7, any
+ * x86's div and idiv raise a divide error in both cases, which the host
+ * delivers as a fault (Linux: SIGFPE; host_fault.h). arm_division_init
+ * installs a handler for it that decodes the faulting instruction (opcode F7h, ModRM reg 6 or 7, any
  * operand form, segment prefixes CS, DS, ES or SS, and on x86-64 a REX
  * prefix), writes libgcc's results into EAX or RAX (quotient) and EDX or
  * RDX (remainder), and resumes after the instruction: a 32-bit operand gets
@@ -36,7 +36,8 @@
  * mode), or kill the process as without this module, after one line on
  * stderr with the program counter. The handler is async-signal-safe (it
  * only reads the instruction and its operand and edits the saved
- * registers). i386 and x86-64 only (anything else does not compile).
+ * registers, through host_fault). i386 and x86-64 only (anything else does
+ * not compile).
  * Single-threaded.
  */
 #ifndef ARM_DIVISION_H
@@ -44,17 +45,17 @@
 
 enum arm_division_error {
     ARM_DIVISION_OK = 0,
-    ARM_DIVISION_ERR_SIGNAL = -1 /* sigaction failed */
+    ARM_DIVISION_ERR_SIGNAL = -1 /* host_fault could not install the handler */
 };
 
-/* Installs the SIGFPE handler, keeping the one it replaces to pass other
- * SIGFPEs on to. Returns ARM_DIVISION_OK, or an error after a report on
- * stderr with nothing installed. Calling it again first restores the
- * previous handler. */
+/* Installs the divide-error handler (host_fault), keeping the one it
+ * replaces to pass other SIGFPEs on to. Returns ARM_DIVISION_OK, or an error
+ * after a report on stderr with nothing installed. Calling it again first
+ * restores the previous handler. */
 int arm_division_init(void);
 
-/* Restores the SIGFPE handler that was installed before init. Safe at any
- * time, and twice. */
+/* Restores the divide-error handler that was installed before init. Safe at
+ * any time, and twice. */
 void arm_division_shutdown(void);
 
 #endif /* ARM_DIVISION_H */

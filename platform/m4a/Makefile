@@ -37,8 +37,10 @@ TEST_SRCS    := $(wildcard $(PLATFORM)/test/test_m4a_*.c)
 TEST_BINS    := $(TEST_SRCS:$(PLATFORM)/test/%.c=$(BUILD)/%)
 
 # test_m4a_output.c tests ../m4a_output.c, which reads the engine's SoundInfo
-# through ../gba_memmap.c's regions.
-PLATFORM_SRCS := m4a_output.c gba_memmap.c
+# through ../gba_memmap.c's regions; gba_memmap.c and the tests' support find
+# the regions, and map the low page, through the host layer (../host.mk).
+include $(PLATFORM)/host.mk
+PLATFORM_SRCS := m4a_output.c gba_memmap.c $(HOST_SRCS)
 
 COMMON_OBJS := $(ENGINE_SRCS:%.c=$(BUILD)/obj/%.o) $(SUPPORT_SRCS:%.c=$(BUILD)/obj/%.o) \
                $(PLATFORM_SRCS:%.c=$(BUILD)/obj/platform/%.o) $(BUILD)/obj/m4a_tables.o
@@ -47,8 +49,8 @@ COMMON_OBJS := $(ENGINE_SRCS:%.c=$(BUILD)/obj/%.o) $(SUPPORT_SRCS:%.c=$(BUILD)/o
 
 all: $(TEST_BINS)
 
-# Runs every test binary, then fails if any exited non-zero or printed a
-# sanitizer report.
+# Runs every test binary, then fails if any exited non-zero, printed a
+# sanitizer report, or ended without ptest's "N passed, 0 failed" line.
 test: $(TEST_BINS)
 	@status=0; \
 	for bin in $(TEST_BINS); do \
@@ -59,6 +61,8 @@ test: $(TEST_BINS)
 			echo "FAILED: $$bin exited with status $$code"; status=1; \
 		elif grep -qE 'Sanitizer|runtime error:' $$bin.log; then \
 			echo "FAILED: $$bin printed a sanitizer report"; status=1; \
+		elif ! grep -qE '^[0-9]+ passed, 0 failed$$' $$bin.log; then \
+			echo "FAILED: $$bin ended without its summary line"; status=1; \
 		fi; \
 	done; \
 	if [ $$status -eq 0 ]; then echo "all m4a tests passed (BITS=$(BITS))"; fi; \

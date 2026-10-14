@@ -14,7 +14,7 @@
  *   frame             frames the platform has run (frame_count)
  *   callback2         gMain.callback2 by name: a table of the game's
  *                     globally declared callbacks first, then any function
- *                     of the executable by its ELF symbol (symbols.h), else
+ *                     of the executable by its symbol map (symbols.h), else
  *                     "unknown:0x<address>"; "none" when NULL
  *   task_count        active tasks (gTasks)
  *   task_first        the function of the active task with the lowest id,
@@ -79,7 +79,7 @@
 /* The longest value a fact has, including the NUL. */
 #define INSPECT_VALUE_SIZE 256u
 
-/* Loads the executable's symbols for naming callbacks. A failure is
+/* Loads the executable's symbol map for naming callbacks. A failure is
  * reported and is not fatal: callbacks outside the table then read
  * "unknown:0x...". Returns 0 or -1 for that. */
 int inspect_init(void);

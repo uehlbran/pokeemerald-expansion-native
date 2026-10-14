@@ -8,7 +8,8 @@
 #include <stdbool.h>
 #include <stdio.h>
 #include <string.h>
-#include <unistd.h>
+
+#include "host_process.h"
 
 /* The two arguments --resume-at LINE are always appended; room for them is
  * kept when the others are added. */
@@ -59,10 +60,10 @@ int restart_build_args(int argc, char *const *argv, uint32_t resume_line, int64_
 int restart_exec(const struct restart_args *args)
 {
     if (fflush(NULL) != 0) {
-        (void)fprintf(stderr, "restart: fflush failed before execv: %s\n", strerror(errno));
+        (void)fprintf(stderr, "restart: fflush failed before the restart: %s\n", strerror(errno));
         return -1;
     }
-    execv(RESTART_EXE_PATH, args->argv);
-    (void)fprintf(stderr, "restart: execv(%s) failed: %s\n", RESTART_EXE_PATH, strerror(errno));
+    (void)host_process_restart(args->argv); /* returns only on failure */
+    (void)fprintf(stderr, "restart: starting the executable again failed: %s\n", strerror(errno));
     return -1;
 }

@@ -14,19 +14,23 @@
 #   make -C platform clean         remove build/
 #
 # Layout: every platform/*.c is a module and goes into libplatform.a, so a new
-# module needs no edit here. The m4a engine (platform/m4a/m4a_*.c, the C
-# translation of src/m4a_1.s) goes into libplatform.a too; it calls into
-# expansion's src/m4a.c and src/m4a_tables.c, which the game link provides.
+# module needs no edit here; of the host layer's sources (host_*.c), only
+# those of HOST_OS (host.mk, Linux by default) do. The m4a engine
+# (platform/m4a/m4a_*.c, the C translation of src/m4a_1.s) goes into
+# libplatform.a too; it calls into expansion's src/m4a.c and src/m4a_tables.c,
+# which the game link provides.
 # Every platform/test/test_<name>.c is a test binary, build/<bits>/test_<name>,
 # linked with:
 #   - platform/<name>.c, if it exists (the module under test);
 #   - the files named on a "// deps:" line near the top of the test, paths
 #     relative to platform/, for example
 #         // deps: gba_memmap.c interrupt.c
-#     (a leading "#" after the slashes, "// # deps:", is accepted too).
+#     (a leading "#" after the slashes, "// # deps:", is accepted too);
+#   - the host layer's sources, which every test may reach through a module.
 # Tests include "ptest.h" (platform/test/ptest.h) and their module's header.
 
 include game_flags.mk
+include host.mk
 
 BITS ?= 32
 ifeq ($(filter $(BITS),32 64),)
@@ -114,8 +118,10 @@ LDFLAGS_ALL := -m$(BITS) $(SANITIZERS) $(GBA_LDFLAGS)
 # cannot weaken them: leaks detected, no suppressions file, UBSan backtraces.
 override SANITIZER_ENV := ASAN_OPTIONS=detect_leaks=1 LSAN_OPTIONS= UBSAN_OPTIONS=print_stacktrace=1
 
-MODULE_SRCS := $(wildcard *.c) $(wildcard m4a/m4a_*.c)
+PLATFORM_SRCS := $(filter-out host_%.c,$(wildcard *.c)) $(HOST_SRCS)
+MODULE_SRCS := $(PLATFORM_SRCS) $(wildcard m4a/m4a_*.c)
 MODULE_OBJS := $(MODULE_SRCS:%.c=$(OBJ_DIR)/%.o)
+HOST_OBJS   := $(HOST_SRCS:%.c=$(OBJ_DIR)/%.o)
 TEST_SRCS   := $(wildcard test/test_*.c)
 TEST_NAMES  := $(TEST_SRCS:test/%.c=%)
 TEST_BINS   := $(TEST_NAMES:%=$(BUILD_DIR)/%)
@@ -160,6 +166,10 @@ $(GAME_FLAG_OBJS): CFLAGS_ALL := $(subst -MMD,-MD,$(CFLAGS_ALL))
 # the object is rebuilt once).
 $(GAME_FLAG_OBJS): Makefile game_flags.mk
 
+# The tests whose link also writes the binary's function map (host.mk's
+# write_symbol_map), as the game's does: test_symbols reads its own.
+SYMBOL_MAP_TESTS := test_symbols
+
 # The files a test names on its "// deps:" line.
 test_deps = $(shell sed -n -E 's@^//[[:space:]]*\#?[[:space:]]*deps:@@p' test/$(1).c)
 # The module under test, if the test is named after one, plus its deps.
@@ -167,14 +177,16 @@ test_inputs = $(wildcard $(1:test_%=%).c) $(call test_deps,$(1))
 
 define TEST_LINK_RULE
 $(foreach dep,$(call test_deps,$(1)),$(if $(wildcard $(dep)),,$(error test/$(1).c lists '$(dep)' on its deps line, but platform/$(dep) does not exist)))
-$(BUILD_DIR)/$(1): $(OBJ_DIR)/test/$(1).o $(patsubst %.c,$(OBJ_DIR)/%.o,$(call test_inputs,$(1))) $(REGIONS_LD) $(GAME_LD)
+$(BUILD_DIR)/$(1): $(OBJ_DIR)/test/$(1).o $(patsubst %.c,$(OBJ_DIR)/%.o,$(call test_inputs,$(1))) $(HOST_OBJS) $(REGIONS_LD) $(GAME_LD)
 	$$(CC) $$(LDFLAGS_ALL) -o $$@ $$(filter %.o,$$^) $$(SDL_LIBS)
+	$$(if $$(filter $$(SYMBOL_MAP_TESTS),$(1)),$$(call write_symbol_map,$$@,$$@.symbols) || { rm -f $$@; exit 1; })
 endef
 $(foreach name,$(TEST_NAMES),$(eval $(call TEST_LINK_RULE,$(name))))
 
-# Runs every test even after a failure, then fails if any test exited non-zero
-# or printed a sanitizer report (a report that did not change the exit status
-# still fails the run).
+# Runs every test even after a failure, then fails if any test exited non-zero,
+# printed a sanitizer report (a report that did not change the exit status
+# still fails the run), or ended without ptest's "N passed, 0 failed" line (a
+# binary that exits early, from a test, passes no test).
 test: $(TEST_BINS)
 	@status=0; \
 	for bin in $(TEST_BINS); do \
@@ -185,6 +197,8 @@ test: $(TEST_BINS)
 			echo "FAILED: $$bin exited with status $$code"; status=1; \
 		elif grep -qE 'Sanitizer|runtime error:' $$bin.log; then \
 			echo "FAILED: $$bin printed a sanitizer report"; status=1; \
+		elif ! grep -qE '^[0-9]+ passed, 0 failed$$' $$bin.log; then \
+			echo "FAILED: $$bin ended without its summary line"; status=1; \
 		fi; \
 	done; \
 	if [ $$status -eq 0 ]; then echo "all platform tests passed (BITS=$(BITS))"; fi; \
@@ -199,7 +213,7 @@ clean:
 # difftest, arm_division's libgcc record, tests and their headers. The build's
 # own output is not ours.
 FORMAT_FILES := $(shell find . -path ./build -prune -o \( -name '*.c' -o -name '*.h' \) -print | sort)
-LINT_SRCS    := $(wildcard *.c) $(wildcard m4a/*.c) $(wildcard m4a/difftest/*.c) $(wildcard arm_division_libgcc/*.c) \
+LINT_SRCS    := $(PLATFORM_SRCS) $(wildcard m4a/*.c) $(wildcard m4a/difftest/*.c) $(wildcard arm_division_libgcc/*.c) \
                 $(wildcard test/*.c)
 
 # A missing tool must fail the target, not pass it silently.

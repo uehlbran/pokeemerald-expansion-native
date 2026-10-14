@@ -17,10 +17,11 @@
  * executable, before any code runs. The executable is linked non-PIE at
  * 0x40000000 (-Wl,-Ttext-segment) to stay clear of every region on both bit
  * widths. So init has nothing to map: it checks that the linker put each
- * section where this module's table says, at the region's base and exactly
- * the region's size in whole 4 KiB pages long (the script cannot include
- * this module's header, so the numbers exist twice), and fails loudly if
- * not; and shutdown has nothing to release. Every test binary and the game link with
+ * section (host_memory_region, which wraps the script's symbols) where this
+ * module's table says, at the region's base and exactly the region's size in
+ * whole 4 KiB pages long (the script cannot include this module's header, so
+ * the numbers exist twice), and fails loudly if not; and shutdown has
+ * nothing to release. Every test binary and the game link with
  * the fragment (platform/Makefile; Makefile.native must do the same).
  *
  * WHY NOT RUNTIME MMAP. Both ways were tried on 2026-10-08 with 32-bit and
@@ -59,16 +60,7 @@
 #include <stdio.h>
 
 #include "gba_memmap.h"
-
-/* Section bounds defined by gba_regions.ld. Only their addresses are used. */
-extern const unsigned char gba_linked_ewram_start[], gba_linked_ewram_end[];
-extern const unsigned char gba_linked_iwram_start[], gba_linked_iwram_end[];
-extern const unsigned char gba_linked_io_start[], gba_linked_io_end[];
-extern const unsigned char gba_linked_mgba_debug_start[], gba_linked_mgba_debug_end[];
-extern const unsigned char gba_linked_palette_ram_start[], gba_linked_palette_ram_end[];
-extern const unsigned char gba_linked_vram_start[], gba_linked_vram_end[];
-extern const unsigned char gba_linked_oam_start[], gba_linked_oam_end[];
-extern const unsigned char gba_linked_sram_start[], gba_linked_sram_end[];
+#include "host_memory.h"
 
 static const struct gba_region_info regions[GBA_REGION_COUNT] = {
     [GBA_REGION_EWRAM] = {GBA_EWRAM_BASE, GBA_EWRAM_SIZE, "EWRAM"},
@@ -79,22 +71,6 @@ static const struct gba_region_info regions[GBA_REGION_COUNT] = {
     [GBA_REGION_VRAM] = {GBA_VRAM_BASE, GBA_VRAM_SIZE, "VRAM"},
     [GBA_REGION_OAM] = {GBA_OAM_BASE, GBA_OAM_SIZE, "OAM"},
     [GBA_REGION_SRAM] = {GBA_SRAM_BASE, GBA_SRAM_SIZE, "SRAM"},
-};
-
-struct linked_section {
-    const unsigned char *start;
-    const unsigned char *end;
-};
-
-static const struct linked_section linked_sections[GBA_REGION_COUNT] = {
-    [GBA_REGION_EWRAM] = {gba_linked_ewram_start, gba_linked_ewram_end},
-    [GBA_REGION_IWRAM] = {gba_linked_iwram_start, gba_linked_iwram_end},
-    [GBA_REGION_IO] = {gba_linked_io_start, gba_linked_io_end},
-    [GBA_REGION_MGBA_DEBUG] = {gba_linked_mgba_debug_start, gba_linked_mgba_debug_end},
-    [GBA_REGION_PALETTE_RAM] = {gba_linked_palette_ram_start, gba_linked_palette_ram_end},
-    [GBA_REGION_VRAM] = {gba_linked_vram_start, gba_linked_vram_end},
-    [GBA_REGION_OAM] = {gba_linked_oam_start, gba_linked_oam_end},
-    [GBA_REGION_SRAM] = {gba_linked_sram_start, gba_linked_sram_end},
 };
 
 /* gba_regions.ld gives each region whole pages of this size (the x86 page). */
@@ -132,10 +108,8 @@ static int check_linked_section(enum gba_region region, uintptr_t start, uintptr
 int gba_memmap_init(void)
 {
     for (int id = GBA_REGION_NONE + 1; id < GBA_REGION_COUNT; id++) {
-        /* Pointers to integers: comparing linked addresses with GBA addresses. */
-        const uintptr_t start = (uintptr_t)linked_sections[id].start;
-        const uintptr_t end = (uintptr_t)linked_sections[id].end;
-        const int status = check_linked_section((enum gba_region)id, start, end, stderr);
+        const struct host_span linked = host_memory_region((enum gba_region)id);
+        const int status = check_linked_section((enum gba_region)id, linked.start, linked.end, stderr);
         if (status != GBA_MEMMAP_OK)
             return status;
     }

@@ -1,6 +1,6 @@
 # Status
 
-Last updated 2026-10-09 (milestone 7 done: **64-bit done**; every gate green at both widths on main at 94f3c70f62 and recorded below; milestone 8 not started).
+Last updated 2026-10-14 (milestone 7 done: **64-bit done**, every gate green at both widths on main at 94f3c70f62; milestone 8 in progress: Linux CI on main, the probes decided, the host layer and the data converter in review).
 
 This file is the honest ledger. A thing is listed as verified only with
 the gate that proved it. Anything without a gate is unverified, whatever
@@ -58,33 +58,18 @@ game flags (3249f05722). Milestone 6's screenshot flake (the trainer party
 seed hashing a pointer) is recorded in the milestone 6 section and in
 DECISIONS.md. Earlier breakages are in the milestone logs.
 
-**Needs the owner.** Three things for milestone 8, none blocking the
-work that is running:
-
-1. The Windows cross-compiler (needed from task W4 on; PLAN.md):
-`sudo apt-get install -y gcc-mingw-w64-x86-64 binutils-mingw-w64-x86-64 mingw-w64-tools`
-and, optional, to run the Windows build here under Wine:
-`sudo apt-get install -y wine64`.
-The SDL2 development files for MinGW are not in apt; the build will
-fetch a pinned `SDL2-devel-2.30.x-mingw` release from libsdl-org (zlib
-licence) with a sha256 check, not committed.
-2. A decision that could reasonably go either way: **macOS on Apple
-silicon (arm64)**. The inventory (`research/m8-inventory.md`, section
-2.5) measured that the fixed-address memory model cannot hold there
-(arm64 executables are always slid at load; the data holds 41,946
-4-byte absolute address words; the bit-25 script tag; no divide trap),
-so an arm64 build needs a "rebased" model where GBA addresses are
-offsets from a run-time base, a milestone of its own touching the data
-layout, the script tag and the division handling. Recommendation: do not
-start it; build macOS for x86_64, which runs on Apple silicon through
-Rosetta (kept by Apple through macOS 27), and revisit arm64 only if a
-native arm64 build is wanted for its own sake. Work continues on the
-Windows and macOS x86_64 ports meanwhile.
-3. The CI workflows spend the private repository's Actions minutes (the
-Linux gate about an hour of a runner per push to main; the probes a few
-minutes each, Windows minutes counting double and macOS tenfold);
-disable Actions in the repository settings if that is not wanted.
-
+**Needs the owner.** One thing to know: the default coding worker cannot
+be DeepSeek 4.1 Flash, because the Agent tool of this session offers
+only Sonnet, Opus, Haiku and Fable (checked again 2026-10-14; DECISIONS.md).
+Plain code, build glue, tests and docs drafts go to Sonnet, hard pieces
+to Opus, with your escalation rule; the table at the end records the
+model per branch. Otherwise nothing new. The three milestone 8 items were
+settled on 2026-10-14: the MinGW cross-compiler is installed (GCC 13 for
+x86_64-w64-mingw32, binutils 2.41; Wine is not, so cross-built
+executables run only on the Windows runner); macOS ships as x86_64
+under Rosetta and arm64 is not started (DECISIONS.md, with Apple's
+Rosetta wind-down recorded as the known revisit); the CI minutes are
+accepted and the Linux workflow is on main. Standing: upstream
 rh-hideout's maintainer replied to all seven upstream
 issues citing their LLM policy and said they will close them (details and a
 recommendation under "Upstream issues" below). Nothing was posted in reply.
@@ -269,8 +254,17 @@ with the image's), so the job takes the i386 headers and link files from
 the downloaded package without its dependencies; and the platform gate
 runs after the 32-bit build, which generates the game headers the lint
 reads. The GBA job is green (the ROM's sha1 equal to the recorded one);
-the native job's result is recorded below when its run completes, and
-the workflow merges into main then.
+both jobs are green on the branch's third run (37920736586, 2026-10-09:
+the GBA ROM with the recorded sha1; the native gate end to end, about
+95 minutes on the runner), and the workflow was merged into main on
+2026-10-14. The owner then ruled an hour per push unacceptable: the
+workflow is being split into a per-push tier (docs-only pushes
+excluded, older runs cancelled, the compiler cache kept; the platform
+gate, the 64-bit build, its two replays and its plain suite; under 15
+minutes warm is the target) and a nightly tier with the rest as
+parallel jobs (DECISIONS.md "CI runs in two tiers"); the first run on
+main was cancelled rather than spend the hour, and the measured
+runtimes of each tier are recorded here when the first runs complete.
 
 **The loader probes** (`research/probes/`, a manual workflow on the
 Windows and macOS runners, two runs on 2026-10-09; the README has the
@@ -308,8 +302,32 @@ log references):
   stands: the fixed-address model cannot hold on arm64 (the owner's
   decision, above).
 
-**In flight.** The host layer on Linux (task W2, a pure refactor under
-every Linux gate).
+**The host layer** (task W2, merged 2026-10-14): one header per OS
+concern under `platform/` (`host_memory`, `host_fault`, `host_process`,
+`host_image`, `host_stack`, `host_file`) with `host_posix.c` and
+`host_linux.c` behind them, chosen by `platform/host.mk` (`HOST_OS`,
+Linux the only accepted value today); the 12 modules that made OS calls
+make none now (123 lines to 0), and the replay's symbol names come from
+an `nm` map the link writes (`<exe>.symbols`) instead of an ELF reader,
+verified identical at every function address. A pure refactor: every
+Linux gate green before and after; reviewed with 44 mutants (the review
+added a bounded restart test, core-dump limits in forked children, a
+summary-line check in the test loops, tests for five uncaught mutants
+and a map recipe that leaves no empty or stale map). Rows: STATUS
+"Which model did what".
+
+**Standing rules added 2026-10-14** (docs/C-RULES.md, "Concurrency" and
+"Code quality for a public repository"; DECISIONS.md): the platform stays
+single-threaded, handlers follow signal-safety(7), threads need a
+decision and an ownership model and bring a ThreadSanitizer build into
+the gate, save writes are temporary file, flush, rename (verified for
+the save file and the RTC offset), reviewers check races, signal safety,
+lock order, fork/exec and file races explicitly. The task W3 in flight
+was re-briefed under them.
+
+**In flight.** The data converter for Mach-O and COFF (task M1, in
+review); the test harness's timeout without SIGALRM and the per-OS split
+of the POSIX-bound tests (task W3); the CI workflow in two tiers.
 
 ## Verified by a gate
 
@@ -342,6 +360,7 @@ every Linux gate).
 | 64-bit, gate (b) sanitized: the same suite on the 64-bit sanitized build, the same per-test results; the sanitizer reports are the 32-bit run's, access by access, when compared with `ASAN_OPTIONS=suppress_equal_pcs=0` (SUITE-LOG.md, "The sanitized run at 64 bits"); nothing new at 64 bits | `make -f Makefile.native -j32 check BITS=64 SANITIZE=1` | green 2026-10-09 on main at 94f3c70f62, 104 s |
 | Gate (h): a save written by the 32-bit build loads in the 64-bit build and back: the opening up to the save by one width, Continue by the other (the dumps and screenshots after the restart as expected, the loaded state equal to the saved one, the file unchanged until the game saves), the bare image (an older 32-bit build's), a refused foreign layout id, and a save made by the second build loaded again by it; both directions, plain and sanitized | `tests/smoke/run_cross_width.sh build/native32/pokeemerald-native build/native64/pokeemerald-native out/` and the reverse, then the `-san` builds | green 2026-10-09 on main at 94f3c70f62: 39 s, 34 s, 99 s, 84 s |
 | Every gate in one sequence on main after the last milestone 7 merge (94f3c70f62): the platform gate (format, lint at both widths, the sanitized unit tests at both widths, tools-test, glue-test); at 32 bits the build, the two replays plain and sanitized, `make check` plain and sanitized (5409 passed), the GBA ROM rebuilt; at 64 bits the build plain and sanitized, the two replays plain and sanitized, `make check` plain and sanitized (5409 passed); the cross-width script both ways, plain and sanitized | the 22 steps in order, each exit 0 | green 2026-10-09; the 32-bit half 11 min, the 64-bit half 6 min, the cross-width runs 4 min; ROM sha1 e2d4600d4e7b1269ac50c28bc96ece2b758ded9e |
+| The orchestrator's gate on main after the host-layer merge (fa11bb1506, milestone 8 task W2): the platform gate, the 32-bit build and opening replay, the 64-bit build, both 64-bit replays plain and the opening replay sanitized, the plain 64-bit suite (5409 passed), the cross-width script 32 to 64 | the ten steps in order, each exit 0 | green 2026-10-14; 24 s, 7 s, 29 s, 5 s, 24 s, 23 s, 25 s, 58 s, 36 s, 41 s |
 | Every platform module is merged: `gba_memmap` (region layout via linker script), `ptest.h` self-test, `timer`, `transfer_bounds`, `input`, `rtc`, `video`, `audio`, `frame_pacer`, `interrupt`, `psg`, `ppu`, `dma`, `flash`, `save_file`, `bios`, `lcd_status`, `m4a_output`, `sound_mix`, `replay`, `inspect`, `restart`, `symbols`, `debug_channel`, `crash_reboot`, `arm_division`, and the `m4a` engine translation (also proven by a differential test against the ARM original under qemu-arm, run by hand) | `make -C platform test BITS=32` and `BITS=64`, every test under ASan+UBSan with leak detection, after a Sonnet first-pass review and orchestrator merge | green on both widths at merge time |
 
 ## Not verified
@@ -449,6 +468,10 @@ Nothing yet; nothing exists to be broken.
 | m7-docs (milestone 7: BUILDING, ARCHITECTURE, CONTRIBUTING, the platform comments at 64 bits) | Sonnet | orchestrator |
 | refactor7-platform, refactor7-glue, refactor7-expansion (milestone 7 refactoring pass) | Sonnet | Sonnet (mutation testing), orchestrator merge gate |
 | the end-to-end read of the milestone 7 changes and its three comment corrections | Fable (orchestrator) | the full gate at both widths |
+| m8-inventory (milestone 8: the Windows and macOS inventory, no code) | Opus | orchestrator |
+| m8-probes (milestone 8: the loader probes and their workflow) | Sonnet | the runs on the Windows and macOS runners |
+| m8-host (milestone 8, task W2: the host layer on Linux, the nm symbol map) | Opus | Sonnet (mutation testing), orchestrator merge gate |
+| m8-dataconv (milestone 8, task M1: the ELF-to-flat data converter) | Opus | Sonnet (mutation testing), orchestrator merge gate |
 | battle-glyph (milestone 6: the trainer party seed and the nickname padding, root cause of the screenshot flake) | Opus | orchestrator |
 | upstream-report (seven issues drafted, triaged against upstream) | Sonnet | Fable (orchestrator) |
 | Research, synthesis, decisions, merges | Fable (orchestrator) | |

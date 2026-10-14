@@ -5,34 +5,29 @@
  * Followed: GBATEK "BIOS Reset Functions" (RegisterRamReset keeps the last
  * 200h bytes of IWRAM), expansion's test/test_runner.c (what the runner
  * keeps there and how it resumes), POSIX for what a signal handler may call
- * (signal-safety(7): execve, sigaction, raise, write).
+ * (signal-safety(7): write here, execve and raise in host_fault and
+ * host_process).
  */
-#define _GNU_SOURCE /* REG_EIP, REG_RIP: the interrupted program counter */
 #include "crash_reboot.h"
 
 #include <limits.h>
-#include <signal.h>
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdio.h>
 #include <string.h>
-#include <ucontext.h>
 #include <unistd.h>
 
 #include "gba_memmap.h"
+#include "host_fault.h"
+#include "host_process.h"
 
 _Static_assert(CRASH_REBOOT_PERSISTENT_ADDRESS >= GBA_IWRAM_BASE
                    && CRASH_REBOOT_PERSISTENT_ADDRESS + CRASH_REBOOT_PERSISTENT_SIZE <= GBA_IWRAM_BASE + GBA_IWRAM_SIZE,
                "the persistent state lies in IWRAM");
 
-/* The signals that mean the game crashed (crash_reboot.h). */
-static const int crash_signals[] = {SIGSEGV, SIGBUS, SIGILL, SIGFPE, SIGABRT};
-#define CRASH_SIGNAL_COUNT (sizeof crash_signals / sizeof crash_signals[0])
-
 static const char hex_digits[] = "0123456789abcdef";
 
 static struct {
-    bool installed;
     /* The reboot's command line: main's arguments without an earlier
      * CRASH_REBOOT_OPTION and its value, then the option and state_hex. */
     char *args[CRASH_REBOOT_MAX_ARGS + 1];
@@ -41,8 +36,6 @@ static struct {
     /* The persistent bytes when the process started (zero, or restored). */
     uint8_t started_with[CRASH_REBOOT_PERSISTENT_SIZE];
 } reboot;
-
-static _Alignas(16) unsigned char signal_stack[CRASH_REBOOT_SIGNAL_STACK_SIZE];
 
 static const volatile uint8_t *persistent_bytes(void)
 {
@@ -108,30 +101,15 @@ static void report_write(const struct report *report)
     }
 }
 
-/* The interrupted program counter: a pointer-sized integer, as the kernel
- * stores it at both widths. */
-static uintptr_t interrupted_pc(const void *context)
-{
-    const ucontext_t *interrupted = context;
-#if defined(__x86_64__)
-    return (uintptr_t)interrupted->uc_mcontext.gregs[REG_RIP];
-#elif defined(__i386__)
-    return (uintptr_t)interrupted->uc_mcontext.gregs[REG_EIP];
-#else
-    (void)interrupted;
-    return 0;
-#endif
-}
-
 /* "crash_reboot: signal 11 at 0x...; fault address 0x...: " */
-static void report_where(struct report *report, int signal_number, const siginfo_t *info, const void *context)
+static void report_where(struct report *report, const struct host_fault *fault)
 {
     report_add(report, "crash_reboot: signal ");
-    report_add_unsigned(report, (unsigned)signal_number);
+    report_add_unsigned(report, (unsigned)host_fault_number(fault));
     report_add(report, " at ");
-    report_add_hex(report, interrupted_pc(context));
+    report_add_hex(report, host_fault_register(fault, HOST_FAULT_PC));
     report_add(report, ", fault address ");
-    report_add_hex(report, (uintptr_t)info->si_addr);
+    report_add_hex(report, host_fault_address(fault));
     report_add(report, ": ");
 }
 
@@ -155,41 +133,25 @@ static void encode_state(void)
     reboot.state_hex[CRASH_REBOOT_STATE_HEX_LENGTH] = '\0';
 }
 
-/* Lets the signal do what it does without the handler: kill the process.
- * Relies on the handler being installed without SA_NODEFER: the signal is
- * blocked while the handler runs, so the raise stays pending and is
- * delivered, with the default action, when the handler returns. */
-static void die_of(int signal_number)
-{
-    struct sigaction action;
-    memset(&action, 0, sizeof action);
-    action.sa_handler = SIG_DFL;
-    (void)sigemptyset(&action.sa_mask);
-    (void)sigaction(signal_number, &action, NULL);
-    (void)raise(signal_number); /* pending until the handler returns; a fault would recur anyway */
-}
-
-/* sigaction's sa_sigaction type fixes these parameters as non-const. */
-// cppcheck-suppress constParameterCallback
-static void on_crash(int signal_number, siginfo_t *info, void *context)
+/* The crash handler. When it returns, host_fault lets the fault end the
+ * process. */
+static void on_crash(const struct host_fault *fault)
 {
     struct report report = {.length = 0};
-    report_where(&report, signal_number, info, context);
+    report_where(&report, fault);
     if (!state_changed_since_start()) {
         report_add(&report, "the test runner's persistent state is as the process started with; a reboot "
                             "would crash again, so the process ends here\n");
         report_write(&report);
-        die_of(signal_number);
         return;
     }
     encode_state();
     report_add(&report, "rebooting with the test runner's persistent state\n");
     report_write(&report);
-    (void)execve(CRASH_REBOOT_EXECUTABLE, reboot.args, environ);
+    (void)host_process_restart(reboot.args);
     report.length = 0;
-    report_add(&report, "crash_reboot: execve of " CRASH_REBOOT_EXECUTABLE " failed; the process ends here\n");
+    report_add(&report, "crash_reboot: starting the executable again failed; the process ends here\n");
     report_write(&report);
-    die_of(signal_number);
 }
 
 static bool build_args(int argc, char *const argv[])
@@ -211,35 +173,6 @@ static bool build_args(int argc, char *const argv[])
     return true;
 }
 
-static bool install_handlers(void)
-{
-    stack_t stack = {.ss_sp = signal_stack, .ss_size = sizeof signal_stack, .ss_flags = 0};
-    if (sigaltstack(&stack, NULL) != 0) {
-        perror("crash_reboot: sigaltstack");
-        return false;
-    }
-    struct sigaction action;
-    memset(&action, 0, sizeof action);
-    action.sa_sigaction = on_crash;
-    action.sa_flags = SA_ONSTACK | SA_SIGINFO;
-    sigset_t crashes;
-    if (sigemptyset(&action.sa_mask) != 0 || sigemptyset(&crashes) != 0) {
-        perror("crash_reboot: sigemptyset");
-        return false;
-    }
-    for (size_t i = 0; i < CRASH_SIGNAL_COUNT; i++) {
-        if (sigaction(crash_signals[i], &action, NULL) != 0 || sigaddset(&crashes, crash_signals[i]) != 0) {
-            perror("crash_reboot: sigaction");
-            return false;
-        }
-    }
-    if (sigprocmask(SIG_UNBLOCK, &crashes, NULL) != 0) {
-        perror("crash_reboot: sigprocmask");
-        return false;
-    }
-    return true;
-}
-
 int crash_reboot_init(int argc, char *const argv[])
 {
     crash_reboot_shutdown();
@@ -251,11 +184,8 @@ int crash_reboot_init(int argc, char *const argv[])
     const volatile uint8_t *bytes = persistent_bytes();
     for (size_t i = 0; i < CRASH_REBOOT_PERSISTENT_SIZE; i++)
         reboot.started_with[i] = bytes[i];
-    reboot.installed = true; /* so that shutdown undoes a partial install */
-    if (!install_handlers()) {
-        crash_reboot_shutdown();
+    if (host_fault_install_crash(on_crash) != 0)
         return CRASH_REBOOT_ERR_SIGNAL;
-    }
     return CRASH_REBOOT_OK;
 }
 
@@ -292,15 +222,5 @@ int crash_reboot_restore(const char *state_hex)
 
 void crash_reboot_shutdown(void)
 {
-    if (!reboot.installed)
-        return;
-    struct sigaction action;
-    memset(&action, 0, sizeof action);
-    action.sa_handler = SIG_DFL;
-    (void)sigemptyset(&action.sa_mask);
-    for (size_t i = 0; i < CRASH_SIGNAL_COUNT; i++)
-        (void)sigaction(crash_signals[i], &action, NULL); /* restoring a default cannot fail for these */
-    stack_t no_stack = {.ss_sp = NULL, .ss_size = 0, .ss_flags = SS_DISABLE};
-    (void)sigaltstack(&no_stack, NULL); /* fails only while running on it, which shutdown never does */
-    reboot.installed = false;
+    host_fault_uninstall_crash();
 }

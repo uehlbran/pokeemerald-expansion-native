@@ -224,7 +224,8 @@ and the owner's decision (STATUS.md "Needs the owner").
 
 Measured: 13 of the 59 platform modules touch the OS beyond stdio and
 SDL (16 `sigaction` lines in 5 files, register access by index in two,
-3 uses of `/proc/self/exe`, ucontext in `game_hooks`; no run-time
+3 uses of `/proc/self/exe`, ucontext in `game_hooks`, all moved into the
+host layer by task W2 on 2026-10-14; no run-time
 `mmap`, no `clock_gettime`); the linker scripts do not work under the PE
 linker as they are (`.rodata` is `.rdata`) and ld64 takes no GNU script;
 the assembled data carries 28,982 ELF-only `.size` lines, 7 `%progbits`

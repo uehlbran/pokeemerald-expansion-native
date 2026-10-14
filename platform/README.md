@@ -19,10 +19,13 @@ make -C platform clean           # remove platform/build/
 Every object is compiled with `-std=gnu17 -Wall -Wextra -Wshadow
 -Wstrict-prototypes -Wconversion -Werror -O1 -g` and AddressSanitizer,
 LeakSanitizer and UndefinedBehaviorSanitizer. `make test` runs every test
-binary, prints its output, and fails if any binary exits non-zero or prints
-a sanitizer report. The 32-bit build needs the i386 C library and sanitizer
+binary, prints its output, and fails if any binary exits non-zero, prints
+a sanitizer report, or ends without ptest's `N passed, 0 failed` line (a
+binary that exits early passes no test). The 32-bit build needs the i386 C library and sanitizer
 runtimes (`gcc-multilib`). The tests run on Linux only for now: the region
-layout needs GNU ld and a non-PIE ELF executable (see below).
+layout needs GNU ld and a non-PIE ELF executable (see below), and `HOST_OS`
+(`host.mk`, default `uname -s`) accepts `Linux` only (the host layer,
+below).
 
 Every test binary is linked with `gba_regions.ld`, `gba_game.ld` and
 `-no-pie -Wl,-Ttext-segment=0x40000000`, so the GBA memory regions exist in
@@ -43,7 +46,8 @@ linked the same way; `Makefile.native` does (next section).
   ```
 
   `// # deps:` is accepted too. A deps entry that does not exist stops the
-  build with an error naming the test.
+  build with an error naming the test. Every test is also linked with the
+  host layer's sources for `HOST_OS` (below), which any module may reach.
 - To test a module's `static` functions without widening its header, a test
   can `#include "<name>.c"` as long as its own name matches no module, so the
   module is not linked a second time (`test/test_gba_memmap_layout.c`).
@@ -127,6 +131,25 @@ executable itself starts at 0x40000000, above every region. At 0x01800000
 `game_hooks` runs the battle test runner's functions on, low enough for the
 runner's 27-bit address fields.
 
+## The host layer (`host_*`)
+
+What the modules need from the operating system, one header per concern, so
+that no module makes an OS call of its own (`docs/ARCHITECTURE.md`, "The
+host layer", has the design and the users). Two sources implement them,
+chosen by `HOST_OS` in `host.mk` (included by this Makefile, `m4a/Makefile`
+and `Makefile.native`): `host_posix.c`, what Linux and macOS share, and
+`host_linux.c`, the rest; `host_internal.h` is what they share. Each header
+says what it stands in for and what it wraps, and has its test.
+
+| Header | Gives | Linux (source) | Test |
+|---|---|---|---|
+| `host_memory.h` | `host_memory_region` and `host_memory_call_stack`: where the link put each GBA region and the battle runner's stack; `host_memory_map_fixed`/`unmap_fixed`: a page at an exact address, never over a mapping | `gba_regions.ld`'s symbols, `mmap` with `MAP_FIXED_NOREPLACE` (`host_linux.c`) | `test_host_memory.c` |
+| `host_fault.h` | the divide-error handler (passes what it does not complete to the one installed before) and the crash handler (on a 64 KiB alternate stack; the fault ends the process when it returns), each with install and uninstall; the fault's number, address, and registers: PC, accumulator and data by name, the general ones by ModRM number | `sigaction`, `sigaltstack`, `sigprocmask`, `raise` (`host_posix.c`); `uc_mcontext.gregs` (`host_linux.c`) | `test_host_fault.c` |
+| `host_process.h` | `host_process_executable_path`, and `host_process_restart`: this executable again in this process, async-signal-safe | `readlink` of `/proc/self/exe` (`host_linux.c`), `execve` (`host_posix.c`) | `test_host_process.c` |
+| `host_image.h` | the executable's image and its writable part, whether an address is in a read-only segment, the main thread's whole stack | `__executable_start`, `__data_start`, `_end`, `getauxval(AT_PHDR)`, `pthread_getattr_np` (`host_linux.c`) | `test_host_image.c` |
+| `host_stack.h` | `host_stack_run`: a function on a given stack, at the same depth each call; `host_stack_leave`: back to the caller early | `ucontext`, AddressSanitizer's fiber annotations (`host_linux.c`) | `test_host_stack.c` |
+| `host_file.h` | `host_file_sync`, `host_file_replace` (atomic), `host_file_sync_directory_of`, `host_file_make_directory`, `host_file_local_time`; failures are -1 with `errno`, reported by the caller | `fsync`, `rename`, `open` of the directory and `fsync`, `mkdir(path, 0777)`, `localtime_r` with a 64-bit `time_t` (`host_posix.c`) | `test_host_file.c` |
+
 ## The flash chip (`flash`) and the save file (`save_file`)
 
 `flash` is the cartridge's 1 Mbit flash chip as an entry of expansion's own
@@ -143,7 +166,7 @@ erase marks its sector dirty.
 
 `save_file` persists the chip in a versioned `.sav`. Stores go to
 `<path>.tmp`, are fsynced, renamed over `<path>`, and the directory is
-fsynced. A NULL path keeps everything in memory (tests, the test runner).
+fsynced (`host_file.h`). A NULL path keeps everything in memory (tests, the test runner).
 Format version 1 is a 28-byte header followed by the chip image, every
 header integer an unsigned 32-bit little-endian value:
 
@@ -433,7 +456,8 @@ stdbuf's 64-bit preload, and execs the copy with `--headless --silent
 - start `crash_reboot`: a SIGSEGV, SIGBUS, SIGILL, SIGFPE (one
   `arm_division` cannot complete) or SIGABRT runs a handler on an alternate
   stack that writes `crash_reboot: signal N at <pc>, fault address <addr>`
-  to stderr and execs `/proc/self/exe` with the same arguments plus
+  to stderr and execs `/proc/self/exe` (`host_fault.h`, `host_process.h`)
+  with the same arguments plus
   `--persistent-state <512 hex digits>`, the 0x100 bytes at 0x3007F00. The
   new process restores them before `AgbMain`, so the runner reports the test
   that crashed as CRASH and carries on, as after mGBA's reboot (IWRAM's last
@@ -468,7 +492,7 @@ and `--rtc-fixed EPOCH` makes the clock deterministic.
 | `replay.h`, `replay_parse.c`, `replay.c` | the script's grammar (`replay.h` documents every command) and the state machine that plays it, stepped once per frame against a `struct replay_host`, so `test/test_replay.c` plays scripts against a fake |
 | `replay_include.h`, `replay_include.c` | the `include FILE` command: textual expansion before parsing, with a map from each expanded line to its (file, line) so messages name the file a problem came from; tested on real files (`test/test_replay_include.c`) |
 | `replay_session.c` | glue: reads the script (through `replay_include`, writing `expanded.replay` when it had includes), connects the driver to `inspect`, `input_script_set`, `video_write_frame_ppm` and the frame loop's step hook, rewrites a failure's line number to `file:line`, and saves the screen at a failure (`failed.ppm`) |
-| `inspect.h`, `inspect.c`, `inspect_menu.c`, `inspect_args.c`, `inspect_decode.c`, `symbols.c` | the facts (`callback2`, `map_name`, `party0_species`, ... `inspect.h` lists them, including the facts with arguments, `flag:ID`, `var:ID`, `party_species:N`, ...) read from expansion's variables; `inspect.c` has the game-state facts and the dispatch, `inspect_menu.c` the facts of the menus (debug menu, party, summary, bag, PC), `inspect_args.c` the table of argument ranges (unit tested against expansion's constants, `test/test_inspect_args.c`); `inspect*.c` are documented exceptions to the rule that platform files do not include expansion's headers (like `m4a_output.c`), compiled with the game's defines (see `platform/Makefile`); `symbols.c` names the game's function pointers from the executable's own ELF symbol table, since most callbacks are `static`; `inspect_decode.c` has the charmap decoding and callback naming that need no game variables, and is unit tested |
+| `inspect.h`, `inspect.c`, `inspect_menu.c`, `inspect_args.c`, `inspect_decode.c`, `symbols.c` | the facts (`callback2`, `map_name`, `party0_species`, ... `inspect.h` lists them, including the facts with arguments, `flag:ID`, `var:ID`, `party_species:N`, ...) read from expansion's variables; `inspect.c` has the game-state facts and the dispatch, `inspect_menu.c` the facts of the menus (debug menu, party, summary, bag, PC), `inspect_args.c` the table of argument ranges (unit tested against expansion's constants, `test/test_inspect_args.c`); `inspect*.c` are documented exceptions to the rule that platform files do not include expansion's headers (like `m4a_output.c`), compiled with the game's defines (see `platform/Makefile`); `symbols.c` names the game's function pointers from the function map the link writes beside the executable (`pokeemerald-native.symbols`, from `nm`: `host.mk`'s `write_symbol_map`), since most callbacks are `static`; `inspect_decode.c` has the charmap decoding and callback naming that need no game variables, and is unit tested |
 | `restart.c` | `restart`: build the arguments for, and `execv`, a new process |
 | `fixed_clock.c` | `--rtc-fixed`: base epoch plus the frame count divided by 60 |
 | `frame.c`'s `frame_set_step_hook` | a function called once per frame before KEYINPUT is written; the replay driver is the one user |
@@ -482,7 +506,7 @@ and up for one, and two presses in a row are two presses. `wait-until` and
 A `restart` is a process re-exec because it is what a player's switch-off and
 switch-on does: the in-game soft reset only reinitialises RAM and cannot show
 that the game starts from its save file. `main` shuts every module down (the
-save is flushed), `restart_exec` runs `/proc/self/exe` with the same arguments
+save is flushed), `restart_exec` runs `/proc/self/exe` (`host_process_restart`) with the same arguments
 plus `--resume-at LINE`, and `--rtc-fixed` advanced by the time that passed.
 
 ### Event script function tags

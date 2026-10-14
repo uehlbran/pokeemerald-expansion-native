@@ -22,9 +22,6 @@
 #define RESTART_MAX_ARGS 64u
 #define RESTART_NUMBER_SIZE 24u
 
-/* What the process image is, for execv. */
-#define RESTART_EXE_PATH "/proc/self/exe"
-
 #define RESTART_OPTION_RESUME_AT "--resume-at"
 #define RESTART_OPTION_RTC_FIXED "--rtc-fixed"
 
@@ -42,9 +39,9 @@ struct restart_args {
  * are too many arguments or a value is missing. */
 int restart_build_args(int argc, char *const *argv, uint32_t resume_line, int64_t new_epoch, struct restart_args *out);
 
-/* Replaces this process with the executable (/proc/self/exe) and `args`.
- * Returns only on failure: -1, reported. Call it after every module is shut
- * down; the stdio buffers are flushed first. */
+/* Replaces this process with a new run of the executable with `args`
+ * (host_process_restart). Returns only on failure: -1, reported. Call it
+ * after every module is shut down; the stdio buffers are flushed first. */
 int restart_exec(const struct restart_args *args);
 
 #endif /* PLATFORM_RESTART_H */

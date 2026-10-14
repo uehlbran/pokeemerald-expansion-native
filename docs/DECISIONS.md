@@ -857,3 +857,77 @@ dialect. The Linux build keeps assembling directly; the converter is an
 additional output, gated by a checker that compares each converted
 object's section bytes and relocations with the ELF object's, for both
 targets, on Linux (clang 18 here cross-assembles both).
+
+## 2026-10-14: macOS ships as x86_64 under Rosetta; arm64 is not started; Rosetta's wind-down is a known revisit
+
+The owner decided on the milestone 8 question STATUS.md had raised: the
+macOS build is x86_64 only, run on Apple silicon through Rosetta 2, and
+no arm64 build is started. The reason is the memory model: the loader
+probes (`research/probes/README.md`) and the linker itself ("-no_pie
+ignored for arm64") show that an arm64 executable is always slid at
+load, so the fixed-address model (the GBA regions and the image below
+4 GiB, the 41,946 four-byte absolute address words in the data, the
+bit-25 script tag, the division trap the arm64 ISA lacks) cannot hold
+there; an arm64 build needs a rebased model, a milestone of its own.
+Known future revisit: Apple announced (WWDC 2025) that Rosetta 2 stays
+available through macOS 27 and is then kept only for a subset of older
+software, so an x86_64-only macOS build has a horizon. When that horizon
+matters, the rebased memory model is the work to plan, with this entry
+and the inventory's section 2.5 as the starting point; nothing else in
+the port depends on the choice.
+
+## 2026-10-14: CI runs in two tiers; the local pre-merge gate stays the full check
+
+The owner ruled that an hour of runner time on every push to main,
+docs-only pushes included, is not acceptable. The workflow is split:
+a per-push tier (the platform gate, the 64-bit build, both 64-bit
+replays, the plain 64-bit suite; docs-only pushes do not trigger it; a
+newer push cancels an older run; the compiler cache is kept between
+runs; the target is under 15 minutes warm) and a nightly tier
+(`schedule` plus `workflow_dispatch`: the GBA ROM and its sha1, the
+32-bit build and replays, both sanitized builds with their replays, all
+four suite runs, the cross-width save gate, as parallel jobs). The
+reasoning: the orchestrator's local gate before every merge is the full
+check at both widths, plain and sanitized, and runs in about 20
+minutes on 32 cores; CI is the backstop that proves a clean clone on a
+documented image builds and passes, and a backstop that costs an hour a
+push is paid for in minutes the owner budgets. The measured runtimes of
+each tier are recorded in STATUS.md when the first runs complete.
+
+## 2026-10-14: The coding-worker default is checked again: no DeepSeek model is offered, so Sonnet stays
+
+The owner asked for DeepSeek 4.1 Flash as the default coding worker, as
+the original brief did, with Sonnet for anything needing screenshots or
+visual judgment and Opus for hard pieces only. The check the milestone 1
+decision prescribed ("the orchestrator checks at each milestone whether
+a DeepSeek option has appeared") was made on 2026-10-14: the Agent tool
+of this session offers Sonnet, Opus, Haiku and Fable and no other
+provider, so the brief's fallback applies as before: plain code, build
+glue, tests and docs drafts go to Sonnet, hard pieces to Opus, with the
+owner's escalation rule kept (a worker that fails the gate twice on the
+same task is escalated to Opus or the orchestrator). The model used for
+each branch stays recorded in STATUS.md's table so the split is
+visible, and this check is repeated at the next milestone.
+
+## 2026-10-14: The owner's standing rules on concurrency and public-repository quality are in C-RULES.md
+
+The owner added two sections to docs/C-RULES.md, applying to all
+current and future work: concurrency (the platform stays
+single-threaded; a new thread needs an entry here with the reason a
+single-threaded design cannot work and a written ownership model;
+signal and exception handlers follow signal-safety(7) and share state
+only through `volatile sig_atomic_t` or lock-free atomics; `volatile`
+is not synchronization; threads share state through C11 atomics with
+justified memory orders or an SDL mutex with a documented lock order;
+the SIGALRM replacement in the test harness must not let a second
+thread touch game state; a thread brings a ThreadSanitizer build into
+the gate; save writes are temporary file, flush, rename; reviewers
+check races, signal safety, lock order, fork/exec with threads and
+file races explicitly) and code quality for a public repository
+(names without the spec, comments that say why, no filler, small
+cohesive modules, no speculative abstraction, everything we own left
+better on every touched call chain, expansion's files untouched but
+for hardware assumptions). Every coding worker receives the file
+verbatim in its task and the first-pass reviewer checks each diff
+against it line by line. The task W3 in flight (the test timeout) was
+re-briefed under these rules before it chose a design.
