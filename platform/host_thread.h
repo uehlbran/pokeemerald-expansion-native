@@ -15,21 +15,24 @@
  * deadline and the stop request: behind its mutex on POSIX; on Windows in
  * relaxed C11 atomics whose changes an event announces) and writes exactly one
  * thing outside it: the caller's atomic flag, once. It calls no callback,
- * reads no caller state, prints nothing and allocates nothing. The flag is
+ * reads no caller state, prints nothing and allocates nothing. On POSIX it
+ * runs with every signal blocked, so that a signal sent to the process is
+ * never handled on it: no handler of the caller's runs there. The flag is
  * a C11 atomic_bool: the watchdog stores true (relaxed: the flag carries no
  * data that needs publishing, the checking thread only wants to know that
  * the time has passed, and the join in host_watchdog_stop orders everything
  * else); the caller loads it (relaxed, for the same reason) and clears it
  * only while no watchdog runs on it.
  *
- * Wraps, on Linux and macOS (host_posix.c): a pthread that waits on a
- * condition variable until the deadline, against the wall clock
- * (pthread_cond_timedwait takes CLOCK_REALTIME on both systems; a clock set
- * during a test moves the deadline with it). On Windows
- * (host_windows_thread.c): a thread that waits on an auto-reset event with a
- * timeout against GetTickCount64 (CreateThread, WaitForSingleObject), the
- * deadline and the stop request in relaxed C11 atomics that SetEvent
- * announces; stop joins the thread by waiting on its handle.
+ * Wraps, on POSIX (host_posix.c): a pthread, created with every signal
+ * blocked (pthread_sigmask around pthread_create), that waits on a condition
+ * variable until the deadline, on the monotonic clock
+ * (pthread_condattr_setclock), so that a step of the wall clock does not move
+ * the deadline. On Windows (host_windows_thread.c): a thread that waits on an
+ * auto-reset event with a timeout against GetTickCount64 (CreateThread,
+ * WaitForSingleObject), the deadline and the stop request in relaxed C11
+ * atomics that SetEvent announces; stop joins the thread by waiting on its
+ * handle.
  */
 #ifndef PLATFORM_HOST_THREAD_H
 #define PLATFORM_HOST_THREAD_H

@@ -6,10 +6,10 @@
  * source, host_linux.c, reached through host_internal.h.
  *
  * Followed: POSIX (sigaction, sigaltstack, sigprocmask, execve, _exit, open,
- * write, fsync, rename, mkdir, localtime_r, pthread_create,
- * pthread_condattr_setclock and pthread_cond_timedwait), and signal-safety(7) for what a signal handler may
- * call: everything on the handlers' path here (sigaction, raise, execve,
- * _exit, write) is async-signal-safe.
+ * write, fsync, rename, mkdir, localtime_r, pthread_create, pthread_sigmask,
+ * pthread_condattr_setclock and pthread_cond_timedwait), and signal-safety(7)
+ * for what a signal handler may call: everything on the handlers' path here
+ * (sigaction, raise, execve, _exit, write) is async-signal-safe.
  */
 #define _FILE_OFFSET_BITS 64 /* with _TIME_BITS: a 64-bit time_t on 32-bit builds, */
 #define _TIME_BITS 64        /* so host_file_local_time converts dates past 2038 */
@@ -455,6 +455,26 @@ static void *watchdog_thread(void *argument)
     return NULL;
 }
 
+/* Creates the thread with every signal blocked, a mask it keeps: a signal
+ * sent to the process goes to any thread that does not block it (signal(7)),
+ * and no handler of the caller's may run on this one. The caller's own mask
+ * is put back once the thread exists. Reports its own failure. */
+static int watchdog_create_thread(struct host_watchdog *watchdog)
+{
+    sigset_t every_signal, callers;
+    (void)sigfillset(&every_signal); /* fails only for a bad pointer */
+    int error = pthread_sigmask(SIG_SETMASK, &every_signal, &callers);
+    if (error != 0) {
+        watchdog_report("pthread_sigmask", error);
+        return error;
+    }
+    error = pthread_create(&watchdog->thread, NULL, watchdog_thread, watchdog);
+    if (error != 0)
+        watchdog_report("pthread_create", error);
+    (void)pthread_sigmask(SIG_SETMASK, &callers, NULL); /* putting back the mask it gave cannot fail */
+    return error;
+}
+
 /* Waits until the thread is in its loop. A caller that forks next (the POSIX
  * tests do) then finds the thread idle in a condition wait, not in the middle
  * of its start, where the sanitizers' thread registry would be locked in the
@@ -503,10 +523,8 @@ struct host_watchdog *host_watchdog_start(unsigned seconds, atomic_bool *expired
     }
     error = watchdog_set_deadline(watchdog, seconds) == 0 ? 0 : EINVAL; /* reported by itself */
     if (error == 0) {
-        error = pthread_create(&watchdog->thread, NULL, watchdog_thread, watchdog);
-        if (error != 0)
-            watchdog_report("pthread_create", error);
-        else if (watchdog_await_start(watchdog) != 0) {
+        error = watchdog_create_thread(watchdog);
+        if (error == 0 && watchdog_await_start(watchdog) != 0) {
             host_watchdog_stop(watchdog); /* the thread exists: end it before freeing */
             return NULL;
         }
