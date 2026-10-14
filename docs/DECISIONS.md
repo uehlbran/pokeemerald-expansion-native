@@ -1457,3 +1457,36 @@ Not testable: that `main` releases the lock after the last store. The release
 is the last thing before the process ends, so only an instance started during
 that final store could see the order; `main.c` and the POSIX test's header say
 so.
+
+## 2026-10-14: The owner's rulings from the Windows hands-on check
+
+The owner ran the Windows build from run 38648131073 by hand (boot, the
+opening, the first Pokémon, the first battle; audio and saving fine) and
+ruled on two things seen while doing it. Both are tasks after the
+audio-rate task (ruling 1 of the independent review), before macOS.
+
+**A settings file for the keys.** The keyboard map is a fixed table
+(`platform/input.c`: A=Z, B=X, Start=Return, Select=Backspace, L=A, R=S,
+the arrows; VisualBoyAdvance's defaults). The owner: a settings file
+beside the executable rebinds the keys. Design when the task starts; the
+owner also liked an on-screen help overlay (a key such as F1 showing the
+map, the save path and the version) and a `--keys` option printing the
+map; a native menu bar was declined for now, because SDL2 has none and it
+would be three implementations (Win32, GTK, Cocoa).
+
+**No console window on Windows.** The executable is linked as a console
+program (`-mconsole`, `platform/target.mk`) because it prints: the test
+runner's results for the hydra, the replays' output, the refusals. Started
+from Explorer, Windows opens a console beside the game window. The owner:
+"people wont like that"; remove it. The design to try: link as a GUI
+program (`-mwindows`); attach to the parent's console when there is one
+(`AttachConsole(ATTACH_PARENT_PROCESS)` at startup, so a command prompt
+still sees the messages); otherwise write the messages to a log file
+beside the executable; pipes (the hydra, the replays' harness) are
+inherited handles and keep working. Verify each of those three on the
+runner.
+
+Also confirmed for the owner: the translucent oval under every overworld
+character is expansion's own default (`OW_OBJECT_VANILLA_SHADOWS FALSE`,
+`OW_SHADOW_INTENSITY 4` of 16 in `include/config/overworld.h`); the Linux
+replay screenshot shows the same.

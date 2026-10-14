@@ -208,6 +208,13 @@ Order of work:
    another form of the wait (pthread_cond_timedwait_relative_np, or a
    realtime deadline recomputed from the monotonic one); noted for when
    macOS starts.
+   Two tasks from the owner's Windows hands-on check (DECISIONS.md
+   "The owner's rulings from the Windows hands-on check", 2026-10-14),
+   after the audio-rate task and before macOS: (c) a settings file
+   beside the executable that rebinds the keyboard (with an on-screen
+   help overlay and a `--keys` option); (d) no console window on
+   Windows: link as a GUI program, attach to the parent's console when
+   there is one, otherwise log to a file beside the executable.
 2. An inventory of the Windows (MinGW) and macOS ports, no code (an Opus
    worker, to the session scratchpad and summarised here): what in
    `platform/` and the build glue is Linux-specific (the regions mapped
