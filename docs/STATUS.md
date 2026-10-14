@@ -436,7 +436,13 @@ was green in 19 minutes 39 seconds: build 571 s, platform gate 470 s
 (now with the ThreadSanitizer build), replays 70 s; ccache saw 904
 cacheable calls of 1574 (the game's C is now among them; 222 hits from
 the platform library, 682 misses to fill). The warm figure is the next
-run's and is recorded here when it lands.
+run's and is recorded here when it lands. Measured here too (ccache
+4.9.1 installed by the owner, an empty cache directory, the game's 384
+objects and the executable removed before each build, 32 jobs): the cold
+build 23.4 s with 384 misses; the same build again 7.5 s with 384 hits
+of 384 cacheable calls, the same executable byte for byte; the 385
+uncacheable calls are the `gcc -E` preprocessing runs, which is by
+design.
 
 **The ccache follow-up** (branch m8-ccache, merged 2026-10-14 at
 0c99a7e26b): the game's C reaches gcc as a file beside the object

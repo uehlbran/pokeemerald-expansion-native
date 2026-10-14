@@ -190,6 +190,12 @@ Order of work:
    the game's C is now cacheable by ccache (only the file symbols differ; the
    effect is measured on the runner after the merge); the
    converted assets are cached too (`.github/actions/native-assets`).
+   A small follow-up found while measuring: Makefile.native declares
+   `.SECONDARY:` with no names, so every target is secondary and a
+   deleted object is not rebuilt while the executable is newer than the
+   sources (make's rule for missing intermediates); a fresh checkout is
+   unaffected, but `rm` of an object by hand then needs the executable
+   removed too. Name the secondary targets (the asset chains) instead.
 2. An inventory of the Windows (MinGW) and macOS ports, no code (an Opus
    worker, to the session scratchpad and summarised here): what in
    `platform/` and the build glue is Linux-specific (the regions mapped
