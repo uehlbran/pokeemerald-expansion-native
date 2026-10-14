@@ -185,10 +185,11 @@ Order of work:
    Done 2026-10-14 as two tiers (docs/DECISIONS.md): per push the 64-bit
    build, the platform gate and both 64-bit replays, 591 s warm (31 min
    cold with the suite, which moved to the nightly tier); nightly, six
-   parallel jobs, 41 minutes wall clock. Follow-up: ccache for the game's
-   compile: COMPILE_C compiles from a pipe, which ccache cannot hash;
-   writing the preprocessed text to a file would let the 64-bit build
-   (328 s warm) cache.
+   parallel jobs, 41 minutes wall clock. Follow-up, done: COMPILE_C writes
+   the preprocessed text to a file (`obj.i`) that gcc compiles, so
+   the game's C is now cacheable by ccache (only the file symbols differ; the
+   effect is measured on the runner after the merge); the
+   converted assets are cached too (`.github/actions/native-assets`).
 2. An inventory of the Windows (MinGW) and macOS ports, no code (an Opus
    worker, to the session scratchpad and summarised here): what in
    `platform/` and the build glue is Linux-specific (the regions mapped

@@ -1,0 +1,57 @@
+# The converted graphics (build/assets-native, about 130 MB and 28,000 files:
+# gbagfx, compresSmol and rsfont output) cached between runs; a step of every
+# native job in native.yml, after the checkout and before the build.
+#
+# The key is the content of every input of the conversions, taken as git
+# tree hashes so that it costs nothing and cannot miss a file:
+#   - graphics, data/tilesets, test/compression: the sources of every INCGFX and
+#     INCBIN in the game and the tests (checked: no directive names a file outside
+#     these; hashing all of data/ would let a map or script edit discard the cache);
+#   - the INCGFX and INCBIN lines of src, include, data and test: the
+#     conversion options live there (scaninc turns them into the recipes), and
+#     a changed option does not change the source file. Hashing the lines and
+#     not src/ keeps an ordinary code change from invalidating the cache;
+#   - the converters: tools/gbagfx, tools/compresSmol, tools/rsfont, tools/bin2c;
+#   - the rules and glue that run them: graphics_file_rules.mk,
+#     spritesheet_rules.mk, make_tools.mk, Makefile.native (the generic
+#     conversion rules and GFX; any edit of it discards the cache, accepted over
+#     a list of its lines), and the palette padding with its list of exceptions
+#     (gbagfx_pad.sh, unpadded_palettes.txt).
+# What is not cached: the conversions that write beside the sources (gbagfx,
+# compresSmol, wav2agb, mid2agb, mapjson); they run on every fresh checkout.
+# There is no restore-keys fallback on purpose: make decides what is stale by
+# file times, and a cache of other inputs restored under them would pass as
+# up to date.
+name: Native assets
+description: Restore and save build/assets-native under a key made of all the conversions' inputs.
+
+runs:
+  using: composite
+  steps:
+    - name: Key from the inputs of the conversions
+      id: key
+      shell: bash
+      run: |
+        {
+          git rev-parse HEAD:graphics HEAD:data/tilesets HEAD:test/compression \
+            HEAD:tools/gbagfx HEAD:tools/compresSmol HEAD:tools/rsfont HEAD:tools/bin2c \
+            HEAD:platform/build_glue/gbagfx_pad.sh HEAD:platform/build_glue/unpadded_palettes.txt \
+            HEAD:graphics_file_rules.mk HEAD:spritesheet_rules.mk HEAD:make_tools.mk HEAD:Makefile.native
+          git grep -hE 'INCGFX|INCBIN' -- src include data test | LC_ALL=C sort
+        } | sha256sum | awk '{ print "hash=" $1 }' >> "$GITHUB_OUTPUT"
+
+    - name: Restore build/assets-native
+      id: cache
+      uses: actions/cache@v4
+      with:
+        path: build/assets-native
+        key: assets-native-${{ steps.key.outputs.hash }}
+
+    # A restored file is older than the sources of a fresh checkout, and make
+    # would convert it again. One time for all of them: a converted file that
+    # is the source of another (png to 4bpp to smol) must not look newer than
+    # its product.
+    - name: Make the restored files newer than the checkout
+      if: steps.cache.outputs.cache-hit == 'true'
+      shell: bash
+      run: find build/assets-native -exec touch -d "@$(date +%s)" {} +
