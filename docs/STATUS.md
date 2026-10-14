@@ -100,7 +100,18 @@ adopted (in flight now); an OS lock on a companion file against two
 instances (after the Windows-runner merge); src/siirtc.c filtered out of
 the native build (after that merge); the project logs to a gitignored
 folder before the repository goes public, with the note that earlier
-commits still contain them. One applied change you should see: LICENSE's scope sentence now names
+commits still contain them. One memory-model fact from the Windows runner for you: the loader
+probe (W1) reported no commit charge for the 1 GiB of empty gaps between
+the regions, but that measured the process's private commit only; the
+runner showed about 1 GiB of system commit charged per distinct
+executable of this layout from its first start until its file is
+deleted (the image, gaps included, stays cached), so the game holds about
+1 GiB of commit on a player's Windows machine while it runs and the unit
+tests on the runner had to run from copies deleted after each. It is
+commit (a reservation against page file plus RAM), not resident memory;
+a machine with little page file and RAM could refuse to start the game.
+Recorded as a known cost of the fixed-address model; the alternative
+(a rebased model) is the macOS arm64 question. No action asked. One applied change you should see: LICENSE's scope sentence now names
 platform/, tests/, the native build files and the enumerated documents
 instead of a src/platform/ that never existed; nothing else in LICENSE
 changed. Otherwise nothing new. The three milestone 8 items were
