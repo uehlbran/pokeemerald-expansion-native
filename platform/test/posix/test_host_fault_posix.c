@@ -235,4 +235,27 @@ PTEST(the_fault_address_is_the_access_that_faulted)
     PT_ASSERT_EQ_INT(psup_exit_code(in_child(store_to_an_unmapped_address)), CHILD_FAULT_ADDRESS_OK);
 }
 
+/* --- the fault's name -------------------------------------------------------------- */
+
+/* DIV EDI (host_fault_fixture.h): two bytes. */
+#define DIV_EDI_LENGTH 2u
+
+static char seen_name[HOST_FAULT_NAME_SIZE];
+
+static bool name_and_complete(struct host_fault *fault)
+{
+    host_fault_name(fault, seen_name);
+    host_fault_set_register(fault, HOST_FAULT_PC, host_fault_register(fault, HOST_FAULT_PC) + DIV_EDI_LENGTH);
+    return true;
+}
+
+PTEST(a_fault_is_named_by_its_signal_in_decimal)
+{
+    uint32_t quotient, remainder;
+    PT_ASSERT_EQ_INT(host_fault_install_divide_error(name_and_complete), 0);
+    divide_by_zero(&quotient, &remainder);
+    host_fault_uninstall_divide_error();
+    PT_ASSERT_EQ_STR(seen_name, "signal 8"); /* SIGFPE */
+}
+
 PTEST_MAIN()

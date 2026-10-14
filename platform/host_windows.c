@@ -231,8 +231,10 @@ static int errno_of(DWORD error)
 
 /* The C runtime's narrow strings, main's argv and the paths fopen and _open
  * take, are in the ANSI code page: msvcrt converts them with it, as the
- * system's "A" calls do. The wide calls take UTF-16. A string the code page
- * cannot carry either way is refused, never altered. */
+ * system's "A" calls do. The wide calls take UTF-16. A conversion here that
+ * the code page cannot carry is refused rather than altered; main's argv,
+ * though, has already been through the system's best-fit conversion
+ * (GetCommandLineA) before main sees it. */
 
 /* text in UTF-16 in out (capacity characters, its NUL included). False with
  * errno set: ENAMETOOLONG if it does not fit, EILSEQ if it is not text in the
@@ -321,9 +323,11 @@ int host_file_sync(int descriptor)
 }
 
 /* The C runtime's rename refuses an existing target on Windows. MoveFileExW
- * with MOVEFILE_REPLACE_EXISTING renames over it in one step on a volume
- * (NTFS journals the rename), so path names the old file or the new one;
- * MOVEFILE_WRITE_THROUGH returns only once the rename is on the disk. */
+ * with MOVEFILE_REPLACE_EXISTING renames over it in one step on a volume; on
+ * NTFS, which journals the rename, path then names the old file or the new
+ * one, though the documentation does not promise it for every file system (a
+ * FAT32 or exFAT volume can lose the target in a crash). MOVEFILE_WRITE_THROUGH
+ * returns only once the rename is on the disk. */
 int host_file_replace(const char *from, const char *path)
 {
     wchar_t wide_from[HOST_FILE_PATH_SIZE];
@@ -388,7 +392,7 @@ int host_process_executable_path(char *out, size_t size)
                       windows_error_text(error, text, sizeof text), (unsigned long)error);
         return -1;
     }
-    if (length >= HOST_PROCESS_PATH_SIZE) { /* GetModuleFileNameW truncates silently */
+    if (length >= HOST_PROCESS_PATH_SIZE) { /* a full buffer is a path cut short (ERROR_INSUFFICIENT_BUFFER) */
         (void)fprintf(stderr, "host_process: the executable's path is %u characters or longer\n",
                       HOST_PROCESS_PATH_SIZE);
         return -1;

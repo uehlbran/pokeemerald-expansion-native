@@ -12,7 +12,8 @@
  *
  * Ownership model. The caller's thread owns all game and test state, and the
  * flag's meaning; the watchdog's thread owns the watchdog's own state (the
- * deadline, the stop request, behind its mutex) and writes exactly one
+ * deadline and the stop request: behind its mutex on POSIX; on Windows in
+ * relaxed C11 atomics whose changes an event announces) and writes exactly one
  * thing outside it: the caller's atomic flag, once. It calls no callback,
  * reads no caller state, prints nothing and allocates nothing. The flag is
  * a C11 atomic_bool: the watchdog stores true (relaxed: the flag carries no

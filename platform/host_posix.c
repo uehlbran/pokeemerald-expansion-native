@@ -210,6 +210,26 @@ uintptr_t host_fault_address(const struct host_fault *fault)
     return (uintptr_t)fault->info->si_addr;
 }
 
+#define SIGNAL_NAME_PREFIX "signal "
+#define DECIMAL_BASE 10u
+
+/* Written by hand, not with snprintf, which is not async-signal-safe. */
+void host_fault_name(const struct host_fault *fault, char name[HOST_FAULT_NAME_SIZE])
+{
+    char digits[HOST_FAULT_NAME_SIZE];
+    size_t count = 0;
+    unsigned number = (unsigned)fault->signal_number;
+    do {
+        digits[count++] = (char)('0' + number % DECIMAL_BASE);
+        number /= DECIMAL_BASE;
+    } while (number > 0 && count < sizeof digits);
+    size_t length = sizeof SIGNAL_NAME_PREFIX - 1u;
+    memcpy(name, SIGNAL_NAME_PREFIX, length);
+    while (count > 0 && length < HOST_FAULT_NAME_SIZE - 1u)
+        name[length++] = digits[--count];
+    name[length] = '\0';
+}
+
 /* --- host_process ---------------------------------------------------------------- */
 
 int host_process_restart(char *const argv[])

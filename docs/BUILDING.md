@@ -291,10 +291,14 @@ written `pokeemerald.rtc` in binary mode. The game itself needs
 `SDL2.dll` beside it (the Makefile copies it), as each test directory has.
 
 What the host layer does on Windows, and why each choice: `platform/README.md`,
-"The host layer", and `docs/ARCHITECTURE.md`. Two differences a player or a
+"The host layer", and `docs/ARCHITECTURE.md`. The differences a player or a
 test sees: the main thread's stack is 2 MiB, not 8; a crash reboot and the
 replay's `restart` start a child process (another process id) that the first
-one waits for, where Linux replaces the process in place.
+one waits for, where Linux replaces the process in place; two crashes end the
+run with no report and no reboot, `abort()` (the C runtime's, which raises no
+exception) and an overflow of the battle runner's stack (no room for the
+exception's records); a crash report names the fault as `exception
+0xC0000005`, where Linux says `signal 11`.
 
 What cannot be verified here: that the loader maps this executable (the probe
 on `windows-latest` showed it for the layout, `research/probes/README.md`, W1);

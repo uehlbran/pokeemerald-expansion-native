@@ -38,9 +38,14 @@
  * ends this process with its exit status, so the test runner, which waits for
  * the process it started, sees the rebooted run's output and end. The child
  * is started with CreateProcessW, which allocates; host_process.h says why
- * that is accepted. abort() is not an exception there (the C runtime raises
- * SIGABRT in its own signal table and exits with status 3), so it ends the
- * run without a reboot.
+ * that is accepted. Two crashes end the run without a report or a reboot on
+ * Windows: abort(), which is not an exception there (the C runtime raises
+ * SIGABRT in its own signal table and exits with status 3), and an overflow
+ * of the battle runner's stack (game_hooks), which runs into the image's
+ * read-only headers, where the system cannot write the exception's records,
+ * so no handler runs. The report names a Windows fault by its exception code
+ * in hexadecimal ("crash_reboot: exception 0xC0000005 at ..."), a Linux one
+ * by its signal ("crash_reboot: signal 11 at ...").
  *
  * A crash with the persistent bytes unchanged since the process started
  * (zero, or what crash_reboot_restore put there) would reboot into the same

@@ -184,11 +184,30 @@ bool host_fault_is_divide_error(const struct host_fault *fault)
 }
 
 /* The exception code, an NTSTATUS (0xC0000005 for an access violation): as
- * an int it is negative, and crash_reboot prints it unsigned, in decimal. */
+ * an int it is negative; reports name it with host_fault_name. */
 int host_fault_number(const struct host_fault *fault)
 {
     return (int)fault->exception->ExceptionRecord->ExceptionCode;
 }
+
+#define EXCEPTION_NAME_PREFIX "exception 0x"
+#define EXCEPTION_CODE_DIGITS 8u /* an NTSTATUS is 32 bits */
+#define HEX_DIGIT_BITS 4u
+#define HEX_DIGIT_MASK 0xFu
+
+void host_fault_name(const struct host_fault *fault, char name[HOST_FAULT_NAME_SIZE])
+{
+    static const char digits[] = "0123456789ABCDEF";
+    const DWORD code = fault->exception->ExceptionRecord->ExceptionCode;
+    size_t length = sizeof EXCEPTION_NAME_PREFIX - 1u;
+    memcpy(name, EXCEPTION_NAME_PREFIX, length);
+    for (size_t i = EXCEPTION_CODE_DIGITS; i > 0; i--)
+        name[length++] = digits[(code >> ((i - 1u) * HEX_DIGIT_BITS)) & HEX_DIGIT_MASK];
+    name[length] = '\0';
+}
+
+_Static_assert(sizeof EXCEPTION_NAME_PREFIX - 1u + EXCEPTION_CODE_DIGITS < HOST_FAULT_NAME_SIZE,
+               "an exception's name fits host_fault_name's buffer");
 
 /* An access violation's and an in-page error's second parameter is the
  * address accessed; for any other fault, the instruction's. */

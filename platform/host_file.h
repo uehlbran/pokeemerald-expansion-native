@@ -54,9 +54,9 @@ int host_file_write_all(int descriptor, const void *bytes, size_t size);
  * or -1 with errno set. */
 int host_file_sync(int descriptor);
 
-/* Replaces the file at path with the one at from, atomically: path names the
- * old file or the new one, never neither. Returns 0, or -1 with errno set
- * and both files as they were. */
+/* Replaces the file at path with the one at from, atomically (on Windows, on
+ * an NTFS volume): path names the old file or the new one, never neither.
+ * Returns 0, or -1 with errno set and both files as they were. */
 int host_file_replace(const char *from, const char *path);
 
 /* Makes a replacement durable: writes the directory that holds path through

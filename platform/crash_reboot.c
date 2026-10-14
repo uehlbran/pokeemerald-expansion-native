@@ -48,7 +48,6 @@ static const volatile uint8_t *persistent_bytes(void)
  * that the lines of processes sharing stderr do not interleave (the hydra
  * runs up to 32). Async-signal-safe: no allocation, no stdio. */
 #define REPORT_SIZE 256u
-#define DECIMAL_BASE 10u /* numbers are written and read in decimal */
 
 struct report {
     char text[REPORT_SIZE];
@@ -77,29 +76,20 @@ static void report_add_hex(struct report *report, uintptr_t value)
     report_add(report, text);
 }
 
-static void report_add_unsigned(struct report *report, unsigned value)
-{
-    char text[3 * sizeof value + 1];
-    size_t length = sizeof text - 1;
-    text[length] = '\0';
-    do {
-        text[--length] = (char)('0' + value % DECIMAL_BASE);
-        value /= DECIMAL_BASE;
-    } while (value > 0 && length > 0);
-    report_add(report, &text[length]);
-}
-
 /* Best-effort: there is nothing to do if stderr is gone. */
 static void report_write(const struct report *report)
 {
     (void)host_file_write_all(STDERR_FILENO, report->text, report->length);
 }
 
-/* "crash_reboot: signal 11 at 0x...; fault address 0x...: " */
+/* "crash_reboot: signal 11 at 0x..., fault address 0x...: " (Windows:
+ * "exception 0xC0000005", host_fault_name) */
 static void report_where(struct report *report, const struct host_fault *fault)
 {
-    report_add(report, "crash_reboot: signal ");
-    report_add_unsigned(report, (unsigned)host_fault_number(fault));
+    char name[HOST_FAULT_NAME_SIZE];
+    host_fault_name(fault, name);
+    report_add(report, "crash_reboot: ");
+    report_add(report, name);
     report_add(report, " at ");
     report_add_hex(report, host_fault_register(fault, HOST_FAULT_PC));
     report_add(report, ", fault address ");

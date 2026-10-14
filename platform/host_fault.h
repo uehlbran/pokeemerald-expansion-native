@@ -100,6 +100,15 @@ bool host_fault_is_divide_error(const struct host_fault *fault);
  * the exception code (an NTSTATUS, negative as an int). */
 int host_fault_number(const struct host_fault *fault);
 
+/* Room for host_fault_name's text, its NUL included. */
+#define HOST_FAULT_NAME_SIZE 24u
+
+/* The fault's name for a report, as the host's own tools write it: "signal 11"
+ * (the signal number in decimal; POSIX), "exception 0xC0000005" (the exception
+ * code in hexadecimal, as Microsoft's documentation and debuggers write an
+ * NTSTATUS; Windows). Writes it to name, NUL-terminated. Async-signal-safe. */
+void host_fault_name(const struct host_fault *fault, char name[HOST_FAULT_NAME_SIZE]);
+
 /* The address the fault concerns, for reports: the faulting memory access,
  * or for some faults the instruction (siginfo's si_addr; Windows: an access
  * violation's accessed address, else the exception's address). */

@@ -274,6 +274,27 @@ PTEST(exceptions_that_are_not_divide_errors_pass_the_divide_handler)
     PT_ASSERT_EQ_U32(child_code("debug_string"), CHILD_PASSED);
 }
 
+/* DIV EDI (host_fault_fixture.h): two bytes. */
+#define DIV_EDI_LENGTH 2u
+
+static char seen_name[HOST_FAULT_NAME_SIZE];
+
+static bool name_and_complete(struct host_fault *fault)
+{
+    host_fault_name(fault, seen_name);
+    host_fault_set_register(fault, HOST_FAULT_PC, host_fault_register(fault, HOST_FAULT_PC) + DIV_EDI_LENGTH);
+    return true;
+}
+
+PTEST(a_fault_is_named_by_its_exception_code_in_hexadecimal)
+{
+    uint32_t quotient, remainder;
+    PT_ASSERT_EQ_INT(host_fault_install_divide_error(name_and_complete), 0);
+    divide_by_zero(&quotient, &remainder);
+    host_fault_uninstall_divide_error();
+    PT_ASSERT_EQ_STR(seen_name, "exception 0xC0000094"); /* EXCEPTION_INT_DIVIDE_BY_ZERO */
+}
+
 PTEST(installing_turns_the_error_dialogs_off)
 {
     PT_ASSERT_EQ_INT(host_fault_install_divide_error(pass_everything_on), 0);

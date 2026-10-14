@@ -1088,7 +1088,10 @@ through: `FlushFileBuffers` is documented for a file, a volume or a pipe.
 is documented to return only once the move is on the disk, and NTFS journals
 the rename. So on Windows `host_file_sync_directory_of` checks the path's
 length, as on Linux, and does nothing else; the save and the clock's offset
-stay temporary file, flush, replace, as docs/C-RULES.md asks.
+stay temporary file, flush, replace, as docs/C-RULES.md asks. The
+replacement is atomic on NTFS, the file system Windows installs on; Microsoft
+does not document it for every file system, and a save on a FAT32 or exFAT
+volume (a USB stick, an SD card) can lose the old file in a crash.
 
 ## 2026-10-14: Narrow strings on Windows are in the ANSI code page
 
