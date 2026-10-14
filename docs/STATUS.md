@@ -1,6 +1,6 @@
 # Status
 
-Last updated 2026-10-09 (milestone 7 done: **64-bit done**; every gate green at both widths on main at 94f3c70f62 and recorded below; milestone 8 not started).
+Last updated 2026-10-14 (milestone 7 done: **64-bit done**, every gate green at both widths on main at 94f3c70f62; milestone 8 in progress: Linux CI on main, the probes decided, the host layer and the data converter in review).
 
 This file is the honest ledger. A thing is listed as verified only with
 the gate that proved it. Anything without a gate is unverified, whatever
@@ -58,33 +58,13 @@ game flags (3249f05722). Milestone 6's screenshot flake (the trainer party
 seed hashing a pointer) is recorded in the milestone 6 section and in
 DECISIONS.md. Earlier breakages are in the milestone logs.
 
-**Needs the owner.** Three things for milestone 8, none blocking the
-work that is running:
-
-1. The Windows cross-compiler (needed from task W4 on; PLAN.md):
-`sudo apt-get install -y gcc-mingw-w64-x86-64 binutils-mingw-w64-x86-64 mingw-w64-tools`
-and, optional, to run the Windows build here under Wine:
-`sudo apt-get install -y wine64`.
-The SDL2 development files for MinGW are not in apt; the build will
-fetch a pinned `SDL2-devel-2.30.x-mingw` release from libsdl-org (zlib
-licence) with a sha256 check, not committed.
-2. A decision that could reasonably go either way: **macOS on Apple
-silicon (arm64)**. The inventory (`research/m8-inventory.md`, section
-2.5) measured that the fixed-address memory model cannot hold there
-(arm64 executables are always slid at load; the data holds 41,946
-4-byte absolute address words; the bit-25 script tag; no divide trap),
-so an arm64 build needs a "rebased" model where GBA addresses are
-offsets from a run-time base, a milestone of its own touching the data
-layout, the script tag and the division handling. Recommendation: do not
-start it; build macOS for x86_64, which runs on Apple silicon through
-Rosetta (kept by Apple through macOS 27), and revisit arm64 only if a
-native arm64 build is wanted for its own sake. Work continues on the
-Windows and macOS x86_64 ports meanwhile.
-3. The CI workflows spend the private repository's Actions minutes (the
-Linux gate about an hour of a runner per push to main; the probes a few
-minutes each, Windows minutes counting double and macOS tenfold);
-disable Actions in the repository settings if that is not wanted.
-
+**Needs the owner.** Nothing new. The three milestone 8 items were
+settled on 2026-10-14: the MinGW cross-compiler is installed (GCC 13 for
+x86_64-w64-mingw32, binutils 2.41; Wine is not, so cross-built
+executables run only on the Windows runner); macOS ships as x86_64
+under Rosetta and arm64 is not started (DECISIONS.md, with Apple's
+Rosetta wind-down recorded as the known revisit); the CI minutes are
+accepted and the Linux workflow is on main. Standing: upstream
 rh-hideout's maintainer replied to all seven upstream
 issues citing their LLM policy and said they will close them (details and a
 recommendation under "Upstream issues" below). Nothing was posted in reply.
@@ -269,8 +249,10 @@ with the image's), so the job takes the i386 headers and link files from
 the downloaded package without its dependencies; and the platform gate
 runs after the 32-bit build, which generates the game headers the lint
 reads. The GBA job is green (the ROM's sha1 equal to the recorded one);
-the native job's result is recorded below when its run completes, and
-the workflow merges into main then.
+both jobs are green on the branch's third run (37920736586, 2026-10-09:
+the GBA ROM with the recorded sha1; the native gate end to end, about
+95 minutes on the runner), and the workflow is merged into main on
+2026-10-14, where every push now runs it.
 
 **The loader probes** (`research/probes/`, a manual workflow on the
 Windows and macOS runners, two runs on 2026-10-09; the README has the

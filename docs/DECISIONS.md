@@ -857,3 +857,21 @@ dialect. The Linux build keeps assembling directly; the converter is an
 additional output, gated by a checker that compares each converted
 object's section bytes and relocations with the ELF object's, for both
 targets, on Linux (clang 18 here cross-assembles both).
+
+## 2026-10-14: macOS ships as x86_64 under Rosetta; arm64 is not started; Rosetta's wind-down is a known revisit
+
+The owner decided on the milestone 8 question STATUS.md had raised: the
+macOS build is x86_64 only, run on Apple silicon through Rosetta 2, and
+no arm64 build is started. The reason is the memory model: the loader
+probes (`research/probes/README.md`) and the linker itself ("-no_pie
+ignored for arm64") show that an arm64 executable is always slid at
+load, so the fixed-address model (the GBA regions and the image below
+4 GiB, the 41,946 four-byte absolute address words in the data, the
+bit-25 script tag, the division trap the arm64 ISA lacks) cannot hold
+there; an arm64 build needs a rebased model, a milestone of its own.
+Known future revisit: Apple announced (WWDC 2025) that Rosetta 2 stays
+available through macOS 27 and is then kept only for a subset of older
+software, so an x86_64-only macOS build has a horizon. When that horizon
+matters, the rebased memory model is the work to plan, with this entry
+and the inventory's section 2.5 as the starting point; nothing else in
+the port depends on the choice.
