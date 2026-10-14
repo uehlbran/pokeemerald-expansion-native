@@ -170,6 +170,19 @@ GAP_SECTIONS := $(shell sed -n 's/^[[:space:]]*gap[[:space:]][[:space:]]*\(\.gap
 
 lib: $(GAPS_OBJ)
 
+# Three modules reach the C runtime in ways MinGW's headers do not allow, and
+# are compiled with the check or the macro that stops them named here, each for
+# the Windows build only, so the Linux build is unchanged. They are the host
+# layer's to take over: rtc_offset_store (O_CLOEXEC and write's count; its
+# files are text, so the macro also asks for no newline translation) is task
+# W5's, crash_reboot (write's count, in the signal handler) task W6's.
+# save_file only has %zu and %jd in its messages, which MinGW's GCC reads
+# against the C runtime's formats unless the function carries its own
+# __MINGW_PRINTF_FORMAT; the same lines are checked in the Linux build.
+$(OBJ_DIR)/crash_reboot.o: CFLAGS_ALL += -Wno-conversion
+$(OBJ_DIR)/rtc_offset_store.o: CFLAGS_ALL += -Wno-conversion -DO_CLOEXEC='(_O_NOINHERIT | _O_BINARY)'
+$(OBJ_DIR)/save_file.o: CFLAGS_ALL += -Wno-format
+
 $(GAPS_OBJ): gba_gaps.pe.s
 	@mkdir -p $(@D)
 	$(HOST_AS) -o $@ $<

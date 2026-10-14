@@ -14,7 +14,6 @@
 #include <string.h>
 
 #include "input.h"
-#include "printf_format.h"
 #include "replay.h"
 
 #define DECIMAL_BASE 10 /* numbers are written and read in decimal */
@@ -31,7 +30,7 @@ static const struct key_name key_names[] = {
 };
 
 static void set_error(struct replay_parse_error *error, uint32_t line, const char *format, ...)
-    PLATFORM_PRINTF_FORMAT(3, 4);
+    __attribute__((format(printf, 3, 4)));
 
 static void set_error(struct replay_parse_error *error, uint32_t line, const char *format, ...)
 {

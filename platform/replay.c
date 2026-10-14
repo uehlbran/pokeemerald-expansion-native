@@ -9,7 +9,6 @@
  * tests play scripts against a fake.
  */
 #include "replay.h"
-#include "printf_format.h"
 
 #include <stdarg.h>
 #include <stdbool.h>
@@ -21,7 +20,7 @@
 #define REPLAY_PRESS_FRAMES 1u
 #define REPLAY_PRESS_RELEASE_FRAMES 1u
 
-static void fail(struct replay *replay, uint32_t line, const char *format, ...) PLATFORM_PRINTF_FORMAT(3, 4);
+static void fail(struct replay *replay, uint32_t line, const char *format, ...) __attribute__((format(printf, 3, 4)));
 
 static void fail(struct replay *replay, uint32_t line, const char *format, ...)
 {

@@ -93,8 +93,7 @@ static void report_write(const struct report *report)
     const char *text = report->text;
     size_t length = report->length;
     while (length > 0) {
-        /* At most REPORT_SIZE: write's count is an unsigned int on Windows. */
-        ssize_t written = write(STDERR_FILENO, text, (unsigned int)length);
+        ssize_t written = write(STDERR_FILENO, text, length);
         if (written <= 0)
             return;
         text += written;

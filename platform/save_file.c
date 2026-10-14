@@ -43,7 +43,6 @@
 
 #include "flash.h"
 #include "host_file.h"
-#include "printf_format.h"
 #include "save_file.h"
 
 /* Appended to the save path for the file a store writes before renaming. */
@@ -199,7 +198,7 @@ static bool read_exactly(FILE *file, void *dest, size_t count)
 }
 
 /* SAVE_FILE_CORRUPT, after printing why the file at state.path is unusable. */
-PLATFORM_PRINTF_FORMAT(1, 2) static int corrupt(const char *format, ...)
+__attribute__((format(printf, 1, 2))) static int corrupt(const char *format, ...)
 {
     (void)fprintf(stderr, "save_file: %s: ", state.path); /* best-effort */
     va_list args;

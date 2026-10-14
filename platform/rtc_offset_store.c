@@ -18,15 +18,6 @@
 
 #include "host_file.h"
 
-/* open(2) flags every descriptor here takes: not inherited by a child process,
- * and on Windows no translation of the file's newlines (its C runtime opens
- * files as text by default). */
-#ifdef _WIN32
-#define OPEN_FLAGS (O_NOINHERIT | O_BINARY)
-#else
-#define OPEN_FLAGS O_CLOEXEC
-#endif
-
 #define TEMP_SUFFIX ".tmp"
 #define FILE_MODE 0644
 /* "-" + 16 digits + newline fits in 32; the longest valid file is shorter. */
@@ -73,7 +64,7 @@ int rtc_offset_store_load(const char *path, int64_t *offset, int *found)
     char text[FILE_BUFFER_SIZE];
     ssize_t length;
     int64_t parsed;
-    int fd = open(path, O_RDONLY | OPEN_FLAGS);
+    int fd = open(path, O_RDONLY | O_CLOEXEC);
 
     if (fd < 0) {
         if (errno == ENOENT) {
@@ -112,8 +103,7 @@ int rtc_offset_store_load(const char *path, int64_t *offset, int *found)
 static int write_all(int fd, const char *data, size_t length)
 {
     while (length > 0) {
-        /* length is a few bytes (FILE_BUFFER_SIZE): write's count is an unsigned int on Windows. */
-        ssize_t n = write(fd, data, (unsigned int)length);
+        ssize_t n = write(fd, data, length);
         if (n < 0) {
             if (errno == EINTR)
                 continue;
@@ -150,7 +140,7 @@ int rtc_offset_store_save(const char *path, int64_t offset)
         return -1;
     }
 
-    fd = open(temp_path, O_WRONLY | O_CREAT | O_TRUNC | OPEN_FLAGS, FILE_MODE);
+    fd = open(temp_path, O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, FILE_MODE);
     if (fd < 0) {
         rtc_report_call_failure("open (temporary offset file)");
         return -1;
