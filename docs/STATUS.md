@@ -93,32 +93,14 @@ driver, task W8) restarts it; an unsupervised Windows run ends on a crash
 with that code. (2) No ANSI code page: the executable carries a manifest
 that sets the active code page to UTF-8, the minimum Windows version that
 honours it is recorded in BUILDING.md, and a Windows-runner test saves
-and loads through a non-ASCII path. Five decisions from the independent review, each with the
-orchestrator's recommendation: (1) the audio rate: the PSG decision
-entry said never to point-sample at 13379 Hz, yet that is the shipped
-rate (it keeps the FIFO frame mixing sample for sample); the entry is
-amended to say so, and whether to run the device at the GBA's 32768 Hz
-with a resampled FIFO is yours: recommended later, after Windows, with
-an A/B recording of a cry. (2) A bare 131072-byte save (an emulator's
-.sav or an old native build's) is adopted as a 32-bit native image with
-no check; the header and message now say so, and the reviewer proposes
-probing the fourth chunk's checksum at the GBA size to refuse a GBA
-save instead of converting it into garbage with valid checksums in the
-64-bit build: recommended, a small task. (3) Two instances on one save
-path can tear the save (the temporary name is fixed): the single-writer
-assumption is now documented; a lock file is yours to want: recommended
-no, until a player asks. (4) src/siirtc.c carries the largest upstream
-modification (102 lines) where the policy's first option, filtering the
-file out of the native build and providing the SiiRtc API from
-platform/, is available: recommended yes, as its own task. (5) Where
-the project logs live: the public-face reviewer classes STATUS.md,
-PLAN.md, research/m8-inventory.md and the build-glue logs (BOOT-LOG.md,
-LINK-NEEDS.md) as internal notes that should leave the public tree or
-sit under one marked directory; README no longer sends a reader to
-STATUS for the gates (BUILDING has them now): recommended a
-`docs/log/` directory with a one-line README saying what it is, moved
-after milestone 8, since your process reads these files where they are.
-One applied change you should see: LICENSE's scope sentence now names
+and loads through a non-ASCII path. The five review questions were ruled on by the owner on 2026-10-14
+(DECISIONS.md, "The owner's five rulings"): the 32768 Hz audio path
+after the Windows verification; headerless saves refused instead of
+adopted (in flight now); an OS lock on a companion file against two
+instances (after the Windows-runner merge); src/siirtc.c filtered out of
+the native build (after that merge); the project logs to a gitignored
+folder before the repository goes public, with the note that earlier
+commits still contain them. One applied change you should see: LICENSE's scope sentence now names
 platform/, tests/, the native build files and the enumerated documents
 instead of a src/platform/ that never existed; nothing else in LICENSE
 changed. Otherwise nothing new. The three milestone 8 items were

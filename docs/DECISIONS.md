@@ -1226,3 +1226,56 @@ the Windows runner) and the owner has verified it by hand on a Windows
 machine. The macOS decision of earlier today (x86_64 under Rosetta, arm64
 not started) stands; only its start moves.
 
+## 2026-10-14: The owner's five rulings on the independent review's open questions
+
+(1) The audio rate. The PSG decision of milestone 3 said never to
+point-sample the PSG at m4a's 13379 Hz, and that is the rate the build
+runs at (`FRAME_AUDIO_SAMPLE_RATE_HZ`, so the FIFO frame mixes sample for
+sample): the corrected reasoning is that at 13379 Hz the square and noise
+channels alias into the audible band (psg.c, "RESAMPLING"). The owner
+rules: run the device at the GBA's 32768 Hz with the FIFO frame
+upsampled, as its own task after the owner has verified Windows by hand,
+with an A/B recording against the current path as its evidence.
+
+(2) Headerless save files. A file without this project's header was
+loaded as a bare 32-bit native image and could be handed to the
+converter. The game's sector checksum is a sum over raw bytes, so no
+checksum or signature can tell a GBA-layout image from a native one: a
+probe is impossible, and the owner rules the legacy path out. A file
+without the header is refused with a message that it looks like an
+emulator or cartridge save, that importing those is not supported yet,
+and that the file is left untouched; the converter never runs on a
+headerless image. The only headerless native saves ever written were
+this project's own early test saves, which have no users. Done now, as
+a data-integrity bug, with tests for an emulator save, a truncated file
+and a valid native save at each width.
+
+(3) Two instances on one save. The owner does not accept "unsupported":
+with a fixed temporary name, two instances saving at once can tear the
+save, and launching the game twice is an easy way to do it. Because the
+save is atomically replaced, a lock on the save's own inode is lost at
+the first save, so the lock is an exclusive OS lock (flock on POSIX,
+LockFileEx on Windows) on a companion file beside the save,
+`<save>.lock`, created once and never deleted: its presence means
+nothing, only the held lock does, and the OS releases it on any exit
+including a crash. A second instance refuses to start with a message
+naming the save; test-runner mode, which writes no save, is unaffected.
+Tests: a second instance is refused, the lock survives a save, and it is
+released after the process is killed. Done as its own task after the
+Windows-runner branch merges (it owns host_file.h and host_windows.c).
+
+(4) `src/siirtc.c`. Filtered out of the native build, the SiiRtc API
+provided from the platform layer, its guards removed and
+UPSTREAM_MODIFICATIONS.md updated: its own task after the Windows-runner
+branch merges (it owns Makefile.native).
+
+(5) The project logs. Not a `docs/log/` directory: STATUS.md, PLAN.md,
+the milestone inventory, the build-glue logs and the process-only
+DECISIONS entries move to a gitignored folder the orchestration keeps
+using, and nothing public mentions orchestrators, workers or models;
+after milestone 8 and before the repository goes public. Noted for the
+owner: earlier commits still contain these files, so a public history
+would need rewriting or a fresh start.
+
+macOS stays on hold until the owner has verified Windows by hand.
+
