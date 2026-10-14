@@ -21,6 +21,12 @@
  *  - Each section starts at a multiple of the section alignment, which the
  *    loader requires (BLOCK, as the default script has it).
  *  - A COFF weak external is not a definition (below).
+ *  - The image's writable sections come last, after its read-only ones: the
+ *    default script puts .data before .rdata, .pdata and .xdata and .bss
+ *    after them, so this script moves every initialised data input after
+ *    .xdata (below), and the program's mutable data is one stretch from
+ *    __data_start__ to __bss_end__, as an ELF image's is from __data_start to
+ *    _end (host_image.h's writable part, host_windows.c).
  * The layout the loader accepted: research/probes/windows_layout.
  */
 
@@ -75,16 +81,27 @@ SECTIONS
 }
 INSERT AFTER .rdata;
 
+/* Where the program's own image starts: its code. Below it are the image's
+ * headers, the battle runner's stack and the GBA regions with the gaps between
+ * them (gba_regions.pe.ld), none of them the program's code or data
+ * (host_image.h, host_windows.c). */
+__text_start__ = ADDR(.text);
+
 /* The game's own mutable data, bracketed so that platform/crt0.c can do what
  * src/crt0.s does when SoftReset restarts the ROM (gba_game.ld says why and
  * how the game's objects are told from the platform's). The same path
  * patterns select the C objects' sections; the data objects' sections are
  * named game_data and game_bss already, because the converter that makes
  * their COFF listings (platform/build_glue/elf_to_flat.py) brackets them
- * itself. Outside both brackets, as in gba_game.ld: script_data. Both go
- * before the default script's .data and .bss. */
+ * itself. Outside both brackets, as in gba_game.ld: script_data. */
 PROVIDE(gba_game_objects_linked = 0);
 
+/* The initialised data, after the read-only sections (above): first the
+ * game's, then everyone else's, which the default script's .data would hold
+ * before .rdata. A pattern here takes an input section before the default
+ * script's do, so that .data is left empty and dropped; its __data_start__
+ * and __data_end__ are defined again around what it held, or they would be
+ * left undefined in the symbol table. */
 SECTIONS
 {
     .gamedat BLOCK(__section_alignment__) :
@@ -97,8 +114,20 @@ SECTIONS
         *(.iwram)
         game_data_end = .;
     }
+    .rwdata BLOCK(__section_alignment__) :
+    {
+        __data_start__ = .;
+        *(.data .data.* .data2 SORT(.data$*))
+        KEEP(*(.jcr))
+        __data_end__ = .;
+        *(.data_cygwin_nocopy)
+    }
+    script_data BLOCK(__section_alignment__) :
+    {
+        *(script_data)
+    }
 }
-INSERT BEFORE .data;
+INSERT BEFORE .bss;
 
 /* game_bss keeps the GBA's order, .bss then COMMON_DATA (gba_game.ld says
  * why). The COFF assembler stores common_data's zeros in the file, so unlike

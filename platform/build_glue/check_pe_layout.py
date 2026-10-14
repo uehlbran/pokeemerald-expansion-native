@@ -19,7 +19,11 @@ reads the PE headers and exits 1, printing one line per problem, unless:
   * every GBA region, and the battle runner's stack, is a section at its GBA
     address, of exactly its size, writable, and the gaps between them are
     read-only (a writable gap would be charged to the process as memory);
-  * .text is at 0x40001000.
+  * .text is at 0x40001000;
+  * above it, the sections the loader keeps (not the discardable debug
+    sections) are read-only first and writable after (gba_game.pe.ld moves
+    the initialised data there), so that the program's mutable data is one
+    stretch, which host_windows.c's host_image_writable gives.
 
 The addresses and sizes are those of gba_regions.pe.ld (GBATEK "GBA Memory
 Map"), written out again on purpose: this checks the link, not the script
@@ -43,6 +47,7 @@ IMAGE_FILE_RELOCS_STRIPPED = 0x0001
 IMAGE_DLLCHARACTERISTICS_HIGH_ENTROPY_VA = 0x0020
 IMAGE_DLLCHARACTERISTICS_DYNAMIC_BASE = 0x0040
 # "Section Flags".
+IMAGE_SCN_MEM_DISCARDABLE = 0x02000000
 IMAGE_SCN_MEM_WRITE = 0x80000000
 BASE_RELOCATION_DIRECTORY = 5
 MAX_PROBLEMS = 20
@@ -83,6 +88,10 @@ class Section:
     @property
     def writable(self):
         return bool(self.flags & IMAGE_SCN_MEM_WRITE)
+
+    @property
+    def discardable(self):
+        return bool(self.flags & IMAGE_SCN_MEM_DISCARDABLE)
 
     @property
     def stored(self):
@@ -171,6 +180,15 @@ def check_image(image):
     code = by_address.get(CODE_ADDRESS)
     if code is None or code.name != ".text":
         problems.append(".text is not at %#x" % CODE_ADDRESS)
+    first_writable = None
+    for section in image.sections:
+        if section.address < CODE_ADDRESS or section.discardable:
+            continue
+        if section.writable and first_writable is None:
+            first_writable = section
+        elif not section.writable and first_writable is not None:
+            problems.append("%s is read-only but follows the writable %s: the writable sections must come last"
+                            % (section.name, first_writable.name))
     return problems
 
 
@@ -183,8 +201,11 @@ def self_test():
 
     # Section flags written out from the specification, so a wrong constant above fails here:
     # uninitialised data (0x80) readable (0x40000000), and writable (0x80000000) for a region.
+    # Initialised data is 0x40, and a debug section discardable (0x02000000).
     READ_ONLY_UNINITIALISED = 0x00000080 | 0x40000000
     READ_WRITE_UNINITIALISED = 0x00000080 | 0x40000000 | 0x80000000
+    READ_ONLY_INITIALISED = 0x00000040 | 0x40000000
+    READ_WRITE_INITIALISED = 0x00000040 | 0x40000000 | 0x80000000
 
     def layout():
         sections = []
@@ -196,6 +217,10 @@ def self_test():
             address = region_address + round_up(size, 0x1000)
         sections.append(Section(".gap", address, CODE_ADDRESS - address, READ_ONLY_UNINITIALISED))
         sections.append(Section(".text", CODE_ADDRESS, 0x1234, 0x60000020))
+        sections.append(Section(".rdata", CODE_ADDRESS + 0x2000, 0x10, READ_ONLY_INITIALISED))
+        sections.append(Section(".data", CODE_ADDRESS + 0x3000, 0x10, READ_WRITE_INITIALISED))
+        sections.append(Section(".bss", CODE_ADDRESS + 0x4000, 0x10, READ_WRITE_UNINITIALISED))
+        sections.append(Section(".debug", CODE_ADDRESS + 0x5000, 0x10, READ_ONLY_INITIALISED | 0x02000000))
         return Image(IMAGE_BASE, 0x1000, 0x0001 | 0x0002, 0x0100, 0, sections)
 
     expect("a good layout", check_image(layout()), [])
@@ -208,7 +233,7 @@ def self_test():
     image = layout()
     image.characteristics = 0x2
     image.relocation_directory_size = 8
-    image.sections.append(Section(".reloc", CODE_ADDRESS + 0x2000, 0x10, 0x42000040))
+    image.sections.append(Section(".reloc", CODE_ADDRESS + 0x6000, 0x10, 0x42000040))
     expect("relocations", check_image(image), ["flag is not set", "directory is not empty", "there is a .reloc"])
     image = layout()
     del image.sections[1]
@@ -228,8 +253,16 @@ def self_test():
     image.sections[2].flags = READ_ONLY_UNINITIALISED
     expect("a read-only region", check_image(image), ["EWRAM: .gba is not writable"])
     image = layout()
-    image.sections[-1].name = ".code"
+    image.sections[-5].name = ".code"
     expect("the code", check_image(image), [".text is not at"])
+    image = layout()
+    image.sections[-4].flags, image.sections[-3].flags = image.sections[-3].flags, image.sections[-4].flags
+    expect("data before read-only data", check_image(image),
+           [".data is read-only but follows the writable .rdata"])
+    image = layout()
+    image.sections[-1].flags &= ~0x02000000
+    expect("a kept read-only section after the data", check_image(image),
+           [".debug is read-only but follows the writable .data"])
     data = bytearray(1024)
     for message, damaged in (("a short file", b"MZ"), ("not a PE file", bytes(data))):
         try:

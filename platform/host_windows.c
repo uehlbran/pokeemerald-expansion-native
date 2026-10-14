@@ -1,14 +1,17 @@
 /*
  * host_windows.c: the host layer on Windows (x86-64, MinGW-w64): the pages
- * mapped at fixed addresses (host_memory.h); where the link put the regions
- * is host_linked.c's. Until tasks W5 to W7 have written each part, the calls
- * below the memory section are stubs (research/m8-inventory.md, 5.2) that
+ * mapped at fixed addresses (host_memory.h) and the image's and the main
+ * stack's bounds (host_image.h); where the link put the regions is
+ * host_linked.c's. Until tasks W5 to W7 have written each part, the other
+ * calls are stubs (research/m8-inventory.md, 5.2) that
  * return their error value and print nothing: -1, an empty span, or, where
  * the header has no error value, an answer no real one can be mistaken for
  * (UINTPTR_MAX for a register or an address, "read-only" for any address).
  *
- * Followed: Microsoft's documentation of VirtualAlloc and VirtualFree
- * (memoryapi.h) and of FormatMessage for the reports.
+ * Followed: Microsoft's documentation of VirtualAlloc, VirtualFree and
+ * VirtualQuery (memoryapi.h), GetCurrentThreadStackLimits
+ * (processthreadsapi.h) and FormatMessage for the reports; the PE format's
+ * section flags through gba_game.pe.ld's layout.
  */
 #include <inttypes.h>
 #include <stdbool.h>
@@ -109,6 +112,68 @@ int host_memory_unmap_fixed(uintptr_t address, size_t size)
     return 0;
 }
 
+/* --- host_image ------------------------------------------------------------------------ */
+
+/* gba_game.pe.ld's start of the code, where the program's image begins above
+ * the GBA layout; MinGW's default script's end of the zero-initialised data;
+ * and its start of the initialised data, which gba_game.pe.ld moves after
+ * every read-only section (check_pe_layout.py checks the order on each link),
+ * so that from it to the end everything is writable. */
+extern const unsigned char __text_start__[], __data_start__[], __bss_end__[];
+
+/* Pointers to integers: the image's bounds are compared with addresses. */
+static struct host_span span_of(const unsigned char *start, const unsigned char *end)
+{
+    return (struct host_span){.start = (uintptr_t)start, .end = (uintptr_t)end};
+}
+
+struct host_span host_image_whole(void)
+{
+    return span_of(__text_start__, __bss_end__);
+}
+
+struct host_span host_image_writable(void)
+{
+    return span_of(__data_start__, __bss_end__);
+}
+
+/* The low byte of a page's protection is its access; the bits above it
+ * (PAGE_GUARD, PAGE_NOCACHE, PAGE_WRITECOMBINE) modify it (winnt.h). */
+#define PAGE_ACCESS_MASK 0xFFu
+
+/* The page's own protection, which the loader set from its section's flags:
+ * the game's initialised data (.gamedat) lies below __data_start__ and is
+ * writable, so the bounds alone cannot say. Copy-on-write pages, which the
+ * image's writable sections are until first written, count as writable. */
+bool host_image_is_read_only(uintptr_t address)
+{
+    const struct host_span image = host_image_whole();
+    MEMORY_BASIC_INFORMATION page;
+    if (address < image.start || address >= image.end
+        || VirtualQuery((const void *)address, &page, sizeof page) != sizeof page)
+        return false;
+    const DWORD access = page.Protect & PAGE_ACCESS_MASK;
+    return page.State == MEM_COMMIT && (page.Protect & PAGE_GUARD) == 0
+           && (access == PAGE_READONLY || access == PAGE_EXECUTE_READ);
+}
+
+/* The thread's whole stack reservation, from the thread's environment block
+ * (Windows 8 and later), not just its committed depth: 2 MiB for the main
+ * thread, the image's SizeOfStackReserve (MinGW's default), against Linux's
+ * 8 MiB. */
+int host_image_main_stack(struct host_span *out)
+{
+    ULONG_PTR low = 0;
+    ULONG_PTR high = 0;
+    GetCurrentThreadStackLimits(&low, &high);
+    if (low == 0 || high <= low) {
+        (void)fprintf(stderr, "host_image: GetCurrentThreadStackLimits returned an unusable stack\n");
+        return -1;
+    }
+    *out = (struct host_span){.start = (uintptr_t)low, .end = (uintptr_t)high};
+    return 0;
+}
+
 int host_fault_install_divide_error(host_fault_divide_handler handler)
 {
     (void)handler;
@@ -178,28 +243,6 @@ int host_process_executable_path(char *out, size_t size)
 int host_process_restart(char *const argv[])
 {
     (void)argv;
-    return -1;
-}
-
-struct host_span host_image_whole(void)
-{
-    return (struct host_span){0, 0};
-}
-
-struct host_span host_image_writable(void)
-{
-    return (struct host_span){0, 0};
-}
-
-bool host_image_is_read_only(uintptr_t address)
-{
-    (void)address;
-    return true;
-}
-
-int host_image_main_stack(struct host_span *out)
-{
-    (void)out;
     return -1;
 }
 

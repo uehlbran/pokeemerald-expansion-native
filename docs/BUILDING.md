@@ -245,8 +245,12 @@ writes `pokeemerald-native.exe`, its function map `pokeemerald-native.exe.symbol
 and a copy of `SDL2.dll` beside it, and checks the result with
 `platform/build_glue/check_pe_layout.py`: image base `0x01800000`; no dynamic
 base, no high-entropy VA, no relocations; every GBA region a section at its GBA
-address and size; the sections adjacent; `.text` at `0x40001000`. To look at it
-yourself:
+address and size; the sections adjacent; `.text` at `0x40001000`; above it the
+read-only sections first and the writable ones last (`gba_game.pe.ld` moves the
+initialised data after `.xdata`, so that the program's mutable data is one
+stretch, as on Linux). The main thread's stack is the image's stack reserve,
+2 MiB (MinGW's default), where Linux gives 8 MiB (`platform/host_image.h`). To
+look at it yourself:
 
 ```
 x86_64-w64-mingw32-objdump -h build/native64-windows/pokeemerald-native.exe   # sections
