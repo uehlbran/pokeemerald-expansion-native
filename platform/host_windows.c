@@ -222,38 +222,37 @@ static int errno_of(DWORD error)
 
 /* --- text: the C runtime's narrow strings and the system's wide ones ----------------- */
 
-/* The C runtime's narrow strings, main's argv and the paths fopen and _open
- * take, are in the ANSI code page: msvcrt converts them with it, as the
- * system's "A" calls do. The wide calls take UTF-16. A conversion here that
- * the code page cannot carry is refused rather than altered; main's argv,
- * though, has already been through the system's best-fit conversion
- * (GetCommandLineA) before main sees it. */
+/* The platform's narrow strings are UTF-8, as on Linux. The executable's
+ * manifest makes UTF-8 the process's code page (build_glue/
+ * windows_manifest.xml; docs/DECISIONS.md, "Narrow strings on Windows are
+ * UTF-8"), so the C runtime's narrow strings, main's argv and the paths
+ * fopen and _open take, are UTF-8 too, as are the system's "A" calls'. The
+ * wide calls take UTF-16, converted here with CP_UTF8 named outright, not
+ * CP_ACP, as Microsoft's "Use UTF-8 code pages in Windows apps" recommends
+ * (CP_ACP is UTF-8 only where the manifest is honoured, Windows 10 version
+ * 1903 on). Invalid input either way (bytes that are not UTF-8, a lone
+ * surrogate) is refused rather than altered. */
 
 /* text in UTF-16 in out (capacity characters, its NUL included). False with
- * errno set: ENAMETOOLONG if it does not fit, EILSEQ if it is not text in the
- * code page. No allocation. */
+ * errno set: ENAMETOOLONG if it does not fit, EILSEQ if it is not UTF-8. No
+ * allocation. */
 static bool widen(const char *text, wchar_t *out, int capacity)
 {
-    if (MultiByteToWideChar(CP_ACP, MB_ERR_INVALID_CHARS, text, -1, out, capacity) > 0)
+    if (MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, text, -1, out, capacity) > 0)
         return true;
     errno = GetLastError() == ERROR_INSUFFICIENT_BUFFER ? ENAMETOOLONG : EILSEQ;
     return false;
 }
 
-/* text in the ANSI code page in out (size bytes, its NUL included). False with
- * errno set as widen's. The flags that refuse a lossy conversion are not
- * allowed when the code page is UTF-8 (Windows' optional "beta: use Unicode
- * UTF-8" setting), where invalid input is the only loss. */
+/* text in UTF-8 in out (size bytes, its NUL included). False with errno set
+ * as widen's (EILSEQ: a lone surrogate). For CP_UTF8 the default-character
+ * arguments must be NULL (WideCharToMultiByte). */
 static bool narrow(const wchar_t *text, char *out, size_t size)
 {
-    const bool utf8 = GetACP() == CP_UTF8;
     const int capacity = size > INT_MAX ? INT_MAX : (int)size;
-    BOOL lossy = FALSE;
-    const int written = WideCharToMultiByte(CP_ACP, utf8 ? WC_ERR_INVALID_CHARS : WC_NO_BEST_FIT_CHARS, text, -1, out,
-                                            capacity, NULL, utf8 ? NULL : &lossy);
-    if (written > 0 && !lossy)
+    if (WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, text, -1, out, capacity, NULL, NULL) > 0)
         return true;
-    errno = written == 0 && GetLastError() == ERROR_INSUFFICIENT_BUFFER ? ENAMETOOLONG : EILSEQ;
+    errno = GetLastError() == ERROR_INSUFFICIENT_BUFFER ? ENAMETOOLONG : EILSEQ;
     return false;
 }
 
@@ -392,8 +391,7 @@ int host_process_executable_path(char *out, size_t size)
     }
     if (!narrow(path, out, size)) {
         (void)fprintf(stderr, "host_process: the executable's path %s\n",
-                      errno == ENAMETOOLONG ? "does not fit the buffer"
-                                            : "has characters the ANSI code page cannot hold");
+                      errno == ENAMETOOLONG ? "does not fit the buffer" : "is not valid UTF-16");
         return -1;
     }
     return 0;

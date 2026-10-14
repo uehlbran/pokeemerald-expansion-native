@@ -3,8 +3,10 @@
  * and msvcrt): the temporary directory from TMPDIR or GetTempPathA, _mkdir
  * and _open with _O_EXCL for the scratch names, FindFirstFileA for a
  * directory's entries, _stat64, _putenv_s, _dup and _dup2, Sleep and
- * GetTickCount64, SHFileOperationA for a tree; CreateProcessA for a child. Narrow paths, in the ANSI code
- * page, as the C runtime and the platform take them.
+ * GetTickCount64, SHFileOperationA for a tree; CreateProcessA for a child.
+ * Narrow paths, in UTF-8, the code page the test executable's manifest gives
+ * the process (platform/target.mk), as the C runtime and the platform take
+ * them.
  */
 #include <direct.h>
 #include <errno.h>

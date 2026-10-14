@@ -272,7 +272,7 @@ test_inputs = $(wildcard $(1:test_%=%).c) $(call test_deps,$(1))
 
 define TEST_LINK_RULE
 $(foreach dep,$(call test_deps,$(1)),$(if $(wildcard $(dep)),,$(error $(call test_source,$(1)) lists '$(dep)' on its deps line, but platform/$(dep) does not exist)))
-$(TEST_BIN_DIR)/$(1)$(TARGET_EXE_SUFFIX): $(patsubst %.c,$(OBJ_DIR)/%.o,$(call test_source,$(1))) $(patsubst %.c,$(OBJ_DIR)/%.o,$(call test_inputs,$(1))) $(HOST_OBJS) $(TEST_SUPPORT_OBJ) $(GAPS_OBJ) $(REGIONS_LD) $(GAME_LD)
+$(TEST_BIN_DIR)/$(1)$(TARGET_EXE_SUFFIX): $(patsubst %.c,$(OBJ_DIR)/%.o,$(call test_source,$(1))) $(patsubst %.c,$(OBJ_DIR)/%.o,$(call test_inputs,$(1))) $(HOST_OBJS) $(TEST_SUPPORT_OBJ) $(GAPS_OBJ) $(call target_resources,$(OBJ_DIR)) $(REGIONS_LD) $(GAME_LD)
 	@mkdir -p $$(@D)
 	$$(CC) $$(LDFLAGS_ALL) -o $$@ $$(filter %.o,$$^) $$(SDL_LIBS)
 	$$(if $$(TEST_LINK_CHECK),$$(call TEST_LINK_CHECK,$$@))

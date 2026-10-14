@@ -216,8 +216,18 @@ Windows. i686 is not attempted (`research/m8-inventory.md` 2.3). Nothing built
 this way can be run on the build machine without Wine, which is not part of
 the project: what is checked here is the link and the file it writes.
 
+It runs on Windows 10 version 1903 (the May 2019 Update, build 18362) or
+later, 64-bit. Every executable carries an application manifest that makes
+UTF-8 the process's code page, so that paths and arguments are UTF-8 as on
+Linux, whatever the user's name and the system's language
+(`platform/build_glue/windows_manifest.xml`; `docs/DECISIONS.md`, "Narrow
+strings on Windows are UTF-8"); Microsoft's "Use UTF-8 code pages in Windows
+apps" documents the setting from version 1903 on. On an older Windows the
+setting is ignored, and a path with a character outside the system's code
+page fails.
+
 ```
-sudo apt-get install -y gcc-mingw-w64-x86-64 binutils-mingw-w64-x86-64 mingw-w64-tools
+sudo apt-get install -y gcc-mingw-w64-x86-64 binutils-mingw-w64-x86-64 mingw-w64-tools   # windres is in binutils
 make -f Makefile.native -j32 sdl2-mingw TARGET_OS=windows BITS=64   # SDL2 for MinGW, once
 make -f Makefile.native -j32 native TARGET_OS=windows BITS=64       # build/native64-windows/pokeemerald-native.exe
 ```
@@ -249,7 +259,9 @@ base, no high-entropy VA, no relocations; every GBA region a section at its GBA
 address and size; the sections adjacent; `.text` at `0x40001000`; above it the
 read-only sections first and the writable ones last (`gba_game.pe.ld` moves the
 initialised data after `.xdata`, so that the program's mutable data is one
-stretch, as on Linux). The main thread's stack is the image's stack reserve,
+stretch, as on Linux, and the resources before it); the application manifest
+with the UTF-8 code page in the resources (`windres` compiles it,
+`platform/target.mk`). The main thread's stack is the image's stack reserve,
 2 MiB (MinGW's default), where Linux gives 8 MiB (`platform/host_image.h`). To
 look at it yourself:
 
@@ -263,7 +275,7 @@ The platform library alone: `make -C platform lib TARGET_OS=windows BITS=64`
 (`platform/build/64-windows/`). The unit tests, cross-built and not run:
 `make -C platform test TARGET_OS=windows BITS=64` writes every test that runs
 on Windows to `platform/build/64-windows/test/` (the portable ones and
-`platform/test/windows/`'s, 68 executables, with `SDL2.dll`); each is linked
+`platform/test/windows/`'s, 69 executables, with `SDL2.dll`); each is linked
 with the PE scripts and checked by `check_pe_layout.py` like the game. The
 Windows sources' static analysis: `make -C platform lint TARGET_OS=windows
 BITS=64` (clang-tidy for the MinGW-w64 target, with its headers, and cppcheck;
@@ -283,11 +295,14 @@ platform/test_runner/run_windows_smoke.sh build/native64-windows/pokeemerald-nat
 
 The first runs every test executable as `make -C platform test` does on
 Linux (each to its end, a failure if it exits non-zero or ends without
-"N passed, 0 failed", a log beside each) and ends with "all 68 Windows test
+"N passed, 0 failed", a log beside each) and ends with "all 69 Windows test
 executables passed". The second starts the game with `--headless --silent
 --frames 60` in an empty directory and passes when it exits 0, prints only
 `main: 60 frames` on standard output and nothing on standard error, and has
-written `pokeemerald.rtc` in binary mode. The game itself needs
+written `pokeemerald.rtc` in binary mode; then again from a directory with a
+non-ASCII name, with non-ASCII save and clock paths on the command line,
+where the clock's file must appear under exactly its name and a file at the
+save path that is not a save must be refused by its name. The game itself needs
 `SDL2.dll` beside it (the Makefile copies it), as each test directory has.
 
 What the host layer does on Windows, and why each choice: `platform/README.md`,
@@ -309,6 +324,9 @@ on `windows-latest` showed it for the layout, `research/probes/README.md`, W1);
 that the exception dispatch walks through the battle runner's stack switch to
 the crash filter; that the C runtime's time zones match the tests' POSIX TZ
 strings (msvcrt applies its own daylight-saving rules: `test_rtc` and
-`test_host_file`'s zone tests are the first to watch); that a fixed page can be
+`test_host_file`'s zone tests are the first to watch); that msvcrt, under the
+manifest's UTF-8 code page, passes a non-ASCII argument to `main` as its
+UTF-8 bytes (`test_utf8_windows`, `test_host_process_windows` and the smoke's
+non-ASCII run); that a fixed page can be
 mapped at 0x01000000 in a Windows process (`test_host_memory`, the m4a tests).
 The first run on Windows is the evidence for all of them.

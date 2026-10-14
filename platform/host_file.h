@@ -17,8 +17,8 @@
  * WriteFile and FlushFileBuffers on a descriptor's handle, MoveFileExW with
  * MOVEFILE_REPLACE_EXISTING and MOVEFILE_WRITE_THROUGH, no directory sync
  * (the replacement's write-through is what makes it durable there),
- * CreateDirectoryW, _localtime64_s; paths in the ANSI code page, as the C
- * runtime's own narrow calls take them. Every call returns -1 with errno set
+ * CreateDirectoryW, _localtime64_s; paths in UTF-8, the code page the
+ * executable's manifest gives the C runtime's own narrow calls. Every call returns -1 with errno set
  * on failure and reports nothing: the caller knows which file it was and
  * says so.
  */

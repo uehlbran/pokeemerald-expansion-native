@@ -1106,17 +1106,49 @@ replacement is atomic on NTFS, the file system Windows installs on; Microsoft
 does not document it for every file system, and a save on a FAT32 or exFAT
 volume (a USB stick, an SD card) can lose the old file in a crash.
 
-## 2026-10-14: Narrow strings on Windows are in the ANSI code page
+## 2026-10-14: Narrow strings on Windows are UTF-8
 
-The platform's paths and arguments are `char` strings. On Windows the C
-runtime (msvcrt) gives `main` its arguments in the ANSI code page and opens
-files by narrow paths in it, so `host_windows.c` converts with `CP_ACP` both
-ways (`MultiByteToWideChar`, `WideCharToMultiByte`), not with UTF-8: a UTF-8
-path from `host_process_executable_path` would not open with `fopen`
-(`symbols.c`), and an argument converted from UTF-8 would not be the one the
-runtime parsed. A string the code page cannot carry is refused, never
-altered. Should the executable ever carry a manifest with the UTF-8 active
-code page, `CP_ACP` becomes UTF-8 and nothing here changes.
+The platform's paths and arguments are `char` strings, UTF-8 as on Linux. On
+Windows the C runtime (msvcrt) builds `main`'s arguments from `GetCommandLineA`
+and opens files by narrow paths through the system's "A" functions, both in
+the process's code page, by default the ANSI code page of the system's
+language. The owner ruled that out: the save path sits under the user's
+profile, and a user name that code page cannot write (a Japanese name on a
+Western system, an accented one on a Japanese system) would break it.
+
+Every Windows executable, the game and each test alike, carries an
+application manifest that sets the process's active code page to UTF-8
+(`platform/build_glue/windows_manifest.xml`, compiled by `windres` and linked
+through `platform/target.mk`; `gba_game.pe.ld` keeps the `.rsrc` section
+among the read-only ones, and `check_pe_layout.py` fails a link without the
+manifest). Microsoft's "Use UTF-8 code pages in Windows apps"
+(learn.microsoft.com/en-us/windows/apps/design/globalizing/use-utf8-code-page)
+documents the setting from Windows version 1903 (the May 2019 Update) on;
+that is the minimum Windows version (`BUILDING.md`), and an older one ignores
+the setting and keeps the legacy code page. `host_windows.c` converts between
+UTF-8 and the wide calls' UTF-16 with `CP_UTF8` named outright, as that page
+recommends, not with `CP_ACP`, and refuses invalid input either way (bytes
+that are not UTF-8, a lone surrogate) rather than altering it. The tests'
+own support (`test/windows/support.c`) keeps its "A" calls, which the same
+manifest makes UTF-8.
+
+Not verified yet. Nothing Windows runs here, and that msvcrt, the C runtime
+the Ubuntu MinGW-w64 GCC links by default, hands `main` the UTF-8 bytes of a
+non-ASCII argument unchanged under the manifest follows from the
+documentation (it parses `GetCommandLineA`'s string, which the code page makes
+UTF-8) but is not something the build can show. The claim is verified only
+once the Windows runner (tasks W8 and W9) has run
+`platform/test/windows/test_utf8_windows.c` (the process's code page is UTF-8;
+a non-ASCII argument passed to `CreateProcessW` in UTF-16 arrives in `argv` as
+its UTF-8 bytes; a save stored through a non-ASCII directory the host layer
+made loads back byte for byte under that name),
+`platform/test/windows/test_host_process_windows.c` (the restart carries a
+non-ASCII argument through `CP_UTF8` and back) and
+`platform/test_runner/run_windows_smoke.sh` (the game run from a non-ASCII
+directory with non-ASCII save and clock paths on its command line). Should
+msvcrt alter the bytes, the way out is to read the arguments with
+`GetCommandLineW` and `CommandLineToArgvW` and convert them with `CP_UTF8`
+before `main` uses them.
 
 ## 2026-10-14: The battle runner's stack switch on Windows is hand-written assembly, not a fiber
 

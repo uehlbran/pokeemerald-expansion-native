@@ -2,7 +2,7 @@
  * test_host_process_windows.c: the restart on Windows (host_process.h), which
  * has no exec: a child (windows_support.h) restarts this very executable
  * with arguments the command line must quote (spaces, quotes, backslashes,
- * an empty one) and a variable added to its environment; the restarted
+ * an empty one, non-ASCII characters) and a variable added to its environment; the restarted
  * process, seeing RESTARTED_MODE as argv[1], writes the arguments it got to
  * the file the variable names and ends with RESTARTED_CODE, and the child,
  * which waits for it, must end with that code too. The child also holds an
@@ -62,6 +62,7 @@ static const char *const restart_arguments[] = {
     "trailing backslash\\",
     "back\\\\slashes \\\"before a quote",
     "C:\\a path\\",
+    u8"\u00DCn\u00EFc\u00F6d\u00E9-\u65E5\u672C \U0001F600", /* non-ASCII, one outside the BMP */
 };
 #define RESTART_ARGUMENT_COUNT (sizeof restart_arguments / sizeof restart_arguments[0])
 

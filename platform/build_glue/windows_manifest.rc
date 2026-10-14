@@ -1,0 +1,8 @@
+/*
+ * windows_manifest.rc: windows_manifest.xml as the executable's application
+ * manifest, the resource the loader reads at process creation: resource type
+ * RT_MANIFEST (24) with id CREATEPROCESS_MANIFEST_RESOURCE_ID (1) (Microsoft,
+ * "Using Side-by-side Assemblies as a Resource"). Compiled by windres
+ * (platform/target.mk), which finds the file through its --include-dir.
+ */
+1 24 "windows_manifest.xml"

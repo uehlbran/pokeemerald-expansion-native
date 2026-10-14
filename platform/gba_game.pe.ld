@@ -26,7 +26,8 @@
  *    after them, so this script moves every initialised data input after
  *    .xdata (below), and the program's mutable data is one stretch from
  *    __data_start__ to __bss_end__, as an ELF image's is from __data_start to
- *    _end (host_image.h's writable part, host_windows.c).
+ *    _end (host_image.h's writable part, host_windows.c). The resources,
+ *    read-only, which the default script puts last, move before them.
  * The layout the loader accepted: research/probes/windows_layout.
  */
 
@@ -147,3 +148,18 @@ SECTIONS
     }
 }
 INSERT BEFORE .bss;
+
+/* The resources (the UTF-8 application manifest, platform/target.mk) among
+ * the read-only sections, after .xdata, where the default script puts them
+ * after the writable .bss, .idata, .CRT and .tls. The output section keeps the
+ * name .rsrc: the linker points the image's resource directory at the section
+ * of that name, and the loader finds the manifest through it. */
+SECTIONS
+{
+    .rsrc BLOCK(__section_alignment__) : SUBALIGN(4)
+    {
+        KEEP(*(.rsrc))
+        KEEP(*(.rsrc$*))
+    }
+}
+INSERT AFTER .xdata;

@@ -24,9 +24,10 @@
 #define HOST_PROCESS_PATH_SIZE 4096u
 
 /* Writes the path of the running executable's file, NUL-terminated, to out
- * (size bytes); on Windows in the ANSI code page, as the C runtime's fopen
- * takes a path. Returns 0, or -1 after a report on stderr if it cannot be
- * read, does not fit or (Windows) holds a character the code page lacks. */
+ * (size bytes), in UTF-8 (on Windows the code page the manifest gives the C
+ * runtime, whose fopen takes the path). Returns 0, or -1 after a report on
+ * stderr if it cannot be read, does not fit or (Windows) is not valid
+ * UTF-16. */
 int host_process_executable_path(char *out, size_t size);
 
 /* Replaces the process with a new run of its own executable, with argv
