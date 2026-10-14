@@ -80,12 +80,16 @@ PTEST(the_options_with_a_value_take_the_next_argument)
     PT_ASSERT_EQ_STR(o.out_dir, "dir");
 }
 
-PTEST(a_value_that_looks_like_an_option_is_still_the_value)
+PTEST(a_string_option_followed_by_another_option_is_refused)
 {
     struct options o;
-    PT_ASSERT_EQ_INT(PARSE(&o, "--save", "--headless"), OPTIONS_OK);
-    PT_ASSERT_EQ_STR(o.save_path, "--headless");
-    PT_ASSERT(!o.headless);
+    static const char *const with_string[] = {"--save", "--rtc-offset", "--screenshot", "--replay", "--out"};
+    for (size_t i = 0; i < sizeof with_string / sizeof with_string[0]; i++)
+        PT_ASSERT_EQ_INT(PARSE(&o, with_string[i], "--headless"), OPTIONS_ERR_USAGE);
+    PT_ASSERT_EQ_INT(PARSE(&o, "--test-runner", "--persistent-state", "--headless"), OPTIONS_ERR_USAGE);
+    /* a path may still start with one dash, or "-" and a name */
+    PT_ASSERT_EQ_INT(PARSE(&o, "--save", "-odd.sav"), OPTIONS_OK);
+    PT_ASSERT_EQ_STR(o.save_path, "-odd.sav");
 }
 
 PTEST(an_option_with_a_value_as_the_last_argument_is_refused)

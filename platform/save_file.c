@@ -10,19 +10,12 @@
  * (docs/research/port-*.md): reads from a second file handle, unflushed
  * writes, no atomic replacement, and regionalidades' rename without fsync.
  *
- * Load: fopen, fstat for the type and size, then the first
- * SAVE_FILE_HEADER_SIZE bytes. With the magic, the header must be complete,
- * of a known version, for a 32- or 64-bit build and a FLASH_CHIP_SIZE image,
- * the file exactly header plus image long, and the image's CRC must match;
- * the image is read straight into the chip and the layout tag kept for
- * save_file_loaded_layout. Without the magic, the file must be a bare image
- * of exactly FLASH_CHIP_SIZE bytes (legacy). Anything else is reported and
- * leaves an erased chip.
- * Store: the header and the image go to <path>.tmp, which is flushed,
- * synced to the disk and closed before it atomically replaces <path>, and
- * then the directory is synced so the replacement itself survives a crash
- * (host_file.h). On any failure before the replacement, the tmp file this
- * store created is removed and <path> is untouched.
+ * Load accepts a versioned file whose header, size and CRC all agree, or a
+ * bare 128 KiB image (legacy); anything else is reported and leaves the chip
+ * erased, never half-loaded. Store writes <path>.tmp, syncs it, renames it
+ * over <path> and syncs the directory (host_file.h), so a crash at any point
+ * leaves either the old file or the new one, and a failed store removes its
+ * tmp file and leaves <path> untouched.
  *
  * The header's integers are encoded and decoded a byte at a time as
  * little-endian, so the format does not depend on the host's byte order or
@@ -32,6 +25,7 @@
  * is allocated.
  */
 #include <errno.h>
+#include <fcntl.h>
 #include <inttypes.h>
 #include <limits.h>
 #include <stdarg.h>
@@ -40,6 +34,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <unistd.h>
 
 #include "flash.h"
 #include "host_file.h"
@@ -174,13 +169,30 @@ int save_file_init(const char *path)
     if (!set_paths(path)) {
         (void)fprintf(stderr,
                       "save_file: save_file_init(%s): a save path must be a file name, "
-                      "not empty, not ending in '/', at most %zu bytes\n",
-                      path, (size_t)(SAVE_FILE_PATH_SIZE - sizeof SAVE_FILE_TMP_SUFFIX));
+                      "not empty, not ending in '/', at most %llu bytes\n",
+                      path, (unsigned long long)(SAVE_FILE_PATH_SIZE - sizeof SAVE_FILE_TMP_SUFFIX));
         return SAVE_FILE_ERR_PATH;
     }
     state.persistent = true;
     state.initialised = true;
     return SAVE_FILE_OK;
+}
+
+/* fopen(path, mode) through host_file_open, so the file is not inherited by a
+ * program this one starts and is made with the permissions every kept file
+ * has (host_file.h). flags are open(2)'s, and agree with mode. */
+static FILE *open_stream(const char *path, int flags, const char *mode)
+{
+    const int descriptor = host_file_open(path, flags);
+    if (descriptor < 0)
+        return NULL;
+    FILE *const stream = fdopen(descriptor, mode);
+    if (stream == NULL) {
+        const int error = errno;
+        (void)close(descriptor); /* already failing */
+        errno = error;
+    }
+    return stream;
 }
 
 /* Reads exactly count bytes; false, with the reason printed, otherwise. */
@@ -192,15 +204,16 @@ static bool read_exactly(FILE *file, void *dest, size_t count)
     if (ferror(file))
         report("fread", state.path, errno);
     else
-        (void)fprintf(stderr, "save_file: fread(%s): the file ended %zu bytes early\n", state.path,
-                      count - read); /* best-effort */
+        (void)fprintf(stderr, "save_file: fread(%s): the file ended %llu bytes early\n", state.path,
+                      (unsigned long long)(count - read)); /* best-effort */
     return false;
 }
 
 /* SAVE_FILE_CORRUPT, after printing why the file at state.path is unusable.
- * Sizes are passed as unsigned long long (%llu) and file sizes as long long
- * (%lld): the format attribute checks against the C runtime's own formats,
- * which on Windows (msvcrt) lack %zu and %jd. */
+ * Every size in this file's messages is printed as unsigned long long (%llu)
+ * and every file size as long long (%lld), cast at the call: the Windows build
+ * links msvcrt, whose printf lacks %zu and %jd, and the format attribute
+ * checks against the runtime's own formats. */
 __attribute__((format(printf, 1, 2))) static int corrupt(const char *format, ...)
 {
     (void)fprintf(stderr, "save_file: %s: ", state.path); /* best-effort */
@@ -311,13 +324,13 @@ int save_file_load(void)
         flash_erase_image();
         return SAVE_FILE_NEW;
     }
-    FILE *const file = fopen(state.path, "rb");
+    FILE *const file = open_stream(state.path, O_RDONLY, "rb");
     if (file == NULL) {
         const int error = errno;
         flash_erase_image();
         if (error == ENOENT)
             return SAVE_FILE_NEW;
-        report("fopen", state.path, error);
+        report("open", state.path, error);
         return SAVE_FILE_CORRUPT;
     }
     int status = read_save(file);
@@ -367,9 +380,9 @@ static int write_tmp(void)
 {
     struct header_bytes header = {0};
     encode_header(&header);
-    FILE *const tmp = fopen(state.tmp_path, "wb");
+    FILE *const tmp = open_stream(state.tmp_path, O_WRONLY | O_CREAT | O_TRUNC, "wb");
     if (tmp == NULL) {
-        report("fopen", state.tmp_path, errno);
+        report("open", state.tmp_path, errno);
         return SAVE_FILE_ERR_IO; /* nothing created */
     }
     const char *failed_call = NULL;

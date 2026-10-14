@@ -46,8 +46,12 @@ struct rtc_datetime {
     uint8_t second_bcd;      /* 00h..59h (bit 7 is the chip's test-mode flag, never set) */
 };
 
-/* Seconds since the Unix epoch, UTC. Injectable so tests control time. */
+/* Seconds since the Unix epoch, UTC. Injectable so tests control time. A
+ * source that cannot read its clock reports why itself and returns
+ * RTC_TIME_SOURCE_FAILED, which the chip treats as an error without a second
+ * report; the type has no other way to say so. */
 typedef int64_t (*rtc_time_source)(void);
+#define RTC_TIME_SOURCE_FAILED INT64_MIN
 
 /* Starts the clock. source NULL means the system clock. offset_file_path NULL
  * means no persistence; otherwise it names the file holding the offset (one
@@ -72,7 +76,10 @@ int rtc_set_status(uint8_t status);
 int rtc_get_datetime(struct rtc_datetime *out);
 /* Rejects invalid BCD and out-of-range fields without changing anything.
  * day_of_week_bcd is validated (00h..06h) but the stored value is computed
- * from the date. Persists the offset; on failure nothing changes. */
+ * from the date. Persists the offset; on failure the offset on disk and in
+ * the chip are unchanged. (A failed directory sync after the file was
+ * replaced is not a failure here: the new offset is on disk and in the chip,
+ * and the failure is reported on stderr.) */
 int rtc_set_datetime(const struct rtc_datetime *in);
 
 /* hour, minute, second only; the other fields are left untouched in out. */

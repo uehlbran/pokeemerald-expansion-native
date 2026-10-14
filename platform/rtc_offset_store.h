@@ -17,15 +17,21 @@
 #define RTC_OFFSET_LIMIT ((int64_t)1 << 50)
 
 /* Reads *offset from path and sets *found to 1. A missing file is success
- * with *found 0 and *offset 0; an unreadable or corrupt file is -1 (reported
- * on stderr). */
+ * with *found 0 and *offset 0; an unreadable or corrupt file, or a path too
+ * long (this and the save check it against host_file.h's HOST_FILE_PATH_SIZE,
+ * leaving room for the temporary file's name), is -1 (reported on stderr). */
 int rtc_offset_store_load(const char *path, int64_t *offset, int *found);
+
+/* rtc_offset_store_save's result when the new file is in place but the
+ * directory sync after the replacement failed: the offset is what the file
+ * says, though not yet known to survive a crash. */
+#define RTC_OFFSET_STORE_REPLACED_UNSYNCED 1
 
 /* Writes offset to path atomically: a temporary file next to it (path plus
  * ".tmp") is written, synced to the disk, then replaces path (host_file.h),
- * so a failure at any step leaves the previous file intact. The directory is
- * synced after the replacement; if that fails the new file is already in
- * place but -1 is returned. -1 on failure (reported on stderr). */
+ * so a failure at any step leaves the previous file intact. Returns 0; or -1
+ * with the previous file in place; or RTC_OFFSET_STORE_REPLACED_UNSYNCED.
+ * Failures are reported on stderr. */
 int rtc_offset_store_save(const char *path, int64_t offset);
 
 /* Prints "rtc: <call> failed: <strerror(errno)>" to stderr. */

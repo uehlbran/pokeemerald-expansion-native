@@ -140,7 +140,12 @@ $(error SDL2 for MinGW is not in $(SDL2_MINGW_DIR): make -f Makefile.native sdl2
 endif
 endif
 
-CFLAGS_ALL := -m$(BITS) -std=gnu17 $(WARNINGS) $(OPTIMISATION) $(SANITIZERS) $(INCLUDES) \
+# A 64-bit time_t and off_t on the 32-bit build too, in every file: the
+# clock's dates run to 2099, past a 32-bit time_t's 2038 (rtc.c and
+# host_posix.c assert it). _TIME_BITS=64 needs _FILE_OFFSET_BITS=64.
+LARGE_TYPES := -D_FILE_OFFSET_BITS=64 -D_TIME_BITS=64
+
+CFLAGS_ALL := -m$(BITS) -std=gnu17 $(WARNINGS) $(OPTIMISATION) $(SANITIZERS) $(INCLUDES) $(LARGE_TYPES) \
               $(SDL_CFLAGS) $(TARGET_CFLAGS) -MMD -MP
 
 # The GBA memory regions exist because the ELF loader maps them: gba_regions.ld
@@ -365,7 +370,7 @@ LINT_GAME_FILES := inspect.c inspect_menu.c inspect_args.c test/test_inspect_arg
 ifeq ($(TARGET_OS),windows)
 LINT_TARGET_FLAGS := --target=x86_64-w64-mingw32 $(TARGET_CFLAGS)
 endif
-lint_flags = -m$(BITS) -std=gnu17 $(LINT_TARGET_FLAGS) $(INCLUDES) $(SDL_CFLAGS) $(if $(filter m4a/difftest/%,$(1)),-Im4a -Im4a/difftest) $(if $(filter $(1),$(LINT_GAME_FILES)),$(GAME_DEFINES) -DTESTING=0 -DEMERALD $(GAME_CHAR_FLAGS))
+lint_flags = -m$(BITS) -std=gnu17 $(LINT_TARGET_FLAGS) $(INCLUDES) $(LARGE_TYPES) $(SDL_CFLAGS) $(if $(filter m4a/difftest/%,$(1)),-Im4a -Im4a/difftest) $(if $(filter $(1),$(LINT_GAME_FILES)),$(GAME_DEFINES) -DTESTING=0 -DEMERALD $(GAME_CHAR_FLAGS))
 LINT_JOBS ?= $(shell nproc)
 
 $(LINT_DIR)/compile_commands.json: Makefile game_flags.mk $(LINT_SRCS)

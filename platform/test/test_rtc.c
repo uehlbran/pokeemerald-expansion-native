@@ -4,8 +4,10 @@
  * Real-Time Clock (RTC)" and expansion's use of it (src/siirtc.c, src/rtc.c).
  * Time is injected; TZ is pinned so expected values are exact.
  */
+#include "host_file.h"
 #include "ptest.h"
 #include "rtc.h"
+#include "rtc_offset_store.h"
 #include "test_support.h"
 
 #include <errno.h>
@@ -261,14 +263,32 @@ PTEST(source_out_of_range_is_an_error)
 {
     struct rtc_datetime d;
     pin_utc();
-    g_now = INT64_MIN;
+    g_now = INT64_MIN + 1;
     PT_ASSERT_EQ_INT(rtc_init(fake_source, NULL), -1); /* first-run offset needs a valid reading */
     start_at(EPOCH_2000_01_01);
-    g_now = INT64_MIN;
+    g_now = INT64_MIN + 1;
     PT_ASSERT_EQ_INT(rtc_get_datetime(&d), -1);
     g_now = INT64_MAX;
     PT_ASSERT_EQ_INT(rtc_get_datetime(&d), -1);
     rtc_shutdown();
+}
+
+static void read_with_failed_source(void *context)
+{
+    g_now = RTC_TIME_SOURCE_FAILED;
+    PT_ASSERT_EQ_INT(rtc_get_datetime(context), -1);
+}
+
+/* The source reports its own failure; the chip fails without a second,
+ * misleading "out of range" report of the sentinel. */
+PTEST(a_source_that_failed_is_an_error_reported_once_by_the_source)
+{
+    struct rtc_datetime d;
+    char message[256];
+    start_at(EPOCH_2000_01_01);
+    PT_ASSERT(tsup_capture_stderr(read_with_failed_source, &d, message, sizeof message));
+    rtc_shutdown();
+    PT_ASSERT_EQ_STR(message, "");
 }
 
 /* ---- setting the time -------------------------------------------------- */
@@ -468,6 +488,40 @@ PTEST(overlong_offset_path_is_an_error)
     g_now = EPOCH_2024_03_15_13_45_30;
     PT_ASSERT_EQ_INT(rtc_init(fake_source, path), -1);
     rtc_shutdown();
+}
+
+/* One limit for the offset file's path, the save file's: the path and the
+ * ".tmp" beside it must fit host_file.h's HOST_FILE_PATH_SIZE. */
+#define TMP_SUFFIX_SIZE sizeof ".tmp"
+#define LONGEST_PATH (HOST_FILE_PATH_SIZE - TMP_SUFFIX_SIZE)
+
+static void make_path_of_length(char *path, size_t length)
+{
+    memset(path, 'a', length);
+    path[0] = '/';
+    path[length] = '\0';
+}
+
+// cppcheck-suppress constParameterCallback ; tsup_capture_stderr's action takes a non-const void *
+static void save_to_overlong_path(void *context)
+{
+    PT_ASSERT_EQ_INT(rtc_offset_store_save(context, 0), -1);
+}
+
+PTEST(the_offset_path_limit_is_the_host_file_limit_with_room_for_the_tmp_name)
+{
+    static char path[HOST_FILE_PATH_SIZE];
+    static char message[256];
+    char expected[64];
+
+    make_path_of_length(path, LONGEST_PATH + 1);
+    PT_ASSERT(tsup_capture_stderr(save_to_overlong_path, path, message, sizeof message));
+    (void)snprintf(expected, sizeof expected, "path is longer than %llu bytes", (unsigned long long)LONGEST_PATH);
+    PT_ASSERT(strstr(message, expected) != NULL);
+
+    make_path_of_length(path, LONGEST_PATH); /* fits; it names no directory, so only the open fails */
+    PT_ASSERT(tsup_capture_stderr(save_to_overlong_path, path, message, sizeof message));
+    PT_ASSERT(strstr(message, "path is longer") == NULL);
 }
 
 /* ---- invalid input ------------------------------------------------------ */

@@ -20,15 +20,13 @@
  * port is copied; this is written from GBATEK and expansion's own sources.
  *
  * DECISIONS.
- *  - UTC plus a fixed offset, initialised from local time. A cartridge
- *    clock is set once by the player to the wall clock in front of them,
- *    knows no time zones and never jumps at daylight saving. So the chip's
- *    seconds are the time source (UTC) plus the persisted offset. On first
- *    run, when no offset file exists (or none is configured), the offset is
- *    initialised to the host's local-minus-UTC difference at that instant
- *    (host_file_local_time, used only for this) so the in-game clock reads local wall
- *    time, and it is persisted. After that a host zone or DST change does not
- *    move the clock; the player's set operations adjust the offset.
+ *  - UTC plus a persisted offset. A cartridge clock is set once to the wall
+ *    clock in front of the player and never jumps at DST, so the chip's
+ *    seconds are the source's UTC plus an offset. On first run the offset is
+ *    the host's local-minus-UTC at that instant (host_file_local_time, its
+ *    only use), so the game shows wall time; after that only the player's
+ *    set operations move it. With no offset file configured, the offset
+ *    starts the same way and is not saved.
  *  - Calendar and BCD: rtc_calendar.c (year range and the 2099 -> 2000 wrap,
  *    leap years, the computed day of week).
  *  - Hour register: see rtc.h (PM flag in bit 7, derived).
@@ -45,12 +43,8 @@
  *  - Not modelled: the interrupt outputs, the test-mode flag (second bit 7),
  *    the serial protocol, and write protection.
  */
-#define _FILE_OFFSET_BITS 64 /* with _TIME_BITS: 64-bit time_t on 32-bit builds, */
-#define _TIME_BITS 64        /* so the 2038..2099 epoch seconds the tests use convert */
-
 #include "rtc.h"
 
-#include <limits.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <string.h>
@@ -60,7 +54,7 @@
 #include "rtc_calendar.h"
 #include "rtc_offset_store.h"
 
-_Static_assert(sizeof(time_t) >= 8, "rtc.c needs a 64-bit time_t (_TIME_BITS=64)");
+_Static_assert(sizeof(time_t) >= 8, "rtc.c needs a 64-bit time_t (-D_TIME_BITS=64, platform/Makefile)");
 
 #define TM_YEAR_BASE 1900
 
@@ -72,10 +66,10 @@ _Static_assert(sizeof(time_t) >= 8, "rtc.c needs a 64-bit time_t (_TIME_BITS=64)
 struct rtc_state {
     bool initialised;
     rtc_time_source source;
-    int64_t offset;             /* seconds added to the time source's UTC */
-    char offset_path[PATH_MAX]; /* empty: no persistence */
-    uint8_t status;             /* RTC_STATUS_* */
-    uint8_t alarm_hour_bcd;     /* with the PM flag */
+    int64_t offset;                        /* seconds added to the time source's UTC */
+    char offset_path[HOST_FILE_PATH_SIZE]; /* empty: no persistence */
+    uint8_t status;                        /* RTC_STATUS_* */
+    uint8_t alarm_hour_bcd;                /* with the PM flag */
     uint8_t alarm_minute_bcd;
 };
 
@@ -88,7 +82,7 @@ static int64_t system_clock(void)
     time_t now = time(NULL);
     if (now == (time_t)-1) {
         rtc_report_call_failure("time");
-        return INT64_MIN;
+        return RTC_TIME_SOURCE_FAILED;
     }
     return (int64_t)now;
 }
@@ -98,6 +92,8 @@ static int host_utc_seconds(int64_t *out)
 {
     int64_t utc = chip.source();
 
+    if (utc == RTC_TIME_SOURCE_FAILED)
+        return -1; /* the source has said why */
     if (utc < -RTC_OFFSET_LIMIT || utc > RTC_OFFSET_LIMIT) {
         (void)fprintf(stderr, "rtc: time source returned %lld, out of range\n", (long long)utc);
         return -1;
@@ -131,7 +127,9 @@ static int chip_seconds_now(int64_t *out)
     return 0;
 }
 
-/* Makes the chip read chip_seconds now, persisting before committing. */
+/* Makes the chip read chip_seconds now, persisting before committing. A file
+ * that was replaced but not yet synced is the offset on disk, so the chip
+ * takes it too: running on the old one would disagree with the next start. */
 static int set_chip_seconds_at(int64_t chip_seconds, int64_t utc)
 {
     int64_t new_offset;
@@ -141,7 +139,7 @@ static int set_chip_seconds_at(int64_t chip_seconds, int64_t utc)
         (void)fprintf(stderr, "rtc: offset %lld out of range\n", (long long)new_offset);
         return -1;
     }
-    if (chip.offset_path[0] != '\0' && rtc_offset_store_save(chip.offset_path, new_offset) != 0)
+    if (chip.offset_path[0] != '\0' && rtc_offset_store_save(chip.offset_path, new_offset) < 0)
         return -1;
     chip.offset = new_offset;
     return 0;
@@ -229,19 +227,15 @@ static int init_with_seed(rtc_time_source source, const char *offset_file_path, 
 
     rtc_shutdown();
     if (offset_file_path != NULL) {
-        if (strlen(offset_file_path) >= sizeof chip.offset_path) {
-            (void)fprintf(stderr, "rtc: offset file path is longer than %zu bytes\n", sizeof chip.offset_path - 1);
-            return -1;
-        }
         if (rtc_offset_store_load(offset_file_path, &offset, &found) != 0)
             return -1;
-        (void)snprintf(chip.offset_path, sizeof chip.offset_path, "%s", offset_file_path); /* fits: checked above */
+        (void)snprintf(chip.offset_path, sizeof chip.offset_path, "%s", offset_file_path); /* fits: the load checked */
     }
     chip.source = source != NULL ? source : system_clock;
     if (!found) {
         /* First run: show the host's wall clock (or, for rtc_init_utc, UTC), then run on fixed UTC + offset. */
         if (host_utc_seconds(&utc) != 0 || (seed_from_host_zone && local_minus_utc(utc, &offset) != 0)
-            || (chip.offset_path[0] != '\0' && rtc_offset_store_save(chip.offset_path, offset) != 0)) {
+            || (chip.offset_path[0] != '\0' && rtc_offset_store_save(chip.offset_path, offset) < 0)) {
             rtc_shutdown();
             return -1;
         }
