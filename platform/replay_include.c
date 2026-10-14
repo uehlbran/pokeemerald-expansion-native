@@ -28,6 +28,7 @@ struct expansion {
     struct buffer out;
     struct replay_source_map *map;
     bool any_include;
+    unsigned files_opened;
     char *message;
     size_t message_size;
 };
@@ -293,6 +294,10 @@ static int expand_file(struct expansion *expansion, const char *path, unsigned d
     size_t length;
     if (depth > REPLAY_INCLUDE_MAX_DEPTH) {
         report(expansion, path, 0, "includes nested too deep (does a file include itself?)", includer);
+        return -1;
+    }
+    if (++expansion->files_opened > REPLAY_INCLUDE_MAX_FILES) {
+        report(expansion, path, 0, "too many files included (does a file include itself?)", includer);
         return -1;
     }
     char *text = read_file(expansion, path, &length, includer);

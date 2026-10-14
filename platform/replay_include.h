@@ -7,8 +7,9 @@
  * `include FILE` (a `#` comment may follow) is replaced by FILE's lines, so
  * the parser, the driver and `restart --resume-at LINE` see one flat script and
  * its line numbers. FILE is relative to the directory of the file that includes
- * it, and may include others up to REPLAY_INCLUDE_MAX_DEPTH levels deep (a file
- * that includes itself, directly or not, is refused by that limit).
+ * it, and may include others up to REPLAY_INCLUDE_MAX_DEPTH levels deep and
+ * REPLAY_INCLUDE_MAX_FILES files in all (a file that includes itself, directly or
+ * not, is refused by the depth limit, or by the file count if it fans out first).
  *
  * Messages name the file and line a problem came from, not the flat line: the
  * expansion comes with a map from each flat line to its (file, line), and
@@ -21,8 +22,11 @@
 #include <stddef.h>
 #include <stdint.h>
 
-/* Files nested inside the first one; a script, its include, its include's include. */
+/* How many files may be nested below the script (a self-include hits this limit). */
 #define REPLAY_INCLUDE_MAX_DEPTH 4u
+/* How many files one expansion may open, counting repeats: `include` lines emit nothing, so
+ * the byte and depth limits alone do not bound the work of a fan-out of includes. */
+#define REPLAY_INCLUDE_MAX_FILES 64u
 /* The largest file read, and the largest total expansion (a newline is supplied after a
  * last line that has none), in bytes. */
 #define REPLAY_INCLUDE_MAX_BYTES ((size_t)1024u * 1024u)
@@ -51,6 +55,10 @@ struct replay_source_map {
 void replay_source_map_init(struct replay_source_map *map);
 void replay_source_map_free(struct replay_source_map *map);
 
+/* A buffer that holds any description: a file name of up to REPLAY_INCLUDE_MAX_NAME characters,
+ * ':', the 10 digits of a u32 line and the NUL. */
+#define REPLAY_SOURCE_WHERE_SIZE (REPLAY_INCLUDE_MAX_NAME + 12u)
+
 /* Writes "file:line" for flat line `flat_line` (1-based) of the expansion, or "line N" if the
  * map has no such line (out has `size` bytes, NUL-terminated, cut if too long). */
 void replay_source_map_describe(const struct replay_source_map *map, uint32_t flat_line, char *out, size_t size);
@@ -59,7 +67,7 @@ void replay_source_map_describe(const struct replay_source_map *map, uint32_t fl
  * caller frees; its length is in *length_out, *expanded_out says whether any include was
  * replaced, and `map` (initialised by the caller, may be NULL) says where each line came
  * from. Returns 0, or -1 with the reason in `message` (message_size bytes): the file and
- * line, what went wrong (unreadable file, a NUL byte, too large, too deep, an include
+ * line, what went wrong (unreadable file, a NUL byte, too large, too deep, too many files, an include
  * without a name or with a name that is too long) and, for a file that was included, where
  * from. *text_out is NULL after a failure. */
 int replay_include_expand(const char *path, char **text_out, size_t *length_out, bool *expanded_out,
