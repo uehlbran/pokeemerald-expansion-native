@@ -513,8 +513,8 @@ PTEST(huffman_header_ending_at_the_region_end_leaves_the_size_byte_unread)
     /* Only the four header bytes fit: the tree-size byte would be the first
      * byte past IWRAM, which must be refused, not read. */
     uint8_t *tail = (uint8_t *)(uintptr_t)(GBA_IWRAM_BASE + GBA_IWRAM_SIZE - 4);
-    static const uint8_t header[] = {0x28, 0x04, 0x00, 0x00};
-    memcpy(tail, header, sizeof header);
+    static const uint8_t header_only[] = {0x28, 0x04, 0x00, 0x00};
+    memcpy(tail, header_only, sizeof header_only);
     uint8_t out[8];
     memset(out, STALE, sizeof out);
     HuffUnComp((const uint32_t *)(void *)tail, out);
