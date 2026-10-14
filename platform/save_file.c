@@ -19,20 +19,19 @@
  * of exactly FLASH_CHIP_SIZE bytes (legacy). Anything else is reported and
  * leaves an erased chip.
  * Store: the header and the image go to <path>.tmp, which is flushed,
- * fsynced and closed before rename() replaces <path> with it (atomic on
- * POSIX), and then the directory is fsynced so the rename itself survives a
- * crash. On any failure before the rename, the tmp file this store created
- * is removed and <path> is untouched.
+ * synced to the disk and closed before it atomically replaces <path>, and
+ * then the directory is synced so the replacement itself survives a crash
+ * (host_file.h). On any failure before the replacement, the tmp file this
+ * store created is removed and <path> is untouched.
  *
  * The header's integers are encoded and decoded a byte at a time as
  * little-endian, so the format does not depend on the host's byte order or
  * struct padding; struct header_bytes is only byte arrays (asserted size and
- * offsets). Module state: the paths, fixed buffers of SAVE_FILE_PATH_SIZE
+ * offsets). Module state: the two paths, fixed buffers of SAVE_FILE_PATH_SIZE
  * computed once by save_file_init, and the last loaded layout tag. Nothing
  * is allocated.
  */
 #include <errno.h>
-#include <fcntl.h>
 #include <inttypes.h>
 #include <limits.h>
 #include <stdarg.h>
@@ -41,9 +40,9 @@
 #include <stdio.h>
 #include <string.h>
 #include <sys/stat.h>
-#include <unistd.h>
 
 #include "flash.h"
+#include "host_file.h"
 #include "save_file.h"
 
 /* Appended to the save path for the file a store writes before renaming. */
@@ -99,7 +98,6 @@ static struct {
     bool persistent; /* false: save_file_init(NULL), in memory only */
     char path[SAVE_FILE_PATH_SIZE];
     char tmp_path[SAVE_FILE_PATH_SIZE]; /* path + SAVE_FILE_TMP_SUFFIX */
-    char dir_path[SAVE_FILE_PATH_SIZE]; /* the directory holding path, fsynced after a rename */
     bool has_loaded_layout;             /* the last load read a valid header */
     struct save_file_layout loaded_layout;
 } state;
@@ -161,16 +159,6 @@ static bool set_paths(const char *path)
     memcpy(state.path, path, length + 1);
     memcpy(state.tmp_path, path, length);
     memcpy(state.tmp_path + length, SAVE_FILE_TMP_SUFFIX, sizeof SAVE_FILE_TMP_SUFFIX);
-
-    const char *const last_slash = strrchr(path, '/');
-    if (last_slash == NULL) {
-        memcpy(state.dir_path, ".", sizeof ".");
-    } else {
-        /* "/x" is in "/"; "a/b/x" is in "a/b". */
-        const size_t dir_length = last_slash == path ? 1 : (size_t)(last_slash - path);
-        memcpy(state.dir_path, path, dir_length);
-        state.dir_path[dir_length] = '\0';
-    }
     return true;
 }
 
@@ -386,7 +374,7 @@ static int write_tmp(void)
         failed_call = "fwrite";
     else if (fflush(tmp) != 0)
         failed_call = "fflush";
-    else if (fsync(fileno(tmp)) != 0)
+    else if (host_file_sync(fileno(tmp)) != 0)
         failed_call = "fsync";
     if (failed_call != NULL) {
         report(failed_call, state.tmp_path, errno);
@@ -401,26 +389,6 @@ static int write_tmp(void)
     return SAVE_FILE_OK;
 }
 
-/* fsyncs the directory holding the save, so the rename is durable. */
-static int sync_directory(void)
-{
-    const int dir = open(state.dir_path, O_RDONLY | O_DIRECTORY | O_CLOEXEC);
-    if (dir < 0) {
-        report("open", state.dir_path, errno);
-        return SAVE_FILE_ERR_IO;
-    }
-    int status = SAVE_FILE_OK;
-    if (fsync(dir) != 0) {
-        report("fsync", state.dir_path, errno);
-        status = SAVE_FILE_ERR_IO;
-    }
-    if (close(dir) != 0) {
-        report("close", state.dir_path, errno);
-        status = SAVE_FILE_ERR_IO;
-    }
-    return status;
-}
-
 int save_file_store(void)
 {
     if (!state.initialised) {
@@ -432,13 +400,19 @@ int save_file_store(void)
     const int written = write_tmp();
     if (written != SAVE_FILE_OK)
         return written;
-    if (rename(state.tmp_path, state.path) != 0) {
+    if (host_file_replace(state.tmp_path, state.path) != 0) {
         (void)fprintf(stderr, "save_file: rename(%s, %s): %s\n", state.tmp_path, state.path,
                       strerror(errno)); /* best-effort: this is the error report */
         discard_tmp(NULL);
         return SAVE_FILE_ERR_IO;
     }
-    return sync_directory();
+    /* Syncs the directory holding the save, so the replacement is durable. */
+    if (host_file_sync_directory_of(state.path) != 0) {
+        (void)fprintf(stderr, "save_file: fsync of the directory of %s: %s\n", state.path,
+                      strerror(errno)); /* best-effort: this is the error report */
+        return SAVE_FILE_ERR_IO;
+    }
+    return SAVE_FILE_OK;
 }
 
 void save_file_shutdown(void)

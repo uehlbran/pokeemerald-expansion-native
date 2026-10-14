@@ -26,7 +26,7 @@
  *    seconds are the time source (UTC) plus the persisted offset. On first
  *    run, when no offset file exists (or none is configured), the offset is
  *    initialised to the host's local-minus-UTC difference at that instant
- *    (localtime_r, used only for this) so the in-game clock reads local wall
+ *    (host_file_local_time, used only for this) so the in-game clock reads local wall
  *    time, and it is persisted. After that a host zone or DST change does not
  *    move the clock; the player's set operations adjust the offset.
  *  - Calendar and BCD: rtc_calendar.c (year range and the 2099 -> 2000 wrap,
@@ -56,6 +56,7 @@
 #include <string.h>
 #include <time.h>
 
+#include "host_file.h"
 #include "rtc_calendar.h"
 #include "rtc_offset_store.h"
 
@@ -109,10 +110,9 @@ static int host_utc_seconds(int64_t *out)
  * zone offset including any DST in force then. Used once, on first run. */
 static int local_minus_utc(int64_t utc, int64_t *out)
 {
-    time_t t = (time_t)utc;
     struct tm local;
 
-    if (localtime_r(&t, &local) == NULL) {
+    if (host_file_local_time(utc, &local) != 0) {
         rtc_report_call_failure("localtime_r");
         return -1;
     }

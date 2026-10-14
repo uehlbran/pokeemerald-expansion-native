@@ -1,56 +1,46 @@
 /*
- * symbols.c: function names from the executable's ELF symbol table
- * (symbols.h).
+ * symbols.c: function names from the map the link writes next to the
+ * executable (symbols.h has the format).
  *
- * Followed: the System V ABI / ELF specification (elf(5), <elf.h>): the file
- * header's section header table, the SHT_SYMTAB section and the string table
- * it links to. Every offset and size read from the file is checked against
- * the file's length before it is trusted; a bad file is an error, never an
- * out-of-range read.
+ * The map is read whole into one buffer, and each name is terminated in
+ * place, so the names live as long as the load. Every byte of a line is
+ * checked before it is trusted: a line that is not exactly an address of
+ * this build's width, one space, a name and a newline, or an address lower
+ * than the line before's, is an error, never a guess.
  */
 #include "symbols.h"
 
-#include <elf.h>
-#include <limits.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-#if UINTPTR_MAX == UINT64_MAX
-#define SYMBOLS_ELF_CLASS ELFCLASS64
-#define SYMBOLS_ST_TYPE(info) ELF64_ST_TYPE(info)
-typedef Elf64_Ehdr elf_header;
-typedef Elf64_Shdr elf_section;
-typedef Elf64_Sym elf_symbol;
-#else
-#define SYMBOLS_ELF_CLASS ELFCLASS32
-#define SYMBOLS_ST_TYPE(info) ELF32_ST_TYPE(info)
-typedef Elf32_Ehdr elf_header;
-typedef Elf32_Shdr elf_section;
-typedef Elf32_Sym elf_symbol;
-#endif
+#include "host_process.h"
+
+/* The map's address digits are hexadecimal, 4 bits each. */
+#define HEX_DIGIT_BITS 4u
+#define DECIMAL_DIGIT_COUNT 10
+/* ASCII DEL, the control character above the printable ones. */
+#define ASCII_DELETE 0x7Fu
 
 struct symbol {
     uintptr_t address;
-    uint32_t name_offset; /* into names */
+    uint32_t name_offset; /* into text */
 };
 
 static struct {
-    struct symbol *symbols; /* sorted by address */
+    struct symbol *symbols; /* in address order, aliases in the map's order */
     uint32_t count;
-    char *names; /* the string table, NUL-terminated at its end */
-    size_t names_size;
+    char *text; /* the map, each name NUL-terminated in place */
 } loaded;
 
 void symbols_unload(void)
 {
     free(loaded.symbols);
-    free(loaded.names);
+    free(loaded.text);
     loaded.symbols = NULL;
-    loaded.names = NULL;
+    loaded.text = NULL;
     loaded.count = 0;
-    loaded.names_size = 0;
 }
 
 uint32_t symbols_count(void)
@@ -58,132 +48,148 @@ uint32_t symbols_count(void)
     return loaded.count;
 }
 
-static int by_address(const void *a, const void *b)
+/* The value of a hexadecimal digit, or -1. */
+static int hex_value(char digit)
 {
-    const struct symbol *x = a;
-    const struct symbol *y = b;
-    return (x->address > y->address) - (x->address < y->address);
+    if (digit >= '0' && digit <= '9')
+        return digit - '0';
+    if (digit >= 'a' && digit <= 'f')
+        return DECIMAL_DIGIT_COUNT + (digit - 'a');
+    if (digit >= 'A' && digit <= 'F')
+        return DECIMAL_DIGIT_COUNT + (digit - 'A');
+    return -1;
 }
 
-/* A range of the file that is inside it. */
-static bool in_file(uint64_t offset, uint64_t size, uint64_t file_size)
+/* A name's characters: anything printable but the space (nm's names have
+ * none), and bytes past ASCII. */
+static bool is_name_character(char character)
 {
-    return offset <= file_size && size <= file_size - offset;
+    const unsigned char byte = (unsigned char)character;
+    return byte > ' ' && byte != ASCII_DELETE;
 }
 
-static bool read_at(FILE *file, uint64_t offset, void *out, size_t size)
+/* Reads the line that starts at text[*at] (length bytes in all) into out,
+ * terminates its name in place and moves *at past its newline. False if the
+ * line is not "<address> <name>\n". */
+static bool parse_line(char *text, size_t length, size_t *at, struct symbol *out)
 {
-    return offset <= (uint64_t)LONG_MAX && fseek(file, (long)offset, SEEK_SET) == 0
-           && fread(out, 1, size, file) == size;
-}
-
-static bool read_header(FILE *file, uint64_t file_size, elf_header *header)
-{
-    if (!in_file(0, sizeof *header, file_size) || !read_at(file, 0, header, sizeof *header))
-        return false;
-    if (memcmp(header->e_ident, ELFMAG, SELFMAG) != 0 || header->e_ident[EI_CLASS] != SYMBOLS_ELF_CLASS
-        || header->e_shentsize != sizeof(elf_section))
-        return false;
-    if (header->e_type != ET_EXEC) {
-        /* A PIE (ET_DYN) has load-bias-relative symbol values; not supported. */
-        (void)fprintf(stderr, "symbols: the executable is not ET_EXEC (a PIE?); the native build links with -no-pie\n");
-        return false;
-    }
-    return true;
-}
-
-/* Reads section `index` of the table at the header. */
-static bool read_section(FILE *file, uint64_t file_size, const elf_header *header, uint32_t index, elf_section *out)
-{
-    uint64_t offset = (uint64_t)header->e_shoff + (uint64_t)index * sizeof *out;
-    return index < header->e_shnum && in_file(offset, sizeof *out, file_size)
-           && read_at(file, offset, out, sizeof *out);
-}
-
-/* Finds the SHT_SYMTAB section and its string table. */
-static bool find_symtab(FILE *file, uint64_t file_size, const elf_header *header, elf_section *symtab,
-                        elf_section *strtab)
-{
-    for (uint32_t i = 0; i < header->e_shnum; i++) {
-        if (!read_section(file, file_size, header, i, symtab))
+    size_t i = *at;
+    uintptr_t address = 0;
+    for (size_t digits = 0; digits < SYMBOLS_ADDRESS_DIGITS; digits++, i++) {
+        const int digit = i < length ? hex_value(text[i]) : -1;
+        if (digit < 0)
             return false;
-        if (symtab->sh_type == SHT_SYMTAB)
-            return symtab->sh_entsize == sizeof(elf_symbol)
-                   && read_section(file, file_size, header, symtab->sh_link, strtab) && strtab->sh_type == SHT_STRTAB;
+        address = address << HEX_DIGIT_BITS | (uintptr_t)digit;
     }
-    return false;
-}
-
-static bool load_names(FILE *file, uint64_t file_size, const elf_section *strtab)
-{
-    if (strtab->sh_size == 0 || !in_file(strtab->sh_offset, strtab->sh_size, file_size)
-        || strtab->sh_size >= UINT32_MAX)
+    if (i >= length || text[i] != ' ')
         return false;
-    loaded.names = malloc((size_t)strtab->sh_size + 1u);
-    if (loaded.names == NULL)
+    const size_t name = ++i;
+    while (i < length && is_name_character(text[i]))
+        i++;
+    if (i == name || i >= length || text[i] != '\n')
         return false;
-    loaded.names_size = (size_t)strtab->sh_size + 1u;
-    if (!read_at(file, strtab->sh_offset, loaded.names, (size_t)strtab->sh_size))
-        return false;
-    loaded.names[strtab->sh_size] = '\0';
+    text[i] = '\0';
+    *out = (struct symbol){.address = address, .name_offset = (uint32_t)name};
+    *at = i + 1u;
     return true;
 }
 
-static bool load_symbols(FILE *file, uint64_t file_size, const elf_section *symtab)
+/* The whole file at path, NUL-terminated, in a buffer the caller frees, and
+ * its length in *length (shorter than UINT32_MAX, so that a name's offset
+ * fits); NULL after a report. */
+static char *read_whole(const char *path, size_t *length)
 {
-    if (!in_file(symtab->sh_offset, symtab->sh_size, file_size) || symtab->sh_size / sizeof(elf_symbol) >= UINT32_MAX)
-        return false;
-    size_t total = (size_t)(symtab->sh_size / sizeof(elf_symbol));
-    elf_symbol *raw = malloc(symtab->sh_size > 0 ? (size_t)symtab->sh_size : 1u);
-    loaded.symbols = malloc((total > 0 ? total : 1u) * sizeof *loaded.symbols);
-    bool ok = raw != NULL && loaded.symbols != NULL && read_at(file, symtab->sh_offset, raw, (size_t)symtab->sh_size);
-    for (size_t i = 0; ok && i < total; i++) {
-        if (SYMBOLS_ST_TYPE(raw[i].st_info) != STT_FUNC || raw[i].st_size == 0 || raw[i].st_name == 0
-            || raw[i].st_name >= loaded.names_size)
-            continue;
-        loaded.symbols[loaded.count++] = (struct symbol){.address = (uintptr_t)raw[i].st_value,
-                                                         .name_offset = raw[i].st_name};
+    FILE *file = fopen(path, "rb");
+    if (file == NULL) {
+        (void)fprintf(stderr, "symbols: cannot open %s\n", path);
+        return NULL;
     }
-    free(raw);
-    if (ok)
-        qsort(loaded.symbols, loaded.count, sizeof *loaded.symbols, by_address);
-    return ok;
+    char *text = NULL;
+    long end = -1;
+    if (fseek(file, 0, SEEK_END) == 0)
+        end = ftell(file);
+    if (end >= 0 && (unsigned long)end < UINT32_MAX && fseek(file, 0, SEEK_SET) == 0) {
+        text = malloc((size_t)end + 1u);
+        if (text != NULL && fread(text, 1, (size_t)end, file) != (size_t)end) {
+            free(text);
+            text = NULL;
+        }
+    }
+    (void)fclose(file); /* read-only: nothing to lose */
+    if (text == NULL) {
+        (void)fprintf(stderr, "symbols: cannot read %s\n", path);
+        return NULL;
+    }
+    text[end] = '\0';
+    *length = (size_t)end;
+    return text;
 }
 
-/* The length of the file, by seeking to its end. */
-static bool file_length(FILE *file, uint64_t *length)
+/* The lines of the text: its newlines. */
+static uint32_t count_lines(const char *text, size_t length)
 {
-    if (fseek(file, 0, SEEK_END) != 0)
+    uint32_t lines = 0;
+    for (size_t i = 0; i < length; i++) {
+        if (text[i] == '\n')
+            lines++;
+    }
+    return lines;
+}
+
+/* Parses every line of loaded.text into loaded.symbols. False after a report
+ * naming the first bad line. */
+static bool parse_map(const char *path, size_t length)
+{
+    const uint32_t lines = count_lines(loaded.text, length);
+    loaded.symbols = malloc((lines > 0 ? lines : 1u) * sizeof *loaded.symbols);
+    if (loaded.symbols == NULL) {
+        (void)fprintf(stderr, "symbols: no memory for the %u functions of %s\n", lines, path);
         return false;
-    long end = ftell(file);
-    if (end < 0)
+    }
+    size_t at = 0;
+    while (at < length) { /* each line parsed takes one of the newlines counted: loaded.count stays within lines */
+        const uint32_t line = loaded.count + 1u;
+        struct symbol symbol;
+        if (!parse_line(loaded.text, length, &at, &symbol)) {
+            (void)fprintf(stderr, "symbols: %s:%u: not \"<%zu hexadecimal digits> <name>\" and a newline\n", path, line,
+                          (size_t)SYMBOLS_ADDRESS_DIGITS);
+            return false;
+        }
+        if (loaded.count > 0 && symbol.address < loaded.symbols[loaded.count - 1u].address) {
+            (void)fprintf(stderr, "symbols: %s:%u: address lower than the line before's (the map is sorted)\n", path,
+                          line);
+            return false;
+        }
+        loaded.symbols[loaded.count++] = symbol;
+    }
+    if (loaded.count == 0) { /* every executable has functions: an empty map is a failed nm */
+        (void)fprintf(stderr, "symbols: %s names no function\n", path);
         return false;
-    *length = (uint64_t)end;
+    }
     return true;
 }
 
 int symbols_load(const char *path)
 {
     symbols_unload();
-    FILE *file = fopen(path, "rb");
-    if (file == NULL) {
-        (void)fprintf(stderr, "symbols: cannot open %s\n", path);
-        return -1;
-    }
-    elf_header header;
-    elf_section symtab, strtab;
-    uint64_t file_size = 0;
-    bool ok = file_length(file, &file_size) && read_header(file, file_size, &header)
-              && find_symtab(file, file_size, &header, &symtab, &strtab) && load_names(file, file_size, &strtab)
-              && load_symbols(file, file_size, &symtab);
-    (void)fclose(file);
-    if (!ok) {
-        (void)fprintf(stderr, "symbols: %s is not an ELF executable of this build's width with a usable symbol table\n",
-                      path);
+    size_t length = 0;
+    loaded.text = read_whole(path, &length);
+    if (loaded.text == NULL || !parse_map(path, length)) {
         symbols_unload();
         return -1;
     }
     return 0;
+}
+
+int symbols_load_own(void)
+{
+    char path[HOST_PROCESS_PATH_SIZE + sizeof SYMBOLS_MAP_SUFFIX];
+    if (host_process_executable_path(path, HOST_PROCESS_PATH_SIZE) != 0) { /* reported */
+        symbols_unload();
+        return -1;
+    }
+    memcpy(path + strlen(path), SYMBOLS_MAP_SUFFIX, sizeof SYMBOLS_MAP_SUFFIX);
+    return symbols_load(path);
 }
 
 const char *symbols_name_at(uintptr_t address)
@@ -198,6 +204,6 @@ const char *symbols_name_at(uintptr_t address)
             high = middle;
     }
     if (low < loaded.count && loaded.symbols[low].address == address)
-        return loaded.names + loaded.symbols[low].name_offset;
+        return loaded.text + loaded.symbols[low].name_offset;
     return NULL;
 }

@@ -377,7 +377,7 @@ static const struct inspect_fact facts[] = {
 
 int inspect_init(void)
 {
-    return symbols_load(SYMBOLS_EXE_PATH);
+    return symbols_load_own();
 }
 
 void inspect_shutdown(void)

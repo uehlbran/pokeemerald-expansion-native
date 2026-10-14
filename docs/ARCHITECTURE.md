@@ -150,8 +150,9 @@ returned to the caller (`main` decides what to do; modules never call
 | `crt0`, `rom_header`, `gcn_multiboot`, `decompress_asm` | the `src/*.s` the native build does not assemble | n/a (game code) | yes |
 | `options` | the command line | n/a | yes |
 | `replay`, `replay_parse`, `replay_include`, `replay_session` | nothing: the input-replay script, its parser, its `include` expansion and the glue to the running game | n/a | yes (against a fake host), except `replay_session`, covered only by the replays |
-| `inspect`, `inspect_menu`, `inspect_args`, `inspect_decode`, `symbols` | nothing: the facts a replay reads from expansion's variables, the ranges of their arguments, and function names from the executable's ELF symbols | n/a | `inspect_args`, `inspect_decode`, `symbols` yes; `inspect`, `inspect_menu` only through the replays |
+| `inspect`, `inspect_menu`, `inspect_args`, `inspect_decode`, `symbols` | nothing: the facts a replay reads from expansion's variables, the ranges of their arguments, and function names from the map of the executable's symbols the link writes beside it | n/a | `inspect_args`, `inspect_decode`, `symbols` yes; `inspect`, `inspect_menu` only through the replays |
 | `restart` | a switch-off and switch-on: re-exec of the process for the replay's `restart` | n/a | yes |
+| `host_memory`, `host_fault`, `host_process`, `host_image`, `host_stack`, `host_file` (sources `host_posix.c`, `host_linux.c`) | nothing on the GBA: what the modules above need from the operating system, one header per concern (below, "The host layer") | n/a | yes (one test per header) |
 | `main` | power-on | n/a | no |
 
 Header-only: `gba_irq.h` (the fourteen interrupt sources), `gba_timing.h`
@@ -171,7 +172,44 @@ and assert ours match, `m4a_output.c`, which reads the m4a engine's
 `struct SoundInfo` (`gba/m4a_internal.h`) as the DMA did, the `m4a/`
 engine, which is game code, and `inspect.c`, `inspect_menu.c` and
 `inspect_args.c`, which read the game's variables and are compiled with the
-game's defines (`platform/game_flags.mk`).
+game's defines (`platform/game_flags.mk`). The host layer depends on no
+module (`host_memory.h` takes `gba_memmap.h`'s region numbers, nothing
+more), and only the modules of the next section depend on it.
+
+## The host layer
+
+Thirteen modules need something of the operating system beyond the C library
+and SDL, and each need is one of six concerns. Each concern is one header,
+`platform/host_<concern>.h`, which says what it stands in for and which OS
+facility it wraps; the modules call it and contain no OS call of their own
+(no `sigaction`, `ucontext`, `/proc`, `getauxval`, `pthread`, `fsync`).
+`research/m8-inventory.md`, sections 1.2, 3 and 5.1, has the counterparts on
+Windows and macOS; `DECISIONS.md`, "The ports share a thin host layer", why
+it is one layer and not `#ifdef`s in the modules.
+
+| Header | Concern | Its users | Linux |
+|---|---|---|---|
+| `host_memory.h` | memory at fixed addresses: where the link put each GBA region and the battle runner's stack; pages mapped at run time | `gba_memmap`, `game_hooks`, `transfer_bounds`, the m4a tests | `gba_regions.ld`'s symbols; `mmap` with `MAP_FIXED_NOREPLACE` |
+| `host_fault.h` | hardware faults with the faulting context: the divide-error and crash handlers' install and uninstall, the registers by name and by ModRM number, the alternate stack | `arm_division`, `crash_reboot` | `sigaction`, `sigaltstack`, `sigprocmask`, `uc_mcontext.gregs` |
+| `host_process.h` | the executable's own file, and starting it again | `crash_reboot`, `restart`, `symbols` | `/proc/self/exe`, `readlink`, `execve` |
+| `host_image.h` | the bounds of the executable's image and of the main thread's stack; its read-only segments | `transfer_bounds`, `game_hooks` (`PlatformIsRomPointer`) | `__executable_start`, `__data_start`, `_end`, `getauxval(AT_PHDR)`, `pthread_getattr_np` |
+| `host_stack.h` | running a function on a stack of the caller's choosing | `game_hooks` (`PlatformCallWithStack`) | `ucontext`, with AddressSanitizer's fiber annotations |
+| `host_file.h` | durable file replacement, `mkdir` with a mode, the local time | `save_file`, `rtc_offset_store`, `replay_session`, `rtc` | `fsync`, `rename`, a directory's `fsync`, `mkdir`, `localtime_r` |
+
+The sources are one per OS family: `host_posix.c` holds what Linux and macOS
+share (the signal handlers' installation and chaining, `execve`, the files),
+and `host_linux.c` the rest (the linker-script symbols, `MAP_FIXED_NOREPLACE`,
+the `gregs` index table, `/proc/self/exe`, `getauxval`, `pthread_getattr_np`,
+the `ucontext` switch); `host_internal.h` is what they share. `HOST_OS`
+(`platform/host.mk`, included by both Makefiles) selects them, Linux its
+only value so far: a port adds its source and its value. `crt0` and `main`
+also use the toolchain (the linker scripts' own symbols, weak references,
+SDL's `main`) but call nothing of the OS's, so they are not users.
+
+The replay's function names are OS-neutral the same way: the link writes
+`<executable>.symbols`, the executable's function symbols as `nm` lists
+them (`host.mk`'s `write_symbol_map`, sorted by address), and `symbols`
+reads that map rather than the executable's own format.
 
 ## The test runner
 
@@ -195,8 +233,9 @@ through `input`'s script source. `replay` parses and plays a script one
 step per frame (`frame_set_step_hook`); `inspect` reads named facts
 (`callback2`, `map_name`, `party_species:N`, ...) from expansion's
 variables, so a script can `expect` and `wait-until` on game state;
-`symbols` names the game's static callbacks from the executable's ELF
-symbols; `restart` re-executes the process, which is what a switch-off and
+`symbols` names the game's static callbacks from the executable's symbol
+map (`pokeemerald-native.symbols`, written by the link); `restart`
+re-executes the process, which is what a switch-off and
 switch-on does, so the save file is shown to carry the state. `--rtc-fixed`
 (`fixed_clock`) makes the clock deterministic. The facts with arguments are
 range-checked against expansion's constants (`inspect_args`). Scripts,
