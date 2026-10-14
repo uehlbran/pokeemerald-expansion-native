@@ -875,3 +875,36 @@ software, so an x86_64-only macOS build has a horizon. When that horizon
 matters, the rebased memory model is the work to plan, with this entry
 and the inventory's section 2.5 as the starting point; nothing else in
 the port depends on the choice.
+
+## 2026-10-14: CI runs in two tiers; the local pre-merge gate stays the full check
+
+The owner ruled that an hour of runner time on every push to main,
+docs-only pushes included, is not acceptable. The workflow is split:
+a per-push tier (the platform gate, the 64-bit build, both 64-bit
+replays, the plain 64-bit suite; docs-only pushes do not trigger it; a
+newer push cancels an older run; the compiler cache is kept between
+runs; the target is under 15 minutes warm) and a nightly tier
+(`schedule` plus `workflow_dispatch`: the GBA ROM and its sha1, the
+32-bit build and replays, both sanitized builds with their replays, all
+four suite runs, the cross-width save gate, as parallel jobs). The
+reasoning: the orchestrator's local gate before every merge is the full
+check at both widths, plain and sanitized, and runs in about 20
+minutes on 32 cores; CI is the backstop that proves a clean clone on a
+documented image builds and passes, and a backstop that costs an hour a
+push is paid for in minutes the owner budgets. The measured runtimes of
+each tier are recorded in STATUS.md when the first runs complete.
+
+## 2026-10-14: The coding-worker default is checked again: no DeepSeek model is offered, so Sonnet stays
+
+The owner asked for DeepSeek 4.1 Flash as the default coding worker, as
+the original brief did, with Sonnet for anything needing screenshots or
+visual judgment and Opus for hard pieces only. The check the milestone 1
+decision prescribed ("the orchestrator checks at each milestone whether
+a DeepSeek option has appeared") was made on 2026-10-14: the Agent tool
+of this session offers Sonnet, Opus, Haiku and Fable and no other
+provider, so the brief's fallback applies as before: plain code, build
+glue, tests and docs drafts go to Sonnet, hard pieces to Opus, with the
+owner's escalation rule kept (a worker that fails the gate twice on the
+same task is escalated to Opus or the orchestrator). The model used for
+each branch stays recorded in STATUS.md's table so the split is
+visible, and this check is repeated at the next milestone.

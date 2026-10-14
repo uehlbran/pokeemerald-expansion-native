@@ -58,7 +58,12 @@ game flags (3249f05722). Milestone 6's screenshot flake (the trainer party
 seed hashing a pointer) is recorded in the milestone 6 section and in
 DECISIONS.md. Earlier breakages are in the milestone logs.
 
-**Needs the owner.** Nothing new. The three milestone 8 items were
+**Needs the owner.** One thing to know: the default coding worker cannot
+be DeepSeek 4.1 Flash, because the Agent tool of this session offers
+only Sonnet, Opus, Haiku and Fable (checked again 2026-10-14; DECISIONS.md).
+Plain code, build glue, tests and docs drafts go to Sonnet, hard pieces
+to Opus, with your escalation rule; the table at the end records the
+model per branch. Otherwise nothing new. The three milestone 8 items were
 settled on 2026-10-14: the MinGW cross-compiler is installed (GCC 13 for
 x86_64-w64-mingw32, binutils 2.41; Wine is not, so cross-built
 executables run only on the Windows runner); macOS ships as x86_64
@@ -251,8 +256,15 @@ runs after the 32-bit build, which generates the game headers the lint
 reads. The GBA job is green (the ROM's sha1 equal to the recorded one);
 both jobs are green on the branch's third run (37920736586, 2026-10-09:
 the GBA ROM with the recorded sha1; the native gate end to end, about
-95 minutes on the runner), and the workflow is merged into main on
-2026-10-14, where every push now runs it.
+95 minutes on the runner), and the workflow was merged into main on
+2026-10-14. The owner then ruled an hour per push unacceptable: the
+workflow is being split into a per-push tier (docs-only pushes
+excluded, older runs cancelled, the compiler cache kept; the platform
+gate, the 64-bit build, its two replays and its plain suite; under 15
+minutes warm is the target) and a nightly tier with the rest as
+parallel jobs (DECISIONS.md "CI runs in two tiers"); the first run on
+main was cancelled rather than spend the hour, and the measured
+runtimes of each tier are recorded here when the first runs complete.
 
 **The loader probes** (`research/probes/`, a manual workflow on the
 Windows and macOS runners, two runs on 2026-10-09; the README has the
