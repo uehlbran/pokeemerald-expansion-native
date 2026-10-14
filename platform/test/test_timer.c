@@ -10,6 +10,7 @@
 #include <gba/io_reg.h>
 
 #include "gba_memmap.h"
+#include "gba_timing.h"
 #include "ptest.h"
 #include "timer.h"
 
@@ -64,7 +65,7 @@ PTEST(shutdown_without_init_and_twice_is_safe)
 {
     timer_shutdown();
     timer_shutdown();
-    timer_advance(TIMER_CYCLES_PER_FRAME);
+    timer_advance(GBA_CYCLES_PER_FRAME);
     PT_ASSERT_EQ_INT(timer_init(fake_raise), TIMER_OK);
     timer_shutdown();
 }
@@ -92,7 +93,7 @@ PTEST(a_cell_written_before_init_is_the_first_reload)
 PTEST(disabled_timer_never_changes)
 {
     setup();
-    timer_advance(TIMER_CYCLES_PER_FRAME);
+    timer_advance(GBA_CYCLES_PER_FRAME);
     timer_advance(UINT32_MAX);
     PT_ASSERT_EQ_INT(REG_TM0CNT_L, 0);
     PT_ASSERT_EQ_INT(REG_TM3CNT_L, 0);
@@ -154,9 +155,9 @@ PTEST(test_runner_timeout_arrives_in_the_sixtieth_frame)
     REG_TM2CNT_L = TEST_RUNNER_RELOAD;
     REG_TM2CNT_H = TIMER_ENABLE | TIMER_INTR_ENABLE | TIMER_1024CLK;
     for (int frame = 0; frame < 59; frame++)
-        timer_advance(TIMER_CYCLES_PER_FRAME);
+        timer_advance(GBA_CYCLES_PER_FRAME);
     PT_ASSERT_EQ_INT(raised[GBA_IRQ_TIMER2], 0);
-    timer_advance(TIMER_CYCLES_PER_FRAME); /* the 60th frame crosses it */
+    timer_advance(GBA_CYCLES_PER_FRAME); /* the 60th frame crosses it */
     PT_ASSERT_EQ_INT(raised[GBA_IRQ_TIMER2], 1);
     teardown();
 }
@@ -334,7 +335,7 @@ PTEST(cascade_with_a_disabled_source_never_counts)
 {
     setup();
     REG_TM1CNT_H = TIMER_ENABLE | TIMER_COUNTUP;
-    timer_advance(TIMER_CYCLES_PER_FRAME);
+    timer_advance(GBA_CYCLES_PER_FRAME);
     PT_ASSERT_EQ_INT(REG_TM1CNT_L, 0);
     teardown();
 }
@@ -352,8 +353,8 @@ PTEST(a_frame_on_prescaler_64_counts_4389)
 {
     setup();
     REG_TM0CNT_H = TIMER_ENABLE | TIMER_64CLK;
-    timer_advance(TIMER_CYCLES_PER_FRAME);
-    PT_ASSERT_EQ_INT(REG_TM0CNT_L, TIMER_CYCLES_PER_FRAME / CYCLES_64);
+    timer_advance(GBA_CYCLES_PER_FRAME);
+    PT_ASSERT_EQ_INT(REG_TM0CNT_L, GBA_CYCLES_PER_FRAME / CYCLES_64);
     PT_ASSERT_EQ_INT(REG_TM0CNT_L, 4389);
     teardown();
 }

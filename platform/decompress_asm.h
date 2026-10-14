@@ -32,7 +32,9 @@ void FastUnsafeCopy32(void *dest, const void *src, uint32_t size);
  * byte, 1 = two bytes copying 3 + (b0 >> 4) bytes from (((b0 & 0xF) << 8) |
  * b1) + 1 bytes back in the output. Writes exactly the header's size of bytes
  * to dest. A back-reference before the start of dest, which the assembly
- * would follow, stops decompression with a report on stderr. */
+ * would follow, stops decompression with a report on stderr. A header or
+ * destination range that transfer_bounds refuses (the size comes from the
+ * data) writes nothing and is reported on stderr. */
 void LZ77UnCompWRAMOptimized(const uint32_t *src, void *dest);
 
 #endif /* DECOMPRESS_ASM_H */

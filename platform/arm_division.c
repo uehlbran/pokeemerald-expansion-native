@@ -67,7 +67,9 @@
  * prefixes, Intel SDM vol. 1, 3.3.7.1). FS (64h) and GS (65h) add
  * thread-local bases and are refused, as are the operand-size (66h) and
  * address-size (67h) prefixes (a 16-bit operand, other addressing), LOCK
- * and REP. At most one prefix per group, so at most four. */
+ * and REP. Repeated segment prefixes are legal (the last one wins);
+ * MAX_PREFIXES caps how many the decoder skips, well within the 15-byte
+ * instruction limit. */
 #define PREFIX_SEGMENT_ES 0x26u
 #define PREFIX_SEGMENT_CS 0x2Eu
 #define PREFIX_SEGMENT_SS 0x36u

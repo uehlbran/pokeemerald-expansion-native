@@ -24,20 +24,17 @@
  *
  * x86's div and idiv raise a divide error in both cases, which the host
  * delivers as a fault (Linux: SIGFPE; host_fault.h). arm_division_init
- * installs a handler for it that decodes the faulting instruction (opcode F7h, ModRM reg 6 or 7, any
- * operand form, segment prefixes CS, DS, ES or SS, and on x86-64 a REX
- * prefix), writes libgcc's results into EAX or RAX (quotient) and EDX or
- * RDX (remainder), and resumes after the instruction: a 32-bit operand gets
- * the 32-bit results (zero-extended into RAX and RDX on x86-64), a 64-bit
- * one (REX.W) the 64-bit ones. It refuses FS, GS, 66h, 67h, LOCK and REP
- * prefixes, a REX prefix that is not the last, 8-bit forms (F6h) and a
- * quotient too wide for its register. Those, and any other SIGFPE, go to
- * the handler that was installed before (the crash reboot in test-runner
- * mode), or kill the process as without this module, after one line on
- * stderr with the program counter. The handler is async-signal-safe (it
- * only reads the instruction and its operand and edits the saved
- * registers, through host_fault). i386 and x86-64 only (anything else does
- * not compile).
+ * installs a divide-error handler. It decodes the faulting DIV or IDIV
+ * (F7 /6 or /7, any operand form, flat segment prefixes, REX on x86-64),
+ * writes libgcc's quotient and remainder into the accumulator and data
+ * registers at the operand's width (32-bit results are zero-extended on
+ * x86-64), and resumes after the instruction. Anything it cannot decode (see
+ * decode() in arm_division.c) and any other SIGFPE is reported with its
+ * program counter on one line of stderr and passed to the handler installed
+ * before (the crash reboot in test-runner mode), or kills the process as
+ * without this module. The handler is async-signal-safe (it only reads the
+ * instruction and its operand and edits the saved registers, through
+ * host_fault). i386 and x86-64 only (anything else does not compile).
  * Single-threaded.
  */
 #ifndef ARM_DIVISION_H

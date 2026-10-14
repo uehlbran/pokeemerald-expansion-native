@@ -407,6 +407,12 @@ redone (milestone 7). Rejected: guarding every division site in
 expansion (nine today, unknown tomorrow) and `-fsanitize=integer-divide-
 by-zero` recovery (which gives x86's result, not ARM's).
 
+Amended 2026-10-14 (independent review, finding 01-11): the handler does not
+report every division. Completed divisions by zero are silent, as they were
+on the GBA; only a divide error the decoder cannot complete is reported, with
+its program counter, before it is passed on. 64-bit operands are decoded now
+(see "The 64-bit division rule is compiled at both widths").
+
 ## 2026-10-09: Native save-block sizes are checked, not the GBA's
 
 `test/save.c` compares `sizeof` of the save blocks with constants so that
