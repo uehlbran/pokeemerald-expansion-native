@@ -996,8 +996,12 @@ after, so the child inherits no thread and no handle to one. (The
 handshake in `host_watchdog_start`, which returns only when the thread waits,
 stays: it keeps a start from racing a stop.)
 
-The Windows source of `host_thread.h` is declared (the header names the calls)
-and not written.
+The Windows source of `host_thread.h` (`host_windows_thread.c`, written with
+the Windows host layer) is the same thread with Win32 calls: it waits on an
+event with a timeout, stores the flag once, and is joined by a wait on its
+handle. MinGW-w64 has no ThreadSanitizer; the POSIX build's is the race check
+of the design, and the Windows source shares only relaxed atomics, which the
+event's set announces.
 
 The tests that only some OS can run (fork, signals, pipes, file
 permissions, `setrlimit`, Linux's `pthread_getattr_np`) are not `#ifdef`s in
