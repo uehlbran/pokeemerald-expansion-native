@@ -6,7 +6,7 @@
  * from GBATEK "BIOS Decompression Functions" (header word, flag byte most
  * significant bit first, back-references of N+3 bytes from distance+1 back).
  */
-// deps: bios_internal.c transfer_bounds.c gba_memmap.c
+// deps: transfer_bounds.c gba_memmap.c
 #include <stdint.h>
 #include <string.h>
 
