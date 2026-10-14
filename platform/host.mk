@@ -2,9 +2,12 @@
 # what follows from it. Included by platform/Makefile, platform/m4a/Makefile
 # and Makefile.native, so that the platform layer and the game agree.
 #
-# HOST_OS is the system building it, named as `uname -s` does (it defaults to
-# that); only Linux builds so far. TARGET_OS (target.mk, included below) is the
-# system the executable runs on: HOST_OS, or `windows` for the cross build.
+# Three terms, kept apart: HOST_OS is the machine building (named as `uname -s`
+# does, and defaulting to that; only Linux builds so far), TARGET_OS (target.mk,
+# included below) is the OS the executable runs on (HOST_OS, or `windows` for
+# the cross build), and the host layer is the executable's view of that OS.
+# The compiler and assembler for the executable are therefore TARGET_CC and
+# TARGET_AS.
 # Each target OS has its sources for the host layer (platform/host_*.h are the
 # interface; docs/ARCHITECTURE.md, "The host layer"): Linux the one every POSIX
 # system shares and its own, Windows its own; both host_linked.c, which reads

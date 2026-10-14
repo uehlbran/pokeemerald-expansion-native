@@ -160,7 +160,7 @@ The 10 glue scripts import only the standard library (`sys`, `os`, `re`, `collec
 `tempfile`, `subprocess`, `struct`, `bisect`, `shlex`, `glob`, `fnmatch`) and run as `python3 -I`
 (`Makefile.native:246`, `:450-451`, `:638-639`, `:715`, `:750`, `:754`, `:775`, `:785`;
 `platform/Makefile:280`): portable. Three spawn tools: `elf_object.py:179` runs `as --64` in its
-self-test, `overworld_macros.py:85` runs `$(HOST_AS) --$(BITS)`, `check_relocations.py:53`
+self-test, `overworld_macros.py:85` runs `$(TARGET_AS) --$(BITS)`, `check_relocations.py:53`
 imports subprocess; all are GNU-as and ELF specific, and all run on the Linux build host in the
 cross-build plan. Expansion's own generators are run as plain `python3` (`Makefile.native:543-585`).
 

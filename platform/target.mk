@@ -22,7 +22,7 @@
 #   $(call target_resources,DIR)   the resource objects every executable
 #                        links, made in DIR by this file's rule (Windows: the
 #                        application manifest; Linux: none)
-# and, for windows, the cross tools (HOST_CC, HOST_AS, NM, CC, AR, OBJCOPY, OBJDUMP),
+# and, for windows, the cross tools (TARGET_CC, TARGET_AS, NM, CC, AR, OBJCOPY, OBJDUMP),
 # TARGET_CFLAGS (the compiler flags every Windows object takes) and the SDL2
 # development package's location (SDL2_MINGW_DIR; Makefile.native fetches it).
 # The Linux values are what the Makefiles spelled out before this file.
@@ -55,14 +55,14 @@ $(error TARGET_OS=windows is 64-bit only (BITS=64), not '$(BITS)': an i686 COFF 
 endif
 
 CROSS_PREFIX := x86_64-w64-mingw32-
-HOST_CC ?= $(CROSS_PREFIX)gcc
-HOST_AS ?= $(CROSS_PREFIX)as
+TARGET_CC ?= $(CROSS_PREFIX)gcc
+TARGET_AS ?= $(CROSS_PREFIX)as
 NM      ?= $(CROSS_PREFIX)nm
 OBJCOPY ?= $(CROSS_PREFIX)objcopy
 OBJDUMP ?= $(CROSS_PREFIX)objdump
 # platform/Makefile compiles with $(CC) and archives with $(AR), which make
 # defaults to the build machine's.
-CC := $(HOST_CC)
+CC := $(TARGET_CC)
 AR := $(CROSS_PREFIX)ar
 
 TARGET_EXE_SUFFIX := .exe
