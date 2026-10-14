@@ -5,10 +5,11 @@
  * thread (host_thread.h). What each system does its own way is in its own
  * source, host_linux.c, reached through host_internal.h.
  *
- * Followed: POSIX (sigaction, sigaltstack, sigprocmask, execve, fsync, rename,
- * mkdir, localtime_r, pthread_create and pthread_cond_timedwait), and
- * signal-safety(7) for what a signal handler may call: everything on the
- * handlers' path here (sigaction, raise, execve) is async-signal-safe.
+ * Followed: POSIX (sigaction, sigaltstack, sigprocmask, execve, open, write,
+ * fsync, rename, mkdir, localtime_r, pthread_create and
+ * pthread_cond_timedwait), and signal-safety(7) for what a signal handler may
+ * call: everything on the handlers' path here (sigaction, raise, execve,
+ * write) is async-signal-safe.
  */
 #define _FILE_OFFSET_BITS 64 /* with _TIME_BITS: a 64-bit time_t on 32-bit builds, */
 #define _TIME_BITS 64        /* so host_file_local_time converts dates past 2038 */
@@ -222,6 +223,36 @@ int host_process_restart(char *const argv[])
 /* mkdir's mode for a new directory: every permission, which the umask
  * narrows (mkdir(2)). */
 #define HOST_FILE_DIRECTORY_MODE 0777
+
+/* open's mode for a new file: readable by everyone, writable by the owner,
+ * which the umask may narrow further. */
+#define HOST_FILE_CREATED_MODE 0644
+
+int host_file_open(const char *path, int flags)
+{
+    return open(path, flags | O_CLOEXEC, HOST_FILE_CREATED_MODE);
+}
+
+/* write(2) is async-signal-safe (signal-safety(7)). It returns 0 for a
+ * non-empty buffer only on a device that takes nothing, which would loop
+ * forever: that is an error here. */
+int host_file_write_all(int descriptor, const void *bytes, size_t size)
+{
+    const unsigned char *next = bytes;
+    while (size > 0) {
+        const ssize_t written = write(descriptor, next, size);
+        if (written < 0 && errno == EINTR)
+            continue;
+        if (written <= 0) {
+            if (written == 0)
+                errno = EIO;
+            return -1;
+        }
+        next += written;
+        size -= (size_t)written;
+    }
+    return 0;
+}
 
 int host_file_sync(int descriptor)
 {

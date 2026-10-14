@@ -19,7 +19,6 @@
 #include "host_file.h"
 
 #define TEMP_SUFFIX ".tmp"
-#define FILE_MODE 0644
 /* "-" + 16 digits + newline fits in 32; the longest valid file is shorter. */
 #define FILE_BUFFER_SIZE 32
 #define DECIMAL_BASE 10
@@ -64,7 +63,7 @@ int rtc_offset_store_load(const char *path, int64_t *offset, int *found)
     char text[FILE_BUFFER_SIZE];
     ssize_t length;
     int64_t parsed;
-    int fd = open(path, O_RDONLY | O_CLOEXEC);
+    int fd = host_file_open(path, O_RDONLY);
 
     if (fd < 0) {
         if (errno == ENOENT) {
@@ -100,22 +99,6 @@ int rtc_offset_store_load(const char *path, int64_t *offset, int *found)
     return 0;
 }
 
-static int write_all(int fd, const char *data, size_t length)
-{
-    while (length > 0) {
-        ssize_t n = write(fd, data, length);
-        if (n < 0) {
-            if (errno == EINTR)
-                continue;
-            rtc_report_call_failure("write (offset file)");
-            return -1;
-        }
-        data += n;
-        length -= (size_t)n;
-    }
-    return 0;
-}
-
 static void discard_temp(const char *temp_path)
 {
     if (unlink(temp_path) != 0)
@@ -140,12 +123,13 @@ int rtc_offset_store_save(const char *path, int64_t offset)
         return -1;
     }
 
-    fd = open(temp_path, O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, FILE_MODE);
+    fd = host_file_open(temp_path, O_WRONLY | O_CREAT | O_TRUNC);
     if (fd < 0) {
         rtc_report_call_failure("open (temporary offset file)");
         return -1;
     }
-    if (write_all(fd, text, (size_t)text_length) != 0) {
+    if (host_file_write_all(fd, text, (size_t)text_length) != 0) {
+        rtc_report_call_failure("write (offset file)");
         (void)close(fd); /* already failing */
         discard_temp(temp_path);
         return -1;

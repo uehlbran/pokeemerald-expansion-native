@@ -1009,3 +1009,83 @@ directory (`posix` for Linux and macOS, `linux` for Linux). What the tests
 share of the OS is declared once in `test/test_support.h` and implemented
 once per OS family in `test/<dir>/support.c`. A port adds a directory and a
 support file; it edits no existing test.
+
+## 2026-10-14: The Windows image links its writable sections last
+
+`host_image_writable` is one stretch, the program's mutable data, which
+`transfer_bounds` allows a transfer to write; on Linux it is `__data_start` to
+`_end`. MinGW's default PE script puts `.data` before `.rdata`, `.pdata` and
+`.xdata`, and `.bss` after them, so on Windows no one stretch held the data
+and the bss without read-only data in between, and the portable test
+`the_writable_part_holds_the_mutable_globals_only` could not pass. The
+alternative was a second contract, a predicate or a list of writable spans,
+which would have changed `host_image.h`, `transfer_bounds.c` and their Linux
+tests for a layout detail of one linker. Instead `platform/gba_game.pe.ld`
+moves every initialised data input (the game's `.gamedat`, everyone else's
+`.data` into `.rwdata`, and `script_data`) after `.xdata`, defining
+`__data_start__` and `__data_end__` again around what the default `.data` held
+(an emptied `.data` is dropped, and its symbols would be left undefined in
+the symbol table). The image is then code and read-only data, then writable
+data to the end, as an ELF image is, and `check_pe_layout.py` checks that order
+on every link. Nothing the loader or the C runtime uses moves: `.rdata` with
+its pseudo-relocation list, `.pdata`, `.xdata`, `.idata`, `.CRT` and `.tls`
+keep their names and places.
+
+## 2026-10-14: A crash on Windows restarts through CreateProcessW in the unhandled-exception filter
+
+Windows has no exec. The crash reboot (`crash_reboot`) and the replay's
+`restart` start the program again through `host_process_restart`, which on
+Windows creates a child of the same executable with the same arguments,
+standard handles, environment and working directory, waits for it, and ends
+the process with the child's exit status by `TerminateProcess` (no DLL
+detach, no C runtime flush, as `execve` drops unflushed buffers). Whoever
+waits for the process, the hydra or a shell, sees the child's output on the
+same handles and its status; what differs from Linux is that the child has a
+process id of its own and that the crashed process stays, waiting, until it
+ends. A crash inside a child chains another child; the chain is as long as
+the run's crashes.
+
+For the crash this happens in the unhandled-exception filter, and
+`CreateProcessW` allocates (the process heap) and takes locks (the PEB's, the
+loader's): docs/C-RULES.md forbids both in a handler. It is accepted as the
+one exception, with these reasons: there is no other way to start a process
+on Windows; the filter runs on the faulting thread after the system's
+dispatch, so the locks it takes are either free, held by another thread that
+is not stopped and will release them (SDL's), or held by this thread itself,
+and the heap and loader locks are re-entrant critical sections, so the call
+cannot deadlock against the crash; and if the crash corrupted the heap, the
+call fails or faults, the run ends without a reboot, and that is what the
+reboot exists to avoid but no worse than no handler. Everything else on the
+path is static memory or a system call that neither allocates nor locks:
+the report goes out through `WriteFile` (`host_file_write_all`), the command
+line is built in static buffers, the wait and the exit are system calls. A
+second fault on another thread while the first restarts parks that thread
+(an atomic flag), so one child is started. The design that keeps the rule
+whole, a supervisor process that starts the game as its child and restarts
+it when told through a pipe (the filter would only write the persistent
+bytes and terminate), was not taken: it changes the process model of every
+run on Windows for a path that only the test runner's crashing tests take.
+The owner may rule otherwise.
+
+## 2026-10-14: Windows has no directory sync
+
+On Linux a replacement is durable once the directory that holds it is
+fsynced. Windows has no documented call that writes a directory's entries
+through: `FlushFileBuffers` is documented for a file, a volume or a pipe.
+`MoveFileExW` with `MOVEFILE_WRITE_THROUGH`, which `host_file_replace` passes,
+is documented to return only once the move is on the disk, and NTFS journals
+the rename. So on Windows `host_file_sync_directory_of` checks the path's
+length, as on Linux, and does nothing else; the save and the clock's offset
+stay temporary file, flush, replace, as docs/C-RULES.md asks.
+
+## 2026-10-14: Narrow strings on Windows are in the ANSI code page
+
+The platform's paths and arguments are `char` strings. On Windows the C
+runtime (msvcrt) gives `main` its arguments in the ANSI code page and opens
+files by narrow paths in it, so `host_windows.c` converts with `CP_ACP` both
+ways (`MultiByteToWideChar`, `WideCharToMultiByte`), not with UTF-8: a UTF-8
+path from `host_process_executable_path` would not open with `fopen`
+(`symbols.c`), and an argument converted from UTF-8 would not be the one the
+runtime parsed. A string the code page cannot carry is refused, never
+altered. Should the executable ever carry a manifest with the UTF-8 active
+code page, `CP_ACP` becomes UTF-8 and nothing here changes.

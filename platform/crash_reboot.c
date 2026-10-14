@@ -5,7 +5,7 @@
  * Followed: GBATEK "BIOS Reset Functions" (RegisterRamReset keeps the last
  * 200h bytes of IWRAM), expansion's test/test_runner.c (what the runner
  * keeps there and how it resumes), POSIX for what a signal handler may call
- * (signal-safety(7): write here, execve and raise in host_fault and
+ * (signal-safety(7): write in host_file, execve and raise in host_fault and
  * host_process).
  */
 #include "crash_reboot.h"
@@ -19,6 +19,7 @@
 
 #include "gba_memmap.h"
 #include "host_fault.h"
+#include "host_file.h"
 #include "host_process.h"
 
 _Static_assert(CRASH_REBOOT_PERSISTENT_ADDRESS >= GBA_IWRAM_BASE
@@ -43,8 +44,9 @@ static const volatile uint8_t *persistent_bytes(void)
 }
 
 /* The report line the handler writes, built in place and written with one
- * write(2) so that the lines of processes sharing stderr do not interleave
- * (the hydra runs up to 32). Async-signal-safe: no allocation, no stdio. */
+ * call (host_file_write_all: one write(2), or one WriteFile on Windows) so
+ * that the lines of processes sharing stderr do not interleave (the hydra
+ * runs up to 32). Async-signal-safe: no allocation, no stdio. */
 #define REPORT_SIZE 256u
 #define DECIMAL_BASE 10u /* numbers are written and read in decimal */
 
@@ -90,15 +92,7 @@ static void report_add_unsigned(struct report *report, unsigned value)
 /* Best-effort: there is nothing to do if stderr is gone. */
 static void report_write(const struct report *report)
 {
-    const char *text = report->text;
-    size_t length = report->length;
-    while (length > 0) {
-        ssize_t written = write(STDERR_FILENO, text, length);
-        if (written <= 0)
-            return;
-        text += written;
-        length -= (size_t)written;
-    }
+    (void)host_file_write_all(STDERR_FILENO, report->text, report->length);
 }
 
 /* "crash_reboot: signal 11 at 0x...; fault address 0x...: " */

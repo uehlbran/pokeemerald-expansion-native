@@ -24,6 +24,7 @@
 #include <unistd.h>
 
 #include "host_fault.h"
+#include "host_file.h"
 
 /* The width section: what 64-bit mode adds to the encoding. */
 #if defined(__i386__)
@@ -370,8 +371,8 @@ static bool complete(struct host_fault *fault)
 #define PC_HEX_DIGITS (sizeof(uintptr_t) * 2u)
 
 /* "arm_division: undecodable divide error at pc 0x12345678, passed on
- * (...)\n", 16 digits on x86-64, formatted without stdio (signal-safety(7):
- * write is async-signal-safe). */
+ * (...)\n", 16 digits on x86-64, formatted without stdio and written with
+ * host_file_write_all, which a fault handler may call. */
 static void report_passed_on(const struct host_fault *fault)
 {
     static const char head[] = "arm_division: undecodable divide error at pc 0x";
@@ -385,7 +386,7 @@ static void report_passed_on(const struct host_fault *fault)
         line[sizeof head - 1 + i] = hex[(pc >> shift) & HEX_DIGIT_MASK];
     }
     memcpy(line + sizeof head - 1 + PC_HEX_DIGITS, tail, sizeof tail - 1);
-    (void)!write(STDERR_FILENO, line, sizeof line); /* nothing to do if stderr is gone */
+    (void)host_file_write_all(STDERR_FILENO, line, sizeof line); /* nothing to do if stderr is gone */
 }
 
 /* Completes a divide error, or reports the one it cannot complete (so that

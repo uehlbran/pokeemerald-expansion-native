@@ -6,7 +6,9 @@
  * it cannot show that the game comes up from a save file alone, which is
  * what "save, restart, continue" must prove. A restart ends the process the
  * way a player would (main shuts every module down, which flushes the save)
- * and execs the same executable with the same arguments, plus
+ * and starts the same executable again (host_process_restart: an exec on
+ * Linux; on Windows a child this process waits for and ends with) with the
+ * same arguments, plus
  * `--resume-at LINE` so the script carries on after the `restart` line, and
  * with `--rtc-fixed` advanced by the time that has passed so the clock does
  * not run backwards. The save path is among the arguments, so the new

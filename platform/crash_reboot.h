@@ -30,10 +30,22 @@
  * AgbMain. The handler uses only async-signal-safe calls (execve, sigaction,
  * raise, write) and memory it set up beforehand.
  *
+ * On Windows a crash is an exception that no handler took (an access
+ * violation, an illegal instruction, a stack overflow, a divide error
+ * arm_division passed on, ...), and the handler runs in the process's
+ * unhandled-exception filter. There is no exec: host_process_restart starts
+ * the program again as a child on the same standard handles, waits for it and
+ * ends this process with its exit status, so the test runner, which waits for
+ * the process it started, sees the rebooted run's output and end. The child
+ * is started with CreateProcessW, which allocates; host_process.h says why
+ * that is accepted. abort() is not an exception there (the C runtime raises
+ * SIGABRT in its own signal table and exits with status 3), so it ends the
+ * run without a reboot.
+ *
  * A crash with the persistent bytes unchanged since the process started
  * (zero, or what crash_reboot_restore put there) would reboot into the same
  * crash forever, as on the GBA; the handler does not reboot then: it reports
- * and lets the signal kill the process. The same happens if the exec fails.
+ * and lets the fault end the process. The same happens if the restart fails.
  *
  * Single-threaded.
  */

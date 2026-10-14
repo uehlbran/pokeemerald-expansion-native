@@ -1,8 +1,9 @@
 /*
- * test_host_file_posix.c: the parts of host_file.h that are POSIX: the syncs,
- * which take a file descriptor or name the directory fsync(2) is applied to,
- * and the directory the umask shapes. The rest is in ../test_host_file.c;
- * the scratch directory is ../host_file_fixture.h's.
+ * test_host_file_posix.c: the parts of host_file.h that are POSIX: the
+ * descriptor calls (the open with O_CLOEXEC and its mode, the write of a
+ * whole buffer, the sync), the directory fsync(2) is applied to, and the
+ * directory the umask shapes. The rest is in ../test_host_file.c; the scratch
+ * directory is ../host_file_fixture.h's.
  */
 #include <errno.h>
 #include <fcntl.h>
@@ -14,6 +15,98 @@
 #include "host_file.h"
 #include "host_file_fixture.h"
 #include "ptest.h"
+
+/* --- host_file_open and host_file_write_all ------------------------------------------ */
+
+#define TEXT "offset 42\n"
+
+PTEST(a_created_file_holds_what_was_written_readable_by_all_and_writable_by_its_owner)
+{
+    struct scratch scratch;
+    if (!scratch_create(&scratch))
+        PT_FAIL("cannot create a scratch directory");
+    const mode_t mask = umask(0); /* no mask, so that the mode is the call's own */
+    const int descriptor = host_file_open(scratch.path, O_WRONLY | O_CREAT | O_TRUNC);
+    (void)umask(mask);
+    const int written = descriptor >= 0 ? host_file_write_all(descriptor, TEXT, sizeof TEXT - 1u) : -2;
+    const int nothing = descriptor >= 0 ? host_file_write_all(descriptor, TEXT, 0) : -2;
+    const int descriptor_flags = descriptor >= 0 ? fcntl(descriptor, F_GETFD) : -1;
+    const bool closed = descriptor >= 0 && close(descriptor) == 0;
+    struct stat info;
+    const mode_t permissions = stat(scratch.path, &info) == 0 ? (info.st_mode & 0777u) : 0;
+    const bool contents = strcmp(read_text(scratch.path), TEXT) == 0;
+    const bool removed = scratch_remove(&scratch);
+    PT_ASSERT(descriptor >= 0);
+    PT_ASSERT_EQ_INT(written, 0);
+    PT_ASSERT_EQ_INT(nothing, 0);
+    PT_ASSERT(descriptor_flags >= 0 && (descriptor_flags & FD_CLOEXEC) != 0); /* not inherited across exec */
+    PT_ASSERT(closed);
+    PT_ASSERT_EQ_INT(permissions, 0644u);
+    PT_ASSERT(contents);
+    PT_ASSERT(removed);
+}
+
+PTEST(opening_truncates_with_o_trunc_and_reads_with_o_rdonly)
+{
+    struct scratch scratch;
+    if (!scratch_create(&scratch))
+        PT_FAIL("cannot create a scratch directory");
+    const bool old = write_text(scratch.path, "an older and longer text");
+    const int writer = host_file_open(scratch.path, O_WRONLY | O_CREAT | O_TRUNC);
+    const int written = writer >= 0 ? host_file_write_all(writer, "new", 3) : -2;
+    const bool writer_closed = writer >= 0 && close(writer) == 0;
+    const int reader = host_file_open(scratch.path, O_RDONLY);
+    char bytes[16] = "";
+    const ssize_t read_count = reader >= 0 ? read(reader, bytes, sizeof bytes - 1u) : -1;
+    const int reader_flags = reader >= 0 ? fcntl(reader, F_GETFD) : -1;
+    const bool reader_closed = reader >= 0 && close(reader) == 0;
+    const bool removed = scratch_remove(&scratch);
+    PT_ASSERT(old);
+    PT_ASSERT_EQ_INT(written, 0);
+    PT_ASSERT(writer_closed);
+    PT_ASSERT_EQ_INT(read_count, 3);
+    PT_ASSERT_EQ_STR(bytes, "new");
+    PT_ASSERT(reader_flags >= 0 && (reader_flags & FD_CLOEXEC) != 0);
+    PT_ASSERT(reader_closed);
+    PT_ASSERT(removed);
+}
+
+PTEST(opening_a_missing_file_for_reading_fails)
+{
+    struct scratch scratch;
+    if (!scratch_create(&scratch))
+        PT_FAIL("cannot create a scratch directory");
+    const int descriptor = host_file_open(scratch.path, O_RDONLY);
+    const int error = errno;
+    const bool removed = scratch_remove(&scratch);
+    PT_ASSERT_EQ_INT(descriptor, -1);
+    PT_ASSERT_EQ_INT(error, ENOENT);
+    PT_ASSERT(removed);
+}
+
+PTEST(writing_to_a_bad_or_read_only_descriptor_fails)
+{
+    struct scratch scratch;
+    if (!scratch_create(&scratch))
+        PT_FAIL("cannot create a scratch directory");
+    const int bad = host_file_write_all(-1, TEXT, sizeof TEXT - 1u);
+    const int bad_error = errno;
+    const bool made = write_text(scratch.path, "kept");
+    const int reader = host_file_open(scratch.path, O_RDONLY);
+    const int refused = reader >= 0 ? host_file_write_all(reader, TEXT, sizeof TEXT - 1u) : -2;
+    const int refused_error = errno;
+    const bool closed = reader >= 0 && close(reader) == 0;
+    const bool kept = strcmp(read_text(scratch.path), "kept") == 0;
+    const bool removed = scratch_remove(&scratch);
+    PT_ASSERT_EQ_INT(bad, -1);
+    PT_ASSERT_EQ_INT(bad_error, EBADF);
+    PT_ASSERT(made);
+    PT_ASSERT_EQ_INT(refused, -1);
+    PT_ASSERT_EQ_INT(refused_error, EBADF);
+    PT_ASSERT(closed);
+    PT_ASSERT(kept);
+    PT_ASSERT(removed);
+}
 
 /* --- host_file_sync and host_file_sync_directory_of ------------------------------ */
 

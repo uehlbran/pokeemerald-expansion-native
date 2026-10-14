@@ -210,18 +210,6 @@ GAP_SECTIONS := $(shell sed -n 's/^[[:space:]]*gap[[:space:]][[:space:]]*\(\.gap
 
 lib: $(GAPS_OBJ)
 
-# Three modules reach the C runtime in ways MinGW's headers do not allow. Each
-# gets a force-included header from build_glue/, for the Windows build only, so
-# the Linux build is unchanged and every warning stays on: mingw_write.h for
-# rtc_offset_store.c and crash_reboot.c (write's count, O_CLOEXEC), mingw_printf.h
-# for save_file.c (%zu and %jd against the C runtime's formats). Owners:
-# rtc_offset_store and save_file are task W5's, crash_reboot task W6's; each
-# header says what removes it.
-WINDOWS_GLUE := -include build_glue/
-$(OBJ_DIR)/crash_reboot.o: CFLAGS_ALL += $(WINDOWS_GLUE)mingw_write.h
-$(OBJ_DIR)/rtc_offset_store.o: CFLAGS_ALL += $(WINDOWS_GLUE)mingw_write.h
-$(OBJ_DIR)/save_file.o: CFLAGS_ALL += $(WINDOWS_GLUE)mingw_printf.h
-
 $(GAPS_OBJ): gba_gaps.pe.s
 	@mkdir -p $(@D)
 	$(HOST_AS) -o $@ $<
