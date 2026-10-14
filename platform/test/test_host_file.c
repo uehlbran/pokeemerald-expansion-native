@@ -1,84 +1,22 @@
 /*
  * test_host_file.c: durable replacement, directories and the local time
  * (host_file.h), on real files in a fresh scratch directory per test
- * ($TMPDIR, or /tmp). A replacement leaves the new contents and no source;
- * a failed one leaves the old; a missing directory is created with the
- * permissions the umask allows, once; the local time follows TZ, past 2038
- * at both widths.
+ * (host_file_fixture.h). A replacement leaves the new contents and no source;
+ * a failed one leaves the old; a missing directory is created, once; the
+ * local time follows TZ, past 2038 at both widths. What takes a file
+ * descriptor or a POSIX permission (the syncs, the umask) is in
+ * posix/test_host_file_posix.c.
  */
 #include <errno.h>
-#include <fcntl.h>
 #include <stdbool.h>
 #include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
-#include <sys/stat.h>
 #include <time.h>
-#include <unistd.h>
 
 #include "host_file.h"
+#include "host_file_fixture.h"
 #include "ptest.h"
-
-#define SCRATCH_PATH_SIZE 512u
-#define TEXT_SIZE 64u
-
-struct scratch {
-    char dir[SCRATCH_PATH_SIZE / 2u];
-    char path[SCRATCH_PATH_SIZE];    /* dir/file: the file replaced */
-    char from[SCRATCH_PATH_SIZE];    /* dir/file.tmp: what replaces it */
-    char made[SCRATCH_PATH_SIZE];    /* dir/made: a directory to create */
-    char missing[SCRATCH_PATH_SIZE]; /* dir/missing/file: under no directory */
-};
-
-static bool scratch_create(struct scratch *scratch)
-{
-    const char *base = getenv("TMPDIR");
-    (void)snprintf(scratch->dir, sizeof scratch->dir, "%s/ptest_host_file_XXXXXX", base != NULL ? base : "/tmp");
-    if (mkdtemp(scratch->dir) == NULL)
-        return false;
-    (void)snprintf(scratch->path, sizeof scratch->path, "%s/file", scratch->dir);
-    (void)snprintf(scratch->from, sizeof scratch->from, "%s/file.tmp", scratch->dir);
-    (void)snprintf(scratch->made, sizeof scratch->made, "%s/made", scratch->dir);
-    (void)snprintf(scratch->missing, sizeof scratch->missing, "%s/missing/file", scratch->dir);
-    return true;
-}
-
-/* Removes what the tests may have left; true if the directory went. */
-static bool scratch_remove(const struct scratch *scratch)
-{
-    (void)unlink(scratch->path);
-    (void)unlink(scratch->from);
-    (void)rmdir(scratch->made);
-    return rmdir(scratch->dir) == 0;
-}
-
-static bool write_text(const char *path, const char *text)
-{
-    FILE *file = fopen(path, "w");
-    if (file == NULL)
-        return false;
-    const bool written = fputs(text, file) != EOF;
-    return fclose(file) == 0 && written;
-}
-
-/* The file's text, or "" if it cannot be read. */
-static const char *read_text(const char *path)
-{
-    static char text[TEXT_SIZE];
-    text[0] = '\0';
-    FILE *file = fopen(path, "r");
-    if (file != NULL) {
-        text[fread(text, 1, sizeof text - 1u, file)] = '\0';
-        (void)fclose(file);
-    }
-    return text;
-}
-
-static bool exists(const char *path)
-{
-    struct stat info;
-    return stat(path, &info) == 0;
-}
+#include "test_support.h"
 
 /* --- host_file_replace ------------------------------------------------------------ */
 
@@ -131,82 +69,6 @@ PTEST(a_replacement_from_a_missing_file_fails_and_leaves_the_target)
     PT_ASSERT(removed);
 }
 
-/* --- host_file_sync and host_file_sync_directory_of ------------------------------ */
-
-PTEST(an_open_file_syncs_and_a_bad_descriptor_does_not)
-{
-    struct scratch scratch;
-    if (!scratch_create(&scratch))
-        PT_FAIL("cannot create a scratch directory");
-    const int descriptor = open(scratch.path, O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0600);
-    const bool written = descriptor >= 0 && write(descriptor, "data", 4) == 4;
-    const int synced = descriptor >= 0 ? host_file_sync(descriptor) : -2;
-    const bool closed = descriptor >= 0 && close(descriptor) == 0;
-    const int bad = host_file_sync(-1);
-    const int bad_error = errno;
-    const bool contents = strcmp(read_text(scratch.path), "data") == 0;
-    const bool removed = scratch_remove(&scratch);
-    PT_ASSERT(written);
-    PT_ASSERT_EQ_INT(synced, 0);
-    PT_ASSERT(closed);
-    PT_ASSERT_EQ_INT(bad, -1);
-    PT_ASSERT_EQ_INT(bad_error, EBADF);
-    PT_ASSERT(contents);
-    PT_ASSERT(removed);
-}
-
-PTEST(the_directory_of_a_path_syncs_wherever_the_path_points)
-{
-    struct scratch scratch;
-    if (!scratch_create(&scratch))
-        PT_FAIL("cannot create a scratch directory");
-    const int in_scratch = host_file_sync_directory_of(scratch.path); /* "dir/file": dir */
-    const int bare = host_file_sync_directory_of("file");             /* the working directory */
-    const int at_root = host_file_sync_directory_of("/file");         /* "/" */
-    const int missing = host_file_sync_directory_of(scratch.missing);
-    const int missing_error = errno;
-    const bool removed = scratch_remove(&scratch);
-    PT_ASSERT_EQ_INT(in_scratch, 0);
-    PT_ASSERT_EQ_INT(bare, 0);
-    PT_ASSERT_EQ_INT(at_root, 0);
-    PT_ASSERT_EQ_INT(missing, -1);
-    PT_ASSERT_EQ_INT(missing_error, ENOENT);
-    PT_ASSERT(removed);
-}
-
-PTEST(a_path_too_long_for_the_directory_sync_is_refused)
-{
-    static char path[HOST_FILE_PATH_SIZE + 1u];
-    memset(path, 'a', HOST_FILE_PATH_SIZE);
-    path[HOST_FILE_PATH_SIZE] = '\0';
-    PT_ASSERT_EQ_INT(host_file_sync_directory_of(path), -1);
-    PT_ASSERT_EQ_INT(errno, ENAMETOOLONG);
-}
-
-/* --- host_file_make_directory ------------------------------------------------------ */
-
-PTEST(a_missing_directory_is_created_with_what_the_umask_allows_once)
-{
-    struct scratch scratch;
-    if (!scratch_create(&scratch))
-        PT_FAIL("cannot create a scratch directory");
-    const mode_t mask = umask(0);
-    (void)umask(mask);
-    const int made = host_file_make_directory(scratch.made);
-    struct stat info;
-    const bool is_directory = stat(scratch.made, &info) == 0 && S_ISDIR(info.st_mode);
-    const mode_t permissions = is_directory ? (info.st_mode & 0777u) : 0;
-    const int again = host_file_make_directory(scratch.made);
-    const int again_error = errno;
-    const bool removed = scratch_remove(&scratch);
-    PT_ASSERT_EQ_INT(made, 0);
-    PT_ASSERT(is_directory);
-    PT_ASSERT_EQ_INT(permissions, 0777u & ~mask);
-    PT_ASSERT_EQ_INT(again, -1);
-    PT_ASSERT_EQ_INT(again_error, EEXIST);
-    PT_ASSERT(removed);
-}
-
 PTEST(a_directory_under_a_missing_one_is_not_created)
 {
     struct scratch scratch;
@@ -227,7 +89,7 @@ PTEST(a_directory_under_a_missing_one_is_not_created)
 
 static bool use_zone(const char *zone)
 {
-    if (setenv("TZ", zone, 1) != 0)
+    if (!tsup_set_environment("TZ", zone))
         return false;
     tzset();
     return true;

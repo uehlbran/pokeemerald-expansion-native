@@ -3,21 +3,20 @@
  * Tests for transfer_bounds: which byte ranges the game may read or write.
  * Expected values come from GBATEK "GBA Memory Map" (reads from any mapped
  * region, writes to RAM) and from the module's header comment (the native
- * image and stack). The native heap is deliberately not accessible.
+ * image and stack). The native heap is deliberately not accessible. The two
+ * tests that read the image's and the stack's edges from Linux itself
+ * (glibc's linker symbols, pthread_getattr_np) are in
+ * linux/test_transfer_bounds_linux.c.
  */
-#define _GNU_SOURCE /* pthread_getattr_np */
 #include "ptest.h"
 #include "gba_memmap.h"
 #include "transfer_bounds.h"
 
-#include <pthread.h>
 #include <stdlib.h>
 #include <string.h>
 
 #define NULL_PAGE_SIZE 4096u
 #define BYTE_COUNT 16u
-
-extern char __executable_start[], __data_start[], _end[]; /* GNU ld / glibc crt1 */
 
 static const uint8_t rodata_bytes[BYTE_COUNT] = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16};
 static uint8_t bss_bytes[BYTE_COUNT];
@@ -257,54 +256,6 @@ PTEST(range_running_off_the_image_end_is_refused)
 {
     start();
     PT_ASSERT(!transfer_bounds_ok(address_of(bss_bytes), (size_t)1 << 24, TRANSFER_READ));
-    transfer_bounds_shutdown();
-}
-
-PTEST(real_stack_mapping_edges)
-{
-    pthread_attr_t attributes;
-    void *low = NULL;
-    size_t size = 0;
-    PT_ASSERT_EQ_INT(pthread_getattr_np(pthread_self(), &attributes), 0);
-    int error = pthread_attr_getstack(&attributes, &low, &size);
-    PT_ASSERT_EQ_INT(pthread_attr_destroy(&attributes), 0);
-    PT_ASSERT_EQ_INT(error, 0);
-    uintptr_t first = address_of(low);
-    uintptr_t last = first + size - 1;
-    start();
-    for (int a = TRANSFER_READ; a <= TRANSFER_WRITE; a++) {
-        enum transfer_access access = (enum transfer_access)a;
-        PT_ASSERT(transfer_bounds_ok(first, 1, access));
-        PT_ASSERT(transfer_bounds_ok(last, 1, access));
-        PT_ASSERT(transfer_bounds_ok(first, size, access));
-        PT_ASSERT(!transfer_bounds_ok(last + 1, 1, access));
-        PT_ASSERT(!transfer_bounds_ok(last, 2, access));
-        PT_ASSERT(!transfer_bounds_ok(first, size + 1, access));
-    }
-    transfer_bounds_shutdown();
-}
-
-PTEST(image_edges_by_linker_symbol)
-{
-    uintptr_t image_first = address_of(__executable_start);
-    uintptr_t data_first = address_of(__data_start);
-    uintptr_t image_end = address_of(_end);
-    start();
-    PT_ASSERT(transfer_bounds_ok(image_end - 1, 1, TRANSFER_READ));
-    PT_ASSERT(transfer_bounds_ok(image_end - 1, 1, TRANSFER_WRITE));
-    PT_ASSERT(!transfer_bounds_ok(image_end, 1, TRANSFER_READ));
-    PT_ASSERT(!transfer_bounds_ok(image_end, 1, TRANSFER_WRITE));
-    PT_ASSERT(!transfer_bounds_ok(image_end - 1, 2, TRANSFER_READ));
-    PT_ASSERT(!transfer_bounds_ok(image_end - 1, 2, TRANSFER_WRITE));
-    PT_ASSERT(transfer_bounds_ok(image_first, 1, TRANSFER_READ));
-    PT_ASSERT(!transfer_bounds_ok(image_first, 1, TRANSFER_WRITE));
-    PT_ASSERT(!transfer_bounds_ok(image_first - 1, 1, TRANSFER_READ));
-    PT_ASSERT(!transfer_bounds_ok(image_first - 1, 2, TRANSFER_READ));
-    PT_ASSERT(transfer_bounds_ok(data_first - 1, 1, TRANSFER_READ));
-    PT_ASSERT(!transfer_bounds_ok(data_first - 1, 1, TRANSFER_WRITE));
-    PT_ASSERT(!transfer_bounds_ok(data_first - 1, 2, TRANSFER_WRITE));
-    PT_ASSERT(transfer_bounds_ok(data_first, 1, TRANSFER_WRITE));
-    PT_ASSERT(transfer_bounds_ok(data_first, 1, TRANSFER_READ));
     transfer_bounds_shutdown();
 }
 

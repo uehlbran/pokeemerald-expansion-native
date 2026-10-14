@@ -5,11 +5,11 @@
  * summary and exit status, a run with no tests, the PTEST_MAX_TESTS limit,
  * and registration. Failure paths run under ptest_capture, and runner tests
  * on their own registry through ptest_main_for, so what they check is
- * observed instead of failing this run.
+ * observed instead of failing this run. The time limit has its own test file,
+ * test_ptest_time_limit.c, which waits.
  */
 #include "ptest.h"
-
-#include <time.h>
+#include "test_support.h"
 
 /* What a probed function did: whether it ran past its assertion, and where the assertion is. */
 struct probe {
@@ -532,50 +532,29 @@ PTEST(registry_contains_this_test)
     PT_ASSERT(!ptest_tests.overflowed);
 }
 
-/* ---- timeout ---- */
+/* ---- timeout ---- (a limit that passes: test_ptest_time_limit.c) */
 
-#define HANG_ELAPSED_LIMIT_SECONDS 10
+#define OUTER_LIMIT_SECONDS 50u
 
-static void runner_hanging_case(void)
-{
-    ptest_set_timeout(1); /* a short limit for this test only */
-    sleep(PTEST_DEFAULT_TIMEOUT_SECONDS);
-}
-
-PTEST(runner_fails_a_hanging_test_and_runs_the_next)
-{
-    struct ptest_registry registry = {.count = 0};
-    ptest_register_in(&registry, "runner_hanging_case", runner_hanging_case);
-    ptest_register_in(&registry, "runner_passing_case", runner_passing_case);
-    const time_t started = time(NULL);
-    const struct run run = run_registry(&registry);
-    const time_t elapsed = time(NULL) - started;
-    PT_ASSERT(run.text_complete);
-    PT_ASSERT(elapsed < HANG_ELAPSED_LIMIT_SECONDS); /* the 1 s limit fired, not the 60 s default */
-    PT_ASSERT_EQ_INT(run.status, 1);
-    PT_ASSERT(has_text(run.text, ": runner_hanging_case: timed out after 1 seconds\n"));
-    PT_ASSERT(count_text(run.text, "FAIL ") == 1);
-    PT_ASSERT(has_text(run.text, "1 passed, 1 failed\n"));
-    PT_ASSERT_EQ_STR(ptest_current.name, "runner_fails_a_hanging_test_and_runs_the_next");
-    PT_ASSERT(!ptest_current.outcome.failed);
-}
-
-#define OUTER_ALARM_SECONDS 50u
-
-PTEST(a_nested_run_restores_the_outer_alarm_target_and_limit)
+PTEST(a_nested_run_restores_the_outer_watchdog_flag_target_and_limit)
 {
     struct ptest_registry registry = {.count = 0};
     ptest_register_in(&registry, "runner_passing_case", runner_passing_case);
-    const sigjmp_buf *const target_before = ptest_timeout_target;
+    const struct host_watchdog *const watchdog_before = ptest_watchdog;
+    const atomic_bool *const expired_before = ptest_expired;
+    const jmp_buf *const target_before = ptest_timeout_target;
     const unsigned limit_before = ptest_timeout_seconds;
-    (void)alarm(OUTER_ALARM_SECONDS);
+    PT_ASSERT(watchdog_before != NULL); /* this test runs under one */
     const struct run run = run_registry(&registry);
-    const unsigned remaining = alarm(0);
     PT_ASSERT(run.text_complete);
     PT_ASSERT_EQ_INT(run.status, 0);
-    PT_ASSERT(remaining > 0 && remaining <= OUTER_ALARM_SECONDS); /* re-armed with what was left */
+    PT_ASSERT(ptest_watchdog == watchdog_before);
+    PT_ASSERT(ptest_expired == expired_before);
     PT_ASSERT(ptest_timeout_target == target_before);
     PT_ASSERT_EQ_INT(ptest_timeout_seconds, limit_before);
+    /* The outer watchdog is still the one a ptest_set_timeout changes. */
+    ptest_set_timeout(OUTER_LIMIT_SECONDS);
+    PT_ASSERT_EQ_INT(ptest_timeout_seconds, OUTER_LIMIT_SECONDS);
 }
 
 PTEST(timeout_comes_from_the_environment_when_it_is_a_positive_number)
@@ -587,13 +566,13 @@ PTEST(timeout_comes_from_the_environment_when_it_is_a_positive_number)
     unsigned seen[5];
     const char *const values[5] = {"7", "0", "abc", "5x", ""};
     for (size_t i = 0; i < 5; i++) {
-        setenv(PTEST_TIMEOUT_ENV, values[i], 1);
+        PT_ASSERT(tsup_set_environment(PTEST_TIMEOUT_ENV, values[i]));
         seen[i] = ptest_default_timeout();
     }
-    unsetenv(PTEST_TIMEOUT_ENV);
+    PT_ASSERT(tsup_unset_environment(PTEST_TIMEOUT_ENV));
     const unsigned unset = ptest_default_timeout();
     if (saved != NULL)
-        setenv(PTEST_TIMEOUT_ENV, previous, 1);
+        PT_ASSERT(tsup_set_environment(PTEST_TIMEOUT_ENV, previous));
     PT_ASSERT_EQ_INT(seen[0], 7);
     for (size_t i = 1; i < 5; i++)
         PT_ASSERT_EQ_INT(seen[i], PTEST_DEFAULT_TIMEOUT_SECONDS);

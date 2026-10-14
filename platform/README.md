@@ -11,6 +11,7 @@ Run from the repository root; nothing here needs expansion's build.
 ```sh
 make -C platform test            # build and run every unit test, 32-bit (the default)
 make -C platform test BITS=64    # the same, 64-bit
+make -C platform tsan            # the same under ThreadSanitizer (64-bit, build/64-tsan)
 make -C platform lib             # build/<bits>/libplatform.a from every platform/*.c
 make -C platform lib NOSAN=1     # the same without sanitizers, build/<bits>-nosan/ (lib only)
 make -C platform clean           # remove platform/build/
@@ -50,9 +51,41 @@ linked the same way; `Makefile.native` does (next section).
   `// # deps:` is accepted too. A deps entry that does not exist stops the
   build with an error naming the test. Every test is also linked with the
   host layer's sources for `HOST_OS` (below), which any module may reach.
+- A test that needs something only some operating systems have goes in the
+  directory of that OS, never behind an `#ifdef` (next section).
 - To test a module's `static` functions without widening its header, a test
   can `#include "<name>.c"` as long as its own name matches no module, so the
   module is not linked a second time (`test/test_gba_memmap_layout.c`).
+
+## Tests that need an operating system
+
+A test file has a portable part and, where a test needs `fork`, a signal, a
+pipe, a file permission or a Linux-only fact, a per-OS part in another file.
+`platform/test/test_<name>.c` holds the tests every target runs and calls the
+OS only through `test/test_support.h` (scratch directories and files under the
+temporary directory, file queries, the environment, standard error sent
+elsewhere: `tsup_*`). The tests that need more are in a directory named for
+the OS family, as `test/<dir>/test_<name>_<dir>.c`, a binary of its own
+(`build/<bits>/test_<name>_<dir>`) with the same `// deps:` rules, built only
+when `HOST_OS` (`host.mk`) lists the directory in `HOST_TEST_DIRS`:
+
+| Directory | Built for | Holds |
+|---|---|---|
+| `test/posix/` | Linux, macOS | `fork` and `waitpid`, signals, pipes, `setrlimit`, permissions, the descriptor syncs; `posix/support.c` implements `test_support.h`, and `posix/posix_support.h` adds `psup_run_child` (a forked child with no core file and an alarm), `psup_exit_code`, `psup_terminating_signal` and `psup_read_within` (a pipe read that gives up) |
+| `test/linux/` | Linux | what only Linux and glibc say of the process: `pthread_getattr_np`, the linker's `__executable_start` |
+
+A test has one place: its name is in one file, the portable part when it can
+run everywhere. A fixture two parts share is a header beside them
+(`save_file_fixture.h`, `host_file_fixture.h`, `debug_channel_fixture.h`,
+`crash_reboot_fixture.h`, `host_fault_fixture.h`). A port adds a directory
+(`test/windows/`, `test/darwin/`), its `support.c`, and its values in
+`host.mk`; it edits no existing test. Windows has no `test/windows/` yet:
+`test_support.h` names the calls it will need, and a port that lacks a test's
+OS part runs the portable part only, so the binary count is lower there, not
+a skipped test. A child is forked by `psup_run_child` (`posix/posix_child.h`), which stops the
+time limit's watchdog thread (`ptest_pause_watchdog`, a join) before the fork
+and starts it again after, in the parent: the child inherits no thread and no
+handle to one.
 
 ## ptest.h
 
@@ -97,11 +130,24 @@ There is no skip and no filter. Arguments must already have the assertion's type
 rejects, for example, a `size_t` passed to `PT_ASSERT_EQ_U32` on 64-bit, so
 compare sizes and addresses with `PT_ASSERT(a == b)`.
 
+Each test has a wall-clock limit, 60 seconds or `PTEST_TIMEOUT_SECONDS`, kept
+by `host_thread.h`'s watchdog: a thread of its own that only sets an atomic
+flag, which the test's thread reads in every assertion and when the test
+returns. A test past its limit fails with `timed out after N seconds` and the
+next test runs. A test that reaches no assertion after the limit is not
+interrupted (nothing but its own thread may touch its state), so a loop in a
+test needs an assertion and a blocking call a timeout of its own;
+`ptest_set_timeout(seconds)` gives a legitimately long test more time. Why a
+thread, and who owns what: `docs/DECISIONS.md`, "The test time limit is kept
+by a flag-setting thread". A test may use `alarm(2)` itself: the runner takes
+no signal.
+
 `ptest_capture(fn, context)` runs `fn(context)` and returns its failure
 (`struct ptest_outcome`) instead of failing the running test, and
 `ptest_register_in(registry, name, fn)` and `ptest_main_for(registry, out)`
 do what `PTEST` and `PTEST_MAIN` do on a registry the caller owns. They are
-for testing the framework itself (`test/test_ptest.c`).
+for testing the framework itself (`test/test_ptest.c`, and
+`test/test_ptest_time_limit.c` for the limit).
 
 ## The GBA memory map (`gba_memmap`)
 

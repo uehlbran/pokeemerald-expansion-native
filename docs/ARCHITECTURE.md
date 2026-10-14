@@ -202,7 +202,8 @@ facility it wraps; the modules call it and contain no OS call of their own
 (no `sigaction`, `ucontext`, `/proc`, `getauxval`, `pthread`, `fsync`).
 `research/m8-inventory.md`, sections 1.2, 3 and 5.1, has the counterparts on
 Windows and macOS; `DECISIONS.md`, "The ports share a thin host layer", why
-it is one layer and not `#ifdef`s in the modules.
+it is one layer and not `#ifdef`s in the modules. The seventh header,
+`host_thread.h`, is used by the unit tests' time limit only, not by a module.
 
 | Header | Concern | Its users | Linux |
 |---|---|---|---|
@@ -211,6 +212,7 @@ it is one layer and not `#ifdef`s in the modules.
 | `host_process.h` | the executable's own file, and starting it again | `crash_reboot`, `restart`, `symbols` | `/proc/self/exe`, `readlink`, `execve` |
 | `host_image.h` | the bounds of the executable's image and of the main thread's stack; its read-only segments | `transfer_bounds`, `game_hooks` (`PlatformIsRomPointer`) | `__executable_start`, `__data_start`, `_end`, `getauxval(AT_PHDR)`, `pthread_getattr_np` |
 | `host_stack.h` | running a function on a stack of the caller's choosing | `game_hooks` (`PlatformCallWithStack`) | `ucontext`, with AddressSanitizer's fiber annotations |
+| `host_thread.h` | a one-shot deadline kept by a thread that only sets the caller's atomic flag: the unit tests' per-test time limit (`ptest.h`); the one thread in the platform (`DECISIONS.md`, "The test time limit is kept by a flag-setting thread") | `test/ptest.h` | `pthread` and a condition variable (`host_posix.c`) |
 | `host_file.h` | durable file replacement, `mkdir` with a mode, the local time | `save_file`, `rtc_offset_store`, `replay_session`, `rtc` | `fsync`, `rename`, a directory's `fsync`, `mkdir`, `localtime_r` |
 
 The sources are one per OS family: `host_posix.c` holds what Linux and macOS
