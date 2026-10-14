@@ -181,15 +181,18 @@ def parse_elf64(path, data):
                 obj.undefined.append(Symbol(name, None, 0, binding))
         else:
             obj.other_symbols.append(Symbol(name, section, value, binding))
-    for header in headers:
+    for index, header in enumerate(headers):
         if header[SH_TYPE] == SHT_RELA:
             types = obj.relocations.setdefault(header[SH_INFO], {})
             entries = obj.relocation_entries.setdefault(header[SH_INFO], [])
             for start in range(header[SH_OFFSET], header[SH_OFFSET] + header[SH_SIZE], RELA_ENTRY_SIZE):
                 offset, info, addend = struct.unpack_from(RELA_FIELDS, data, start)
+                symbol = info >> RELA_SYMBOL_SHIFT
+                if symbol >= len(table):
+                    raise CheckError("%s: %s: the relocation at offset 0x%x names symbol %d, past the symbol "
+                                     "table's %d entries" % (path, sections[index].name, offset, symbol, len(table)))
                 types[offset] = info & RELA_TYPE_MASK
-                entries.append(relocation_entry(table[info >> RELA_SYMBOL_SHIFT], offset, info & RELA_TYPE_MASK,
-                                                addend))
+                entries.append(relocation_entry(table[symbol], offset, info & RELA_TYPE_MASK, addend))
     return obj
 
 
@@ -324,12 +327,28 @@ def self_test_kinds(failures, directory):
            Relocation(8, R_X86_64_32, "", 4, 2))
 
 
+def with_bad_symbol_index(good):
+    """good with its first relocation naming symbol 0xffff."""
+    headers_at, = struct.unpack_from("<Q", good, SECTION_HEADERS_AT_FIELD)
+    entry_size, count, _ = struct.unpack_from(SECTION_TABLE_FIELDS, good, SECTION_TABLE_AT)
+    headers = [struct.unpack_from(SECTION_HEADER_FIELDS, good, headers_at + index * entry_size)
+               for index in range(count)]
+    rela = next(header for header in headers if header[SH_TYPE] == SHT_RELA)
+    bad = bytearray(good)
+    offset, info, addend = struct.unpack_from(RELA_FIELDS, good, rela[SH_OFFSET])
+    struct.pack_into(RELA_FIELDS, bad, rela[SH_OFFSET], offset, 0xFFFF << RELA_SYMBOL_SHIFT | info & RELA_TYPE_MASK,
+                     addend)
+    return bytes(bad)
+
+
 def self_test_refusals(failures, directory, good_path):
     with open(good_path, "rb") as handle:
         good = handle.read()
     elf32 = good[:4] + bytes((1,)) + good[5:]
     big_endian = good[:5] + bytes((2,)) + good[6:]
     for name, data, wanted in (
+            ("a relocation naming a symbol past the table", with_bad_symbol_index(good),
+             ".rela.rodata: the relocation at offset 0x0 names symbol 65535, past the symbol table's"),
             ("not ELF", b"hello" * 20, "expected a little-endian ELF64 object"),
             ("ELF32", elf32, "expected a little-endian ELF64 object"),
             ("big-endian", big_endian, "expected a little-endian ELF64 object"),

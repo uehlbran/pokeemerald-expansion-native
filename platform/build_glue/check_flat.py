@@ -26,8 +26,10 @@ ELF object's terms. It fails unless:
     plus its addend;
   * the symbols have the same names after the prefix rule, each in the same
     section at the same offset, or absolute with the same value (on COFF,
-    modulo 2^32: its symbol values are 32 bits), with the same binding; the
-    undefined symbols are those the ELF object's 8- and 4-byte words name.
+    modulo 2^32: its symbol values are 32 bits), with the same binding,
+    except that every absolute symbol is local (elf_to_flat.py says why);
+    the undefined symbols are those the ELF object's 8- and 4-byte words
+    name.
 
 Each difference names the object, the section and offset, and the symbol
 (the word's, or the label at or before the offset).
@@ -126,7 +128,7 @@ def elf_view(obj, absolute_values, value_bits, problems):
                                                                               relocation_name(entry.type)))
     symbols = {symbol.name: ViewSymbol(obj.sections[symbol.section].name, symbol.value, symbol.binding == STB_GLOBAL)
                for symbol in obj.symbols}
-    symbols.update({symbol.name: ViewSymbol(ABSOLUTE, symbol.value % (1 << value_bits), symbol.binding == STB_GLOBAL)
+    symbols.update({symbol.name: ViewSymbol(ABSOLUTE, symbol.value % (1 << value_bits), False)
                     for symbol in obj.absolutes})
     symbols.update({symbol.name: ViewSymbol(UNDEFINED, 0, True) for symbol in obj.undefined if symbol.name in used})
     return View(sections, words, values, symbols)
@@ -424,7 +426,7 @@ def symbol_problems(path, expected, converted):
         elif name not in expected:
             problems.append("%s: symbol %s (%s) is not in the ELF object" % (path, name, symbol_text(converted[name])))
         elif converted[name] != expected[name]:
-            problems.append("%s: symbol %s is %s, the ELF one %s" % (path, name, symbol_text(converted[name]),
+            problems.append("%s: symbol %s is %s, expected %s" % (path, name, symbol_text(converted[name]),
                                                                      symbol_text(expected[name])))
     return problems
 
@@ -488,9 +490,9 @@ MACHO_EDITS = (
      ["a.flat.o: symbol gBuffer does not have the target's prefix '_'",
       "a.o: symbol gBuffer (global at .bss+0x0) is missing"]),
     ("a symbol made local", ("\t.globl _Lname\n", ""),
-     ["a.o: symbol Lname is local at .rodata+0x25, the ELF one global at .rodata+0x25"]),
+     ["a.o: symbol Lname is local at .rodata+0x25, expected global at .rodata+0x25"]),
     ("a symbol moved", ("_end:\n", "\t.set _end, . - 1\n"),
-     ["a.o: symbol end is local at .rodata+0x2d, the ELF one local at .rodata+0x2e"]),
+     ["a.o: symbol end is local at .rodata+0x2d, expected local at .rodata+0x2e"]),
     ("a 16-bit value", ("\t.short 0x0005", "\t.short 0x0007"),
      ["a.o: .rodata+0x14 (gTable): the 16-bit word holds 0x7, B_CONST is 0x5"]),
     ("a 16-bit word left a 16-bit relocation", ("\t.short 0x0005", "\t.short _B_CONST+5"),
@@ -513,7 +515,10 @@ MACHO_EDITS = (
       "a.o: .rodata+0x8 (gTable): the 8-byte word to script_data+0x1 is missing",
       "a.o: section script_data is missing", "a.o: symbol Script (local at script_data+0x0) is missing"]),
     ("an absolute value", ("\t.set _LOCAL_CONST, 5\n", "\t.set _LOCAL_CONST, 6\n"),
-     ["a.o: symbol LOCAL_CONST is local = 0x6, the ELF one local = 0x5"]),
+     ["a.o: symbol LOCAL_CONST is local = 0x6, expected local = 0x5"]),
+    ("an absolute symbol made global",
+     ("\t.set _GLOBAL_CONST, -1\n", "\t.globl _GLOBAL_CONST\n\t.set _GLOBAL_CONST, -1\n"),
+     ["a.o: symbol GLOBAL_CONST is global = 0xffffffffffffffff, expected local = 0xffffffffffffffff"]),
     ("an extra symbol", ("_after:\n", "_after:\n_more:\n"),
      ["a.o: symbol more (local at .bss+0x10) is not in the ELF object"]),
     ("a difference of addresses", ("\t.long _gTable+8\n", "\t.long _gTable+8-.\n"),
@@ -527,7 +532,7 @@ COFF_EDITS = (
     ("COFF: read-only script_data", ('script_data,"dw"', 'script_data,"dr"'),
      ["a.o: section script_data: writable False, the ELF section's True"]),
     ("COFF: an absolute value modulo 2^32", ("\t.set GLOBAL_CONST, -1\n", "\t.set GLOBAL_CONST, 0xfffffffe\n"),
-     ["a.o: symbol GLOBAL_CONST is global = 0xfffffffe, the ELF one global = 0xffffffff"]),
+     ["a.o: symbol GLOBAL_CONST is local = 0xfffffffe, expected local = 0xffffffff"]),
     ("COFF: an image-relative word", ("\t.long gTable+8\n", "\t.long gTable@IMGREL+8\n"),
      ["a.flat.o: script_data+0x2: COFF relocation type 0x3 is not an absolute word",
       "a.o: script_data+0x2 (Script): the 4-byte word to gTable+8 is missing"]),
@@ -585,8 +590,9 @@ def self_test_tables(failures):
         if sorted(section_names(target_name).values()) != sorted(TARGETS[target_name].sections):
             failures.append("%s: section_names %r" % (target_name, section_names(target_name)))
     expected = {"macho-x86_64": {"__DATA,__const": ".rodata", "__DATA,__script_data": "script_data",
-                                 "__DATA,__data": ".data", "__DATA,__bss": ".bss"},
-                "coff-x86_64": {".rdata": ".rodata", "script_data": "script_data", ".data": ".data", ".bss": ".bss"}}
+                                 "__DATA,__game_data": ".data", "__DATA,__game_bss": ".bss"},
+                "coff-x86_64": {".rdata": ".rodata", "script_data": "script_data", "game_data": ".data",
+                                "game_bss": ".bss"}}
     for target_name, wanted in expected.items():
         if section_names(target_name) != wanted:
             failures.append("%s: section_names %r, expected %r" % (target_name, section_names(target_name), wanted))

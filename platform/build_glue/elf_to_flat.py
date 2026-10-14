@@ -13,7 +13,13 @@ object. The rules, each the one place it is decided:
     section must have, TARGETS each target's spelling of it, chosen as clang
     spells the C compiler's own: read-only data that holds addresses is
     __DATA,__const on Mach-O and .rdata on COFF; script_data keeps its name
-    as a writable data section; .bss is zero-fill. The order of the bytes in
+    as a writable data section. .data and .bss are the game's own
+    variables, which crt0 keeps a copy of and zeroes on a soft reset: the
+    Linux link brackets them by object path (platform/gba_game.ld,
+    game_data and game_bss), which ld64 cannot, so they get the bracket's
+    names, __DATA,__game_data and zero-fill __DATA,__game_bss on Mach-O,
+    game_data and game_bss on COFF (game_bss fits COFF's 8-byte name
+    field). The order of the bytes in
     a section, and with it every offset, is the ELF object's. A section with
     no bytes and no symbols (as's empty .text, .data and .bss, and
     .note.GNU-stack, an ELF marker) is left out; the symbol, string and
@@ -37,12 +43,19 @@ object. The rules, each the one place it is decided:
     ".set name, . - n", as the source sets it. Names are plain
     identifiers; two symbols that would get one name are refused. The
     undefined symbols are those a relocation of the listing names: one that
-    no relocation names (25 at expansion 1.17.1, C enum constants named in
-    .global lines) is left out, because Mach-O's linker would ask for its
-    definition. Symbol types and sizes (.type, .size) have no counterpart
-    and are dropped; weak and common symbols are refused. COFF's symbol
-    values are 32 bits: an absolute value that does not fit (signed or not)
-    is refused.
+    no relocation names (25 at expansion 1.17.1, C enum constants the
+    preprocessor leaves as names, met in .equiv aliases and .if
+    comparisons) is left out, because Mach-O's linker would ask for its
+    definition. Every absolute symbol is written local: 7,930 global ones
+    are defined, with one value, in several objects, which GNU ld accepts
+    and a Mach-O linker may refuse as duplicates, and nothing needs them
+    global, since no 8- or 4-byte word names one (the --symbols pass
+    checks that) and the 16-bit words take their values from the table.
+    Symbol types and sizes (.type, .size) have no counterpart and are
+    dropped; weak and common symbols are refused. COFF's symbol values are
+    32 bits: an absolute value that does not fit (signed or not) is
+    refused, and one that fits is held modulo 2^32 (CONNECTION_INVALID, -1,
+    reads back as 0xffffffff).
   * Relocations: R_X86_64_64 is an 8-byte word (.quad), R_X86_64_32 a
     4-byte one (.long), symbol plus addend, the addend in range for the
     width. A relocation against a section symbol (GNU as writes one for a
@@ -97,14 +110,14 @@ TARGETS = {
     "macho-x86_64": Target("_", 64, "x86_64-apple-macos11", {
         ".rodata": "__DATA,__const",
         "script_data": "__DATA,__script_data",
-        ".data": "__DATA,__data",
-        ".bss": "__DATA,__bss,zerofill",
+        ".data": "__DATA,__game_data",
+        ".bss": "__DATA,__game_bss,zerofill",
     }),
     "coff-x86_64": Target("", 32, "x86_64-w64-windows-gnu", {
         ".rodata": '.rdata,"dr"',
         "script_data": 'script_data,"dw"',
-        ".data": '.data,"dw"',
-        ".bss": '.bss,"bw"',
+        ".data": 'game_data,"dw"',
+        ".bss": 'game_bss,"bw"',
     }),
 }
 
@@ -132,18 +145,25 @@ def word_name(object_name, obj, key, offset):
 
 def build_symbol_table(objects):
     """({name: value} for every symbol a 16-bit word of the objects
-    ({object name: ElfObject}) names, problems)."""
-    wanted = {}
+    ({object name: ElfObject}) names, problems). Also a problem: an 8- or
+    4-byte word naming another object's absolute symbol, which the listings
+    write local."""
+    wanted, addressed = {}, {}
     for object_name in sorted(objects):
         obj = objects[object_name]
         for key, entries in obj.relocation_entries.items():
             for entry in entries:
                 if entry.type == R_X86_64_16 and entry.name:
                     wanted.setdefault(entry.name, word_name(object_name, obj, key, entry.offset))
+                elif entry.section == UNDEFINED and entry.name:
+                    addressed.setdefault(entry.name, word_name(object_name, obj, key, entry.offset))
     values, definers, problems = {}, {}, []
     for object_name in sorted(objects):
         obj = objects[object_name]
         for symbol in obj.absolutes:
+            if symbol.binding == STB_GLOBAL and symbol.name in addressed:
+                problems.append("%s (%s): the word names an absolute symbol of %s, which the listings write local"
+                                % (addressed[symbol.name], symbol.name, object_name))
             if symbol.binding != STB_GLOBAL or symbol.name not in wanted:
                 continue
             if symbol.name in values and values[symbol.name] != symbol.value:
@@ -391,8 +411,6 @@ class Conversion:
                 self.problems.append("%s: absolute symbol %s = %d does not fit the target's %d-bit symbol value"
                                      % (self.object_name, symbol.name, value, self.target.value_bits))
                 continue
-            if symbol.binding == STB_GLOBAL:
-                self.lines.append("\t.globl %s" % self.names[symbol.name])
             self.lines.append("\t.set %s, %d" % (self.names[symbol.name], value))
 
 
@@ -411,6 +429,9 @@ def convert(object_name, obj, target_name, absolute_values):
 # --------------------------------------------------------------------------
 # Self-test: objects made by the host assembler
 
+# Longer than BYTES_PER_LINE and followed by a word, so that write_bytes
+# splits it and a chunk that ran past its end would show.
+LONG_RUN = ("abcdefghijklmnopqrstuvwxyz" * 8)[:200]
 SELF_TEST_SOURCE = """
 	.section .rodata
 	.balign 8
@@ -437,6 +458,8 @@ end:
 Script:
 	.byte 1, 2
 	.4byte gTable + 8
+	.ascii "LONG_RUN"
+	.4byte gTable
 	.bss
 	.balign 8
 	.global gBuffer
@@ -447,7 +470,7 @@ after:
 	.global GLOBAL_CONST
 	.set GLOBAL_CONST, -1
 	.global UNUSED_UNDEFINED
-"""
+""".replace("LONG_RUN", LONG_RUN)
 SELF_TEST_CONSTANTS = """
 	.global B_CONST
 	.set B_CONST, 5
@@ -456,7 +479,7 @@ SELF_TEST_CONSTANTS = """
 # The expected listing for Mach-O: every line (the first, which names the
 # object, aside), the sections in the object's header order.
 SELF_TEST_MACHO = """
-	.section __DATA,__bss,zerofill
+	.section __DATA,__game_bss,zerofill
 	.p2align 3
 	.globl _gBuffer
 _gBuffer:
@@ -487,8 +510,12 @@ _end:
 _Script:
 	.ascii "\\001\\002"
 	.long _gTable+8
+	.ascii "abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijkl"
+	.ascii "mnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwx"
+	.ascii "yzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghij"
+	.ascii "klmnopqr"
+	.long _gTable
 	.set _LOCAL_CONST, 5
-	.globl _GLOBAL_CONST
 	.set _GLOBAL_CONST, -1
 """
 
@@ -560,6 +587,8 @@ TABLE_REFUSALS = (
      ["a.o: .rodata+0x14 (B_CONST): no data object defines the symbol as an absolute value"]),
     ("two values", True, ".global B_CONST\n.set B_CONST, 6\n",
      ["other.o: B_CONST is 0x6 here and 0x5 in constants.o"]),
+    ("an address word naming another object's absolute symbol", True, ".global gExternal\n.set gExternal, 9\n",
+     ["a.o: .rodata+0x0 (gExternal): the word names an absolute symbol of other.o, which the listings write local"]),
 )
 
 
@@ -651,7 +680,8 @@ def self_test_hand_made(failures):
                        [Symbol("odd", 2, 0)], {},
                        relocation_entries={1: [Relocation(0, R_X86_64_64, "odd", 2, 0)]}), "coff-x86_64",
              ["x.o: section .weird (type 1, flags 0x2) is not one the converter knows (.bss, .data, .rodata, "
-              "script_data)", "x.o: .rodata+0x0 (odd): the word names a symbol of a section the listing does not hold"]),
+              "script_data)",
+              "x.o: .rodata+0x0 (odd): the word names a symbol of a section the listing does not hold"]),
             ("two words at one offset",
              ElfObject("x", {1: rodata._replace(size=8, contents=bytes(8))}, [Symbol("here", 1, 0)], {},
                        undefined=[Symbol("a", None, 0, STB_GLOBAL)],
