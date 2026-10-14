@@ -48,7 +48,7 @@ headers (`include/metaprogram.h`, `include/librfu.h`,
 `include/load_save.h`, `include/task.h`) carry it too, so that their
 later lines keep upstream's numbers in diagnostics.
 
-## Whole-file replacements and moves
+## Whole-file replacements, moves and additions
 
 | File | Reason | What changed | Since |
 |---|---|---|---|
@@ -57,6 +57,11 @@ later lines keep upstream's numbers in diagnostics.
 | `.gitignore` | The native build's default real-time-clock offset file (`pokeemerald.rtc`, `platform/main.c`) is a build product | Three lines appended: a comment and `/pokeemerald.rtc`; unguarded, ignored by the GBA build | M2 |
 | `CREDITS.md` | Credit the reference ports and sources | A section added at the top; upstream content kept verbatim below | M1 |
 | `LICENSE` | Scoped license for the platform layer | New file; upstream has none | M1 |
+| `test/crit_odds.c` | Pins the GBA's out-of-table `GetCriticalHitOdds` reads (`src/battle_util.c`) | New file; the body is under `#if PLATFORM_NATIVE`, so the GBA build compiles an empty unit | M7 |
+| `test/trainer_util.c` | Pins the party seed (`src/trainer_util.c`) to the 32-bit build's values, which the 64-bit build must hash the same | New file, native-only body as above | M7 |
+| `test/malloc.c` | Pins the allocation-site encoding of `src/malloc.c`, up to its largest offset and past it | New file, native-only body as above | review 2026-10-14 |
+| `test/siirtc.c` | Pins what the native `SiiRtcGetDateTime` and `SiiRtcGetTime` leave behind when a read fails (`src/siirtc.c`) | New file, native-only body as above | review 2026-10-14 |
+| `test/gba_table_reads.c` | Pins the extra table entries that give `gSineTable[320]` and Doom Desire's fifth beam run the GBA's value (`src/trig.c`, `src/battle_anim_effects_3.c`) | New file, native-only body as above | review 2026-10-14 |
 
 ## Source modifications
 
