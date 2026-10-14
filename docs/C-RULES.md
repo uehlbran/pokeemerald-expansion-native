@@ -96,8 +96,10 @@ affected unit tests and replays to the gate (64-bit, separate from the
 AddressSanitizer build, since the two cannot combine).
 
 Save writes are crash-safe: write to a temporary file, flush, then
-rename (verified for the save file, the RTC offset and the replay
-outputs on 2026-10-14; any new durable write follows `host_file.h`).
+rename, then sync the directory (verified on 2026-10-14 for the two
+durable files, the save file and the RTC offset, both through
+`host_file.h`; the replays' dumps and screenshots are test outputs, not
+durable state). Any new durable write follows `host_file.h`.
 
 Reviewers explicitly check every diff for data races, signal safety,
 lock ordering, fork or exec in a process that may have threads, and

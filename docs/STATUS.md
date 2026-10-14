@@ -316,8 +316,18 @@ summary-line check in the test loops, tests for five uncaught mutants
 and a map recipe that leaves no empty or stale map). Rows: STATUS
 "Which model did what".
 
+**Standing rules added 2026-10-14** (docs/C-RULES.md, "Concurrency" and
+"Code quality for a public repository"; DECISIONS.md): the platform stays
+single-threaded, handlers follow signal-safety(7), threads need a
+decision and an ownership model and bring a ThreadSanitizer build into
+the gate, save writes are temporary file, flush, rename (verified for
+the save file and the RTC offset), reviewers check races, signal safety,
+lock order, fork/exec and file races explicitly. The task W3 in flight
+was re-briefed under them.
+
 **In flight.** The data converter for Mach-O and COFF (task M1, in
-review).
+review); the test harness's timeout without SIGALRM and the per-OS split
+of the POSIX-bound tests (task W3); the CI workflow in two tiers.
 
 ## Verified by a gate
 
