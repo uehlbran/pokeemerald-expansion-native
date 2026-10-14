@@ -27,7 +27,8 @@ ELF object's terms. It fails unless:
   * the symbols have the same names after the prefix rule, each in the same
     section at the same offset, or absolute with the same value (on COFF,
     modulo 2^32: its symbol values are 32 bits), with the same binding,
-    except that every absolute symbol is local (elf_to_flat.py says why);
+    except that every absolute symbol is local on Mach-O (elf_to_flat.py
+    says why);
     the undefined symbols are those the ELF object's 8- and 4-byte words
     name.
 
@@ -98,7 +99,7 @@ ViewSymbol = collections.namedtuple("ViewSymbol", "where value external")
 # --------------------------------------------------------------------------
 # The ELF object as it should come out
 
-def elf_view(obj, absolute_values, value_bits, problems):
+def elf_view(obj, absolute_values, target, problems):
     """The View the converted object must match."""
     holding = {symbol.section for symbol in obj.symbols}
     keys = [key for key, section in obj.sections.items()
@@ -128,7 +129,8 @@ def elf_view(obj, absolute_values, value_bits, problems):
                                                                               relocation_name(entry.type)))
     symbols = {symbol.name: ViewSymbol(obj.sections[symbol.section].name, symbol.value, symbol.binding == STB_GLOBAL)
                for symbol in obj.symbols}
-    symbols.update({symbol.name: ViewSymbol(ABSOLUTE, symbol.value % (1 << value_bits), False)
+    symbols.update({symbol.name: ViewSymbol(ABSOLUTE, symbol.value % (1 << target.value_bits),
+                                            target.global_absolutes and symbol.binding == STB_GLOBAL)
                     for symbol in obj.absolutes})
     symbols.update({symbol.name: ViewSymbol(UNDEFINED, 0, True) for symbol in obj.undefined if symbol.name in used})
     return View(sections, words, values, symbols)
@@ -447,7 +449,7 @@ def check(target_name, elf_path, absolute_values, converted_path):
     """The differences between the ELF object and the converted one."""
     obj = read_elf64(elf_path)
     problems = []
-    expected = elf_view(obj, absolute_values, TARGETS[target_name].value_bits, problems)
+    expected = elf_view(obj, absolute_values, TARGETS[target_name], problems)
     reader, view = FORMAT_VIEWS[target_name]
     converted = view(reader(converted_path), target_name, problems)
     return capped(problems + compare(elf_path, expected, converted), MAX_REPORTS, elf_path)
@@ -532,7 +534,9 @@ COFF_EDITS = (
     ("COFF: read-only script_data", ('script_data,"dw"', 'script_data,"dr"'),
      ["a.o: section script_data: writable False, the ELF section's True"]),
     ("COFF: an absolute value modulo 2^32", ("\t.set GLOBAL_CONST, -1\n", "\t.set GLOBAL_CONST, 0xfffffffe\n"),
-     ["a.o: symbol GLOBAL_CONST is local = 0xfffffffe, expected local = 0xffffffff"]),
+     ["a.o: symbol GLOBAL_CONST is global = 0xfffffffe, expected global = 0xffffffff"]),
+    ("COFF: a global absolute symbol made local", ("\t.globl GLOBAL_CONST\n", ""),
+     ["a.o: symbol GLOBAL_CONST is local = 0xffffffff, expected global = 0xffffffff"]),
     ("COFF: an image-relative word", ("\t.long gTable+8\n", "\t.long gTable@IMGREL+8\n"),
      ["a.flat.o: script_data+0x2: COFF relocation type 0x3 is not an absolute word",
       "a.o: script_data+0x2 (Script): the 4-byte word to gTable+8 is missing"]),

@@ -349,6 +349,17 @@ int host_file_local_time(int64_t seconds, struct tm *out)
     return localtime_r(&when, out) == NULL ? -1 : 0;
 }
 
+size_t host_file_name_offset(const char *path)
+{
+    const char *const last_slash = strrchr(path, '/');
+    return last_slash == NULL ? 0 : (size_t)(last_slash - path) + 1u;
+}
+
+bool host_file_path_is_absolute(const char *path)
+{
+    return path[0] == '/';
+}
+
 /* --- host_thread: the deadline thread ---------------------------------------- */
 
 /* The clock every watchdog wait and deadline is measured on. The monotonic

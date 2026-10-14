@@ -7,7 +7,6 @@
  * fault goes when a handler does not complete it is tested in forked
  * children, in posix/test_host_fault_posix.c.
  */
-#include <signal.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -16,6 +15,7 @@
 #include "host_fault.h"
 #include "host_fault_fixture.h"
 #include "ptest.h"
+#include "test_support.h"
 
 /* DIV EDI: F7 /6 with ModRM 11 110 111 (Intel SDM vol. 2), the same bytes
  * on i386 and x86-64 (no REX). */
@@ -76,7 +76,7 @@ PTEST(a_division_by_zero_completes_through_the_installed_handler)
     PT_ASSERT_EQ_INT(installed, 0);
     PT_ASSERT(seen.called);
     PT_ASSERT(seen.divide_error);
-    PT_ASSERT_EQ_INT(seen.number, SIGFPE);
+    PT_ASSERT_EQ_INT(seen.number, tsup_divide_error_number());
     PT_ASSERT_EQ_U32(quotient, QUOTIENT_MARK);
     PT_ASSERT_EQ_U32(remainder, REMAINDER_MARK);
 }

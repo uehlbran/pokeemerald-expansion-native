@@ -6,13 +6,23 @@
 #
 #   platform/test_runner/run_windows_tests.sh DIR
 #
-# DIR holds the test_*.exe files and SDL2.dll, as the build leaves them. Every
-# executable runs to its end even after another failed, from DIR, with its
-# output kept in <name>.log beside it and shown; one fails if it exits
-# non-zero, ends without ptest's "N passed, 0 failed" line (a binary that ends
-# early passes no test), or outlasts TEST_SECONDS (ptest's own time limit
-# ends a stuck test; this one catches a hang outside a test). The last line
-# says how many ran and whether all passed; the exit status is 0 only then.
+# DIR holds the test_*.exe files, SDL2.dll and test_symbols.exe.symbols, as
+# the build leaves them. Every executable runs to its end even after another
+# failed, from DIR, with its standard output kept in <name>.log beside it and
+# its standard error in <name>.stderr.log, both shown; one fails if it exits
+# non-zero, if its standard output has no ptest's "N passed, 0 failed" line
+# (a binary that ends early passes no test), or if it outlasts
+# TEST_SECONDS (ptest's own time limit ends a stuck test; this one catches a
+# hang outside a test). The last line says how many ran and whether all
+# passed; the exit status is 0 only then.
+#
+# Each runs from a copy under its own name in DIR/run/ (with what it needs
+# beside it), removed when it ends: Windows keeps the image of an executable
+# it has started, and the image's commit charge, for as long as the file is
+# there, about 1 GiB for this layout's (the image spans 0x01800000 to
+# 0x41xxxxxx); the runner's commit ran out after two dozen of them
+# (docs/DECISIONS.md, "The Windows unit tests run from copies removed after
+# them").
 set -u
 
 TEST_SECONDS=600
@@ -30,14 +40,30 @@ if [ ${#tests[@]} -eq 0 ]; then
     exit 1
 fi
 
+run_dir=$dir/run
+rm -rf "$run_dir" && mkdir "$run_dir" && cp -- "$dir/SDL2.dll" "$run_dir/" || {
+    echo "run_windows_tests.sh: cannot set up $run_dir" >&2
+    exit 1
+}
 failed=0
 for test in "${tests[@]}"; do
     name=$(basename "$test" .exe)
     log=$dir/$name.log
+    errors=$dir/$name.stderr.log
     echo "== $name"
-    (cd "$dir" && timeout --kill-after=$KILL_SECONDS $TEST_SECONDS "./$name.exe") > "$log" 2>&1
+    cp -- "$test" "$run_dir/" && { [ ! -f "$test.symbols" ] || cp -- "$test.symbols" "$run_dir/"; } || {
+        echo "FAILED: $name could not be copied to $run_dir"
+        failed=$((failed + 1))
+        continue
+    }
+    (cd "$dir" && timeout --kill-after=$KILL_SECONDS $TEST_SECONDS "$run_dir/$name.exe") > "$log" 2> "$errors"
     code=$?
+    rm -f -- "$run_dir/$name.exe" "$run_dir/$name.exe.symbols"
     cat "$log"
+    if [ -s "$errors" ]; then
+        echo "-- standard error"
+        cat "$errors"
+    fi
     # The C runtime writes "\r\n" for "\n" on a text-mode stream.
     if [ $code -ne 0 ]; then
         echo "FAILED: $name exited with status $code"
@@ -47,6 +73,7 @@ for test in "${tests[@]}"; do
         failed=$((failed + 1))
     fi
 done
+rm -rf "$run_dir"
 if [ $failed -ne 0 ]; then
     echo "$failed of ${#tests[@]} Windows test executables failed"
     exit 1

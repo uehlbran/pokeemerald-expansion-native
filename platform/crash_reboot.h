@@ -33,10 +33,10 @@
  *     crash_reboot: exception 0xC0000005 at 0x..., fault address 0x...: ending
  *     with exit code 75 for the parent to start the program again with
  *     --persistent-state <512 hex digits>
- * and the process exits with CRASH_REBOOT_EXIT_CODE (75). The parent (the
- * Windows test driver) then starts the program again with the same
- * arguments, any earlier --persistent-state dropped, plus the option and the
- * digits from the last line of stderr that begins "crash_reboot: ". Without
+ * and the process exits with CRASH_REBOOT_EXIT_CODE (75). The parent (in the
+ * suite, test_runner/native-rom-test) then starts the program again with the
+ * same arguments, any earlier --persistent-state dropped, plus the option and
+ * the digits from the last line of stderr that begins "crash_reboot: ". Without
  * such a parent the run ends there. abort() and an overflow of the battle
  * runner's stack never reach the handler on Windows (host_fault.h,
  * host_windows_fault.c).

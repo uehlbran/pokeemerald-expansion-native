@@ -7,15 +7,17 @@
  * on the disk. Also the small C library calls that differ between hosts:
  * opening a file the same way on every OS and writing all of a buffer to it
  * (rtc_offset_store; and stderr from a fault handler, crash_reboot and
- * arm_division), creating a directory (the replay's output, replay_session)
- * and the local time (the clock's first setting, rtc).
+ * arm_division), creating a directory (the replay's output, replay_session),
+ * the local time (the clock's first setting, rtc), and the two questions of
+ * a path's syntax a replay's includes ask (replay_include).
  *
  * Wraps, on POSIX (host_posix.c): open with O_CLOEXEC, write, fsync, rename,
  * fsync of the directory, mkdir, localtime_r. On Windows (host_windows.c):
  * _open (binary, not inherited), WriteFile, FlushFileBuffers, MoveFileExW
  * with REPLACE_EXISTING and WRITE_THROUGH (which is what makes the
  * replacement durable there: there is no directory sync), CreateDirectoryW,
- * _localtime64_s; paths in UTF-8, the code page the executable's manifest
+ * _localtime64_s, and Windows' path syntax (Microsoft, "File path formats on
+ * Windows systems"); paths in UTF-8, the code page the executable's manifest
  * sets. A failed call returns -1 with errno set (the handler's write: false,
  * errno as it was) and reports nothing: the caller names the file.
  */
@@ -86,5 +88,16 @@ int host_file_make_directory(const char *path);
  * widths; Windows' C runtime takes 1970 to 3000 only). Returns 0, or -1 with
  * errno set. */
 int host_file_local_time(int64_t seconds, struct tm *out);
+
+/* Where path's last component starts: just after its last directory
+ * separator ('/'; Windows: '/' or '\\', or the colon of a drive, "C:name"),
+ * or 0 if it has none ("a/b/c" gives 4, "c" 0). */
+size_t host_file_name_offset(const char *path);
+
+/* True if path names a file without the working directory's help: it starts
+ * with '/' (Windows: or '\\', which also starts "\\\\server\\share", or with a
+ * drive and a separator, "C:\\" or "C:/"; "C:name" goes from the drive's own
+ * working directory, so it is not). */
+bool host_file_path_is_absolute(const char *path);
 
 #endif /* PLATFORM_HOST_FILE_H */

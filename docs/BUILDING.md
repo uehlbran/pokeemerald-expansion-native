@@ -321,37 +321,104 @@ The platform library alone: `make -C platform lib TARGET_OS=windows BITS=64`
 (`platform/build/64-windows/`). The unit tests, cross-built here and run on Windows (below):
 `make -C platform test TARGET_OS=windows BITS=64` writes every test that runs
 on Windows to `platform/build/64-windows/test/` (the portable ones and
-`platform/test/windows/`'s, 69 executables, with `SDL2.dll`); each is linked
+`platform/test/windows/`'s, 70 executables, with `SDL2.dll`); each is linked
 with the PE scripts and checked by `check_pe_layout.py` like the game. The
 Windows sources' static analysis: `make -C platform lint TARGET_OS=windows
 BITS=64` (clang-tidy for the MinGW-w64 target, with its headers, and cppcheck;
-not in the platform gate, which runs on Linux alone). `SANITIZE=1` and
-`TEST=1` are errors with `TARGET_OS=windows` (MinGW's GCC has no sanitizers; the
-test runner is not ported). `BITS=32` is an error.
+not in the platform gate, which runs on Linux alone). patchelf on a PE file:
+`make -C platform tools-test TARGET_OS=windows BITS=64`
+(`platform/test_runner/test_patchelf_pe.sh`, the twin of the ELF test).
+
+The test runner build, for the suite on Windows:
+
+```
+make -f Makefile.native -j32 native TARGET_OS=windows BITS=64 TEST=1   # build/native64-test-windows/pokeemerald-native-test.exe
+```
+
+It is made as the game is, from the Linux TEST=1 data (`build/native64-test/`)
+converted to COFF, with two differences the tests' event scripts
+(`include/test/overworld_script.h`) need: the COFF listings keep the data's
+global absolute symbols global (`ITEM_POTION`, `SPECIAL_*`: the scripts name
+them and the link resolves them, as on Linux; `elf_to_flat.py` says why Mach-O's
+stay local), and each script is jumped over in its function's own section,
+since COFF's assembler has no section stack to put it in `.rodata` and come
+back (`platform/build_glue/c_filter_coff.sed`). `make ... check` with
+`TARGET_OS=windows` is an error: the suite runs on Windows (below).
+`SANITIZE=1` is an error with `TARGET_OS=windows` (MinGW's GCC has no
+sanitizers), and so is `BITS=32`.
 
 ### Running it on Windows
 
-Nothing here runs on the build machine; on a 64-bit Windows with Git Bash,
-from a checkout with the build's outputs (the manual `windows` workflow,
-`.github/workflows/windows.yml`, cross-builds on Linux and runs these two on a
-GitHub runner):
+Nothing built this way runs on the build machine. What runs it is the
+Windows workflow, `.github/workflows/windows.yml` (by hand,
+`gh workflow run windows.yml`): three Linux jobs side by side cross-build the
+game and the unit tests (and play the Linux half of the cross-OS save gate),
+cross-build the test runner, and run the suite on the Linux 64-bit build; a
+Windows job (`windows-latest`, Git Bash and the image's MSYS2) runs everything
+below on what they built; a last Linux job compares. The same by hand, on a
+64-bit Windows 10 1903 or later with Git for Windows and, for the suite,
+MSYS2 at `C:\msys64`, from a checkout made with `core.autocrlf false` (the
+scripts and the expectations are compared byte for byte) holding the
+build's outputs where the build left them:
 
 ```
+# Git Bash
 platform/test_runner/run_windows_tests.sh platform/build/64-windows/test
 platform/test_runner/run_windows_smoke.sh build/native64-windows/pokeemerald-native.exe
+tests/smoke/run.sh build/native64-windows/pokeemerald-native.exe out/open64
+tests/smoke/run_debug_menu.sh build/native64-windows/pokeemerald-native.exe out/dbg64
+tests/smoke/run_cross_os.sh load build/native64-windows/pokeemerald-native.exe out/cross-os/save/work/from out/cross-os/load
+
+# MSYS2: C:\msys64\usr\bin\bash -l, with MSYSTEM=MSYS and CHERE_INVOKING=1
+pacman -S --noconfirm --needed gcc make
+make -C tools/patchelf && make -C tools/mgba-rom-test-hydra
+MAKEFLAGS=-j$(nproc) platform/test_runner/run_windows_suite.sh build/native64-test-windows/pokeemerald-native-test.exe | tee suite-windows.log
 ```
 
-The first runs every test executable as `make -C platform test` does on
-Linux (each to its end, a failure if it exits non-zero or ends without
-"N passed, 0 failed", a log beside each) and ends with "all 69 Windows test
-executables passed". The second starts the game with `--headless --silent
---frames 60` in an empty directory and passes when it exits 0, prints only
-`main: 60 frames` on standard output and nothing on standard error, and has
-written `pokeemerald.rtc` in binary mode; then again from a directory with a
-non-ASCII name, with non-ASCII save and clock paths on the command line,
-where the clock's file must appear under exactly its name and a file at the
-save path that is not a save must be refused by its name. The game itself needs
-`SDL2.dll` beside it (the Makefile copies it), as each test directory has.
+and on Linux, for the comparisons (the same commit):
+
+```
+tests/smoke/run_cross_os.sh save build/native64/pokeemerald-native out/cross-os/save          # before `load`
+tests/smoke/run_cross_os.sh back build/native64/pokeemerald-native out/cross-os/save/work/from out/cross-os/load/work/again out/cross-os/back
+make -f Makefile.native -j32 check BITS=64 | tee suite-linux64.log
+platform/test_runner/compare_suite_results.sh suite-linux64.log suite-windows.log
+```
+
+- `run_windows_tests.sh` runs every test executable as `make -C platform
+  test` does on Linux (each to its end; a failure if it exits non-zero or its
+  output has no "N passed, 0 failed"; its output and its standard error kept
+  beside it) and ends with "all 70 Windows test executables passed". Each
+  runs from a copy under its own name, deleted when it ends: an executable of
+  this layout costs about 1 GiB of the system's commit charge from its first
+  start until its file is deleted (the image's 1 GiB, gaps included, is
+  charged to the image, which Windows keeps cached), and the runner's commit
+  ran out after two dozen of them (`docs/DECISIONS.md`, "The Windows unit
+  tests run from copies removed after them").
+- `run_windows_smoke.sh` starts the game with `--headless --silent --frames
+  60` in an empty directory and passes when it exits 0, prints only `main: 60
+  frames` on standard output and nothing on standard error, and has written
+  `pokeemerald.rtc` in binary mode; then again from a directory with a
+  non-ASCII name, with non-ASCII save and clock paths on the command line,
+  where the clock's file must appear under exactly its name and a file at the
+  save path that is not a save must be refused by its name.
+- The replays (gates d and e) compare with the Linux expectations unchanged:
+  the Windows build draws the same frames and dumps the same facts as the
+  Linux 64-bit one (the same code and data, bit-fields laid out as GCC lays
+  them on Linux). Two things it does for that: it writes the dumps in binary
+  mode, and its objects keep their local symbols whose names start with "L"
+  (`-Wa,--keep-locals`, `platform/target.mk`), which GNU as for COFF would
+  otherwise drop, so that the replays name the same callbacks. `lib.sh`
+  computes checksums and sizes in forms Git Bash and Linux print alike.
+- `run_cross_os.sh` is gate (h) between the two systems, a Linux save loaded
+  by the Windows build and back (`tests/smoke/README.md`).
+- The suite (gate b) runs through expansion's own hydra built by MSYS2's gcc
+  (`docs/DECISIONS.md`, "The suite on Windows runs under MSYS2"):
+  `run_windows_suite.sh` patches the copy as `make check` does (patchelf reads
+  a PE file's COFF symbol table), and `native-rom-test` copies each runner's
+  executable to a `.exe` name and is the crash reboot's supervising parent,
+  starting a runner that exits with code 75 again with the state its report
+  ends with. `compare_suite_results.sh` passes when the two runs have the
+  same tests with the same results, line for line.
 
 What the host layer does on Windows, and why each choice: `platform/README.md`,
 "The host layer", and `docs/ARCHITECTURE.md`. The differences a player or a
@@ -359,15 +426,24 @@ test sees: the main thread's stack is 2 MiB, not 8; the replay's `restart`
 starts a child process (another process id) that the first one waits for,
 where Linux replaces the process in place; a crash does not reboot by itself:
 the process reports the test runner's persistent state on standard error and
-ends with exit code 75, and the program that started it (the Windows test
-driver) starts it again with that state (`platform/crash_reboot.h` has the
-protocol), so a run with no such parent ends at its first crash with exit
-code 75; two crashes end the run with no report and no reboot, `abort()` (the
+ends with exit code 75, and the program that started it (in the suite,
+`platform/test_runner/native-rom-test`) starts it again with that state
+(`platform/crash_reboot.h` has the protocol), so a run with no such parent
+ends at its first crash with exit code 75; two crashes end the run with no report and no reboot, `abort()` (the
 C runtime's, which raises no exception) and an overflow of the battle
 runner's stack (no room for the exception's records); a crash report names
 the fault as `exception 0xC0000005`, where Linux says `signal 11`.
 
-What the cross-build cannot check (the loader's acceptance of the layout,
-exception dispatch through the stack switch, msvcrt's time zones and UTF-8
-argv) is what the Windows test run exists to check; its state is in the
-workflow's last run.
+What only Windows could show, shown on the runner (runs 38598389601 to
+38621321132): the loader maps the executable at its base; an exception on the
+battle runner's stack reaches the crash filter through the stack switch
+(`test_host_stack_windows`), the suite's battle tests run on that stack, and
+its two tests that crash on purpose are restarted by their parent as the
+protocol says; msvcrt's time zones agree with the tests' TZ strings
+(`test_rtc`, `test_host_file`); msvcrt hands `main` a non-ASCII argument as
+its UTF-8 bytes under the manifest's code page (`test_utf8_windows`,
+`test_host_process_windows`, the smoke's non-ASCII run), so the fallback
+through `GetCommandLineW` is not needed. One assumption did not hold: the
+page at 0x01000000 is not reliably free in a Windows process, whose own
+allocations below the image end near it, so the tests' fixed page is
+0x017F0000 (`test_host_memory.c`).

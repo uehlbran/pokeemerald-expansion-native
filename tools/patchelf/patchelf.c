@@ -11,6 +11,7 @@
 #include <unistd.h>
 
 static bool try_patch_value(const char *sym, char *dest, const char *source, size_t size);
+static bool patch_pe(char *f, size_t file_size, int argc, char *argv[]);
 
 int main(int argc, char *argv[])
 {
@@ -41,6 +42,14 @@ int main(int argc, char *argv[])
     if ((f = mmap(NULL, st.st_size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0)) == MAP_FAILED)
     {
         perror("mmap failed");
+        goto error;
+    }
+
+    // The native build for Windows is a PE file (patch_pe, below).
+    if (st.st_size >= 2 && memcmp(f, "MZ", 2) == 0)
+    {
+        if (patch_pe(f, st.st_size, argc, argv))
+            exit_code = 0;
         goto error;
     }
 
@@ -220,6 +229,151 @@ static bool try_patch_value(const char *sym, char *dest, const char *source, siz
             break;
         }
         dest[i++] = value;
+    }
+    return true;
+}
+
+// A Windows executable, as GNU ld writes one for MinGW-w64, keeps a COFF
+// symbol table (Microsoft's "PE Format", sections "COFF File Header",
+// "Section Table" and "COFF Symbol Table"): each symbol names its section,
+// 1-based, and in an image its value is the offset in that section; the
+// section's header says where its bytes are in the file. COFF records no
+// sizes, so a value may fill its symbol up to the next symbol of the same
+// section, or to the end of the section's bytes in the file. As on ELF, every
+// symbol of a given name is patched, and a name that is not there is not an
+// error.
+#define DOS_HEADER_SIZE 0x40
+#define DOS_PE_HEADER_OFFSET_AT 0x3C
+#define PE_SIGNATURE_SIZE 4
+#define COFF_HEADER_SIZE 20
+#define COFF_SECTION_COUNT_AT 2
+#define COFF_SYMBOL_TABLE_AT 8
+#define COFF_SYMBOL_COUNT_AT 12
+#define COFF_OPTIONAL_HEADER_SIZE_AT 16
+#define SECTION_HEADER_SIZE 40
+#define SECTION_VIRTUAL_SIZE_AT 8
+#define SECTION_RAW_SIZE_AT 16
+#define SECTION_RAW_OFFSET_AT 20
+#define SYMBOL_SIZE 18
+#define SYMBOL_SHORT_NAME_SIZE 8
+#define SYMBOL_NAME_OFFSET_AT 4
+#define SYMBOL_VALUE_AT 8
+#define SYMBOL_SECTION_AT 12
+#define SYMBOL_AUX_COUNT_AT 17
+#define STRING_TABLE_SIZE_SIZE 4
+
+struct CoffSymbols
+{
+    const char *records;
+    uint32_t count;
+    const char *strings;
+    uint32_t strings_size;
+};
+
+// Little-endian, of 2 or 4 bytes.
+static uint32_t read_le(const char *p, int size)
+{
+    uint32_t value = 0;
+    for (int i = size - 1; i >= 0; i--)
+        value = (value << 8) | (unsigned char)p[i];
+    return value;
+}
+
+// A name of up to 8 bytes is in the record, NUL-padded; a longer one is in
+// the string table that follows the records.
+static bool coff_symbol_is(const struct CoffSymbols *symbols, const char *record, const char *name)
+{
+    size_t length = strlen(name);
+    if (read_le(record, 4) != 0)
+        return length <= SYMBOL_SHORT_NAME_SIZE && memcmp(record, name, length) == 0
+            && (length == SYMBOL_SHORT_NAME_SIZE || record[length] == '\0');
+    uint32_t offset = read_le(record + SYMBOL_NAME_OFFSET_AT, 4);
+    return offset < symbols->strings_size && length < symbols->strings_size - offset
+        && memcmp(symbols->strings + offset, name, length + 1) == 0;
+}
+
+// The bytes from `value` to the next symbol of `section`, or to `end`.
+static size_t coff_symbol_room(const struct CoffSymbols *symbols, uint32_t section, uint32_t value, uint32_t end)
+{
+    uint32_t next = end;
+    for (uint32_t i = 0; i < symbols->count; i += 1 + (unsigned char)symbols->records[(size_t)i * SYMBOL_SIZE + SYMBOL_AUX_COUNT_AT])
+    {
+        const char *record = symbols->records + (size_t)i * SYMBOL_SIZE;
+        uint32_t other = read_le(record + SYMBOL_VALUE_AT, 4);
+        if (read_le(record + SYMBOL_SECTION_AT, 2) == section && other > value && other < next)
+            next = other;
+    }
+    return next - value;
+}
+
+static bool patch_pe(char *f, size_t file_size, int argc, char *argv[])
+{
+    if (file_size < DOS_HEADER_SIZE)
+    {
+        fprintf(stderr, "not a PE file\n");
+        return false;
+    }
+    size_t pe = read_le(f + DOS_PE_HEADER_OFFSET_AT, 4);
+    if (pe > file_size - PE_SIGNATURE_SIZE - COFF_HEADER_SIZE || memcmp(f + pe, "PE\0\0", PE_SIGNATURE_SIZE) != 0)
+    {
+        fprintf(stderr, "not a PE file\n");
+        return false;
+    }
+    const char *coff = f + pe + PE_SIGNATURE_SIZE;
+    uint32_t section_count = read_le(coff + COFF_SECTION_COUNT_AT, 2);
+    size_t sections_offset = pe + PE_SIGNATURE_SIZE + COFF_HEADER_SIZE + read_le(coff + COFF_OPTIONAL_HEADER_SIZE_AT, 2);
+    if (sections_offset + (size_t)section_count * SECTION_HEADER_SIZE > file_size)
+    {
+        fprintf(stderr, "the section table is outside the file\n");
+        return false;
+    }
+    size_t symbols_offset = read_le(coff + COFF_SYMBOL_TABLE_AT, 4);
+    uint32_t symbol_count = read_le(coff + COFF_SYMBOL_COUNT_AT, 4);
+    if (symbols_offset == 0 || symbol_count == 0)
+    {
+        fprintf(stderr, "no COFF symbol table\n");
+        return false;
+    }
+    size_t strings_offset = symbols_offset + (size_t)symbol_count * SYMBOL_SIZE;
+    if (strings_offset > file_size - STRING_TABLE_SIZE_SIZE)
+    {
+        fprintf(stderr, "the COFF symbol table is outside the file\n");
+        return false;
+    }
+    uint32_t strings_size = read_le(f + strings_offset, 4);
+    if (strings_size < STRING_TABLE_SIZE_SIZE || strings_size > file_size - strings_offset)
+    {
+        fprintf(stderr, "the COFF string table is outside the file\n");
+        return false;
+    }
+    const struct CoffSymbols symbols = { f + symbols_offset, symbol_count, f + strings_offset, strings_size };
+
+    for (uint32_t i = 0; i < symbol_count; i += 1 + (unsigned char)symbols.records[(size_t)i * SYMBOL_SIZE + SYMBOL_AUX_COUNT_AT])
+    {
+        const char *record = symbols.records + (size_t)i * SYMBOL_SIZE;
+        // 0 is undefined; 0xFFFF (absolute) and 0xFFFE (debugging) are above any count.
+        uint32_t section = read_le(record + SYMBOL_SECTION_AT, 2);
+        if (section == 0 || section > section_count)
+            continue;
+        for (int j = 2; j < argc; j += 2)
+        {
+            if (!coff_symbol_is(&symbols, record, argv[j]))
+                continue;
+            const char *header = f + sections_offset + (size_t)(section - 1) * SECTION_HEADER_SIZE;
+            uint32_t virtual_size = read_le(header + SECTION_VIRTUAL_SIZE_AT, 4);
+            uint32_t raw_size = read_le(header + SECTION_RAW_SIZE_AT, 4);
+            uint32_t end = virtual_size < raw_size ? virtual_size : raw_size;
+            size_t raw_offset = read_le(header + SECTION_RAW_OFFSET_AT, 4);
+            uint32_t value = read_le(record + SYMBOL_VALUE_AT, 4);
+            if (raw_offset > file_size || end > file_size - raw_offset || value >= end)
+            {
+                fprintf(stderr, "%s: not stored in the file\n", argv[j]);
+                return false;
+            }
+            size_t room = coff_symbol_room(&symbols, section, value, end);
+            if (!try_patch_value(argv[j], f + raw_offset + value, argv[j + 1], room))
+                return false;
+        }
     }
     return true;
 }

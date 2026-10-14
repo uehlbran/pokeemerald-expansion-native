@@ -25,7 +25,7 @@
 #include <string.h>
 #include <sys/ioctl.h>
 #include <sys/mman.h>
-#ifndef __APPLE__
+#ifdef __linux__
 #include <sys/prctl.h>
 #endif
 #include <sys/stat.h>
@@ -633,7 +633,7 @@ int main(int argc, char *argv[])
             perror("fork mgba-rom-test failed");
             exit(2);
         } else if (pid == 0) {
-            #ifndef __APPLE__
+            #ifdef __linux__
             if (prctl(PR_SET_PDEATHSIG, SIGTERM) == -1)
             {
                 perror("prctl failed");
@@ -792,6 +792,10 @@ int main(int argc, char *argv[])
         }
         for (int i = 0; i < nrunners; i++)
         {
+            // A read of nothing is the end of the runner's output: Linux's
+            // poll reports it as POLLHUP too, MSYS2's reports a pipe whose
+            // writer has gone as readable only.
+            bool eof = false;
             if (pollfds[i].revents & POLLIN)
             {
                 int n;
@@ -800,11 +804,12 @@ int main(int argc, char *argv[])
                     perror("read pollfds[i] failed");
                     exit(2);
                 }
+                eof = n == 0;
                 runners[i].input_buffer_size += n;
                 handle_read(i, &runners[i]);
             }
 
-            if (pollfds[i].revents & (POLLERR | POLLHUP))
+            if (eof || (pollfds[i].revents & (POLLERR | POLLHUP)))
             {
                 if (close(pollfds[i].fd) == -1)
                 {

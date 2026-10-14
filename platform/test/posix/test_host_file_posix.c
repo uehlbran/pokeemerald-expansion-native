@@ -328,4 +328,13 @@ PTEST(a_missing_directory_is_created_with_what_the_umask_allows_once)
     PT_ASSERT(removed);
 }
 
+/* A backslash is a character of a name on POSIX, not a separator. */
+PTEST(a_backslash_neither_separates_nor_roots_a_path)
+{
+    PT_ASSERT(host_file_name_offset("a\\b") == 0u);
+    PT_ASSERT(host_file_name_offset("a/b\\c") == 2u);
+    PT_ASSERT(!host_file_path_is_absolute("\\a"));
+    PT_ASSERT(!host_file_path_is_absolute("C:/a"));
+}
+
 PTEST_MAIN()

@@ -35,8 +35,13 @@ _Static_assert(EXPECTED_REGION_COUNT == GBA_REGION_COUNT - 1, "a region has no e
 
 /* An address no region, no stack and nothing else in a test binary uses,
  * below the linked blocks (the page the m4a tests map), and a multiple of
- * 64 KiB, which Windows needs (host_windows.c). */
-#define FREE_PAGE_ADDRESS 0x01000000u
+ * 64 KiB, which Windows needs (host_windows.c): the last 64 KiB below the
+ * Windows image's base, 0x01800000. Windows fills the addresses below the
+ * image from the bottom up with the process's own allocations, which end
+ * around 0x00FF1000 in a test (measured on the CI runner, run 38613404450),
+ * so 0x01000000 was sometimes taken there; on Linux nothing is mapped below
+ * the call stack. */
+#define FREE_PAGE_ADDRESS 0x017F0000u
 
 /* The lowest region's base (EWRAM), which the call stack ends at or below. */
 #define LOWEST_REGION_BASE 0x02000000u

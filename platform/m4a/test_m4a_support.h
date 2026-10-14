@@ -23,8 +23,9 @@
 #include "gba/m4a_internal.h"
 #include "m4a.h"
 
-/* A page below 0x02000000, the region the engine's read guard treats as BIOS. */
-#define TEST_LOW_PAGE_ADDR 0x01000000u
+/* A page below 0x02000000, the region the engine's read guard treats as BIOS:
+ * test_host_memory.c's FREE_PAGE_ADDRESS, which says why this one. */
+#define TEST_LOW_PAGE_ADDR 0x017F0000u
 #define TEST_PAGE_SIZE 0x1000u
 
 /* Number of CGB channels MPlayExtender sets up (gCgbChans[4] in m4a.c). */

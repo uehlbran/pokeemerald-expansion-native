@@ -493,7 +493,7 @@ PTEST(dump_writes_every_fact_and_screenshot_names_the_path)
     PT_ASSERT_EQ_INT(replay_start(&replay, &script, &host, out_dir, 0), 0);
     enum replay_status status = run(&replay, &fake, 10);
     (void)snprintf(path, sizeof path, "%s/d1.txt", out_dir);
-    FILE *file = fopen(path, "r");
+    FILE *file = fopen(path, "rb"); /* the bytes as written: the same on every OS, no "\r" */
     size_t length = file != NULL ? fread(content, 1, sizeof content - 1, file) : 0;
     if (file != NULL)
         (void)fclose(file);

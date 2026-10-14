@@ -27,6 +27,7 @@ set -u
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SMOKE_NAME=run_cross_width.sh
 . "$here/lib.sh"
+. "$here/save_steps.sh"
 
 usage="run_cross_width.sh FROM_BINARY TO_BINARY OUTDIR"
 [ $# -eq 3 ] || die "usage: $usage"
@@ -37,97 +38,17 @@ case "$outdir" in "" | "/") die "OUTDIR must be a directory of its own, not '$ou
 [ -x "$from_binary" ] || die "no executable $from_binary (build it first; see docs/BUILDING.md)"
 [ -x "$to_binary" ] || die "no executable $to_binary (build it first; see docs/BUILDING.md)"
 
-opening="$here/opening.replay"
-expected="$here/expected"
 work="$outdir/work"
 rm -rf "$work" || die "cannot remove $work"
 mkdir -p "$work/from" "$work/to" "$work/bare" "$work/other" "$work/again" || die "cannot create $work"
 
-# platform/save_file.h: the 8-byte magic, then version, pointer width and layout id, u32 LE.
-save_header_magic="PENSAVE"
-save_header_size=28
-save_header_layout_id_at=16
-# main.c's exit status when a module cannot start, a refused save among them.
-main_exit_failure=1
-save_image_size=131072
-# platform/fixed_clock.h: the clock advances one second every 60 frames; restart.c advances
-# --rtc-fixed by the seconds the run took.
-fixed_clock_frames_per_second=60
-
-# "BITS LAYOUT" of a save file with a header, or "none".
-save_layout() {
-    if [ "$(head -c ${#save_header_magic} "$1")" != "$save_header_magic" ]; then
-        echo none
-        return
-    fi
-    od -A n -t u4 -j 12 -N 8 "$1" | tr -s ' ' | sed 's/^ //'
-}
-
-# Every dump and screenshot in directory $1 against expected/; the names it must have written
-# follow as arguments.
-compare_with_expected() {
-    local dir="$1" got name
-    shift
-    for name in "$@"; do
-        [ -f "$dir/$name.txt" ] || fail "$(basename "$dir"): the replay did not write $name.txt"
-    done
-    for got in "$dir"/*.txt; do
-        [ -f "$got" ] || continue
-        name="$(basename "$got")"
-        if [ ! -f "$expected/$name" ]; then
-            fail "$(basename "$dir"): $name has no expectation in $expected"
-        elif ! diff <(facts_of "$got") "$expected/$name" > "$got.diff"; then
-            fail "$(basename "$dir"): $name differs (got <, expected >):"
-            cat "$got.diff"
-        else
-            rm -f "$got.diff"
-        fi
-    done
-    local shot want
-    for shot in "$dir"/*.ppm; do
-        [ -f "$shot" ] || continue
-        name="$(basename "$shot")"
-        want="$(grep_or_die " $name\$" "$expected/screenshots.md5" | cut -d' ' -f1)"
-        [ -n "$want" ] || { fail "$(basename "$dir"): $name has no expected checksum"; continue; }
-        [ "$(md5sum < "$shot" | cut -d' ' -f1)" = "$want" ] || fail "$(basename "$dir"): $name differs from expected/screenshots.md5"
-    done
-}
-
 # ---- 1. FROM: the opening up to and including the save ----------------------------------------
-restart_line="$(grep -n -x 'restart' "$opening" | head -1 | cut -d: -f1)"
-[ -n "$restart_line" ] || die "$opening has no restart"
-head -n "$((restart_line - 1))" "$opening" > "$work/from/until_save.replay" || die "cannot cut $opening"
-for include in $(sed -n -E 's/^include[[:space:]]+([^[:space:]#]+).*/\1/p' "$work/from/until_save.replay"); do
-    cp "$here/$include" "$work/from/" || die "cannot copy $include"
-done
-play "$from_binary" "$work/from" "$work/from/until_save.replay" --rtc-fixed "$rtc_epoch"
-compare_with_expected "$work/from" 25_saved
-from_layout="$(save_layout "$work/from/pokeemerald.sav")"
-case "$from_layout" in
-"32 1" | "64 1") echo "FROM saved with layout tag {${from_layout/ /,}}" ;;
-*) fail "the save FROM wrote has the layout tag '$from_layout', not {32,1} or {64,1}" ;;
-esac
-from_bits="${from_layout%% *}"
-
-# Where FROM stopped is where `restart` would have restarted: the line after it in the script with
-# its includes expanded (the expansion of the cut copy ends just before it), and the clock moved on.
-resume_at="$(($(wc -l < "$work/from/expanded.replay") + 1))"
-frames="$(sed -n -E 's/^main: ([0-9]+) frames$/\1/p' "$work/from/stdout.log" | tail -1)"
-[ -n "$frames" ] || die "FROM did not report its frame count"
-epoch="$((rtc_epoch + frames / fixed_clock_frames_per_second))"
+play_until_save "$from_binary" "$work/from"
+resume_point "$work/from"
 
 # ---- 2. TO: Continue on that save, as the restart would ----------------------------------------
-continue_on() {
-    local dir="$1"
-    play "$to_binary" "$dir" "$opening" --rtc-fixed "$epoch" --resume-at "$resume_at"
-    [ "$(sed -n "${resume_at}p" "$dir/expanded.replay")" = restart ] \
-        || fail "$(basename "$dir"): line $resume_at of the expanded opening.replay is not its restart"
-    compare_with_expected "$dir" 26_continue_menu 27_continued
-    same_facts "$work/from/25_saved.txt" "$dir/27_continued.txt" player_name map party0_species party_count
-}
-
 cp "$work/from/pokeemerald.sav" "$work/from/pokeemerald.rtc" "$work/to/" || die "cannot copy the save"
-continue_on "$work/to"
+continue_on "$to_binary" "$work/to" "$work/from"
 grep -q "has a $from_bits-bit build's save layout; converted 1 save slot" "$work/to/stderr.log" \
     || fail "to: TO did not report converting the save from $from_bits bits"
 cmp -s "$work/from/pokeemerald.sav" "$work/to/pokeemerald.sav" || fail "to: the save file changed, but the game did not save"
@@ -136,50 +57,22 @@ cmp -s "$work/from/pokeemerald.sav" "$work/to/pokeemerald.sav" || fail "to: the 
 if [ "$from_bits" = 32 ]; then
     tail -c "$save_image_size" "$work/from/pokeemerald.sav" > "$work/bare/pokeemerald.sav" || die "cannot strip the header"
     cp "$work/from/pokeemerald.rtc" "$work/bare/" || die "cannot copy the RTC file"
-    [ "$(($(stat -c %s "$work/from/pokeemerald.sav") - save_header_size))" -eq "$save_image_size" ] \
+    [ "$(($(file_size "$work/from/pokeemerald.sav") - save_header_size))" -eq "$save_image_size" ] \
         || fail "bare: the save file is not a header and a $save_image_size-byte image"
-    continue_on "$work/bare"
+    continue_on "$to_binary" "$work/bare" "$work/from"
     grep -q "has no header" "$work/bare/stderr.log" || fail "bare: TO did not take the image for a bare one"
 else
     echo "== bare: skipped (only a 32-bit save is ever bare)"
 fi
 
 # ---- 3b. TO refuses a save whose layout id it does not know -------------------------------------
-# The header is not under the CRC, so only the id changes. A run that is not refused stops after a
-# few frames and fails the status check.
-cp "$work/from/pokeemerald.sav" "$work/other/" || die "cannot copy the save"
-printf '\002' | dd of="$work/other/pokeemerald.sav" bs=1 seek="$save_header_layout_id_at" conv=notrunc status=none \
-    || die "cannot patch the layout id"
-cp "$work/other/pokeemerald.sav" "$work/other/before.sav" || die "cannot copy the save"
-echo "== other: $to_binary on a save with layout id 2"
-"$to_binary" --headless --silent --unthrottled --frames 60 --save "$work/other/pokeemerald.sav" \
-    --rtc-offset "$work/other/pokeemerald.rtc" > "$work/other/stdout.log" 2> "$work/other/stderr.log"
-status=$?
-[ "$status" -eq "$main_exit_failure" ] || fail "other: TO ended with status $status, not $main_exit_failure"
-grep -q "was written by a build with another save layout" "$work/other/stderr.log" \
-    || fail "other: TO did not report refusing layout id 2"
-cmp -s "$work/other/before.sav" "$work/other/pokeemerald.sav" || fail "other: the refused save file changed"
-if new_sanitizer_reports "$work/other/stderr.log" "$work/other/sanitizer-new.log"; then
-    fail "other: sanitizer reports in $work/other/stderr.log"
-fi
+refuse_other_layout "$to_binary" "$work/other" "$work/from/pokeemerald.sav"
 
 # ---- 4. TO saves in its own layout and comes up from it -----------------------------------------
-cp "$work/from/pokeemerald.sav" "$work/from/pokeemerald.rtc" "$work/again/" || die "cannot copy the save"
-play "$to_binary" "$work/again" "$here/cross_width_save.replay" --rtc-fixed "$epoch"
-to_layout="$(save_layout "$work/again/pokeemerald.sav")"
-case "$to_layout" in
-"32 1" | "64 1") ;;
-*) fail "again: the save TO wrote has the layout tag '$to_layout', not {32,1} or {64,1}" ;;
-esac
+save_again "$to_binary" "$work/again" "$work/from"
 [ "${to_layout%% *}" != "$from_bits" ] || fail "again: TO saved with FROM's width, $from_bits: not a cross-width run"
 echo "TO saved with layout tag {${to_layout/ /,}}"
-same_facts "$work/again/28_saved_again.txt" "$work/again/29_continued_again.txt" \
-    player_name map party0_species party_count save_counter
-continued_md5="$(grep_or_die ' 27_continued.ppm$' "$expected/screenshots.md5" | cut -d' ' -f1)"
-for shot in 28_saved_again 29_continued_again; do
-    [ "$(md5sum < "$work/again/$shot.ppm" 2> /dev/null | cut -d' ' -f1)" = "$continued_md5" ] \
-        || fail "again: $shot.ppm is not the scene of 27_continued.ppm"
-done
+check_saved_again "$work/again"
 
 # Between them, FROM and TO wrote every dump and screenshot of expected/.
 for want in "$expected"/*.txt; do

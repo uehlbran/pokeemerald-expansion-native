@@ -130,4 +130,23 @@ PTEST(the_local_time_follows_the_time_zone)
     PT_ASSERT_EQ_INT(west.tm_year + TM_YEAR_BASE, 1969);
 }
 
+PTEST(a_path_from_the_root_is_absolute_and_no_other)
+{
+    PT_ASSERT(host_file_path_is_absolute("/"));
+    PT_ASSERT(host_file_path_is_absolute("/a/b.replay"));
+    PT_ASSERT(!host_file_path_is_absolute("a/b.replay"));
+    PT_ASSERT(!host_file_path_is_absolute("./b.replay"));
+    PT_ASSERT(!host_file_path_is_absolute("b.replay"));
+    PT_ASSERT(!host_file_path_is_absolute(""));
+}
+
+PTEST(the_name_starts_after_the_last_slash)
+{
+    PT_ASSERT(host_file_name_offset("a/b/c.replay") == 4u);
+    PT_ASSERT(host_file_name_offset("/c.replay") == 1u);
+    PT_ASSERT(host_file_name_offset("a/") == 2u);
+    PT_ASSERT(host_file_name_offset("c.replay") == 0u);
+    PT_ASSERT(host_file_name_offset("") == 0u);
+}
+
 PTEST_MAIN()

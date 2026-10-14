@@ -46,11 +46,17 @@ object. The rules, each the one place it is decided:
     no relocation names (25 at expansion 1.17.1, C enum constants the
     preprocessor leaves as names, met in .equiv aliases and .if
     comparisons) is left out, because Mach-O's linker would ask for its
-    definition. Every absolute symbol is written local: 7,930 global ones
-    are defined, with one value, in several objects, which GNU ld accepts
-    and a Mach-O linker may refuse as duplicates, and nothing needs them
-    global, since no 8- or 4-byte word names one (the --symbols pass
-    checks that) and the 16-bit words take their values from the table.
+    definition. On Mach-O every absolute symbol is written local: 7,930
+    global ones are defined, with one value, in several objects, which GNU
+    ld accepts and a Mach-O linker may refuse as duplicates, and no data
+    word needs them global, since no 8- or 4-byte word names one (the
+    --symbols pass checks that) and the 16-bit words take their values from
+    the table. COFF keeps ELF's binding: the test runner build's objects
+    name the global ones from their event scripts (inline assembly,
+    include/test/overworld_script.h; ITEM_POTION, SPECIAL_*), which the link
+    resolves against the data objects, and GNU ld for PE takes an absolute
+    symbol defined in several objects with one value (and refuses two
+    values).
     Symbol types and sizes (.type, .size) have no counterpart and are
     dropped; weak and common symbols are refused. COFF's symbol values are
     32 bits: an absolute value that does not fit (signed or not) is
@@ -104,21 +110,23 @@ STRUCTURE_TYPES = (SHT_NULL, SHT_SYMTAB, SHT_STRTAB, SHT_RELA)
 
 # prefix: what the target's C compiler puts before a C name; value_bits: the
 # width of a symbol's value in the format; clang: the triple check_flat.py
-# assembles for; sections: the .section operands, by ELF name.
-Target = collections.namedtuple("Target", "prefix value_bits clang sections")
+# assembles for; sections: the .section operands, by ELF name;
+# global_absolutes: whether a global absolute symbol stays global (the
+# docstring says why only COFF's do).
+Target = collections.namedtuple("Target", "prefix value_bits clang sections global_absolutes")
 TARGETS = {
     "macho-x86_64": Target("_", 64, "x86_64-apple-macos11", {
         ".rodata": "__DATA,__const",
         "script_data": "__DATA,__script_data",
         ".data": "__DATA,__game_data",
         ".bss": "__DATA,__game_bss,zerofill",
-    }),
+    }, False),
     "coff-x86_64": Target("", 32, "x86_64-w64-windows-gnu", {
         ".rodata": '.rdata,"dr"',
         "script_data": 'script_data,"dw"',
         ".data": 'game_data,"dw"',
         ".bss": 'game_bss,"bw"',
-    }),
+    }, True),
 }
 
 WORD_WIDTHS = {R_X86_64_64: 8, R_X86_64_32: 4, R_X86_64_16: 2}
@@ -411,6 +419,8 @@ class Conversion:
                 self.problems.append("%s: absolute symbol %s = %d does not fit the target's %d-bit symbol value"
                                      % (self.object_name, symbol.name, value, self.target.value_bits))
                 continue
+            if self.target.global_absolutes and symbol.binding == STB_GLOBAL:
+                self.lines.append("\t.globl %s" % self.names[symbol.name])
             self.lines.append("\t.set %s, %d" % (self.names[symbol.name], value))
 
 
@@ -521,11 +531,13 @@ _Script:
 
 
 def self_test_coff_listing():
-    """The COFF listing: the Mach-O one without the prefix, with COFF's section names."""
+    """The COFF listing: the Mach-O one without the prefix, with COFF's section
+    names, and the global absolute symbol global."""
     text = SELF_TEST_MACHO
     for elf_name, spelling in TARGETS["macho-x86_64"].sections.items():
         coff = TARGETS["coff-x86_64"].sections[elf_name]
         text = text.replace(".section %s\n" % spelling, ".section %s\n" % coff)
+    text = text.replace("\t.set _GLOBAL_CONST, -1\n", "\t.globl _GLOBAL_CONST\n\t.set _GLOBAL_CONST, -1\n")
     return re.sub(r"(?<![A-Za-z0-9_])_", "", text)
 
 
