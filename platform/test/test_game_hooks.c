@@ -24,6 +24,7 @@
 #include "host_memory.h"
 #include "interrupt.h"
 #include "ptest.h"
+#include "test_support.h"
 
 
 extern const uint8_t RomHeaderGameCode[4];
@@ -350,7 +351,7 @@ PTEST(a_jump_from_an_interrupt_handler_leaves_the_dispatch_and_the_battle_stack)
 
 PTEST(debug_hooks_reach_the_debug_channel)
 {
-    FILE *out = tmpfile();
+    FILE *out = tsup_open_temp_stream();
     PT_ASSERT(out != NULL);
     PT_ASSERT_EQ_INT(gba_memmap_init(), GBA_MEMMAP_OK);
     bool closed = PlatformDebugOpen(); /* no channel: a GBA without mGBA */

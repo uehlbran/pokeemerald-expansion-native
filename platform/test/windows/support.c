@@ -85,6 +85,28 @@ bool tsup_make_temp_file(char *path, size_t size, const char *prefix)
     return false;
 }
 
+/* _O_TEMPORARY deletes the file when its last descriptor is closed, as
+ * tmpfile()'s is. */
+FILE *tsup_open_temp_stream(void)
+{
+    for (unsigned attempt = 0; attempt < SCRATCH_ATTEMPTS; attempt++) {
+        char path[TSUP_PATH_SIZE];
+        if (!scratch_name(path, sizeof path, "ptest_stream", attempt))
+            return NULL;
+        const int descriptor = _open(path, _O_RDWR | _O_CREAT | _O_EXCL | _O_BINARY | _O_TEMPORARY | _O_NOINHERIT,
+                                     _S_IREAD | _S_IWRITE);
+        if (descriptor >= 0) {
+            FILE *const stream = _fdopen(descriptor, "w+b");
+            if (stream == NULL)
+                (void)_close(descriptor); /* deletes it */
+            return stream;
+        }
+        if (errno != EEXIST)
+            return NULL;
+    }
+    return NULL;
+}
+
 /* Windows directories take their permissions from their parent's; the user's
  * temporary directory is the user's alone. */
 bool tsup_make_directory(const char *path)
@@ -207,6 +229,9 @@ const char *tsup_null_device(void)
 
 #define STDERR_DESCRIPTOR 2
 
+/* While it is redirected, standard error is in binary mode, so that the text
+ * a test captures has the "\n" line ends it has on Linux, not msvcrt's text
+ * mode's "\r\n"; restoring puts text mode back. */
 bool tsup_redirect_stderr(struct tsup_stderr *saved, FILE *to)
 {
     saved->saved = -1;
@@ -215,8 +240,9 @@ bool tsup_redirect_stderr(struct tsup_stderr *saved, FILE *to)
     const int copy = _dup(STDERR_DESCRIPTOR);
     if (copy < 0)
         return false;
-    if (_dup2(_fileno(to), STDERR_DESCRIPTOR) != 0) {
-        (void)_close(copy); /* nothing redirected: the caller sees the failure */
+    if (_dup2(_fileno(to), STDERR_DESCRIPTOR) != 0 || _setmode(STDERR_DESCRIPTOR, _O_BINARY) == -1) {
+        (void)_dup2(copy, STDERR_DESCRIPTOR); /* nothing stays redirected: the caller sees the failure */
+        (void)_close(copy);
         return false;
     }
     saved->saved = copy;
@@ -229,6 +255,7 @@ bool tsup_restore_stderr(struct tsup_stderr *saved)
         return false;
     bool restored = fflush(stderr) == 0; /* put back whether or not the flush worked */
     restored = _dup2(saved->saved, STDERR_DESCRIPTOR) == 0 && restored;
+    restored = _setmode(STDERR_DESCRIPTOR, _O_TEXT) != -1 && restored;
     restored = _close(saved->saved) == 0 && restored;
     saved->saved = -1;
     return restored;

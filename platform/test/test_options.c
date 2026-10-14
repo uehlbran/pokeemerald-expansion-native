@@ -205,7 +205,7 @@ PTEST(argc_and_argv_are_kept_for_the_crash_reboot)
 PTEST(the_usage_text_names_every_option_and_the_defaults)
 {
     static char text[USAGE_TEXT_SIZE];
-    FILE *file = tmpfile();
+    FILE *file = tsup_open_temp_stream();
     PT_ASSERT(file != NULL);
     options_print_usage(file);
     const bool rewound = fseek(file, 0, SEEK_SET) == 0;
