@@ -257,6 +257,12 @@ $(GAME_FLAG_OBJS): Makefile game_flags.mk
 # write_symbol_map), as the game's does: test_symbols reads its own.
 SYMBOL_MAP_TESTS := test_symbols
 
+# The Windows tests cannot run here, so each link's layout is checked from the
+# file, as the game's is (Makefile.native).
+ifeq ($(TARGET_OS),windows)
+TEST_LINK_CHECK = python3 -I build_glue/check_pe_layout.py $(1) || { rm -f $(1); exit 1; }
+endif
+
 # A test's source: test/<name>.c or test/<family>/<name>.c.
 test_source = $(filter %/$(1).c,$(TEST_SRCS))
 # The files a test names on its "// deps:" line.
@@ -269,6 +275,7 @@ $(foreach dep,$(call test_deps,$(1)),$(if $(wildcard $(dep)),,$(error $(call tes
 $(TEST_BIN_DIR)/$(1)$(TARGET_EXE_SUFFIX): $(patsubst %.c,$(OBJ_DIR)/%.o,$(call test_source,$(1))) $(patsubst %.c,$(OBJ_DIR)/%.o,$(call test_inputs,$(1))) $(HOST_OBJS) $(TEST_SUPPORT_OBJ) $(GAPS_OBJ) $(REGIONS_LD) $(GAME_LD)
 	@mkdir -p $$(@D)
 	$$(CC) $$(LDFLAGS_ALL) -o $$@ $$(filter %.o,$$^) $$(SDL_LIBS)
+	$$(if $$(TEST_LINK_CHECK),$$(call TEST_LINK_CHECK,$$@))
 	$$(if $$(filter $$(SYMBOL_MAP_TESTS),$(1)),$$(call write_symbol_map,$$@,$$@.symbols) || { rm -f $$@; exit 1; })
 endef
 $(foreach name,$(TEST_NAMES),$(eval $(call TEST_LINK_RULE,$(name))))
