@@ -249,8 +249,25 @@ void wsup_end(uint32_t code)
         Sleep(INFINITE);
 }
 
+/* A job that ends the child, and anything it starts, when the test ends
+ * first or gives up on it. NULL if it cannot be made. */
+static HANDLE make_kill_on_close_job(void)
+{
+    HANDLE job = CreateJobObjectA(NULL, NULL);
+    if (job == NULL)
+        return NULL;
+    JOBOBJECT_EXTENDED_LIMIT_INFORMATION limits;
+    memset(&limits, 0, sizeof limits);
+    limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+    if (SetInformationJobObject(job, JobObjectExtendedLimitInformation, &limits, sizeof limits))
+        return job;
+    (void)CloseHandle(job);
+    return NULL;
+}
+
 /* The child is named through the environment it inherits, set only while it
- * is created. */
+ * is created, and runs in a job (started suspended until it is in it), so that
+ * a child given up on is ended with what it started. */
 bool wsup_run_child(const char *name, uint32_t *code)
 {
     char path[TSUP_PATH_SIZE];
@@ -260,8 +277,13 @@ bool wsup_run_child(const char *name, uint32_t *code)
     char command_line[TSUP_PATH_SIZE + 2];
     if (snprintf(command_line, sizeof command_line, "\"%s\"", path) >= (int)sizeof command_line)
         return false;
-    if (_putenv_s(WSUP_CHILD_VARIABLE, name) != 0)
+    HANDLE job = make_kill_on_close_job();
+    if (job == NULL)
         return false;
+    if (_putenv_s(WSUP_CHILD_VARIABLE, name) != 0) {
+        (void)CloseHandle(job);
+        return false;
+    }
     STARTUPINFOA startup;
     memset(&startup, 0, sizeof startup);
     startup.cb = sizeof startup;
@@ -270,19 +292,28 @@ bool wsup_run_child(const char *name, uint32_t *code)
     startup.hStdOutput = GetStdHandle(STD_OUTPUT_HANDLE);
     startup.hStdError = GetStdHandle(STD_ERROR_HANDLE);
     PROCESS_INFORMATION child;
-    const bool started = CreateProcessA(path, command_line, NULL, NULL, TRUE, 0, NULL, NULL, &startup, &child);
+    bool started = CreateProcessA(path, command_line, NULL, NULL, TRUE, CREATE_SUSPENDED, NULL, NULL, &startup, &child);
     const bool unset = _putenv_s(WSUP_CHILD_VARIABLE, "") == 0;
-    if (!started)
+    if (started && (!AssignProcessToJobObject(job, child.hProcess) || ResumeThread(child.hThread) == (DWORD)-1)) {
+        (void)TerminateProcess(child.hProcess, WSUP_CHILD_RETURNED);
+        (void)CloseHandle(child.hThread);
+        (void)CloseHandle(child.hProcess);
+        started = false;
+    }
+    if (!started) {
+        (void)CloseHandle(job);
         return false;
+    }
     (void)CloseHandle(child.hThread);
     bool ended = WaitForSingleObject(child.hProcess, WSUP_CHILD_MILLISECONDS) == WAIT_OBJECT_0;
     if (!ended) {
-        (void)TerminateProcess(child.hProcess, WSUP_CHILD_RETURNED);
+        (void)TerminateJobObject(job, WSUP_CHILD_RETURNED); /* the child and what it started */
         (void)WaitForSingleObject(child.hProcess, INFINITE);
     }
     DWORD exit_code = 0;
     ended = GetExitCodeProcess(child.hProcess, &exit_code) && ended;
     (void)CloseHandle(child.hProcess);
+    (void)CloseHandle(job);
     *code = exit_code;
     return ended && unset;
 }

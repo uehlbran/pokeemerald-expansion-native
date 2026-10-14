@@ -479,12 +479,37 @@ static bool build_command_line(char *const argv[])
     return true;
 }
 
+/* A job that ends its processes when its last handle closes, which this
+ * process holds alone (not inherited) and the system closes when this process
+ * ends, however it ends: so that a restarted program never outlives the
+ * process waiting for it (a time limit that kills that process kills the
+ * whole chain), as an exec'd program cannot outlive itself on Linux. NULL
+ * with errno set if it cannot be made. */
+static HANDLE make_kill_on_close_job(void)
+{
+    HANDLE job = CreateJobObjectW(NULL, NULL);
+    if (job == NULL) {
+        errno = errno_of(GetLastError());
+        return NULL;
+    }
+    JOBOBJECT_EXTENDED_LIMIT_INFORMATION limits;
+    memset(&limits, 0, sizeof limits);
+    limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+    if (!SetInformationJobObject(job, JobObjectExtendedLimitInformation, &limits, sizeof limits)) {
+        errno = errno_of(GetLastError());
+        (void)CloseHandle(job);
+        return NULL;
+    }
+    return job;
+}
+
 /* Windows has no exec: the same program is started as a child with the same
  * arguments, standard handles, environment and working directory, and this
  * process waits for it and ends with its status, so that whoever waits for
  * this process (the test runner, the shell) sees the child's end and its
  * output on the same handles. Unlike execve, the child has a process id of
- * its own and this process stays until it ends.
+ * its own and this process stays until it ends; the child is in a job that
+ * ends it if this process is ended first (make_kill_on_close_job).
  *
  * Called from the crash handler too (crash_reboot), where CreateProcessW is
  * the one call on the path that allocates and takes locks (the process heap's,
@@ -508,7 +533,10 @@ int host_process_restart(char *const argv[])
     const DWORD length = GetModuleFileNameW(NULL, restart.executable, HOST_PROCESS_PATH_SIZE);
     bool started = false;
     PROCESS_INFORMATION child;
-    if (length == 0 || length >= HOST_PROCESS_PATH_SIZE) {
+    HANDLE job = make_kill_on_close_job();
+    if (job == NULL) {
+        /* errno set */
+    } else if (length == 0 || length >= HOST_PROCESS_PATH_SIZE) {
         errno = length == 0 ? errno_of(GetLastError()) : ENAMETOOLONG;
     } else if (build_command_line(argv)) {
         STARTUPINFOW startup;
@@ -518,12 +546,22 @@ int host_process_restart(char *const argv[])
         startup.hStdInput = GetStdHandle(STD_INPUT_HANDLE);
         startup.hStdOutput = GetStdHandle(STD_OUTPUT_HANDLE);
         startup.hStdError = GetStdHandle(STD_ERROR_HANDLE);
-        started = CreateProcessW(restart.executable, restart.command_line, NULL, NULL, TRUE, 0, NULL, NULL, &startup,
-                                 &child);
-        if (!started)
+        /* Suspended until it is in the job, so that it never runs outside it. */
+        started = CreateProcessW(restart.executable, restart.command_line, NULL, NULL, TRUE, CREATE_SUSPENDED, NULL,
+                                 NULL, &startup, &child);
+        if (!started) {
             errno = errno_of(GetLastError());
+        } else if (!AssignProcessToJobObject(job, child.hProcess) || ResumeThread(child.hThread) == (DWORD)-1) {
+            errno = errno_of(GetLastError());
+            (void)TerminateProcess(child.hProcess, RESTART_STATUS_LOST);
+            (void)CloseHandle(child.hThread);
+            (void)CloseHandle(child.hProcess);
+            started = false;
+        }
     }
     if (!started) {
+        if (job != NULL)
+            (void)CloseHandle(job);
         /* release: pairs with the acquire above, for a later call. */
         atomic_flag_clear_explicit(&restart.running, memory_order_release);
         return -1;

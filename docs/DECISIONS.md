@@ -1047,7 +1047,11 @@ waits for the process, the hydra or a shell, sees the child's output on the
 same handles and its status; what differs from Linux is that the child has a
 process id of its own and that the crashed process stays, waiting, until it
 ends. A crash inside a child chains another child; the chain is as long as
-the run's crashes.
+the run's crashes. Each child is in a job object that ends it when the
+process waiting for it ends (`JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE`), so that a
+time limit that kills the process the runner started kills the whole chain
+and the runner's pipes reach their end, as they do on Linux, where the
+restarted program is the same process.
 
 For the crash this happens in the unhandled-exception filter, and
 `CreateProcessW` allocates (the process heap) and takes locks (the PEB's, the
