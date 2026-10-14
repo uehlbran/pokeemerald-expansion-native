@@ -1,6 +1,6 @@
 # Status
 
-Last updated 2026-10-14 (milestone 7 done: **64-bit done**, every gate green at both widths on main at 94f3c70f62; milestone 8 in progress: the two-tier Linux CI, the host layer, the data converter and the Windows cross-build merged; the test timeout, the ccache follow-up and the Windows host layer merged; the first Windows run next).
+Last updated 2026-10-14 (milestone 7 done: **64-bit done**, every gate green at both widths on main at 94f3c70f62; milestone 8 in progress: the two-tier Linux CI, the host layer, the data converter and the Windows cross-build merged; Windows done on the runner: the unit tests, the smoke, both replays, the cross-OS save and the suite green on windows-latest; the owner verifies by hand next).
 
 This file is the honest ledger. A thing is listed as verified only with
 the gate that proved it. Anything without a gate is unverified, whatever
@@ -535,68 +535,46 @@ anywhere yet: the orchestrator's gate on main (below) covers the Linux
 side and the Windows link, lint and layout; the first Windows run is the
 manual workflow `.github/workflows/windows.yml`, added with this merge.
 
-**The first Windows runs** (the manual workflow on main): the first
-(38597933327) failed in the Linux job's own prerequisites (the 32-bit
-headers the data layout probe compiles with; fixed). The second
-(38598389601) cross-built the executable and the 69 tests on Linux in 12
-minutes and ran them on the Windows runner: the first time any of this
-code executed on Windows. Result: test_crt0 fails 6 of 11 (crt0_init
-returns an error on the PE layout), the portable division test expects
-the POSIX signal number where Windows reports an exception code, and
-every executable after the first crash test exits with status 126
-("cannot execute"), one cause hiding the rest. These are the W8 worker's
-step 1, in flight.
+**The Windows runner** (tasks W8 and W9, merged 2026-10-14 at
+94e17123b3; an Opus worker through nine workflow runs, a Sonnet review
+with mutation testing, the orchestrator's gate): **Windows is done as
+far as the runner can show.** On windows-latest the workflow
+(`.github/workflows/windows.yml`, nightly at 05:17 UTC and by hand) runs
+all 70 cross-built unit tests, the start-up smoke (twice, once from a
+non-ASCII directory with non-ASCII save and clock paths, which also
+proved that msvcrt hands main its arguments as UTF-8 under the manifest),
+both replays with every dump and screenshot equal to the Linux
+expectations, the cross-OS save gate in three stages (a Linux save loaded
+and re-saved on Windows, loaded back on Linux), the test runner's own
+crashing tests through the hydra, and expansion's whole suite under
+MSYS2 through the hydra: 5875 results equal to Linux 64-bit line by
+line (5418 passed). Run 38629824732, green in 17 minutes (Linux jobs in
+parallel 7 to 9 minutes; the Windows job 8 minutes, the suite 5 of
+them). What Windows taught: every executable of this layout holds about
+1 GiB of system commit from its first start until its file is deleted,
+so the unit tests run from copies deleted after each (the owner's note
+above); GCC folded away crt0's check on the game-object marker without
+sanitizers (now a weak reference); GNU as for x86-64 COFF drops local
+symbols whose names begin with "L" (184 functions; `--keep-locals`);
+msvcrt refuses line buffering of stdout (BUFSIZ instead) and MSYS2's
+poll never reports a closed pipe (the hydra reads to end of file);
+0x01000000 is not reliably free on Windows, so the tests' fixed page is
+0x017F0000. Not run on Windows, by nature: sanitizers (MinGW has none),
+32-bit, the GBA ROM, the POSIX-only tests, format and lint. The
+branch's own review found no defect in the Linux-side code; its test
+gaps and stale figures are a follow-up branch in flight. The Windows
+runner files, excluded from the independent review while in flight,
+are under that review now.
 
-**Independent code review** (the owner's order of 2026-10-14; twelve
-fresh Fable reviewers, read-only, capped at 15 minutes each after the
-owner cut the cap mid-run, given only ARCHITECTURE.md, C-RULES.md, a
-scope and one brief; reports in an untracked folder outside the
-repository; files changed by the in-flight Windows-runner work excluded
-and reviewed after their merge). Every one of the 115 findings was
-verified against the code by the orchestrator before its verdict (the
-triage sits beside the reports). By severity: 3 high, 19 medium, 93
-low. By area: core emulation 11, graphics 6, audio 7, persistence and
-time 9, host and process 11, tooling and tests 10, build and CI 11,
-upstream guards 15 (two halves), concurrency and signal safety 8,
-security and resource handling 9, the public face 18. Of the 115: 6 are
-duplicates across reviewers, 2 were rejected (a style call on a GNU
-idiom the project's dialect allows; a probe call that is documented,
-idempotent and relied on by a test), 1 is deferred until the
-Windows-runner branch merges because it edits a file that branch owns
-(the three meanings of "host" across the make fragments), and 106 were
-accepted and fixed by eight workers in eight branches, all merged on
-main on 2026-10-14 with the orchestrator's gate green after each batch
-(the platform gate with ThreadSanitizer, both builds, both replays, the
-Windows build and tests, the suite now at 5418 passed with nine new
-test files, the cross-width save); a combined Sonnet review with
-mutation testing over the behavioural fixes followed the merges (47
-mutants over the first seven groups, 9 over the concurrency group): it
-found one real gap, the Huffman decoder reading its tree-size byte
-before the new range check (a header in a region's last four bytes
-faulted), fixed with a test, and ten fixes whose tests let a mutant
-through, each now with a test that fails without the fix (a ninth
-branch, merged); nothing blocking in the concurrency merge, where the
-signal-mask, errno, unblock and expired-limit fixes all fail their tests
-when mutated. The three highs: the heap's allocation-site
-encoding in src/malloc.c assumed the whole image within 512 MiB of the
-image base, which the Windows layout breaks (now measured from a base
-symbol small on both links, with a no-location rule and a round-trip
-test); README said Windows was not attempted; LICENSE's scope named a
-directory that does not exist. The mediums fixed: unchecked Huffman
-tree-table reads and the game's fast LZ77 decoder writing with no bounds
-check; the RTC offset diverging from disk on a directory-sync failure;
-the watchdog thread inheriting an open signal mask (a process-directed
-signal could run a test's handler on it) and printing on error paths;
-inspect.h's fact list contradicting the code; upstream's build workflow
-firing on every pull request; the CI setup pasted six times; a dozen
-public-document contradictions. Five findings need the owner (below).
-Two follow-ups the fixes surfaced are in PLAN.md (the native soft reset
-with the combination held; macOS's missing pthread_condattr_setclock).
+**Ready for the owner's hands-on check** (DECISIONS: macOS waits for
+it): download `windows-build` from the latest green run of the windows
+workflow on main, unpack it, and run `pokeemerald-native.exe` from the
+`build/native64-windows` folder (SDL2.dll is beside it); the checklist
+is at the end of this section once the first run on main is green.
 
-**In flight.** Tasks W8 and W9 as one Opus worker (branch m8-winci): the
-Windows runner's unit tests and smoke made to pass, then the replays, the
-suite through a driver that restarts on exit code 75, and the cross-OS
-save; the workflow extended as it goes.
+**In flight.** The owner's rulings 3 and 4 (the save lock; src/siirtc.c
+out of the native build), the Windows follow-ups, and the fresh review
+of the Windows runner files.
 
 ## Verified by a gate
 
