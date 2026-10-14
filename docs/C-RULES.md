@@ -3,7 +3,7 @@
 These rules apply to everything this project writes: the platform layer
 under `platform/`, build glue, and tests. Expansion's game code is
 pret-style GBA C with its own conventions; we do not rewrite or re-lint
-it. Workers receive this text verbatim with every task.
+it.
 
 ## Code quality, how the principles apply to C
 
@@ -68,7 +68,7 @@ the audio or main loop needs it, uses SDL's primitives with a documented
 ownership model and no shared mutable state without a lock; prefer
 single-threaded designs where the references prove they suffice.
 
-## Concurrency, non-negotiable (owner's standing addition, 2026-10-14)
+## Concurrency, non-negotiable
 
 The platform is single-threaded by design: push-model audio, no callback
 thread, one thread that runs the game and every module. Keep it that
@@ -105,9 +105,9 @@ Reviewers explicitly check every diff for data races, signal safety,
 lock ordering, fork or exec in a process that may have threads, and
 file-operation races, and report what they checked.
 
-## Code quality for a public repository (owner's standing addition, 2026-10-14)
+## Code quality for a public repository
 
-People will judge this repository for being AI-built. Names read
+The code is read by people who did not write it. Names read
 clearly without the spec open. Comments explain why, never restate what
 the code does; no generated-sounding filler ("This function handles..."),
 no comment on every line. Small cohesive modules with narrow headers:
@@ -115,10 +115,6 @@ high cohesion, low coupling, no speculative abstraction. Leave everything
 we own better than you found it on every touched call chain. Expansion's
 own files stay untouched except where a hardware assumption forces it
 (UPSTREAM_MODIFICATIONS.md).
-
-Workers receive this file, the concurrency section included, verbatim in
-every task; the first-pass reviewer checks each diff against it line by
-line before it reaches the orchestrator.
 
 ## Testing, non-negotiable
 
