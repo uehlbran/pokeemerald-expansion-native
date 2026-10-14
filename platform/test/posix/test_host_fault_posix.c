@@ -18,6 +18,7 @@
 #include "host_fault.h"
 #include "host_fault_fixture.h"
 #include "host_image.h"
+#include "posix_child.h"
 #include "posix_support.h"
 #include "ptest.h"
 

@@ -23,8 +23,9 @@
  * PSUP_CHILD_RETURNED. Standard output and error are flushed before the fork,
  * so that the child does not repeat what the parent printed. Returns the
  * child's wait status once it has ended, or -1 if it could not be started or
- * waited for. */
-int psup_run_child(void (*body)(void *context), void *context);
+ * waited for. This is the fork alone: a test calls psup_run_child
+ * (posix_child.h), which first stops the runner's watchdog thread. */
+int psup_fork_child(void (*body)(void *context), void *context);
 
 /* The exit code in a wait status of a child that exited, else -1. */
 int psup_exit_code(int status);

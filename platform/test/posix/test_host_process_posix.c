@@ -19,6 +19,7 @@
 #include <unistd.h>
 
 #include "host_process.h"
+#include "posix_child.h"
 #include "posix_support.h"
 #include "ptest.h"
 #include "test_support.h"

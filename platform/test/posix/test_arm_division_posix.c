@@ -20,6 +20,7 @@
 #include <unistd.h>
 
 #include "arm_division.h"
+#include "posix_child.h"
 #include "posix_support.h"
 #include "ptest.h"
 

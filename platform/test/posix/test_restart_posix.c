@@ -11,6 +11,7 @@
 #include <string.h>
 #include <unistd.h>
 
+#include "posix_child.h"
 #include "posix_support.h"
 #include "ptest.h"
 #include "restart.h"

@@ -137,11 +137,15 @@ LDFLAGS_ALL := -m$(BITS) $(SANITIZERS) $(GBA_LDFLAGS)
 # cannot weaken them: leaks detected, no suppressions file, UBSan backtraces.
 override SANITIZER_ENV := ASAN_OPTIONS=detect_leaks=1 LSAN_OPTIONS= UBSAN_OPTIONS=print_stacktrace=1
 ifeq ($(TSAN),1)
-# report_signal_unsafe=0: ThreadSanitizer keeps believing a thread is in a
-# signal handler after siglongjmp leaves one (test_arm_division does, on
-# purpose) and then calls every later free() unsafe; races are still reported.
-override SANITIZER_ENV := TSAN_OPTIONS=halt_on_error=1:exitcode=66:report_signal_unsafe=0
+override SANITIZER_ENV := TSAN_OPTIONS=halt_on_error=1:exitcode=66
 endif
+# The one test binary that leaves a signal handler by siglongjmp, on purpose
+# (test_arm_division_posix): ThreadSanitizer keeps believing the thread is in
+# the handler and calls every later free() signal-unsafe. It runs with that
+# report off (report_signal_unsafe=0); races are still reported, and every
+# other binary keeps the report.
+SIGNAL_JUMP_TESTS := test_arm_division_posix
+SIGNAL_JUMP_ENV := $(if $(filter 1,$(TSAN)),TSAN_OPTIONS=halt_on_error=1:exitcode=66:report_signal_unsafe=0)
 
 PLATFORM_SRCS := $(filter-out host_%.c,$(wildcard *.c)) $(HOST_SRCS)
 MODULE_SRCS := $(PLATFORM_SRCS) $(wildcard m4a/m4a_*.c)
@@ -229,7 +233,8 @@ test: $(TEST_BINS)
 	@status=0; \
 	for bin in $(TEST_BINS); do \
 		echo "== $$bin"; \
-		$(SANITIZER_ENV) ./$$bin > $$bin.log 2>&1; code=$$?; \
+		extra=; case $$bin in $(addprefix */,$(SIGNAL_JUMP_TESTS))) extra='$(SIGNAL_JUMP_ENV)';; esac; \
+		env $(SANITIZER_ENV) $$extra ./$$bin > $$bin.log 2>&1; code=$$?; \
 		cat $$bin.log; \
 		if [ $$code -ne 0 ]; then \
 			echo "FAILED: $$bin exited with status $$code"; status=1; \

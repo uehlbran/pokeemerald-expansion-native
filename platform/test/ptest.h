@@ -37,7 +37,9 @@
  * state, open files and locks behind: later failures in the same binary are
  * suspect, LeakSanitizer may report what it leaked, and the first failure is
  * the one to read. The reported location is the runner's line in this header;
- * the message carries the test's name.
+ * the message carries the test's name. A timeout replaces any failure the
+ * test had recorded (a test caught in ptest_capture included): the report is
+ * always "timed out".
  * Not covered: a test that never reaches an assertion after the limit (an
  * endless loop or a blocking call with none in it) is not abandoned, because
  * nothing but the test's own thread may touch the test's state. Such a test
@@ -48,6 +50,10 @@
  * from the call (a test that is legitimately long, or the test of this
  * mechanism). The runner owns no signal and no process timer, so a test may
  * use its own alarm (test_crash_reboot's children do).
+ * ptest_pause_watchdog() and ptest_resume_watchdog() stop the running test's
+ * watchdog thread (joined) and start it again with the test's limit counted
+ * from the resume: a test that forks must have no thread alive at the fork, so
+ * the child inherits none (posix/posix_support.h's psup_run_child does this).
  *
  * The registry is static: a test binary is one translation unit including
  * this header. Tests run in definition order with GCC, but must not rely on it.
@@ -236,6 +242,22 @@ static inline void ptest_set_timeout(unsigned seconds)
         ptest_timeout_seconds = seconds;
 }
 
+/* Stops the running test's watchdog (joining its thread), leaving no thread
+ * and no handle. A flag already set stays set. */
+static inline void ptest_pause_watchdog(void)
+{
+    host_watchdog_stop(ptest_watchdog);
+    ptest_watchdog = NULL;
+}
+
+/* Starts the running test's watchdog again, with the test's limit counted from
+ * now. Does nothing outside a run. */
+static inline void ptest_resume_watchdog(void)
+{
+    if (ptest_expired != NULL && ptest_watchdog == NULL)
+        ptest_watchdog = host_watchdog_start(ptest_timeout_seconds, ptest_expired);
+}
+
 /* Runs the cases, reports to out, returns the exit status (0 = all passed). */
 static inline int ptest_run_cases(const struct ptest_case *cases, size_t count, FILE *out)
 {
@@ -260,6 +282,9 @@ static inline int ptest_run_cases(const struct ptest_case *cases, size_t count, 
             cases[i].run();
             ptest_check_limit(); /* a test that finished late has failed too */
         } else {
+            /* The longjmp may have left ptest_capture's outcome in place and the test may
+             * have failed before: the timeout is the report. */
+            ptest_current.outcome = (struct ptest_outcome){.failed = false};
             ptest_fail_at(__FILE__, __LINE__, "timed out after %u seconds", ptest_timeout_seconds);
         }
         host_watchdog_stop(ptest_watchdog); /* joined: no thread of the test's is left */

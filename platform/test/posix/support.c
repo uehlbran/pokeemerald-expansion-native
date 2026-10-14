@@ -180,7 +180,7 @@ bool tsup_restore_stderr(struct tsup_stderr *saved)
     return restored;
 }
 
-int psup_run_child(void (*body)(void *context), void *context)
+int psup_fork_child(void (*body)(void *context), void *context)
 {
     if (fflush(stdout) != 0 || fflush(stderr) != 0)
         return -1;

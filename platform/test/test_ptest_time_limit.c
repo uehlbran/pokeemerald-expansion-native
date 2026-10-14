@@ -51,6 +51,42 @@ static void late_case_without_a_later_assertion(void)
     tsup_sleep_milliseconds(LATE_SECONDS * MILLISECONDS_PER_SECOND);
 }
 
+/* One case per assertion family: past a limit of one second, each runs its
+ * assertion (true) in a loop for CASE_SECONDS, so only a family whose check of
+ * the limit is missing runs on to the end. */
+#define CASE_SECONDS 3u
+#define FAMILY_ELAPSED_LIMIT_MILLISECONDS 2000u /* the 1 s limit, and a second of slack */
+
+#define FAMILY_CASE(name, assertion)                                                                   \
+    static void name(void)                                                                             \
+    {                                                                                                  \
+        ptest_set_timeout(SHORT_LIMIT_SECONDS);                                                        \
+        const uint64_t until = tsup_monotonic_milliseconds() + CASE_SECONDS * MILLISECONDS_PER_SECOND; \
+        while (tsup_monotonic_milliseconds() < until) {                                                \
+            assertion;                                                                                 \
+            tsup_sleep_milliseconds(POLL_MILLISECONDS);                                                \
+        }                                                                                              \
+    }
+
+static const char family_text[] = "text";
+static const unsigned char family_bytes[] = {1, 2, 3};
+
+static void fail_in_capture(void *context)
+{
+    (void)context;
+    PT_FAIL("the failure of the PT_FAIL family");
+}
+
+FAMILY_CASE(family_assert, PT_ASSERT(true))
+FAMILY_CASE(family_eq_int, PT_ASSERT_EQ_INT(1, 1))
+FAMILY_CASE(family_eq_u32, PT_ASSERT_EQ_U32(1u, 1u))
+FAMILY_CASE(family_eq_ptr, PT_ASSERT_EQ_PTR(family_text, family_text))
+FAMILY_CASE(family_eq_str, PT_ASSERT_EQ_STR(family_text, "text"))
+FAMILY_CASE(family_mem_eq, PT_ASSERT_MEM_EQ(family_bytes, family_bytes, sizeof family_bytes))
+/* PT_FAIL ends its function and fails the test, so it runs under ptest_capture,
+ * which is also the case where the abandoned test was inside a capture. */
+FAMILY_CASE(family_fail, (void)ptest_capture(fail_in_capture, NULL))
+
 static void runner_passing_case(void)
 {
     PT_ASSERT(true);
@@ -124,6 +160,69 @@ PTEST(the_limit_is_found_after_it_and_within_one_second_of_it)
     PT_ASSERT_EQ_INT(run.status, 1);
     PT_ASSERT(run.milliseconds >= SHORT_LIMIT_SECONDS * MILLISECONDS_PER_SECOND);
     PT_ASSERT(run.milliseconds < (SHORT_LIMIT_SECONDS + 1u) * MILLISECONDS_PER_SECOND);
+}
+
+struct family {
+    const char *name;
+    void (*run)(void);
+};
+
+PTEST(every_assertion_family_finds_the_limit)
+{
+    static const struct family families[] = {
+        {"family_assert", family_assert}, {"family_eq_int", family_eq_int}, {"family_eq_u32", family_eq_u32},
+        {"family_eq_ptr", family_eq_ptr}, {"family_eq_str", family_eq_str}, {"family_mem_eq", family_mem_eq},
+        {"family_fail", family_fail},
+    };
+    for (size_t i = 0; i < sizeof families / sizeof families[0]; i++) {
+        struct ptest_registry registry = {.count = 0};
+        ptest_register_in(&registry, families[i].name, families[i].run);
+        const struct run run = run_registry(&registry);
+        char expected[128];
+        const int length = snprintf(expected, sizeof expected, ": %s: timed out after 1 seconds\n", families[i].name);
+        PT_ASSERT(length > 0 && (size_t)length < sizeof expected);
+        PT_ASSERT(run.text_complete);
+        PT_ASSERT(has_text(run.text, expected));
+        PT_ASSERT(run.milliseconds < FAMILY_ELAPSED_LIMIT_MILLISECONDS);
+    }
+}
+
+static void failed_before_the_limit_case(void)
+{
+    ptest_set_timeout(SHORT_LIMIT_SECONDS);
+    const struct ptest_outcome outcome = ptest_capture(fail_in_capture, NULL);
+    if (outcome.failed)
+        ptest_fail_at(__FILE__, __LINE__, "a failure of the test itself, before the limit");
+    wait_asserting(CASE_SECONDS);
+}
+
+PTEST(a_timeout_is_reported_as_one_even_when_the_test_had_failed_before)
+{
+    struct ptest_registry registry = {.count = 0};
+    ptest_register_in(&registry, "failed_before_the_limit_case", failed_before_the_limit_case);
+    const struct run run = run_registry(&registry);
+    PT_ASSERT(run.text_complete);
+    PT_ASSERT(has_text(run.text, ": failed_before_the_limit_case: timed out after 1 seconds\n"));
+    PT_ASSERT(!has_text(run.text, "a failure of the test itself"));
+    PT_ASSERT(count_text(run.text, "FAIL ") == 1);
+}
+
+static void paused_then_stuck_case(void)
+{
+    ptest_set_timeout(SHORT_LIMIT_SECONDS);
+    ptest_pause_watchdog();
+    ptest_resume_watchdog();
+    wait_asserting(CASE_SECONDS);
+}
+
+PTEST(a_paused_and_resumed_watchdog_still_keeps_the_limit)
+{
+    struct ptest_registry registry = {.count = 0};
+    ptest_register_in(&registry, "paused_then_stuck_case", paused_then_stuck_case);
+    const struct run run = run_registry(&registry);
+    PT_ASSERT(run.text_complete);
+    PT_ASSERT(has_text(run.text, ": paused_then_stuck_case: timed out after 1 seconds\n"));
+    PT_ASSERT(run.milliseconds < FAMILY_ELAPSED_LIMIT_MILLISECONDS);
 }
 
 PTEST(a_test_that_returns_late_has_timed_out_too)

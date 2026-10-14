@@ -2,14 +2,13 @@
  * host_posix.c: the host layer where every POSIX system agrees (Linux today,
  * macOS next): the fault handlers' installation (host_fault.h), the restart
  * of the executable (host_process.h), the files (host_file.h) and the deadline
- * thread (host_thread.h). What each
- * system does its own way is in its own source, host_linux.c, reached
- * through host_internal.h.
+ * thread (host_thread.h). What each system does its own way is in its own
+ * source, host_linux.c, reached through host_internal.h.
  *
- * Followed: POSIX (sigaction, sigaltstack, sigprocmask, execve, fsync,
- * rename, mkdir, localtime_r, pthread_create and pthread_cond_timedwait), and signal-safety(7) for what a signal
- * handler may call: everything on the handlers' path here (sigaction, raise,
- * execve) is async-signal-safe.
+ * Followed: POSIX (sigaction, sigaltstack, sigprocmask, execve, fsync, rename,
+ * mkdir, localtime_r, pthread_create and pthread_cond_timedwait), and
+ * signal-safety(7) for what a signal handler may call: everything on the
+ * handlers' path here (sigaction, raise, execve) is async-signal-safe.
  */
 #define _FILE_OFFSET_BITS 64 /* with _TIME_BITS: a 64-bit time_t on 32-bit builds, */
 #define _TIME_BITS 64        /* so host_file_local_time converts dates past 2038 */
@@ -280,6 +279,9 @@ int host_file_local_time(int64_t seconds, struct tm *out)
  * so that adding it to the clock cannot overflow a 64-bit time_t. */
 #define WATCHDOG_MAX_SECONDS (UINT32_MAX / 2u)
 
+/* How long host_watchdog_start waits for its thread to begin waiting. */
+#define WATCHDOG_START_SECONDS 10
+
 struct host_watchdog {
     pthread_t thread;
     pthread_mutex_t lock; /* guards deadline and stopping, nothing else */
@@ -322,8 +324,11 @@ static bool watchdog_deadline_passed(const struct host_watchdog *watchdog)
 static void *watchdog_thread(void *argument)
 {
     struct host_watchdog *const watchdog = argument;
-    if (pthread_mutex_lock(&watchdog->lock) != 0)
+    const int locked = pthread_mutex_lock(&watchdog->lock);
+    if (locked != 0) {
+        watchdog_report("pthread_mutex_lock", locked); /* host_watchdog_start times out */
         return NULL;
+    }
     watchdog->waiting = true;
     (void)pthread_cond_broadcast(&watchdog->changed); /* wakes host_watchdog_start */
     while (!watchdog->stopping) {
@@ -351,8 +356,14 @@ static int watchdog_await_start(struct host_watchdog *watchdog)
     int error = pthread_mutex_lock(&watchdog->lock);
     if (error != 0)
         return error;
+    /* A thread that failed to take the lock never says it is waiting: give up
+     * after WATCHDOG_START_SECONDS rather than wait for ever. */
+    struct timespec give_up;
+    if (clock_gettime(CLOCK_REALTIME, &give_up) != 0)
+        error = errno;
+    give_up.tv_sec += WATCHDOG_START_SECONDS;
     while (!watchdog->waiting && error == 0)
-        error = pthread_cond_wait(&watchdog->changed, &watchdog->lock);
+        error = pthread_cond_timedwait(&watchdog->changed, &watchdog->lock, &give_up);
     (void)pthread_mutex_unlock(&watchdog->lock);
     return error;
 }

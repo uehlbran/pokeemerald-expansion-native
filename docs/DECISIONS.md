@@ -944,9 +944,14 @@ that never returns): such a test hangs its binary, and ptest.h says so; the
 CI job's own time limit is the backstop. A ThreadSanitizer build of every test
 binary but `test_crt0` (which reads where the linker put the game's objects, and
 ThreadSanitizer moves them) is part of the gate (`make -C platform tsan`, 64-bit,
-`build/64-tsan`). A forked child in the POSIX tests inherits no watchdog
-thread and never uses the handle; it ends with `_exit`, so the multi-threaded
-fork is limited to a thread that is idle in a condition wait.
+`build/64-tsan`); `test_arm_division_posix` alone runs with
+`report_signal_unsafe=0`, because it leaves a signal handler by `siglongjmp`
+on purpose and ThreadSanitizer then calls every later `free()` unsafe. A test
+that forks has no thread alive at the fork: `psup_run_child` (posix_child.h)
+stops the watchdog, joining its thread, before the fork and starts it again
+after, so the child inherits no thread and no handle to one. (The
+handshake in `host_watchdog_start`, which returns only when the thread waits,
+stays: it keeps a start from racing a stop.)
 
 The Windows source of `host_thread.h` is declared (the header names the calls)
 and not written.

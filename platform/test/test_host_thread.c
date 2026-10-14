@@ -3,7 +3,8 @@
  * caller's flag once the time has passed and not before, a stop before the
  * deadline leaves the flag alone, a restart moves the deadline either way,
  * and bad arguments are refused. Deadlines are whole seconds, so these tests
- * wait one or two.
+ * wait one or two. That no thread is left behind is counted in
+ * linux/test_host_thread_linux.c.
  */
 #include <stdatomic.h>
 
@@ -87,6 +88,18 @@ PTEST(a_zero_or_oversized_deadline_and_a_missing_flag_are_refused)
     host_watchdog_stop(watchdog);
     PT_ASSERT_EQ_INT(zero, -1);
     PT_ASSERT_EQ_INT(huge, -1);
+    PT_ASSERT(!flag_set(&expired));
+}
+
+PTEST(a_watchdog_with_a_long_deadline_stops_at_once)
+{
+    atomic_bool expired = false;
+    struct host_watchdog *const watchdog = host_watchdog_start(30, &expired);
+    PT_ASSERT(watchdog != NULL);
+    const uint64_t started = tsup_monotonic_milliseconds();
+    host_watchdog_stop(watchdog); /* a stop that does not wake the thread waits out its 30 seconds */
+    const uint64_t elapsed = tsup_monotonic_milliseconds() - started;
+    PT_ASSERT(elapsed < MILLISECONDS_PER_SECOND);
     PT_ASSERT(!flag_set(&expired));
 }
 

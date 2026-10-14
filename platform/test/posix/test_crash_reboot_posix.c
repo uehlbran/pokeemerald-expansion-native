@@ -17,6 +17,7 @@
 #include "crash_reboot.h"
 #include "crash_reboot_fixture.h"
 #include "gba_memmap.h"
+#include "posix_child.h"
 #include "posix_support.h"
 #include "ptest.h"
 

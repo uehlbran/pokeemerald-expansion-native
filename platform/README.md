@@ -80,9 +80,10 @@ run everywhere. A fixture two parts share is a header beside them
 `host.mk`; it edits no existing test. Windows has no `test/windows/` yet:
 `test_support.h` names the calls it will need, and a port that lacks a test's
 OS part runs the portable part only, so the binary count is lower there, not
-a skipped test. A child that forks does so with the time limit's watchdog
-thread idle (`host_watchdog_start` returns once the thread waits), and never
-uses it.
+a skipped test. A child is forked by `psup_run_child` (`posix/posix_child.h`), which stops the
+time limit's watchdog thread (`ptest_pause_watchdog`, a join) before the fork
+and starts it again after, in the parent: the child inherits no thread and no
+handle to one.
 
 ## ptest.h
 
