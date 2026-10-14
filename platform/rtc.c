@@ -45,9 +45,6 @@
  *  - Not modelled: the interrupt outputs, the test-mode flag (second bit 7),
  *    the serial protocol, and write protection.
  */
-#define _FILE_OFFSET_BITS 64 /* with _TIME_BITS: 64-bit time_t on 32-bit builds, */
-#define _TIME_BITS 64        /* so the 2038..2099 epoch seconds the tests use convert */
-
 #include "rtc.h"
 
 #include <stdbool.h>
@@ -59,7 +56,7 @@
 #include "rtc_calendar.h"
 #include "rtc_offset_store.h"
 
-_Static_assert(sizeof(time_t) >= 8, "rtc.c needs a 64-bit time_t (_TIME_BITS=64)");
+_Static_assert(sizeof(time_t) >= 8, "rtc.c needs a 64-bit time_t (-D_TIME_BITS=64, platform/Makefile)");
 
 #define TM_YEAR_BASE 1900
 
