@@ -508,6 +508,38 @@ static int watchdog_await_start(struct host_watchdog *watchdog)
     return error;
 }
 
+/* A watchdog with its lock and its condition variable and no thread yet, or
+ * NULL after a report. */
+static struct host_watchdog *watchdog_create(atomic_bool *expired)
+{
+    struct host_watchdog *const watchdog = calloc(1, sizeof *watchdog);
+    if (watchdog == NULL) {
+        watchdog_report("calloc", ENOMEM);
+        return NULL;
+    }
+    watchdog->expired = expired;
+    const int error = pthread_mutex_init(&watchdog->lock, NULL);
+    if (error != 0) {
+        watchdog_report("pthread_mutex_init", error);
+        free(watchdog);
+        return NULL;
+    }
+    if (watchdog_init_condition(&watchdog->changed) != 0) {
+        (void)pthread_mutex_destroy(&watchdog->lock); /* already failing; the condition reported */
+        free(watchdog);
+        return NULL;
+    }
+    return watchdog;
+}
+
+/* Undoes watchdog_create, once no thread of the watchdog's is left. */
+static void watchdog_release(struct host_watchdog *watchdog)
+{
+    (void)pthread_cond_destroy(&watchdog->changed); /* nothing waits on it any more */
+    (void)pthread_mutex_destroy(&watchdog->lock);
+    free(watchdog);
+}
+
 struct host_watchdog *host_watchdog_start(unsigned seconds, atomic_bool *expired)
 {
     if (seconds == 0 || seconds > WATCHDOG_MAX_SECONDS || expired == NULL) {
@@ -515,38 +547,20 @@ struct host_watchdog *host_watchdog_start(unsigned seconds, atomic_bool *expired
                       WATCHDOG_MAX_SECONDS);
         return NULL;
     }
-    struct host_watchdog *const watchdog = calloc(1, sizeof *watchdog);
-    if (watchdog == NULL) {
-        watchdog_report("calloc", ENOMEM);
+    struct host_watchdog *const watchdog = watchdog_create(expired);
+    if (watchdog == NULL)
+        return NULL;
+    if (watchdog_set_deadline(watchdog, seconds) != 0 || watchdog_create_thread(watchdog) != 0) { /* reported */
+        watchdog_release(watchdog);
         return NULL;
     }
-    watchdog->expired = expired;
-    int error = pthread_mutex_init(&watchdog->lock, NULL);
+    const int error = watchdog_await_start(watchdog);
     if (error != 0) {
-        watchdog_report("pthread_mutex_init", error);
-        free(watchdog);
+        watchdog_report("waiting for the watchdog thread to start", error);
+        host_watchdog_stop(watchdog); /* the thread exists: end it before freeing */
         return NULL;
     }
-    error = watchdog_init_condition(&watchdog->changed);
-    if (error != 0) {
-        (void)pthread_mutex_destroy(&watchdog->lock); /* already failing */
-        free(watchdog);
-        return NULL;
-    }
-    error = watchdog_set_deadline(watchdog, seconds) == 0 ? 0 : EINVAL; /* reported by itself */
-    if (error == 0) {
-        error = watchdog_create_thread(watchdog);
-        if (error == 0 && watchdog_await_start(watchdog) != 0) {
-            host_watchdog_stop(watchdog); /* the thread exists: end it before freeing */
-            return NULL;
-        }
-        if (error == 0)
-            return watchdog;
-    }
-    (void)pthread_cond_destroy(&watchdog->changed); /* already failing */
-    (void)pthread_mutex_destroy(&watchdog->lock);
-    free(watchdog);
-    return NULL;
+    return watchdog;
 }
 
 int host_watchdog_restart(struct host_watchdog *watchdog, unsigned seconds)
@@ -588,7 +602,5 @@ void host_watchdog_stop(struct host_watchdog *watchdog)
     }
     if (watchdog->failure != 0)
         watchdog_report(watchdog->failed_call, watchdog->failure);
-    (void)pthread_cond_destroy(&watchdog->changed); /* nothing waits on it any more */
-    (void)pthread_mutex_destroy(&watchdog->lock);
-    free(watchdog);
+    watchdog_release(watchdog);
 }
