@@ -249,23 +249,27 @@ records each run.
 **Linux CI.** `.github/workflows/native.yml`, one file in two tiers
 (docs/DECISIONS.md, "CI runs in two tiers"). The per-push tier (pushes to
 `main` and `ci/**`; docs-only pushes ignored; a newer push cancels the
-older run) builds the 64-bit executable, runs the platform gate, both
-64-bit replays and the plain 64-bit suite; the nightly tier (a cron at
-04:17 UTC and by hand) runs five parallel jobs: the GBA ROM with its
-sha1, the 32-bit plain job, the two sanitized jobs, and the cross-width
-save at both widths plain and sanitized. On the runner image the 32-bit
-SDL2 development package cannot be installed (its glib dependency clashes
-with the image's), so the jobs that build or test 32 bits take the i386
-headers and link files from the downloaded package without its
-dependencies; and the platform gate runs after the build, which generates
-the game headers the lint reads. Measured on 2026-10-14: the per-push job
-took 31 minutes cold (run 38563489510) and 20 minutes with its cache warm
-(38567630409), above the 15-minute target because ccache cannot cache the
-game's C files (the compile reads its input from a pipe, 92% of calls
-uncacheable; only the platform library, 321 calls, hits); the nightly
-run (38567248883) took 8 minutes for the GBA job, 24 for the 64-bit
-sanitized job, 26 for the 32-bit plain job, 23 for the cross-width job and
-41 for the 32-bit sanitized job, so about 41 minutes wall clock.
+older run) builds the 64-bit executable, runs the platform gate and both
+64-bit replays; the nightly tier (a cron at 04:17 UTC and by hand) runs
+six parallel jobs: the GBA ROM with its sha1, the plain 64-bit build with
+its suite (`native64`), the 32-bit plain job, the two sanitized jobs, and
+the cross-width save at both widths plain and sanitized. On the runner
+image the 32-bit SDL2 development package cannot be installed (its glib
+dependency clashes with the image's), so the jobs that build or test 32
+bits take the i386 headers and link files from the downloaded package
+without its dependencies; and the platform gate runs after the build,
+which generates the game headers the lint reads. Measured on 2026-10-14:
+the per-push job took 591 s warm (run 38573169538: prerequisites 48 s,
+build 322 s, platform gate 163 s, replays 46 s) and, with the suite still
+in it, 31 minutes cold (38563489510) and 20 minutes warm (38567630409).
+The suite moved to the nightly tier because it alone is 10 minutes warm on
+the runner against a 15-minute target, and the orchestrator's local gate
+runs it before every merge. The nightly run 38567248883 took, per job,
+8 minutes for the GBA ROM, 24 for the 64-bit sanitized job, 26 for the
+32-bit plain job, 23 for the cross-width job and 41 for the 32-bit
+sanitized job (about 41 minutes wall clock); `native64` was added after
+that run and has not run yet. ccache hits only the platform library, not
+the game's C files (they compile from a pipe).
 
 **The loader probes** (`research/probes/`, a manual workflow on the
 Windows and macOS runners, two runs on 2026-10-09; the README has the
