@@ -119,8 +119,8 @@ listing, with the ELF one (`check_flat.py`): the bytes, each relocation's offset
 width, symbol and addend, the symbols and the alignment. Neither changes the Linux
 build; both make the 64-bit data objects and their three checks first, and `BITS`
 is 64 for them. A conversion and check of everything takes about 6 s per target with
-`-j32`. Their self-tests, in `make -C platform glue-test` and so in the gate, need
-clang too.
+`-j32`. Their self-tests, in `make -C platform glue-test` and so in the gate, assemble
+small objects with GNU as and with clang, so the gate needs both.
 
 ```
 make -f Makefile.native -j32 data-flat TARGET=macho-x86_64    # or TARGET=coff-x86_64
