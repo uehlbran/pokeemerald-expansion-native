@@ -8,17 +8,16 @@
  */
 #include "ptest.h"
 #include "symbols.h"
+#include "test_support.h"
 
 #include <inttypes.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <unistd.h>
 
 /* Room for every fixture map below, and for a temporary file's path. */
 #define MAP_TEXT_SIZE 1024u
-#define TEMP_PATH_SIZE 512u
 
 /* Named, global and never inlined, so that they have a symbol of their own. */
 __attribute__((noinline)) int symbols_test_function_alpha(int x)
@@ -53,18 +52,14 @@ static void add_line(char *text, uintptr_t address, const char *name)
  * removed again. 99: the fixture could not be written. */
 static int load_bytes(const char *bytes, size_t size)
 {
-    const char *base = getenv("TMPDIR");
-    char path[TEMP_PATH_SIZE];
-    const int length = snprintf(path, sizeof path, "%s/test_symbols_XXXXXX", base != NULL ? base : "/tmp");
-    if (length <= 0 || (size_t)length >= sizeof path)
+    char path[TSUP_PATH_SIZE];
+    if (!tsup_make_temp_file(path, sizeof path, "test_symbols"))
         return 99;
-    const int fd = mkstemp(path);
-    if (fd < 0)
-        return 99;
-    const bool written = write(fd, bytes, size) == (ssize_t)size;
-    const bool closed = close(fd) == 0;
+    FILE *const file = fopen(path, "wb");
+    const bool written = file != NULL && fwrite(bytes, 1, size, file) == size;
+    const bool closed = file != NULL && fclose(file) == 0;
     const int result = written && closed ? symbols_load(path) : 99;
-    (void)unlink(path);
+    (void)tsup_remove_file(path);
     return result;
 }
 

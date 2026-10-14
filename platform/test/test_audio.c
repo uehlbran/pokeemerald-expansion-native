@@ -10,6 +10,7 @@
 
 #include "audio.h"
 #include "ptest.h"
+#include "test_support.h"
 
 #define TEST_RATE_HZ 32768u
 #define BYTES_PER_SAMPLE_FRAME 4u /* signed 16-bit, two channels */
@@ -19,7 +20,7 @@ static int16_t samples[TEST_SAMPLE_FRAMES * 2u];
 
 static void use_dummy_driver(void)
 {
-    PT_ASSERT(setenv("SDL_AUDIODRIVER", "dummy", 1) == 0);
+    PT_ASSERT(tsup_set_environment("SDL_AUDIODRIVER", "dummy"));
 }
 
 PTEST(queue_bound_is_four_video_frames_of_samples)
@@ -134,7 +135,7 @@ PTEST(silent_mode_counts_frames_without_a_device)
 
 PTEST(failed_driver_init_fails_and_leaves_no_subsystem)
 {
-    PT_ASSERT(setenv("SDL_AUDIODRIVER", "no_such_driver", 1) == 0);
+    PT_ASSERT(tsup_set_environment("SDL_AUDIODRIVER", "no_such_driver"));
     int result = audio_init(TEST_RATE_HZ, false);
     Uint32 inited = SDL_WasInit(SDL_INIT_AUDIO);
     audio_shutdown();

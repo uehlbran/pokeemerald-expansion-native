@@ -13,7 +13,6 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
-#include <unistd.h>
 
 #include <gba/types.h>
 #include <gba/flash_internal.h>
@@ -21,6 +20,7 @@
 #include "flash.h"
 #include "gba_memmap.h"
 #include "ptest.h"
+#include "test_support.h"
 
 #define KIB 1024u
 #define SECTOR_BYTES (4 * KIB) /* GBATEK: "Erase 4Kbyte Sector" */
@@ -443,28 +443,7 @@ struct report {
 static struct report stderr_of(void (*action)(void *), void *context)
 {
     struct report report = {.captured = false, .text = ""};
-    FILE *const file = tmpfile();
-    if (file == NULL)
-        return report;
-    const int saved = fflush(stderr) == 0 ? dup(STDERR_FILENO) : -1;
-    if (saved < 0 || dup2(fileno(file), STDERR_FILENO) < 0) {
-        if (saved >= 0)
-            (void)close(saved); /* nothing redirected yet; captured stays false */
-        (void)fclose(file);
-        return report;
-    }
-    action(context);
-    /* stderr is put back whether or not the flush worked. */
-    bool restored = fflush(stderr) == 0;
-    restored = dup2(saved, STDERR_FILENO) >= 0 && restored;
-    restored = close(saved) == 0 && restored;
-    if (restored && fseek(file, 0, SEEK_SET) == 0) {
-        const size_t length = fread(report.text, 1, sizeof report.text - 1, file);
-        report.text[length] = '\0';
-        report.captured = !ferror(file) && length < sizeof report.text - 1;
-    }
-    if (fclose(file) != 0)
-        report.captured = false;
+    report.captured = tsup_capture_stderr(action, context, report.text, sizeof report.text);
     return report;
 }
 

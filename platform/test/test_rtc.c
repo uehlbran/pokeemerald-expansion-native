@@ -4,17 +4,15 @@
  * Real-Time Clock (RTC)" and expansion's use of it (src/siirtc.c, src/rtc.c).
  * Time is injected; TZ is pinned so expected values are exact.
  */
-#define _GNU_SOURCE
 #include "ptest.h"
 #include "rtc.h"
+#include "test_support.h"
 
 #include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
 #include <string.h>
-#include <sys/stat.h>
-#include <unistd.h>
 
 #define EPOCH_2024_03_15_13_45_30 1710510330LL /* Friday */
 #define EPOCH_2000_01_01 946684800LL           /* Saturday */
@@ -39,7 +37,7 @@ static int64_t fake_source(void)
     return g_now;
 }
 
-static char g_dir[PATH_SIZE / 2];
+static char g_dir[PATH_SIZE / 2]; /* PATH_SIZE >= TSUP_PATH_SIZE */
 static char g_path[PATH_SIZE];
 static char g_tmp_path[PATH_SIZE];
 
@@ -47,22 +45,20 @@ static void remove_scratch(void)
 {
     if (g_dir[0] == '\0')
         return;
-    (void)unlink(g_path);
-    (void)unlink(g_tmp_path);
-    (void)rmdir(g_tmp_path);
-    (void)rmdir(g_path);
-    (void)rmdir(g_dir);
+    (void)tsup_remove_file(g_path);
+    (void)tsup_remove_file(g_tmp_path);
+    (void)tsup_remove_directory(g_tmp_path);
+    (void)tsup_remove_directory(g_path);
+    (void)tsup_remove_directory(g_dir);
     g_dir[0] = '\0';
 }
 
 /* Fresh scratch directory per test; the previous one is removed first. */
 static void new_scratch(void)
 {
-    const char *base = getenv("TMPDIR");
     remove_scratch();
-    (void)snprintf(g_dir, sizeof g_dir, "%s/ptest_rtc_XXXXXX", base != NULL ? base : "/tmp");
-    if (mkdtemp(g_dir) == NULL) {
-        perror("test_rtc: mkdtemp");
+    if (!tsup_make_temp_directory(g_dir, sizeof g_dir, "ptest_rtc")) {
+        perror("test_rtc: tsup_make_temp_directory");
         exit(2);
     }
     (void)snprintf(g_path, sizeof g_path, "%s/offset", g_dir);
@@ -93,13 +89,12 @@ static void read_file(const char *path, char *buf, size_t size)
 
 static int file_exists(const char *path)
 {
-    struct stat st;
-    return stat(path, &st) == 0;
+    return tsup_exists(path);
 }
 
 static void pin_utc(void)
 {
-    setenv("TZ", "UTC", 1);
+    PT_ASSERT(tsup_set_environment("TZ", "UTC"));
     tzset();
 }
 
@@ -239,7 +234,7 @@ PTEST(first_run_chip_time_is_host_local_time)
 {
     struct rtc_datetime d;
     /* POSIX TZ "XXX-2" is two hours east of UTC: no tz database needed. */
-    setenv("TZ", "XXX-2", 1);
+    PT_ASSERT(tsup_set_environment("TZ", "XXX-2"));
     tzset();
     g_now = EPOCH_2024_03_15_13_45_30;
     PT_ASSERT_EQ_INT(rtc_init(fake_source, NULL), 0);
@@ -252,7 +247,7 @@ PTEST(first_run_chip_time_is_host_local_time)
 PTEST(rtc_init_utc_first_run_ignores_the_host_zone)
 {
     struct rtc_datetime d;
-    setenv("TZ", "XXX-2", 1);
+    PT_ASSERT(tsup_set_environment("TZ", "XXX-2"));
     tzset();
     g_now = EPOCH_2024_03_15_13_45_30;
     PT_ASSERT_EQ_INT(rtc_init_utc(fake_source, NULL), 0);
@@ -367,7 +362,7 @@ static void expect_first_run_offset(const char *tz, int64_t now, const char *exp
 {
     char text[64];
     new_scratch();
-    setenv("TZ", tz, 1);
+    PT_ASSERT(tsup_set_environment("TZ", tz));
     tzset();
     g_now = now;
     PT_ASSERT_EQ_INT(rtc_init(fake_source, g_path), 0);
@@ -391,7 +386,7 @@ PTEST(existing_offset_file_wins_over_the_host_zone)
     struct rtc_datetime out;
     new_scratch();
     write_file(g_path, "3600\n");
-    setenv("TZ", "UTC+3", 1);
+    PT_ASSERT(tsup_set_environment("TZ", "UTC+3"));
     tzset();
     g_now = EPOCH_2024_03_15_13_45_30;
     PT_ASSERT_EQ_INT(rtc_init(fake_source, g_path), 0);
@@ -458,7 +453,7 @@ PTEST(unreadable_offset_path_is_an_error)
 {
     new_scratch();
     pin_utc();
-    PT_ASSERT_EQ_INT(mkdir(g_path, 0700), 0); /* a directory where the file should be */
+    PT_ASSERT(tsup_make_directory(g_path)); /* a directory where the file should be */
     g_now = EPOCH_2024_03_15_13_45_30;
     PT_ASSERT_EQ_INT(rtc_init(fake_source, g_path), -1);
     rtc_shutdown();
@@ -853,7 +848,7 @@ PTEST(failed_write_leaves_the_old_file_and_the_offset_intact)
     PT_ASSERT_EQ_INT(rtc_init(fake_source, g_path), 0);
     PT_ASSERT_EQ_INT(rtc_set_datetime(&first), 0);
     /* A directory squats on the temporary name, so opening it for writing fails. */
-    PT_ASSERT_EQ_INT(mkdir(g_tmp_path, 0700), 0);
+    PT_ASSERT(tsup_make_directory(g_tmp_path));
     PT_ASSERT_EQ_INT(rtc_set_datetime(&second), -1);
     PT_ASSERT_EQ_INT(rtc_set_time(&first), -1);
     PT_ASSERT_EQ_INT(rtc_reset(), -1);
@@ -872,8 +867,9 @@ PTEST(failed_rename_removes_the_temporary_file_and_reports_an_error)
     g_now = EPOCH_2024_03_15_13_45_30;
     PT_ASSERT_EQ_INT(rtc_init(fake_source, g_path), 0);
     /* The target becomes a directory after init: rename(2) onto it fails. */
-    PT_ASSERT_EQ_INT(unlink(g_path), 0);
-    PT_ASSERT_EQ_INT(mkdir(g_path, 0700), 0);
+    PT_ASSERT(tsup_exists(g_path));
+    PT_ASSERT(tsup_remove_file(g_path));
+    PT_ASSERT(tsup_make_directory(g_path));
     PT_ASSERT_EQ_INT(rtc_set_datetime(&first), -1);
     PT_ASSERT(!file_exists(g_tmp_path));
     PT_ASSERT_EQ_INT(rtc_set_datetime(&second), -1);

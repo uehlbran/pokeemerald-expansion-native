@@ -5,24 +5,21 @@
  */
 #include "ptest.h"
 #include "options.h"
+#include "test_support.h"
 
-#include <fcntl.h>
 #include <stdlib.h>
 #include <string.h>
-#include <unistd.h>
 
 #define OPTIONS_TEST_MAX_ARGS 31
 
 /* Parses a NULL-terminated argument list (argv[0] added), with the error
- * messages and usage text sent to /dev/null: tests check the result, and the
+ * messages and usage text sent to the null device: tests check the result, and the
  * text is checked directly in the last test. */
 static enum options_error parse(struct options *out, const char *const *args)
 {
-    (void)fflush(stderr);
-    const int saved_stderr = dup(STDERR_FILENO);
-    const int null_fd = open("/dev/null", O_WRONLY);
-    if (saved_stderr >= 0 && null_fd >= 0)
-        dup2(null_fd, STDERR_FILENO);
+    FILE *const null_device = fopen(tsup_null_device(), "w");
+    struct tsup_stderr saved_stderr;
+    const bool silenced = null_device != NULL && tsup_redirect_stderr(&saved_stderr, null_device);
     char *argv[OPTIONS_TEST_MAX_ARGS + 1] = {"pokeemerald-native"};
     int argc = 1;
     for (; *args != NULL; args++) {
@@ -33,13 +30,10 @@ static enum options_error parse(struct options *out, const char *const *args)
         argv[argc++] = (char *)(uintptr_t)*args;
     }
     const enum options_error result = options_parse(argc, argv, out);
-    (void)fflush(stderr);
-    if (saved_stderr >= 0) {
-        dup2(saved_stderr, STDERR_FILENO);
-        close(saved_stderr);
-    }
-    if (null_fd >= 0)
-        close(null_fd);
+    if (silenced)
+        (void)tsup_restore_stderr(&saved_stderr);
+    if (null_device != NULL)
+        (void)fclose(null_device);
     return result;
 }
 

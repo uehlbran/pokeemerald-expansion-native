@@ -24,22 +24,30 @@
  *                           caller supplies (for testing the runner).
  *
  * Timeout: each test has a wall-clock limit of PTEST_DEFAULT_TIMEOUT_SECONDS
- * (60), so that a hanging test fails instead of blocking the suite. The
+ * (60), so that a stuck test fails instead of blocking the suite. The
  * environment variable PTEST_TIMEOUT_SECONDS (a positive whole number of
  * seconds; anything else is ignored) overrides it for a run, for a slow
- * machine or a debugger session. When the limit passes, SIGALRM abandons the
- * test, which is reported as failed ("timed out after N seconds"), and the
- * next test runs; the binary is not killed. The abandoned test's cleanup does
- * not run, so a test that timed out may leave module state, open files and
- * locks behind: later failures in the same binary are suspect, LeakSanitizer
- * may report what it leaked, and the first failure is the one to read. The
- * reported location is the runner's line in this header; the message carries
- * the test's name.
- * ptest_set_timeout(seconds) changes the limit of the running test (a test
- * that is legitimately long, or the test of this mechanism). The runner owns
- * SIGALRM and the process's alarm(2) timer while it runs; a test that needs
- * its own alarm (test_crash_reboot's children) must not run it in the runner's
- * process.
+ * machine or a debugger session. A watchdog (host_thread.h: a thread that
+ * only sets an atomic flag when the limit passes; no signal, no timer of the
+ * process) keeps the limit, and the test's own thread looks at the flag: in
+ * every assertion, and when the test returns. When it finds the limit past, it
+ * abandons the test, which is reported as failed ("timed out after N
+ * seconds"), and the next test runs; the binary is not killed. The abandoned
+ * test's cleanup does not run, so a test that timed out may leave module
+ * state, open files and locks behind: later failures in the same binary are
+ * suspect, LeakSanitizer may report what it leaked, and the first failure is
+ * the one to read. The reported location is the runner's line in this header;
+ * the message carries the test's name.
+ * Not covered: a test that never reaches an assertion after the limit (an
+ * endless loop or a blocking call with none in it) is not abandoned, because
+ * nothing but the test's own thread may touch the test's state. Such a test
+ * hangs the binary: give a loop an assertion, and bound a blocking call by
+ * its own timeout (test/posix/posix_support.h has a bounded child and a
+ * bounded read); the CI job's own time limit is the backstop.
+ * ptest_set_timeout(seconds) changes the limit of the running test, counted
+ * from the call (a test that is legitimately long, or the test of this
+ * mechanism). The runner owns no signal and no process timer, so a test may
+ * use its own alarm (test_crash_reboot's children do).
  *
  * The registry is static: a test binary is one translation unit including
  * this header. Tests run in definition order with GCC, but must not rely on it.
@@ -49,7 +57,7 @@
 
 #include <inttypes.h>
 #include <setjmp.h>
-#include <signal.h>
+#include <stdatomic.h>
 #include <stdarg.h>
 #include <stdbool.h>
 #include <stddef.h>
@@ -57,7 +65,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <unistd.h>
+
+#include "host_thread.h"
 
 #define PTEST_MAX_TESTS 256                       /* registry capacity of one test binary */
 #define PTEST_MESSAGE_SIZE 512                    /* one failure line, with its terminator; longer ones are cut */
@@ -87,6 +96,31 @@ static struct {
     struct ptest_outcome outcome;
 } ptest_current;
 
+/* The per-test limit in force: the default, the environment's, or the running test's own. */
+static unsigned ptest_timeout_seconds;
+
+/* The running test's watchdog (NULL between tests, or if it could not start),
+ * the flag it sets when the limit passes, and where an abandoned test returns
+ * to: the running ptest_run_cases' frame. All three are the test thread's
+ * own; only the flag is written by another thread, and only to set it. */
+static struct host_watchdog *ptest_watchdog;
+static atomic_bool *ptest_expired;
+static jmp_buf *ptest_timeout_target;
+
+/* True once the watchdog has set the flag. Relaxed: the flag carries no data
+ * (host_thread.h), so there is nothing to order. */
+static inline bool ptest_limit_passed(void)
+{
+    return ptest_expired != NULL && atomic_load_explicit(ptest_expired, memory_order_relaxed);
+}
+
+/* Called by every assertion: abandons the running test if its limit passed. */
+static inline void ptest_check_limit(void)
+{
+    if (ptest_limit_passed() && ptest_timeout_target != NULL)
+        longjmp(*ptest_timeout_target, 1);
+}
+
 static inline void ptest_register_in(struct ptest_registry *registry, const char *name, void (*run)(void))
 {
     if (registry->count == PTEST_MAX_TESTS)
@@ -115,6 +149,7 @@ __attribute__((format(printf, 3, 4))) static inline void ptest_fail_at(const cha
 static inline bool ptest_check_u32(const char *file, int line, const char *a_text, const char *e_text, uint32_t a,
                                    uint32_t e)
 {
+    ptest_check_limit();
     if (a != e)
         ptest_fail_at(file, line, "%s == %s: actual 0x%08" PRIX32 ", expected 0x%08" PRIX32, a_text, e_text, a, e);
     return a == e;
@@ -123,6 +158,7 @@ static inline bool ptest_check_u32(const char *file, int line, const char *a_tex
 static inline bool ptest_check_int(const char *file, int line, const char *a_text, const char *e_text, intmax_t a,
                                    intmax_t e)
 {
+    ptest_check_limit();
     if (a != e)
         ptest_fail_at(file, line, "%s == %s: actual %" PRIdMAX ", expected %" PRIdMAX, a_text, e_text, a, e);
     return a == e;
@@ -131,6 +167,7 @@ static inline bool ptest_check_int(const char *file, int line, const char *a_tex
 static inline bool ptest_check_ptr(const char *file, int line, const char *a_text, const char *e_text, const void *a,
                                    const void *e)
 {
+    ptest_check_limit();
     if (a != e)
         ptest_fail_at(file, line, "%s == %s: actual %p, expected %p", a_text, e_text, a, e);
     return a == e;
@@ -140,6 +177,7 @@ static inline bool ptest_check_ptr(const char *file, int line, const char *a_tex
 static inline bool ptest_check_str(const char *file, int line, const char *a_text, const char *e_text, const char *a,
                                    const char *e)
 {
+    ptest_check_limit();
     const bool equal = a == NULL || e == NULL ? a == e : strcmp(a, e) == 0;
     if (!equal)
         ptest_fail_at(file, line, "%s == %s: actual \"%s\", expected \"%s\"", a_text, e_text, a ? a : "(null)",
@@ -150,6 +188,7 @@ static inline bool ptest_check_str(const char *file, int line, const char *a_tex
 static inline bool ptest_check_mem(const char *file, int line, const char *a_text, const char *e_text, const void *a,
                                    const void *e, size_t n)
 {
+    ptest_check_limit();
     if (n > 0 && (a == NULL || e == NULL)) {
         ptest_fail_at(file, line, "%s == %s over %zu bytes: null pointer", a_text, e_text, n);
         return false;
@@ -176,12 +215,6 @@ static inline struct ptest_outcome ptest_capture(void (*body)(void *), void *con
     return captured;
 }
 
-/* The per-test limit in force: the default, the environment's, or the running test's own. */
-static unsigned ptest_timeout_seconds;
-
-/* Where the timeout's SIGALRM returns to: the running ptest_run_cases' frame. */
-static sigjmp_buf *ptest_timeout_target;
-
 /* The default limit: PTEST_TIMEOUT_ENV if it holds a positive whole number
  * that fits an unsigned, else PTEST_DEFAULT_TIMEOUT_SECONDS. */
 static inline unsigned ptest_default_timeout(void)
@@ -199,15 +232,8 @@ static inline unsigned ptest_default_timeout(void)
 /* Gives the running test seconds (more than 0) from now to finish. */
 static inline void ptest_set_timeout(unsigned seconds)
 {
-    ptest_timeout_seconds = seconds;
-    (void)alarm(seconds); /* returns the previous remainder, of no use here */
-}
-
-static void ptest_on_alarm(int signal_number)
-{
-    (void)signal_number;
-    if (ptest_timeout_target != NULL)
-        siglongjmp(*ptest_timeout_target, 1);
+    if (host_watchdog_restart(ptest_watchdog, seconds) == 0)
+        ptest_timeout_seconds = seconds;
 }
 
 /* Runs the cases, reports to out, returns the exit status (0 = all passed). */
@@ -216,27 +242,29 @@ static inline int ptest_run_cases(const struct ptest_case *cases, size_t count, 
     const char *const outer_name = ptest_current.name;
     const struct ptest_outcome outer = ptest_current.outcome;
     const unsigned outer_timeout = ptest_timeout_seconds;
-    sigjmp_buf *const outer_target = ptest_timeout_target;
-    const unsigned outer_alarm = alarm(0); /* a run inside a test suspends that test's timer */
-    struct sigaction handler = {.sa_handler = ptest_on_alarm};
-    struct sigaction outer_handler;
-    (void)sigemptyset(&handler.sa_mask);
-    const bool handled = sigaction(SIGALRM, &handler, &outer_handler) == 0;
-    sigjmp_buf jump;
+    struct host_watchdog *const outer_watchdog = ptest_watchdog; /* a run inside a test leaves that test's limit be */
+    atomic_bool *const outer_expired = ptest_expired;
+    jmp_buf *const outer_target = ptest_timeout_target;
+    atomic_bool expired;
+    jmp_buf jump;
     ptest_timeout_target = &jump;
     volatile size_t failed = 0;
     for (volatile size_t i = 0; i < count; i++) {
         ptest_current.name = cases[i].name;
         ptest_current.outcome = (struct ptest_outcome){.failed = false};
         ptest_timeout_seconds = ptest_default_timeout();
-        if (sigsetjmp(jump, 1) == 0) {
-            if (handled)
-                (void)alarm(ptest_timeout_seconds);
+        atomic_init(&expired, false);
+        ptest_expired = &expired;
+        ptest_watchdog = host_watchdog_start(ptest_timeout_seconds, &expired);
+        if (setjmp(jump) == 0) {
             cases[i].run();
+            ptest_check_limit(); /* a test that finished late has failed too */
         } else {
             ptest_fail_at(__FILE__, __LINE__, "timed out after %u seconds", ptest_timeout_seconds);
         }
-        (void)alarm(0);
+        host_watchdog_stop(ptest_watchdog); /* joined: no thread of the test's is left */
+        ptest_watchdog = NULL;
+        ptest_expired = NULL;
         if (ptest_current.outcome.failed) {
             failed++;
             (void)fprintf(out, "FAIL %s\n", ptest_current.outcome.message); /* ferror below */
@@ -244,11 +272,9 @@ static inline int ptest_run_cases(const struct ptest_case *cases, size_t count, 
     }
     (void)fprintf(out, "%zu passed, %zu failed\n", count - failed, (size_t)failed); /* ferror below */
     ptest_timeout_target = outer_target;
+    ptest_expired = outer_expired;
+    ptest_watchdog = outer_watchdog;
     ptest_timeout_seconds = outer_timeout;
-    if (handled)
-        (void)sigaction(SIGALRM, &outer_handler, NULL);
-    if (outer_alarm > 0)
-        (void)alarm(outer_alarm);
     ptest_current.name = outer_name;
     ptest_current.outcome = outer;
     const bool output_ok = fflush(out) == 0 && !ferror(out);
@@ -293,11 +319,13 @@ static inline int ptest_main_for(const struct ptest_registry *registry, FILE *ou
 
 #define PT_FAIL(message)                                             \
     do {                                                             \
+        ptest_check_limit();                                         \
         ptest_fail_at(__FILE__, __LINE__, "PT_FAIL: %s", (message)); \
         return;                                                      \
     } while (0)
 #define PT_ASSERT(cond)                                                \
     do {                                                               \
+        ptest_check_limit();                                           \
         if (!(cond)) {                                                 \
             ptest_fail_at(__FILE__, __LINE__, "PT_ASSERT(%s)", #cond); \
             return;                                                    \

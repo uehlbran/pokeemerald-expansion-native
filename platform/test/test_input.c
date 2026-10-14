@@ -22,6 +22,7 @@
 #include "gba_memmap.h"
 #include "input.h"
 #include "ptest.h"
+#include "test_support.h"
 
 #define KEYINPUT_ADDRESS (GBA_IO_BASE + UINT32_C(0x130))
 #define ALL_TEN_KEYS UINT16_C(0x03FF)
@@ -47,7 +48,7 @@ _Static_assert(INPUT_KEYS_MASK == KEYS_MASK, "mask");
 
 static void headless_sdl_init(void)
 {
-    setenv("SDL_VIDEODRIVER", "dummy", 1);
+    PT_ASSERT(tsup_set_environment("SDL_VIDEODRIVER", "dummy"));
     PT_ASSERT(SDL_Init(SDL_INIT_VIDEO) == 0);
 }
 
@@ -555,7 +556,8 @@ static int pad_is_open(const struct vpad *pad)
 
 static int vpad_sdl_init(void)
 {
-    setenv("SDL_VIDEODRIVER", "dummy", 1);
+    if (!tsup_set_environment("SDL_VIDEODRIVER", "dummy"))
+        return -1;
     return SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMECONTROLLER);
 }
 

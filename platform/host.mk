@@ -16,6 +16,15 @@ ifeq ($(HOST_OS),Linux)
 
 HOST_SRCS := host_posix.c host_linux.c
 
+# The directories under test/ with the tests only this OS can run, widest
+# family first (posix: fork, signals, pipes, file permissions; linux: what only
+# Linux has, /proc and glibc's pthread_getattr_np), and the one of them that
+# holds the support (test/test_support.h's implementation, support.c). macOS
+# will name posix and darwin; Windows its own. A test directory is built for
+# its OS and no other: see README.md, "Tests that need an operating system".
+HOST_TEST_DIRS := posix linux
+HOST_TEST_SUPPORT_DIR := posix
+
 # $(call write_symbol_map,EXECUTABLE,MAP): the function map symbols.c reads
 # to name the game's callbacks (symbols.h has the format), written by the
 # executable's own link recipe, so that the two never part. nm's System V

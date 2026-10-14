@@ -19,8 +19,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/stat.h>
-#include <unistd.h>
 
 #include <gba/types.h>
 #include <gba/flash_internal.h>
@@ -28,6 +26,7 @@
 
 #include "audio.h"
 #include "dma.h"
+#include "test_support.h"
 #include "flash.h"
 #include "frame.h"
 #include "frame_pacer.h"
@@ -690,12 +689,10 @@ PTEST(removing_the_step_hook_and_frame_init_both_clear_it)
     stop();
 }
 
-/* A fresh directory for files, under $TMPDIR or /tmp. */
+/* A fresh directory for files, under the temporary directory. */
 static bool temp_dir(char *path, size_t size)
 {
-    const char *base = getenv("TMPDIR");
-    int n = snprintf(path, size, "%s/test_frame.XXXXXX", base != NULL ? base : "/tmp");
-    return n > 0 && (size_t)n < size && mkdtemp(path) != NULL;
+    return tsup_make_temp_directory(path, size, "test_frame");
 }
 
 PTEST(the_screenshot_is_the_last_frame)
@@ -705,15 +702,14 @@ PTEST(the_screenshot_is_the_last_frame)
     (void)snprintf(path, sizeof path, "%s/last.ppm", dir);
     PT_ASSERT(start(2, path, NULL));
     PT_ASSERT_EQ_INT(frame_run(), FRAME_CONTINUE);
-    struct stat info;
-    PT_ASSERT(stat(path, &info) != 0); /* not before the end */
+    PT_ASSERT(!tsup_exists(path)); /* not before the end */
     PT_ASSERT_EQ_INT(frame_run(), FRAME_EXIT);
-    PT_ASSERT_EQ_INT(stat(path, &info), 0);
-    PT_ASSERT(info.st_size == (off_t)(strlen("P6\n240 160\n255\n") + VIDEO_PIXEL_COUNT * 3u));
+    PT_ASSERT(tsup_exists(path));
+    PT_ASSERT(tsup_file_size(path) == (intmax_t)(strlen("P6\n240 160\n255\n") + VIDEO_PIXEL_COUNT * 3u));
     PT_ASSERT_EQ_INT(frame_exit_status(), 0);
     stop();
-    unlink(path);
-    rmdir(dir);
+    (void)tsup_remove_file(path);
+    (void)tsup_remove_directory(dir);
 }
 
 PTEST(an_unwritable_screenshot_fails_the_exit_status)
@@ -730,16 +726,15 @@ PTEST(a_flash_write_is_stored_at_the_frame_boundary)
     PT_ASSERT(temp_dir(dir, sizeof dir));
     (void)snprintf(path, sizeof path, "%s/game.sav", dir);
     PT_ASSERT(start(0, NULL, path));
-    struct stat info;
     PT_ASSERT_EQ_INT(frame_run(), FRAME_CONTINUE);
-    PT_ASSERT(stat(path, &info) != 0); /* nothing written, nothing stored */
+    PT_ASSERT(!tsup_exists(path)); /* nothing written, nothing stored */
     PT_ASSERT_EQ_U32(NativeFlash.eraseFlashSector(0), FLASH_STATUS_OK);
     PT_ASSERT_EQ_INT(frame_run(), FRAME_CONTINUE);
-    PT_ASSERT_EQ_INT(stat(path, &info), 0);
+    PT_ASSERT(tsup_exists(path));
     PT_ASSERT_EQ_INT(frame_flush_save(), 0); /* nothing new to store */
     stop();
-    unlink(path);
-    rmdir(dir);
+    (void)tsup_remove_file(path);
+    (void)tsup_remove_directory(dir);
 }
 
 PTEST(a_failed_save_store_is_retried_after_the_retry_wait_and_flush_reports_it)
@@ -749,21 +744,20 @@ PTEST(a_failed_save_store_is_retried_after_the_retry_wait_and_flush_reports_it)
     (void)snprintf(missing, sizeof missing, "%s/later", dir);
     (void)snprintf(path, sizeof path, "%s/later/game.sav", dir);
     PT_ASSERT(start(0, NULL, path));
-    struct stat info;
     PT_ASSERT_EQ_U32(NativeFlash.eraseFlashSector(0), FLASH_STATUS_OK);
     PT_ASSERT_EQ_INT(frame_run(), FRAME_CONTINUE); /* the store fails: no such directory */
-    PT_ASSERT(stat(path, &info) != 0);
+    PT_ASSERT(!tsup_exists(path));
     PT_ASSERT_EQ_INT(frame_flush_save(), -1); /* still pending, still failing, reported to main */
-    PT_ASSERT_EQ_INT(mkdir(missing, 0700), 0);
+    PT_ASSERT(tsup_make_directory(missing));
     for (uint32_t i = 0; i < FRAME_SAVE_RETRY_FRAMES; i++)
         PT_ASSERT_EQ_INT(frame_run(), FRAME_CONTINUE);
-    PT_ASSERT(stat(path, &info) != 0); /* still waiting out the retry frames */
+    PT_ASSERT(!tsup_exists(path)); /* still waiting out the retry frames */
     PT_ASSERT_EQ_INT(frame_run(), FRAME_CONTINUE);
-    PT_ASSERT_EQ_INT(stat(path, &info), 0); /* the retry stored it */
+    PT_ASSERT(tsup_exists(path)); /* the retry stored it */
     stop();
-    unlink(path);
-    rmdir(missing);
-    rmdir(dir);
+    (void)tsup_remove_file(path);
+    (void)tsup_remove_directory(missing);
+    (void)tsup_remove_directory(dir);
 }
 
 PTEST(flush_stores_a_pending_write_without_running_a_frame)
@@ -772,15 +766,14 @@ PTEST(flush_stores_a_pending_write_without_running_a_frame)
     PT_ASSERT(temp_dir(dir, sizeof dir));
     (void)snprintf(path, sizeof path, "%s/game.sav", dir);
     PT_ASSERT(start(0, NULL, path));
-    struct stat info;
     PT_ASSERT_EQ_INT(frame_flush_save(), 0); /* nothing written, nothing to store */
-    PT_ASSERT(stat(path, &info) != 0);
+    PT_ASSERT(!tsup_exists(path));
     PT_ASSERT_EQ_U32(NativeFlash.eraseFlashSector(0), FLASH_STATUS_OK);
     PT_ASSERT_EQ_INT(frame_flush_save(), 0);
-    PT_ASSERT_EQ_INT(stat(path, &info), 0);
+    PT_ASSERT(tsup_exists(path));
     stop();
-    unlink(path);
-    rmdir(dir);
+    (void)tsup_remove_file(path);
+    (void)tsup_remove_directory(dir);
 }
 
 PTEST(a_game_pak_interrupt_stops_the_loop_with_a_failure)

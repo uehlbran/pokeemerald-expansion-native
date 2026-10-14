@@ -424,45 +424,19 @@ PTEST(a_directory_at_the_save_path_is_rejected)
     struct scratch scratch;
     if (!scratch_create(&scratch))
         PT_FAIL("cannot create a scratch directory");
-    const bool made = mkdir(scratch.path, 0700) == 0;
+    const bool made = tsup_make_directory(scratch.path);
     set_image(0x07);
     const int init = save_file_init(scratch.path);
     const int load = save_file_load();
     const bool erased = image_is_erased();
     save_file_shutdown();
-    const bool directory_removed = rmdir(scratch.path) == 0;
+    const bool directory_removed = tsup_remove_directory(scratch.path);
     const bool removed = scratch_remove(&scratch);
     PT_ASSERT(made);
     PT_ASSERT_EQ_INT(init, SAVE_FILE_OK);
     PT_ASSERT_EQ_INT(load, SAVE_FILE_CORRUPT);
     PT_ASSERT(erased);
     PT_ASSERT(directory_removed);
-    PT_ASSERT(removed);
-}
-
-/* A file the process may not read: fopen fails with something other than
- * ENOENT, which is corrupt (reported), not a new game. Root can read it, so
- * the expectation follows access(). */
-PTEST(a_file_that_cannot_be_opened_is_rejected_not_treated_as_new)
-{
-    struct scratch scratch;
-    if (!scratch_create(&scratch))
-        PT_FAIL("cannot create a scratch directory");
-    fill_pattern(expected_image, CHIP_BYTES, 0x2D);
-    const bool written = write_file(scratch.path, expected_image, CHIP_BYTES);
-    const bool locked = chmod(scratch.path, 0) == 0;
-    const bool readable = access(scratch.path, R_OK) == 0;
-    set_image(0x08);
-    const int init = save_file_init(scratch.path);
-    const int load = save_file_load();
-    const bool erased = image_is_erased();
-    save_file_shutdown();
-    const bool removed = scratch_remove(&scratch);
-    PT_ASSERT(written);
-    PT_ASSERT(locked);
-    PT_ASSERT_EQ_INT(init, SAVE_FILE_OK);
-    PT_ASSERT_EQ_INT(load, readable ? SAVE_FILE_LEGACY : SAVE_FILE_CORRUPT);
-    PT_ASSERT(readable || erased);
     PT_ASSERT(removed);
 }
 

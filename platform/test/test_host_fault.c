@@ -5,22 +5,16 @@
  * completes through the installed handler, which reads every register
  * through the accessors and writes results the program then sees. Where a
  * fault goes when a handler does not complete it is tested in forked
- * children, which end by the crash handler's _exit code or by the fault
- * itself: a passed-on divide error reaches the crash handler installed
- * before, an uninstalled handler is not called again, a crash handler gets
- * every crash fault, and a fault whose handler returns ends the process.
+ * children, in posix/test_host_fault_posix.c.
  */
 #include <signal.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
-#include <sys/resource.h>
-#include <sys/wait.h>
-#include <unistd.h>
 
 #include "host_fault.h"
-#include "host_image.h"
+#include "host_fault_fixture.h"
 #include "ptest.h"
 
 /* DIV EDI: F7 /6 with ModRM 11 110 111 (Intel SDM vol. 2), the same bytes
@@ -37,18 +31,6 @@ static const uint8_t div_edi[] = {0xF7, 0xF7};
 #define MODRM_R9 9u
 /* A multiple of the register count at both widths (8 and 16). */
 #define REGISTER_COUNT_MULTIPLE 16u
-
-/* A different value in every register the division names or marks, so that
- * a slot read from the wrong register shows. The divisor, EDI, is zero; EDX
- * is the dividend's high half (a division by zero faults whatever it is). */
-#define DIVIDEND_LOW 0x12345678u
-#define ECX_MARK 0x0C0C0C0Cu
-#define EDX_MARK 0x0D0D0D0Du
-#define EBX_MARK 0x0B0B0B0Bu
-#define ESI_MARK 0x5E5E5E5Eu
-#define R9_MARK 0x0909090909090909u
-#define QUOTIENT_MARK 0xAAAA5555u
-#define REMAINDER_MARK 0x5555AAAAu
 
 /* What the divide handler saw, read after the fault. */
 static struct {
@@ -81,29 +63,6 @@ static bool complete_with_marks(struct host_fault *fault)
     host_fault_set_register(fault, HOST_FAULT_DATA, REMAINDER_MARK);
     host_fault_set_register(fault, HOST_FAULT_PC, seen.pc + sizeof div_edi);
     return true;
-}
-
-/* EDX:EAX / EDI, EDI zero, with ECX, EBX, ESI (and on x86-64 R9) marked;
- * *quotient and *remainder are EAX and EDX after it. */
-static void divide_by_zero(uint32_t *quotient, uint32_t *remainder)
-{
-    uint32_t eax = DIVIDEND_LOW;
-    uint32_t edx = EDX_MARK;
-    const uint32_t zero = 0;
-#if defined(__x86_64__)
-    register uint64_t r9 __asm__("r9") = R9_MARK;
-    __asm__ volatile("divl %[divisor]"
-                     : "+a"(eax), "+d"(edx)
-                     : [divisor] "D"(zero), "c"(ECX_MARK), "b"(EBX_MARK), "S"(ESI_MARK), "r"(r9)
-                     : "cc", "memory");
-#else
-    __asm__ volatile("divl %[divisor]"
-                     : "+a"(eax), "+d"(edx)
-                     : [divisor] "D"(zero), "c"(ECX_MARK), "b"(EBX_MARK), "S"(ESI_MARK)
-                     : "cc", "memory");
-#endif
-    *quotient = eax;
-    *remainder = edx;
 }
 
 PTEST(a_division_by_zero_completes_through_the_installed_handler)
@@ -154,237 +113,6 @@ PTEST(uninstall_is_safe_twice_and_without_install)
     PT_ASSERT_EQ_INT(host_fault_install_divide_error(complete_with_marks), 0);
     host_fault_uninstall_divide_error();
     host_fault_uninstall_divide_error();
-}
-
-/* --- Where faults end, in children ----------------------------------------------- */
-
-/* Exit codes of the children. */
-#define CHILD_RETURNED 3           /* the body ran to its end: no fault, or a fault ignored */
-#define CHILD_DIVIDE_HANDLER 4     /* the divide handler ran after it was uninstalled */
-#define CHILD_FAULT_ADDRESS_OK 5   /* the crash handler saw the expected fault address */
-#define CHILD_FAULT_ADDRESS_BAD 6  /* ... and another one */
-#define CHILD_PLAIN_PREVIOUS 7     /* a previous handler without SA_SIGINFO got the fault */
-#define CHILD_ON_ALTERNATE_STACK 8 /* the divide handler ran off the main stack */
-#define CHILD_ON_MAIN_STACK 9      /* ... and on it */
-#define CHILD_CRASH_DIVIDE 10      /* the crash handler got a divide error */
-#define CHILD_CRASH_NUMBER_BASE 64 /* the crash handler got fault number n: 64 + n */
-
-/* Seconds a child may take before SIGALRM ends it: a handler that resumed
- * at the faulting instruction again would loop forever. */
-#define CHILD_TIME_LIMIT_SECONDS 10u
-
-/* Runs body in a forked child, which writes no core file when a fault ends
- * it; its wait status, or -1. */
-static int in_child(void (*body)(void))
-{
-    (void)fflush(stdout);
-    const pid_t pid = fork();
-    if (pid < 0)
-        return -1;
-    if (pid == 0) {
-        const struct rlimit no_core = {0, 0};
-        if (setrlimit(RLIMIT_CORE, &no_core) != 0)
-            _exit(CHILD_RETURNED);
-        (void)signal(SIGALRM, SIG_DFL); /* not ptest's timeout: this child just ends */
-        (void)alarm(CHILD_TIME_LIMIT_SECONDS);
-        body();
-        _exit(CHILD_RETURNED);
-    }
-    int status;
-    if (waitpid(pid, &status, 0) != pid)
-        return -1;
-    return status;
-}
-
-static int exit_code(int status)
-{
-    return status != -1 && WIFEXITED(status) ? WEXITSTATUS(status) : -1;
-}
-
-static int terminating_signal(int status)
-{
-    return status != -1 && WIFSIGNALED(status) ? WTERMSIG(status) : -1;
-}
-
-static void exit_with_divide_or_number(const struct host_fault *fault)
-{
-    _exit(host_fault_is_divide_error(fault) ? CHILD_CRASH_DIVIDE : CHILD_CRASH_NUMBER_BASE + host_fault_number(fault));
-}
-
-static bool pass_everything_on(struct host_fault *fault)
-{
-    (void)fault;
-    return false;
-}
-
-static bool exit_from_the_divide_handler(struct host_fault *fault)
-{
-    (void)fault;
-    _exit(CHILD_DIVIDE_HANDLER);
-}
-
-static void divide_by_zero_in_child(void)
-{
-    uint32_t quotient, remainder;
-    divide_by_zero(&quotient, &remainder);
-}
-
-static void pass_on_to_the_crash_handler(void)
-{
-    if (host_fault_install_crash(exit_with_divide_or_number) != 0
-        || host_fault_install_divide_error(pass_everything_on) != 0)
-        return;
-    divide_by_zero_in_child();
-}
-
-PTEST(a_divide_error_passed_on_reaches_the_handler_installed_before)
-{
-    PT_ASSERT_EQ_INT(exit_code(in_child(pass_on_to_the_crash_handler)), CHILD_CRASH_DIVIDE);
-}
-
-static void divide_after_uninstalling(void)
-{
-    if (host_fault_install_crash(exit_with_divide_or_number) != 0
-        || host_fault_install_divide_error(exit_from_the_divide_handler) != 0)
-        return;
-    host_fault_uninstall_divide_error();
-    divide_by_zero_in_child();
-}
-
-PTEST(uninstall_gives_divide_errors_back_to_the_handler_installed_before)
-{
-    PT_ASSERT_EQ_INT(exit_code(in_child(divide_after_uninstalling)), CHILD_CRASH_DIVIDE);
-}
-
-/* A previous handler installed without SA_SIGINFO, a plain one. */
-static void exit_from_a_plain_handler(int signal_number)
-{
-    (void)signal_number;
-    _exit(CHILD_PLAIN_PREVIOUS);
-}
-
-static void pass_on_to_a_plain_handler(void)
-{
-    struct sigaction plain;
-    memset(&plain, 0, sizeof plain);
-    plain.sa_handler = exit_from_a_plain_handler;
-    if (sigemptyset(&plain.sa_mask) != 0 || sigaction(SIGFPE, &plain, NULL) != 0
-        || host_fault_install_divide_error(pass_everything_on) != 0)
-        return;
-    divide_by_zero_in_child();
-}
-
-PTEST(a_divide_error_passed_on_reaches_a_previous_handler_without_siginfo)
-{
-    PT_ASSERT_EQ_INT(exit_code(in_child(pass_on_to_a_plain_handler)), CHILD_PLAIN_PREVIOUS);
-}
-
-/* The main thread's stack, taken before the fault (host_image). */
-static struct host_span main_stack;
-
-static bool exit_by_where_the_handler_runs(struct host_fault *fault)
-{
-    (void)fault;
-    const uintptr_t frame = (uintptr_t)__builtin_frame_address(0);
-    _exit(frame >= main_stack.start && frame < main_stack.end ? CHILD_ON_MAIN_STACK : CHILD_ON_ALTERNATE_STACK);
-}
-
-static void divide_with_an_alternate_stack(void)
-{
-    if (host_image_main_stack(&main_stack) != 0 || host_fault_install_crash(exit_with_divide_or_number) != 0
-        || host_fault_install_divide_error(exit_by_where_the_handler_runs) != 0)
-        return;
-    divide_by_zero_in_child();
-}
-
-/* The crash handler's alternate stack is there for a stack overflow; a
- * divide error on an exhausted stack needs its handler there too. */
-PTEST(the_divide_handler_runs_on_the_alternate_stack)
-{
-    PT_ASSERT_EQ_INT(exit_code(in_child(divide_with_an_alternate_stack)), CHILD_ON_ALTERNATE_STACK);
-}
-
-/* The default actions, as host_fault_uninstall_crash leaves them (and not
- * the sanitizer's own handlers, which would report the fault). */
-static bool with_default_actions(void)
-{
-    if (host_fault_install_crash(exit_with_divide_or_number) != 0)
-        return false;
-    host_fault_uninstall_crash();
-    return true;
-}
-
-static void pass_on_with_nothing_before(void)
-{
-    if (!with_default_actions() || host_fault_install_divide_error(pass_everything_on) != 0)
-        return;
-    divide_by_zero_in_child();
-}
-
-PTEST(a_divide_error_passed_on_with_no_handler_before_ends_the_process)
-{
-    PT_ASSERT_EQ_INT(terminating_signal(in_child(pass_on_with_nothing_before)), SIGFPE);
-}
-
-/* The crash faults, raised in turn: the handler exits with the number. */
-static int raised_signal;
-
-static void raise_under_the_crash_handler(void)
-{
-    if (host_fault_install_crash(exit_with_divide_or_number) != 0)
-        return;
-    (void)raise(raised_signal);
-}
-
-PTEST(the_crash_handler_gets_every_crash_fault)
-{
-    static const int crashes[] = {SIGSEGV, SIGBUS, SIGILL, SIGFPE, SIGABRT};
-    for (size_t i = 0; i < sizeof crashes / sizeof crashes[0]; i++) {
-        raised_signal = crashes[i];
-        PT_ASSERT_EQ_INT(exit_code(in_child(raise_under_the_crash_handler)), CHILD_CRASH_NUMBER_BASE + crashes[i]);
-    }
-}
-
-static void return_from_the_crash_handler(const struct host_fault *fault)
-{
-    (void)fault;
-}
-
-static void raise_under_a_returning_crash_handler(void)
-{
-    if (host_fault_install_crash(return_from_the_crash_handler) != 0)
-        return;
-    (void)raise(raised_signal);
-}
-
-PTEST(a_crash_handler_that_returns_lets_the_fault_end_the_process)
-{
-    /* raised, so nothing would fault again: the end is the handler's */
-    raised_signal = SIGABRT;
-    PT_ASSERT_EQ_INT(terminating_signal(in_child(raise_under_a_returning_crash_handler)), SIGABRT);
-    raised_signal = SIGILL;
-    PT_ASSERT_EQ_INT(terminating_signal(in_child(raise_under_a_returning_crash_handler)), SIGILL);
-}
-
-/* An address no one maps: the first page. */
-#define UNMAPPED_ADDRESS 0x10u
-
-static void exit_by_fault_address(const struct host_fault *fault)
-{
-    _exit(host_fault_address(fault) == UNMAPPED_ADDRESS ? CHILD_FAULT_ADDRESS_OK : CHILD_FAULT_ADDRESS_BAD);
-}
-
-static void store_to_an_unmapped_address(void)
-{
-    if (host_fault_install_crash(exit_by_fault_address) != 0)
-        return;
-    volatile uintptr_t where = UNMAPPED_ADDRESS; /* volatile: no constant address for the compiler to warn about */
-    *(volatile uint8_t *)where = 1;
-}
-
-PTEST(the_fault_address_is_the_access_that_faulted)
-{
-    PT_ASSERT_EQ_INT(exit_code(in_child(store_to_an_unmapped_address)), CHILD_FAULT_ADDRESS_OK);
 }
 
 PTEST_MAIN()

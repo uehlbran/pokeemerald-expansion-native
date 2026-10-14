@@ -1,12 +1,13 @@
 /*
  * host_posix.c: the host layer where every POSIX system agrees (Linux today,
  * macOS next): the fault handlers' installation (host_fault.h), the restart
- * of the executable (host_process.h) and the files (host_file.h). What each
+ * of the executable (host_process.h), the files (host_file.h) and the deadline
+ * thread (host_thread.h). What each
  * system does its own way is in its own source, host_linux.c, reached
  * through host_internal.h.
  *
  * Followed: POSIX (sigaction, sigaltstack, sigprocmask, execve, fsync,
- * rename, mkdir, localtime_r), and signal-safety(7) for what a signal
+ * rename, mkdir, localtime_r, pthread_create and pthread_cond_timedwait), and signal-safety(7) for what a signal
  * handler may call: everything on the handlers' path here (sigaction, raise,
  * execve) is async-signal-safe.
  */
@@ -15,9 +16,13 @@
 
 #include <errno.h>
 #include <fcntl.h>
+#include <pthread.h>
 #include <signal.h>
+#include <stdatomic.h>
 #include <stdbool.h>
+#include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
 #include <time.h>
@@ -27,6 +32,7 @@
 #include "host_file.h"
 #include "host_internal.h"
 #include "host_process.h"
+#include "host_thread.h"
 
 _Static_assert(sizeof(time_t) >= 8, "host_posix.c needs a 64-bit time_t (_TIME_BITS=64)");
 
@@ -266,4 +272,173 @@ int host_file_local_time(int64_t seconds, struct tm *out)
 {
     const time_t when = (time_t)seconds;
     return localtime_r(&when, out) == NULL ? -1 : 0;
+}
+
+/* --- host_thread: the deadline thread ---------------------------------------- */
+
+/* The largest deadline host_watchdog_start takes: half of the unsigned range,
+ * so that adding it to the clock cannot overflow a 64-bit time_t. */
+#define WATCHDOG_MAX_SECONDS (UINT32_MAX / 2u)
+
+struct host_watchdog {
+    pthread_t thread;
+    pthread_mutex_t lock; /* guards deadline and stopping, nothing else */
+    pthread_cond_t changed;
+    struct timespec deadline;
+    bool stopping;
+    bool waiting;         /* the thread has started and is about to wait: host_watchdog_start returns only then */
+    atomic_bool *expired; /* the caller's flag: the only thing written outside the lock */
+};
+
+/* Reports a failed pthread call (they return the error number, not errno). */
+static void watchdog_report(const char *call, int error)
+{
+    (void)fprintf(stderr, "host_thread: %s failed: %s\n", call, strerror(error)); /* best-effort */
+}
+
+static int watchdog_set_deadline(struct host_watchdog *watchdog, unsigned seconds)
+{
+    struct timespec now;
+    if (clock_gettime(CLOCK_REALTIME, &now) != 0) {
+        watchdog_report("clock_gettime", errno);
+        return -1;
+    }
+    watchdog->deadline = now;
+    watchdog->deadline.tv_sec += (time_t)seconds;
+    return 0;
+}
+
+/* True once the wall clock is at or past the deadline (a failing clock counts
+ * as not yet: the wait then returns at once and tries again). */
+static bool watchdog_deadline_passed(const struct host_watchdog *watchdog)
+{
+    struct timespec now;
+    if (clock_gettime(CLOCK_REALTIME, &now) != 0)
+        return false;
+    return now.tv_sec > watchdog->deadline.tv_sec
+           || (now.tv_sec == watchdog->deadline.tv_sec && now.tv_nsec >= watchdog->deadline.tv_nsec);
+}
+
+static void *watchdog_thread(void *argument)
+{
+    struct host_watchdog *const watchdog = argument;
+    if (pthread_mutex_lock(&watchdog->lock) != 0)
+        return NULL;
+    watchdog->waiting = true;
+    (void)pthread_cond_broadcast(&watchdog->changed); /* wakes host_watchdog_start */
+    while (!watchdog->stopping) {
+        if (watchdog_deadline_passed(watchdog)) {
+            atomic_store_explicit(watchdog->expired, true, memory_order_relaxed); /* see host_thread.h */
+            break;
+        }
+        /* Woken by a change, by the deadline, or for nothing; the loop decides which. */
+        const int waited = pthread_cond_timedwait(&watchdog->changed, &watchdog->lock, &watchdog->deadline);
+        if (waited != 0 && waited != ETIMEDOUT) {
+            watchdog_report("pthread_cond_timedwait", waited);
+            break;
+        }
+    }
+    (void)pthread_mutex_unlock(&watchdog->lock);
+    return NULL;
+}
+
+/* Waits until the thread is in its loop. A caller that forks next (the POSIX
+ * tests do) then finds the thread idle in a condition wait, not in the middle
+ * of its start, where the sanitizers' thread registry would be locked in the
+ * child for good. */
+static int watchdog_await_start(struct host_watchdog *watchdog)
+{
+    int error = pthread_mutex_lock(&watchdog->lock);
+    if (error != 0)
+        return error;
+    while (!watchdog->waiting && error == 0)
+        error = pthread_cond_wait(&watchdog->changed, &watchdog->lock);
+    (void)pthread_mutex_unlock(&watchdog->lock);
+    return error;
+}
+
+struct host_watchdog *host_watchdog_start(unsigned seconds, atomic_bool *expired)
+{
+    if (seconds == 0 || seconds > WATCHDOG_MAX_SECONDS || expired == NULL) {
+        (void)fprintf(stderr, "host_thread: a watchdog needs a deadline of 1 to %u seconds and a flag\n",
+                      WATCHDOG_MAX_SECONDS);
+        return NULL;
+    }
+    struct host_watchdog *const watchdog = calloc(1, sizeof *watchdog);
+    if (watchdog == NULL) {
+        watchdog_report("calloc", ENOMEM);
+        return NULL;
+    }
+    watchdog->expired = expired;
+    int error = pthread_mutex_init(&watchdog->lock, NULL);
+    if (error != 0) {
+        watchdog_report("pthread_mutex_init", error);
+        free(watchdog);
+        return NULL;
+    }
+    error = pthread_cond_init(&watchdog->changed, NULL);
+    if (error != 0) {
+        watchdog_report("pthread_cond_init", error);
+        (void)pthread_mutex_destroy(&watchdog->lock); /* already failing */
+        free(watchdog);
+        return NULL;
+    }
+    error = watchdog_set_deadline(watchdog, seconds) == 0 ? 0 : EINVAL; /* reported by itself */
+    if (error == 0) {
+        error = pthread_create(&watchdog->thread, NULL, watchdog_thread, watchdog);
+        if (error != 0)
+            watchdog_report("pthread_create", error);
+        else if (watchdog_await_start(watchdog) != 0) {
+            host_watchdog_stop(watchdog); /* the thread exists: end it before freeing */
+            return NULL;
+        }
+        if (error == 0)
+            return watchdog;
+    }
+    (void)pthread_cond_destroy(&watchdog->changed); /* already failing */
+    (void)pthread_mutex_destroy(&watchdog->lock);
+    free(watchdog);
+    return NULL;
+}
+
+int host_watchdog_restart(struct host_watchdog *watchdog, unsigned seconds)
+{
+    if (watchdog == NULL)
+        return -1;
+    if (seconds == 0 || seconds > WATCHDOG_MAX_SECONDS) {
+        (void)fprintf(stderr, "host_thread: a watchdog needs a deadline of 1 to %u seconds\n", WATCHDOG_MAX_SECONDS);
+        return -1;
+    }
+    const int locked = pthread_mutex_lock(&watchdog->lock);
+    if (locked != 0) {
+        watchdog_report("pthread_mutex_lock", locked);
+        return -1;
+    }
+    const int status = watchdog_set_deadline(watchdog, seconds);
+    const int signalled = pthread_cond_signal(&watchdog->changed);
+    (void)pthread_mutex_unlock(&watchdog->lock); /* cannot fail on a mutex this thread holds */
+    if (signalled != 0) {
+        watchdog_report("pthread_cond_signal", signalled);
+        return -1;
+    }
+    return status;
+}
+
+void host_watchdog_stop(struct host_watchdog *watchdog)
+{
+    if (watchdog == NULL)
+        return;
+    if (pthread_mutex_lock(&watchdog->lock) == 0) {
+        watchdog->stopping = true;
+        (void)pthread_cond_signal(&watchdog->changed); /* a missed signal is caught by the loop's test */
+        (void)pthread_mutex_unlock(&watchdog->lock);
+    }
+    const int joined = pthread_join(watchdog->thread, NULL);
+    if (joined != 0) {
+        watchdog_report("pthread_join", joined);
+        return; /* the thread may still use the watchdog: leak it rather than free it */
+    }
+    (void)pthread_cond_destroy(&watchdog->changed); /* nothing waits on it any more */
+    (void)pthread_mutex_destroy(&watchdog->lock);
+    free(watchdog);
 }
