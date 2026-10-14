@@ -19,7 +19,7 @@
 #   REGIONS_LD_NAME, GAME_LD_NAME   the file names of those two linker scripts
 #                        (in platform/)
 #   SDL_CFLAGS, SDL_LIBS how to compile and link against SDL2
-# and, for windows, the cross tools (HOST_CC, HOST_AS, NM, CC, AR, OBJDUMP),
+# and, for windows, the cross tools (HOST_CC, HOST_AS, NM, CC, AR, OBJCOPY, OBJDUMP),
 # TARGET_CFLAGS (the compiler flags every Windows object takes) and the SDL2
 # development package's location (SDL2_MINGW_DIR; Makefile.native fetches it).
 # The Linux values are what the Makefiles spelled out before this file.
@@ -54,6 +54,7 @@ CROSS_PREFIX := x86_64-w64-mingw32-
 HOST_CC ?= $(CROSS_PREFIX)gcc
 HOST_AS ?= $(CROSS_PREFIX)as
 NM      ?= $(CROSS_PREFIX)nm
+OBJCOPY ?= $(CROSS_PREFIX)objcopy
 OBJDUMP ?= $(CROSS_PREFIX)objdump
 # platform/Makefile compiles with $(CC) and archives with $(AR), which make
 # defaults to the build machine's.
@@ -68,8 +69,10 @@ TARGET_EXE_SUFFIX := .exe
 # Linux and a save moves between the two builds (docs/ARCHITECTURE.md, "The
 # save container"). -D__USE_MINGW_ANSI_STDIO=1: MinGW's printf family is the C
 # runtime's, which does not know %zu or %llx the C99 way; this one is MinGW's
-# own. Win64 `long` is 32 bits: nothing here assumes otherwise.
-TARGET_CFLAGS := -mno-ms-bitfields -D__USE_MINGW_ANSI_STDIO=1
+# own. Win64 `long` is 32 bits: nothing here assumes otherwise. -idirafter:
+# build_glue/mingw_include has the headers MinGW lacks that expansion includes.
+TARGET_CFLAGS := -mno-ms-bitfields -D__USE_MINGW_ANSI_STDIO=1 \
+                 -idirafter $(abspath $(TARGET_MK_DIR)build_glue/mingw_include)
 
 # The SDL2 development package for MinGW, fetched by Makefile.native
 # (sdl2-mingw) into build/sdl2-mingw/. Used directly, not through its

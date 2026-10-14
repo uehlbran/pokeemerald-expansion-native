@@ -25,7 +25,9 @@ binary that exits early passes no test). The 32-bit build needs the i386 C libra
 runtimes (`gcc-multilib`). The tests run on Linux only for now: the region
 layout needs GNU ld and a non-PIE ELF executable (see below), and `HOST_OS`
 (`host.mk`, default `uname -s`) accepts `Linux` only (the host layer,
-below).
+below). `make lib TARGET_OS=windows BITS=64` cross-builds the library for
+Windows with MinGW-w64 (`target.mk`; `docs/BUILDING.md`, "Windows (cross-build
+from Linux)"); it is the only goal that accepts `TARGET_OS=windows`.
 
 Every test binary is linked with `gba_regions.ld`, `gba_game.ld` and
 `-no-pie -Wl,-Ttext-segment=0x40000000`, so the GBA memory regions exist in
@@ -136,9 +138,11 @@ runner's 27-bit address fields.
 What the modules need from the operating system, one header per concern, so
 that no module makes an OS call of its own (`docs/ARCHITECTURE.md`, "The
 host layer", has the design and the users). Two sources implement them,
-chosen by `HOST_OS` in `host.mk` (included by this Makefile, `m4a/Makefile`
-and `Makefile.native`): `host_posix.c`, what Linux and macOS share, and
-`host_linux.c`, the rest; `host_internal.h` is what they share. Each header
+chosen by `TARGET_OS` (`target.mk`, through `host.mk`, included by this
+Makefile, `m4a/Makefile` and `Makefile.native`): `host_posix.c`, what Linux and
+macOS share, and `host_linux.c`, the rest; `host_internal.h` is what they share.
+For `TARGET_OS=windows` it is `host_windows.c` alone, a stub whose every call
+fails until the port is written. Each header
 says what it stands in for and what it wraps, and has its test.
 
 | Header | Gives | Linux (source) | Test |

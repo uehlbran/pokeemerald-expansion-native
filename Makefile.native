@@ -285,6 +285,9 @@ GAME_TEST_SANITIZER_FLAGS := --param=asan-use-after-return=0
 # preproc's COMPOUND_STRING output relies on '@' being the ARM assembler's
 # comment character; this rewrites it for x86 (see the script's comment).
 C_FILTER_SCRIPT := platform/build_glue/c_filter.sed
+ifeq ($(TARGET_OS),windows)
+  C_FILTER_SCRIPT := platform/build_glue/c_filter_coff.sed
+endif
 C_FILTER := sed -f $(C_FILTER_SCRIPT)
 
 GLUE_DIR := platform/build_glue
@@ -475,6 +478,8 @@ else
   PLATFORM_LIB := platform/build/$(BITS)-nosan/libplatform.a
   ifeq ($(TARGET_OS),windows)
     PLATFORM_LIB := platform/build/$(BITS)-windows/libplatform.a
+    # The filler between the regions (platform/gba_regions.pe.ld), made with the library.
+    PLATFORM_GAPS := platform/build/$(BITS)-windows/gba_gaps.o
   endif
   PLATFORM_LIB_ARGS := BITS=$(BITS) HOST_OS=$(HOST_OS) TARGET_OS=$(TARGET_OS) NOSAN=1
   NATIVE_LINK_SANITIZERS :=
@@ -486,6 +491,14 @@ NATIVE_LDFLAGS := -m$(BITS) $(GBA_LAYOUT_LDFLAGS) \
                   -Wl,--defsym,gInitialMainCB2=$(INITIAL_MAIN_CB2) \
                   -Wl,--defsym,gba_game_objects_linked=1 $(NATIVE_LINK_SANITIZERS)
 NATIVE_LDLIBS := $(SDL_LIBS) -lm
+# Run on the finished executable; the Windows one cannot be run here, so its
+# layout is read from the file. Files that must sit beside it to run.
+NATIVE_EXE_CHECK :=
+NATIVE_RUNTIME_FILES :=
+ifeq ($(TARGET_OS),windows)
+  NATIVE_EXE_CHECK := $(PYTHON) -I $(GLUE_DIR)/check_pe_layout.py $(NATIVE_EXE)
+  NATIVE_RUNTIME_FILES := $(OBJ_DIR)/SDL2.dll
+endif
 
 # The Windows build runs in two makes (WINDOWS_DATA_CHECKED, "The Windows
 # cross-build" at the end): the first makes the Linux data and converts it, the
@@ -495,7 +508,7 @@ native objects: windows-data
 	+$(MAKE) -f Makefile.native $@ WINDOWS_DATA_CHECKED=1
 else
 objects: $(OBJS)
-native: $(NATIVE_EXE)
+native: $(NATIVE_EXE) $(NATIVE_RUNTIME_FILES)
 endif
 
 # Seeds $(ASSETS_DIR_NAME) from the GBA build's build/assets so that the first native build converts
@@ -523,17 +536,18 @@ check-palette-padding:
 platform-lib: $(if $(filter windows,$(TARGET_OS)),sdl2-mingw)
 	$(MAKE) -C platform lib $(PLATFORM_LIB_ARGS)
 
-$(PLATFORM_LIB): platform-lib ;
+$(PLATFORM_LIB) $(PLATFORM_GAPS): platform-lib ;
 
 # The link also writes the function map platform/symbols.c reads to name the
 # game's callbacks in the replays (symbols.h), beside the executable: one
 # recipe, so that every way of building the executable writes its map, and a
 # map that cannot be written fails the link (.DELETE_ON_ERROR removes the
 # executable).
-$(NATIVE_EXE): $(OBJS) $(PLATFORM_LIB) $(NATIVE_LINKER_SCRIPTS) | check-palette-padding $(DATA_LAYOUT_CHECKS)
+$(NATIVE_EXE): $(OBJS) $(PLATFORM_GAPS) $(PLATFORM_LIB) $(NATIVE_LINKER_SCRIPTS) | check-palette-padding $(DATA_LAYOUT_CHECKS)
 	@echo "$(HOST_CC) <link> -o $@"
-	@$(HOST_CC) $(NATIVE_LDFLAGS) -o $@ $(OBJS) $(PLATFORM_LIB) $(NATIVE_LDLIBS)
+	@$(HOST_CC) $(NATIVE_LDFLAGS) -o $@ $(OBJS) $(PLATFORM_GAPS) $(PLATFORM_LIB) $(NATIVE_LDLIBS)
 	@$(call write_symbol_map,$@,$@.symbols)
+	$(NATIVE_EXE_CHECK)
 
 # --------------------------------------------------------------------------
 # check: expansion's test suite against the native test runner, through
@@ -924,9 +938,9 @@ $(FLAT_TARGET_DIR)/%.o: $(FLAT_TARGET_DIR)/%.s $(OBJ_DIR)/%.o $(FLAT_SYMBOLS) $(
 #      objects (check-flat, TARGET=coff-x86_64), by a make for the build
 #      machine's own target (TARGET_OS=$(HOST_OS)) into build/native64/;
 #   2. this make, again, with WINDOWS_DATA_CHECKED=1: the C objects, the data
-#      objects (the listings assembled by MinGW's as; a listing whose checked
-#      object is missing, because check-flat removed it, stops the build), the
-#      platform library, and the link.
+#      objects (the listings assembled by MinGW's as), the platform library,
+#      and the link. A listing that check-flat rejects stops the first make,
+#      so the second never starts.
 # Assets and generated headers do not depend on the target and are shared.
 
 SDL2_MINGW_VERSION := 2.30.12
@@ -959,13 +973,17 @@ $(SDL2_MINGW_STAMP):
 
 ifeq ($(TARGET_OS),windows)
 
+# SDL2.dll, which the executable imports, next to it.
+$(OBJ_DIR)/SDL2.dll: $(SDL2_MINGW_STAMP)
+	cp $(SDL2_MINGW_ROOT)/x86_64-w64-mingw32/bin/SDL2.dll $@
+
 windows-data:
 	+$(MAKE) -f Makefile.native check-flat TARGET=coff-x86_64 BITS=64 TARGET_OS=$(HOST_OS) TEST=0 SANITIZE=0
 
-# The listings and the objects they were checked against, in the Linux tree.
+# The listings, in the Linux tree.
 WINDOWS_FLAT_DIR := $(ELF_OBJ_DIR)/flat/coff-x86_64
 
-$(COFF_DATA_OBJS): $(OBJ_DIR)/coff/%.o: $(WINDOWS_FLAT_DIR)/%.s $(WINDOWS_FLAT_DIR)/%.o
+$(COFF_DATA_OBJS): $(OBJ_DIR)/coff/%.o: $(WINDOWS_FLAT_DIR)/%.s
 	@mkdir -p $(@D)
 	$(HOST_AS) -o $@ $<
 

@@ -160,6 +160,22 @@ $(OBJ_DIR)/%.o: %.c
 	@mkdir -p $(@D)
 	$(CC) $(CFLAGS_ALL) -c $< -o $@
 
+# The Windows executable's filler between the GBA regions (gba_regions.pe.ld
+# says why): gba_gaps.pe.s assembled, then every `gap` section made read-only,
+# which the assembler cannot say. A link of the library's users names it
+# beside libplatform.a, since an archive member nothing refers to is not pulled.
+ifeq ($(TARGET_OS),windows)
+GAPS_OBJ := $(BUILD_DIR)/gba_gaps.o
+GAP_SECTIONS := $(shell sed -n 's/^[[:space:]]*gap[[:space:]][[:space:]]*\(\.gap[0-9]*\),.*/\1/p' gba_gaps.pe.s)
+
+lib: $(GAPS_OBJ)
+
+$(GAPS_OBJ): gba_gaps.pe.s
+	@mkdir -p $(@D)
+	$(HOST_AS) -o $@ $<
+	$(OBJCOPY) $(GAP_SECTIONS:%=--set-section-flags %=alloc,readonly) $@
+endif
+
 # test_arm_division divides by a global through an absolute address with an
 # index and no base register (divl sym(,%ebx,4); on x86-64 sym(,%rbx,4) and a
 # bare absolute sym), an operand form the game's -fno-pie code (Makefile.native)

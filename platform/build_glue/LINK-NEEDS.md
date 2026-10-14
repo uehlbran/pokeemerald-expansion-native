@@ -27,6 +27,20 @@ native` links `build/native<bits>[-test][-san]/pokeemerald-native[-test]`
 | `platform_call_stack_start`/`_end` (the battle runner's stack, below 2^27) | `gba_regions.ld` `.platform_call_stack` at 0x01800000 |
 | `main` | `platform/main.c` |
 
+**The Windows link** (`TARGET_OS=windows`) meets the same needs with
+`gba_regions.pe.ld` and `gba_game.pe.ld` (their headers say how they differ),
+and four more, for what a PE link cannot do the ELF way: a COFF weak external
+is a reference with a fallback, not a definition other objects' references
+find (binutils 2.41), so `gba_game.pe.ld` defines `RandomUniform`,
+`RandomUniformExcept`, `RandomWeightedArray` and `RandomElementArray` (the
+weak aliases in `src/random.c`) and `gTestRunnerEnabled`
+(`src/test_runner_stub.c`), and gives `gPlatformTestEntrySize` and
+`PlatformTestTableBadEntry` (weak references in `platform/crt0.c`) the value
+zero. `__executable_start` is `--defsym`'d to `__ImageBase`. MinGW lacks
+`<alloca.h>` (`build_glue/mingw_include/`), and preproc's compound-string
+section names are ELF's (`c_filter_coff.sed`). A new weak definition in
+expansion's code shows up as an undefined symbol in this link only.
+
 The measurements and reasoning below are from before the link existed and
 are kept as the record of why each piece is there.
 
