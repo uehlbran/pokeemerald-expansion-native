@@ -1437,9 +1437,22 @@ restarted run takes it. `test/windows/test_save_lock_windows.c` has the twins
 (Windows has no fork: there this process holds and a child is refused, and the
 holder ended at once is a child ending itself with `TerminateProcess`).
 `tests/smoke/run_cross_width.sh`, step `busy/`: TO is refused, with that one
-line, on a save FROM is playing, and starts once FROM is killed; the replays'
+line and before any module starts (its own clock file, which a start creates,
+is not created, nor any temporary file), on a save FROM is playing, and starts
+once FROM is killed; the replays'
 `restart` with a save path is `run.sh`'s and `again/`'s.
 
 Not covered by the lock: the clock's offset file, also written through a fixed
 temporary name; two instances on different saves that share one offset file
-are not kept apart (`rtc_offset_store.h`).
+are not kept apart (`rtc_offset_store.h`). And a save reached by two names, a
+symbolic or a hard link (`a/link.sav` to `a/real.sav`): the lock file is the
+path as given plus `.lock`, so the two names have two lock files and two
+instances on them both start. A known limit, written in `save_lock.h`:
+resolving the path to its file (`realpath`, `GetFinalPathNameByHandleW`, and
+for a hard link not even those) is not worth a host call for a link someone
+made on purpose.
+
+Not testable: that `main` releases the lock after the last store. The release
+is the last thing before the process ends, so only an instance started during
+that final store could see the order; `main.c` and the POSIX test's header say
+so.

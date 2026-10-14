@@ -20,6 +20,12 @@
  * path after the first store, whereas the companion file is never replaced
  * and its lock outlives every store.
  *
+ * A known limit: the lock file is the path as given plus ".lock", so a save
+ * reached through another name, a symbolic or a hard link (a/link.sav to
+ * a/real.sav), has another lock file, and two instances on the two names are
+ * not kept apart. Resolving the path to its file is not worth a host call for
+ * a case that takes a link made on purpose.
+ *
  * Single-threaded; one lock per process.
  */
 #ifndef SAVE_LOCK_H

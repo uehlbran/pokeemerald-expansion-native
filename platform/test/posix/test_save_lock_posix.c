@@ -5,9 +5,13 @@
  * child's take still fails after them); a child killed with SIGKILL while it
  * holds the lock leaves it free; and the run a restart execs takes the lock
  * again, whether the process released it before the exec (as main does) or
- * the exec closed it (host_file_open's O_CLOEXEC). The rest is in
- * ../test_save_lock.c, the Windows twins in windows/test_save_lock_windows.c.
- * Scratch directories and the save image: ../save_file_fixture.h.
+ * the exec closed it (host_file_open's O_CLOEXEC). Not tested, because no
+ * test can observe it: that main releases the lock after the last store,
+ * since the release is the last thing before the process ends and only an
+ * instance started during that final store could see the difference. The
+ * rest is in ../test_save_lock.c, the Windows twins in
+ * windows/test_save_lock_windows.c. Scratch directories and the save image:
+ * ../save_file_fixture.h.
  */
 // deps: save_lock.c save_file.c gba_memmap.c flash.c
 #include <signal.h>

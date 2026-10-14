@@ -515,9 +515,13 @@ int main(int argc, char **argv)
     const int64_t restart_epoch = fixed_clock_at(options.rtc_fixed_epoch, frame_count());
     const uint32_t restart_line = replay_session_restart_line();
     stop_steps(module_steps, MODULE_STEP_COUNT);
-    /* Released before the restart, not handed on: on Windows the new run is a
-     * child this process waits for, which could never take a lock its parent
-     * holds (docs/DECISIONS.md, the amendment to ruling (3)). */
+    /* After every module has stopped, so after the last store
+     * (frame_flush_save); no test can see that order, since this is the last
+     * thing before the process ends and only an instance started during that
+     * final store could tell. Released before the restart, not handed on: on
+     * Windows the new run is a child this process waits for, which could never
+     * take a lock its parent holds (docs/DECISIONS.md, the amendment to ruling
+     * (3)). */
     save_lock_release();
     if (restart && status == MAIN_EXIT_OK)
         return restart_process(argc, argv, restart_epoch, restart_line);

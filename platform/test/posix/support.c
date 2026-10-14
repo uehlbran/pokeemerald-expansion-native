@@ -213,9 +213,11 @@ pid_t psup_start_child(void (*body)(void *context), void *context)
 int psup_wait_child(pid_t pid)
 {
     int status;
-    if (waitpid(pid, &status, 0) != pid)
-        return -1;
-    return status;
+    pid_t waited;
+    do /* a signal for the test, such as a child's, may interrupt the wait */
+        waited = waitpid(pid, &status, 0);
+    while (waited < 0 && errno == EINTR);
+    return waited == pid ? status : -1;
 }
 
 int psup_fork_child(void (*body)(void *context), void *context)
