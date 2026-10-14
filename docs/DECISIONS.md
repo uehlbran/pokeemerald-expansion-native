@@ -1089,3 +1089,31 @@ path from `host_process_executable_path` would not open with `fopen`
 runtime parsed. A string the code page cannot carry is refused, never
 altered. Should the executable ever carry a manifest with the UTF-8 active
 code page, `CP_ACP` becomes UTF-8 and nothing here changes.
+
+## 2026-10-14: The battle runner's stack switch on Windows is hand-written assembly, not a fiber
+
+`PlatformCallWithStack` must run the battle tests' functions on one fixed
+stack (the same addresses every call, below 2^27; `game_hooks.h`), which on
+Windows is the `.callstk` section at 0x01801000. Windows' own switch, a
+fiber, cannot do that: `CreateFiber` and `CreateFiberEx` allocate the fiber's
+stack wherever the system chooses, and a fiber's stack and context are not
+documented for editing. The alternatives were a fiber whose locals would land
+elsewhere (breaking the runner's 27-bit fields and its reliance on fixed
+addresses) or a switch of our own. `platform/host_windows_stack.c` is the
+latter, about seventy lines of GNU as in the C file: it saves the registers a
+Win64 callee keeps (RBX, RBP, RDI, RSI, R12 to R15, XMM6 to XMM15, MXCSR, the
+x87 control word) on the caller's stack, moves RSP to the stack's top less the
+32-byte home space, calls the entry, and restores; `host_stack_leave` jumps to
+the same restore. Its unwind information (`.seh_*`) names RBP as its frame
+register, so the system's exception dispatch can walk from the entry's
+frames back to the caller's; and while the entry runs, the thread's stack
+limits in NT_TIB are widened to hold both stacks, since the dispatcher stops
+at a frame outside them, and a crash on the battle runner's stack must still
+reach the crash reboot's filter. Fibers' own approach, setting the limits to
+the new stack alone, would cut that walk off. What it does not do: no
+AddressSanitizer annotation (MinGW-w64 has no sanitizers), no shadow-stack
+support (the executable is not marked CET-compatible, so none is enforced),
+and no `longjmp` across it (game_hooks leaves the stack first, as on Linux).
+What cannot be checked here: that the dispatch and the switch behave as
+reasoned; `test_host_stack`, `test_game_hooks` and the suite's battle tests
+on the Windows runner are the evidence.

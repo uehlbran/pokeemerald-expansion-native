@@ -3,9 +3,8 @@
  * made in the ordinary course of a run: the pages mapped at fixed addresses
  * (host_memory.h), the image's and the main stack's bounds (host_image.h),
  * the files (host_file.h), and the executable's path and its restart
- * (host_process.h). The faults are host_windows_fault.c's, where the link put
- * the regions host_linked.c's. The stack switch (host_stack.h) is a stub
- * until task W7 writes it: it returns -1 and prints nothing.
+ * (host_process.h). The faults are host_windows_fault.c's, the stack switch
+ * host_windows_stack.c's, where the link put the regions host_linked.c's.
  *
  * Followed: Microsoft's documentation of VirtualAlloc, VirtualFree and
  * VirtualQuery (memoryapi.h), GetCurrentThreadStackLimits,
@@ -37,7 +36,6 @@
 #include "host_image.h"
 #include "host_memory.h"
 #include "host_process.h"
-#include "host_stack.h"
 
 /* --- reports ---------------------------------------------------------------------- */
 
@@ -536,19 +534,4 @@ int host_process_restart(char *const argv[])
         status = RESTART_STATUS_LOST;
     (void)TerminateProcess(GetCurrentProcess(), status);
     return -1; /* not reached: TerminateProcess ends the calling thread with its process */
-}
-
-/* --- not written yet (task W7) ------------------------------------------------------- */
-
-int host_stack_run(void *stack, size_t size, void (*entry)(void *context), void *context)
-{
-    (void)stack;
-    (void)size;
-    (void)entry;
-    (void)context;
-    return -1;
-}
-
-void host_stack_leave(void)
-{
 }

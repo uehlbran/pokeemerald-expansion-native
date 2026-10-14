@@ -63,7 +63,7 @@ SYMBOL_MAP_SELECT = $$4 == "FUNC" && $$5 != "" && $$1 != ""
 
 else ifeq ($(TARGET_OS),windows)
 
-HOST_SRCS := host_windows.c host_windows_fault.c host_linked.c
+HOST_SRCS := host_windows.c host_windows_fault.c host_windows_stack.c host_linked.c
 HOST_TEST_DIRS :=
 HOST_TEST_SUPPORT_DIR :=
 SYMBOL_MAP_SELECT = $$4 == "Function" && $$1 != "" && $$2 !~ /^0+$$/
