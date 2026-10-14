@@ -297,7 +297,8 @@ static inline int ptest_run_cases(const struct ptest_case *cases, size_t count, 
             (void)fprintf(out, "FAIL %s\n", ptest_current.outcome.message); /* ferror below */
         }
     }
-    (void)fprintf(out, "%zu passed, %zu failed\n", count - failed, (size_t)failed); /* ferror below */
+    (void)fprintf(out, "%llu passed, %llu failed\n", (unsigned long long)(count - failed),
+                  (unsigned long long)failed); /* ferror below */
     ptest_timeout_target = outer_target;
     ptest_expired = outer_expired;
     ptest_watchdog = outer_watchdog;

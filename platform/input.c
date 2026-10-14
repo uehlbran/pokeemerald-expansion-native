@@ -40,6 +40,7 @@ static struct {
     enum input_source source;
     uint16_t script_keys;
     bool controller_subsystem;
+    bool reported_no_keyboard_state; /* once, so a frame loop does not repeat it */
     SDL_GameController *controllers[INPUT_MAX_CONTROLLERS];
 } state;
 
@@ -50,23 +51,20 @@ uint16_t input_keys_to_keyinput(uint16_t keys_active_high)
 
 const struct input_key_binding *input_keyboard_bindings(size_t *count)
 {
-    if (count != NULL) {
+    if (count != NULL)
         *count = sizeof keyboard_bindings / sizeof keyboard_bindings[0];
-    }
     return keyboard_bindings;
 }
 
 uint16_t input_keyboard_to_keys(const uint8_t *keyboard, int numkeys)
 {
     uint16_t keys = 0;
-    if (keyboard == NULL) {
+    if (keyboard == NULL)
         return 0;
-    }
     for (size_t i = 0; i < sizeof keyboard_bindings / sizeof keyboard_bindings[0]; i++) {
         int scancode = keyboard_bindings[i].scancode;
-        if (scancode >= 0 && scancode < numkeys && keyboard[scancode] != 0) {
+        if (scancode >= 0 && scancode < numkeys && keyboard[scancode] != 0)
             keys = (uint16_t)(keys | keyboard_bindings[i].key);
-        }
     }
     return keys;
 }
@@ -74,9 +72,8 @@ uint16_t input_keyboard_to_keys(const uint8_t *keyboard, int numkeys)
 uint16_t input_pad_to_keys(const struct input_pad_state *pad)
 {
     uint16_t keys = 0;
-    if (pad == NULL) {
+    if (pad == NULL)
         return 0;
-    }
     if (pad->a != 0)
         keys |= INPUT_KEY_A;
     if (pad->b != 0)
@@ -128,10 +125,9 @@ static uint16_t read_host_keys(void)
 {
     int numkeys = 0;
     const uint8_t *keyboard = SDL_GetKeyboardState(&numkeys);
-    static bool reported_no_keyboard_state;
-    if (keyboard == NULL && !reported_no_keyboard_state) {
+    if (keyboard == NULL && !state.reported_no_keyboard_state) {
         (void)fprintf(stderr, "input: SDL_GetKeyboardState returned NULL; keyboard reads as no keys\n");
-        reported_no_keyboard_state = true;
+        state.reported_no_keyboard_state = true;
     }
     uint16_t keys = input_keyboard_to_keys(keyboard, numkeys);
     for (size_t i = 0; i < INPUT_MAX_CONTROLLERS; i++) {
@@ -146,9 +142,8 @@ static uint16_t read_host_keys(void)
 static bool controller_is_open(const SDL_GameController *controller)
 {
     for (size_t i = 0; i < INPUT_MAX_CONTROLLERS; i++) {
-        if (state.controllers[i] == controller) {
+        if (state.controllers[i] == controller)
             return true;
-        }
     }
     return false;
 }
@@ -180,9 +175,8 @@ static int open_controller(int device_index)
 static void close_controller(SDL_JoystickID instance_id)
 {
     SDL_GameController *controller = SDL_GameControllerFromInstanceID(instance_id);
-    if (controller == NULL) {
+    if (controller == NULL)
         return;
-    }
     for (size_t i = 0; i < INPUT_MAX_CONTROLLERS; i++) {
         if (state.controllers[i] == controller) {
             SDL_GameControllerClose(controller);
@@ -261,6 +255,7 @@ void input_shutdown(void)
     }
     state.initialised = false;
     state.script_keys = 0;
+    state.reported_no_keyboard_state = false;
 }
 
 void input_script_set(uint16_t keys_active_high)
@@ -270,9 +265,8 @@ void input_script_set(uint16_t keys_active_high)
 
 void input_update_keyinput(void)
 {
-    if (!state.initialised) {
+    if (!state.initialised)
         return;
-    }
     write_keyinput(state.source == INPUT_SOURCE_HOST ? read_host_keys() : state.script_keys);
 }
 
@@ -282,14 +276,11 @@ int input_handle_event(const union SDL_Event *event)
         (void)fprintf(stderr, "input: input_handle_event given a NULL event\n");
         return -1;
     }
-    if (!state.initialised || state.source != INPUT_SOURCE_HOST) {
+    if (!state.initialised || state.source != INPUT_SOURCE_HOST)
         return 0;
-    }
-    if (event->type == SDL_CONTROLLERDEVICEADDED) {
+    if (event->type == SDL_CONTROLLERDEVICEADDED)
         return open_controller(event->cdevice.which);
-    }
-    if (event->type == SDL_CONTROLLERDEVICEREMOVED) {
+    if (event->type == SDL_CONTROLLERDEVICEREMOVED)
         close_controller(event->cdevice.which);
-    }
     return 0;
 }
