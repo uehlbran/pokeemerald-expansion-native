@@ -41,24 +41,20 @@ write_symbol_map = rm -f $(2) $(2).nm $(2).tmp \
 	&& rm -f $(2).nm && mv $(2).tmp $(2) \
 	|| { rm -f $(2) $(2).nm $(2).tmp; echo "write_symbol_map: no function map for $(1)" >&2; false; }
 
-# The awk condition that picks the functions out of nm's System V columns
-# (name, value, class, type, size). ELF types them FUNC and sizes them, and a
-# function with no size is an assembler label; a PE symbol table has types
-# ("Function") but no sizes, and an address of zero is a symbol the link
-# script gave the value zero (gba_game.pe.ld), not a function.
-# HOST_TEST_DIRS names the directories under test/ with the tests only this
-# target OS can run, widest family first (posix: fork, signals, pipes, file
-# permissions; linux: what only Linux has, /proc and glibc's
-# pthread_getattr_np), and HOST_TEST_SUPPORT_DIR the one of them that holds
-# the support (test/test_support.h's implementation, support.c). macOS will
-# name posix and darwin; Windows names windows. A test directory is
-# built for its OS and no other: see README.md, "Tests that need an operating
-# system".
 ifeq ($(TARGET_OS),Linux)
 
 HOST_SRCS := host_posix.c host_linux.c host_linked.c
+# HOST_TEST_DIRS: the directories under test/ with the tests only this target OS
+# can run, widest family first (posix: fork, signals, pipes, file permissions;
+# linux: what only Linux has, /proc and glibc's pthread_getattr_np). A test
+# directory is built for its OS and no other (README.md, "Tests that need an
+# operating system"); macOS will name posix and darwin, Windows names windows.
+# HOST_TEST_SUPPORT_DIR is the one that holds test_support.h's implementation.
 HOST_TEST_DIRS := posix linux
 HOST_TEST_SUPPORT_DIR := posix
+# SYMBOL_MAP_SELECT: the awk condition that picks the functions out of nm's
+# System V columns (name, value, class, type, size). ELF types them FUNC and
+# sizes them; a function with no size is an assembler label.
 SYMBOL_MAP_SELECT = $$4 == "FUNC" && $$5 != "" && $$1 != ""
 
 else ifeq ($(TARGET_OS),windows)
@@ -66,6 +62,9 @@ else ifeq ($(TARGET_OS),windows)
 HOST_SRCS := host_windows.c host_windows_fault.c host_windows_stack.c host_windows_thread.c host_linked.c
 HOST_TEST_DIRS := windows
 HOST_TEST_SUPPORT_DIR := windows
+# A PE symbol table has types ("Function") but no sizes, and an address of zero
+# is a symbol the link script gave the value zero (gba_game.pe.ld), not a
+# function.
 SYMBOL_MAP_SELECT = $$4 == "Function" && $$1 != "" && $$2 !~ /^0+$$/
 
 endif
