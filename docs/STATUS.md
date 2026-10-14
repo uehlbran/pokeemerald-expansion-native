@@ -347,11 +347,34 @@ over all objects and 58 mutants; the Linux executables unchanged. The
 orchestrator's gate after the merge: platform gate, the 64-bit build,
 both conversions and checks, the opening replay, all green (0b86a3454c).
 
+**The Windows cross-build** (task W4, merged 2026-10-14 at f25169cdf1):
+`make -f Makefile.native native BITS=64 TARGET_OS=windows` links
+`build/native64-windows/pokeemerald-native.exe` with the MinGW-w64
+toolchain (x86_64 only; `platform/target.mk`), a pinned SDL2 2.30.12
+development package fetched with a sha256 check, the PE linker scripts
+(`platform/gba_regions.pe.ld`, `gba_game.pe.ld`, `gba_gaps.pe.s`: the
+image based at 0x01800000, every GBA region a section at its address,
+the gaps between them filled with uninitialised read-only sections, the
+code at 0x40001000, no dynamic base and no relocations, as the loader
+probe accepted), the COFF data assembled by MinGW's `as` from the
+converter's listings, and `check_pe_layout.py`, which fails the link
+unless the executable's headers and section table are exactly that
+layout. Expansion's files are untouched; the Linux executables are
+byte-identical before and after. Nothing cross-built runs here (no
+Wine): the executable stops at its first start-up step by design until
+the Windows host layer exists (tasks W5 to W7, in flight), and the first
+runs happen on the Windows runner (task W9). Reviewed: the layout, the
+data, the weak-symbol provisions and the symbol map confirmed
+independently; the review's fixes (a checked write wrapper instead of a
+suppressed warning on the handler path, the PE checker's self-test
+pinned to the specification's literals, a gap-content check) merged.
+
 **In flight.** The test harness's timeout without SIGALRM and the
-per-OS split of the POSIX-bound tests (task W3); the CI workflow in two
-tiers; the Windows cross-build glue (task W4: the target-OS switch, SDL2
-for MinGW, the PE linker scripts with the probe's filled layout, the
-COFF data from the converter, the link).
+per-OS split of the POSIX-bound tests (task W3, review fixes); the CI
+workflow in two tiers (measuring); the Windows host layer (tasks W5 to
+W7: memory, image, process and files, the vectored exception handler
+and the crash respawn, the stack switch, the watchdog, the cross-built
+unit tests for the Windows runner).
 
 ## Verified by a gate
 
