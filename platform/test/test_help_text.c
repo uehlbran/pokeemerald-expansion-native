@@ -1,4 +1,4 @@
-// deps: input.c overlay.c font.c data_dir.c fastforward.c
+// deps: input.c overlay.c controller.c font.c data_dir.c fastforward.c
 /*
  * test_help_text.c: the lines --keys prints and the overlay shows
  * (help_text.c), line for line, for the default keys and files in each mode,
@@ -11,7 +11,7 @@
 #include <stdio.h>
 #include <string.h>
 
-#define MAX_LINES 32u
+#define MAX_LINES 48u
 
 struct collected {
     size_t count;
@@ -57,7 +57,15 @@ PTEST(the_defaults_per_user_line_for_line)
         "  Down    Down",
         "  R       S",
         "  L       A",
-        "Controller: A, B, Back (Select), Start, the shoulders (L, R), the D-pad or the left stick",
+        "  Fullscreen F11",
+        "Controller:",
+        "  GBA buttons: A, B, Back (Select), Start, the shoulders (L, R), the D-pad or the left stick",
+        "  Fast-forward hold    Right trigger",
+        "  Fast-forward toggle  Right stick click",
+        "  Help overlay         Y",
+        "  Overlay close        B",
+        "  Overlay quit         X",
+        "  Fullscreen           Left trigger",
         "Fast-forward:",
         "  Hold    Tab",
         "  Toggle  Shift+Tab",
@@ -65,11 +73,14 @@ PTEST(the_defaults_per_user_line_for_line)
         "  Sound   sped up",
     };
     const struct input_keymap keymap = input_default_keymap();
+    const struct controller_bindings pad = controller_default_bindings();
     const struct fastforward_settings fast_forward = fastforward_defaults();
     const struct data_paths paths = paths_in(DATA_DIR_PER_USER, "/home/p/.local/share/pen/app/");
     const struct help_info info = {
         .version = "v1-test",
         .keymap = &keymap,
+        .pad = &pad,
+        .fullscreen_key = SDL_SCANCODE_F11,
         .fast_forward = &fast_forward,
         .paths = &paths,
         .settings_found = false,
@@ -86,11 +97,16 @@ PTEST(the_keys_in_force_and_a_settings_file_found_portable)
     struct input_keymap keymap = input_default_keymap();
     keymap.scancodes[0] = SDL_SCANCODE_SPACE;
     keymap.scancodes[9] = SDL_SCANCODE_LSHIFT;
+    struct controller_bindings pad = controller_default_bindings();
+    pad.controls[CONTROLLER_OVERLAY] = SDL_CONTROLLER_BUTTON_DPAD_UP;
+    pad.controls[CONTROLLER_FULLSCREEN] = SDL_CONTROLLER_BUTTON_LEFTSTICK;
     const struct fastforward_settings fast_forward = fastforward_defaults();
     const struct data_paths paths = paths_in(DATA_DIR_PORTABLE, "C:\\Games\\pen\\");
     const struct help_info info = {
         .version = "unknown",
         .keymap = &keymap,
+        .pad = &pad,
+        .fullscreen_key = SDL_SCANCODE_F12,
         .fast_forward = &fast_forward,
         .paths = &paths,
         .settings_found = true,
@@ -100,18 +116,24 @@ PTEST(the_keys_in_force_and_a_settings_file_found_portable)
     PT_ASSERT_EQ_STR(collected.lines[0], "pokeemerald-native unknown");
     PT_ASSERT_EQ_STR(collected.lines[6], "  A       Space");
     PT_ASSERT_EQ_STR(collected.lines[15], "  L       Left Shift");
+    PT_ASSERT_EQ_STR(collected.lines[16], "  Fullscreen F12");
     PT_ASSERT_EQ_STR(collected.lines[1], "Data directory (portable): C:\\Games\\pen\\");
     PT_ASSERT_EQ_STR(collected.lines[4], "Settings: C:\\Games\\pen\\settings.ini");
+    PT_ASSERT_EQ_STR(collected.lines[21], "  Help overlay         D-pad up");
+    PT_ASSERT_EQ_STR(collected.lines[24], "  Fullscreen           Left stick click");
 }
 
 PTEST(a_given_directory_and_a_run_without_settings_or_directory)
 {
     const struct input_keymap keymap = input_default_keymap();
+    const struct controller_bindings pad = controller_default_bindings();
     const struct fastforward_settings fast_forward = fastforward_defaults();
     struct data_paths paths = paths_in(DATA_DIR_GIVEN, "out/");
     const struct help_info info = {
         .version = "x",
         .keymap = &keymap,
+        .pad = &pad,
+        .fullscreen_key = SDL_SCANCODE_F11,
         .fast_forward = &fast_forward,
         .paths = &paths,
         .settings_found = true,
@@ -134,10 +156,13 @@ PTEST(a_given_directory_and_a_run_without_settings_or_directory)
 static void check_fast_forward(const struct fastforward_settings *fast_forward, const char *const expected[5])
 {
     const struct input_keymap keymap = input_default_keymap();
+    const struct controller_bindings pad = controller_default_bindings();
     const struct data_paths paths = paths_in(DATA_DIR_GIVEN, "out/");
     const struct help_info info = {
         .version = "x",
         .keymap = &keymap,
+        .pad = &pad,
+        .fullscreen_key = SDL_SCANCODE_F11,
         .fast_forward = fast_forward,
         .paths = &paths,
         .settings_found = true,

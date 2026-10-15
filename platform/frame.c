@@ -15,9 +15,11 @@
 
 #include "audio.h"
 #include "audio_dump.h"
+#include "controller.h"
 #include "dma.h"
 #include "fastforward.h"
 #include "flash.h"
+#include "fullscreen.h"
 #include "frame_pacer.h"
 #include "gba_irq.h"
 #include "gba_memmap.h"
@@ -266,17 +268,29 @@ static void apply_speed(void)
     frame.sound_muted = muted;
 }
 
-/* video_poll_events' callback: controller hot-plug, the help overlay's keys,
- * whose Q ends the game after this frame as closing the window does, and
- * fast-forward's. A controller that cannot be opened is reported by input
- * and play goes on with the others. */
+/* Fullscreen, from its key or the controller's button. A failure is
+ * reported by video and play goes on in the window as it was. */
+static void toggle_fullscreen(void)
+{
+    (void)video_set_fullscreen(!video_is_fullscreen());
+}
+
+/* video_poll_events' callback: controller hot-plug, the help overlay's keys
+ * and the controller's functions, where Q or the controller's quit ends the
+ * game after this frame as closing the window does, fast-forward's, and
+ * fullscreen's. A controller that cannot be opened is reported by input and
+ * play goes on with the others. */
 static void on_sdl_event(const union SDL_Event *event, void *context)
 {
     (void)context;
     (void)input_handle_event(event);
-    if (overlay_handle_event(event) == OVERLAY_QUIT)
+    const struct controller_edge edge = controller_handle_event(event);
+    if (overlay_handle_event(event) == OVERLAY_QUIT || overlay_handle_controller(&edge) == OVERLAY_QUIT)
         frame.exit_requested = true;
     fastforward_handle_event(event);
+    fastforward_handle_controller(&edge);
+    if (fullscreen_toggle_requested(event) || (edge.pressed && edge.function == CONTROLLER_FULLSCREEN))
+        toggle_fullscreen();
 }
 
 static void run_step_hook(void)

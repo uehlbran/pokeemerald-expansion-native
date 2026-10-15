@@ -1,4 +1,4 @@
-// deps: input.c overlay.c font.c fastforward.c
+// deps: input.c overlay.c controller.c font.c fastforward.c
 /*
  * test_settings.c: the settings file (settings.c), from hand-written texts:
  * the defaults, every setting, names in any case, a key SDL does not know,
@@ -491,7 +491,9 @@ PTEST(a_file_is_applied_and_each_problem_reported_with_its_line)
     const int written = snprintf(
         expected, sizeof expected,
         "settings: %s:3: 'jump' is not a setting (a, b, select, start, right, left, up, down, r, l, "
-        "scale, fast_forward, fast_forward_toggle, fast_forward_speed, fast_forward_audio); the line is ignored\n"
+        "scale, fast_forward, fast_forward_toggle, fast_forward_speed, fast_forward_audio, fullscreen, "
+        "fullscreen_toggle, pad_fast_forward, pad_fast_forward_toggle, pad_overlay, pad_overlay_close, pad_quit, "
+        "pad_fullscreen); the line is ignored\n"
         "settings: %s:4: the scale '40' is not a whole number from 1 to 16; the line is ignored\n",
         path, path);
     PT_ASSERT(written > 0 && (size_t)written < sizeof expected);
@@ -542,6 +544,139 @@ PTEST(the_report_of_one_key_for_both)
     (void)fclose(out);
     PT_ASSERT_EQ_STR(said, "settings: f.ini:2: 'tab' is the other fast-forward key too: one key cannot both hold and "
                            "toggle, and this one keeps its default; the line is ignored\n");
+}
+
+/* ---- the controller's functions and fullscreen ---- */
+
+static bool pad_is_default(const struct controller_bindings *pad)
+{
+    const struct controller_bindings defaults = controller_default_bindings();
+    return memcmp(pad, &defaults, sizeof defaults) == 0;
+}
+
+static char *report_of(const struct settings *s, char *said, size_t size)
+{
+    FILE *const out = tsup_open_temp_stream();
+    said[0] = '\0';
+    if (out == NULL)
+        return said;
+    settings_report(s, "f.ini", out);
+    const bool rewound = fseek(out, 0, SEEK_SET) == 0;
+    const size_t got = rewound ? fread(said, 1, size - 1u, out) : 0;
+    said[got] = '\0';
+    (void)fclose(out);
+    return said;
+}
+
+PTEST(the_defaults_are_the_decks_controls_fullscreen_auto_and_f11)
+{
+    struct settings s;
+    parse("", &s);
+    PT_ASSERT(pad_is_default(&s.pad));
+    PT_ASSERT_EQ_INT(s.pad.controls[CONTROLLER_FAST_FORWARD_HOLD], CONTROLLER_RIGHT_TRIGGER);
+    PT_ASSERT_EQ_INT(s.pad.controls[CONTROLLER_OVERLAY], SDL_CONTROLLER_BUTTON_Y);
+    PT_ASSERT_EQ_INT(s.fullscreen, FULLSCREEN_AUTO);
+    PT_ASSERT_EQ_INT(s.fullscreen_key, SDL_SCANCODE_F11);
+}
+
+PTEST(every_controller_function_is_rebound_by_sdls_button_names_and_the_triggers)
+{
+    static const char text[] = "pad_fast_forward = LeftTrigger\n"
+                               "pad_fast_forward_toggle = dpup\n"
+                               "pad_overlay = leftstick\n"
+                               "pad_overlay_close = leftshoulder\n"
+                               "pad_quit = a\n"
+                               " Pad_Fullscreen = righttrigger \n";
+    struct settings s;
+    parse(text, &s);
+    PT_ASSERT_EQ_U32(s.problem_count, 0u);
+    PT_ASSERT_EQ_INT(s.pad.controls[CONTROLLER_FAST_FORWARD_HOLD], CONTROLLER_LEFT_TRIGGER);
+    PT_ASSERT_EQ_INT(s.pad.controls[CONTROLLER_FAST_FORWARD_TOGGLE], SDL_CONTROLLER_BUTTON_DPAD_UP);
+    PT_ASSERT_EQ_INT(s.pad.controls[CONTROLLER_OVERLAY], SDL_CONTROLLER_BUTTON_LEFTSTICK);
+    PT_ASSERT_EQ_INT(s.pad.controls[CONTROLLER_OVERLAY_CLOSE], SDL_CONTROLLER_BUTTON_LEFTSHOULDER);
+    PT_ASSERT_EQ_INT(s.pad.controls[CONTROLLER_QUIT], SDL_CONTROLLER_BUTTON_A);
+    PT_ASSERT_EQ_INT(s.pad.controls[CONTROLLER_FULLSCREEN], CONTROLLER_RIGHT_TRIGGER);
+    PT_ASSERT(keymap_is_default(&s.keymap)); /* the keys are not the controller's */
+}
+
+PTEST(a_bad_controller_name_is_a_problem_and_the_default_stays)
+{
+    struct settings s;
+    char said[512];
+    parse("pad_overlay = banana\npad_quit = key z\npad_fullscreen = \n", &s);
+    PT_ASSERT(pad_is_default(&s.pad));
+    PT_ASSERT_EQ_U32(s.problem_count, 3u);
+    PT_ASSERT_EQ_INT(s.problems[0].kind, SETTINGS_UNKNOWN_CONTROL);
+    PT_ASSERT_EQ_STR(s.problems[0].text, "banana");
+    PT_ASSERT_EQ_INT(s.problems[1].kind, SETTINGS_UNKNOWN_CONTROL);
+    PT_ASSERT_EQ_INT(s.problems[2].kind, SETTINGS_NOT_A_SETTING_LINE);
+    PT_ASSERT(strstr(report_of(&s, said, sizeof said), "settings: f.ini:1: 'banana' is not a controller button name SDL knows")
+              != NULL);
+}
+
+PTEST(the_same_button_for_two_functions_sends_the_later_line_back_to_its_default)
+{
+    struct settings s;
+    char said[512];
+    parse("pad_quit = y\n", &s); /* Y is the overlay's default */
+    PT_ASSERT_EQ_U32(s.problem_count, 1u);
+    PT_ASSERT_EQ_INT(s.problems[0].kind, SETTINGS_SAME_CONTROL);
+    PT_ASSERT_EQ_U32(s.problems[0].line, 1u);
+    PT_ASSERT(pad_is_default(&s.pad));
+    /* quit's line is the later: it goes back to x, which is then the overlay's too, and the
+     * overlay's line, the earlier, goes back to y */
+    parse("pad_overlay = x\npad_quit = x\n", &s);
+    PT_ASSERT_EQ_U32(s.problem_count, 2u);
+    PT_ASSERT_EQ_U32(s.problems[0].line, 2u);
+    PT_ASSERT_EQ_U32(s.problems[1].line, 1u);
+    PT_ASSERT(pad_is_default(&s.pad));
+    PT_ASSERT(strstr(report_of(&s, said, sizeof said), "settings: f.ini:2: 'x' is another function's controller button too")
+              != NULL);
+}
+
+PTEST(a_rotation_of_the_default_buttons_is_no_problem)
+{
+    struct settings s;
+    parse("pad_overlay = b\npad_overlay_close = x\npad_quit = y\n", &s);
+    PT_ASSERT_EQ_U32(s.problem_count, 0u);
+    PT_ASSERT_EQ_INT(s.pad.controls[CONTROLLER_OVERLAY], SDL_CONTROLLER_BUTTON_B);
+    PT_ASSERT_EQ_INT(s.pad.controls[CONTROLLER_OVERLAY_CLOSE], SDL_CONTROLLER_BUTTON_X);
+    PT_ASSERT_EQ_INT(s.pad.controls[CONTROLLER_QUIT], SDL_CONTROLLER_BUTTON_Y);
+}
+
+PTEST(fullscreen_is_yes_no_or_auto_in_any_case)
+{
+    struct settings s;
+    parse("fullscreen = YES\n", &s);
+    PT_ASSERT_EQ_INT(s.fullscreen, FULLSCREEN_YES);
+    parse("fullscreen = no\n", &s);
+    PT_ASSERT_EQ_INT(s.fullscreen, FULLSCREEN_NO);
+    parse("fullscreen = no\nfullscreen = Auto\n", &s);
+    PT_ASSERT_EQ_INT(s.fullscreen, FULLSCREEN_AUTO);
+    PT_ASSERT_EQ_U32(s.problem_count, 0u);
+}
+
+PTEST(a_bad_fullscreen_value_is_a_problem_and_the_default_stays)
+{
+    struct settings s;
+    char said[512];
+    parse("fullscreen = true\n", &s);
+    PT_ASSERT_EQ_INT(s.fullscreen, FULLSCREEN_AUTO);
+    PT_ASSERT_EQ_U32(s.problem_count, 1u);
+    PT_ASSERT_EQ_INT(s.problems[0].kind, SETTINGS_BAD_FULLSCREEN);
+    PT_ASSERT(strstr(report_of(&s, said, sizeof said), "the fullscreen setting 'true' is not yes, no or auto") != NULL);
+}
+
+PTEST(the_fullscreen_key_is_a_key_and_not_f1)
+{
+    struct settings s;
+    parse("fullscreen_toggle = f12\n", &s);
+    PT_ASSERT_EQ_INT(s.fullscreen_key, SDL_SCANCODE_F12);
+    parse("fullscreen_toggle = f1\nfullscreen_toggle = nokey\n", &s);
+    PT_ASSERT_EQ_INT(s.fullscreen_key, SDL_SCANCODE_F11);
+    PT_ASSERT_EQ_U32(s.problem_count, 2u);
+    PT_ASSERT_EQ_INT(s.problems[0].kind, SETTINGS_RESERVED_KEY);
+    PT_ASSERT_EQ_INT(s.problems[1].kind, SETTINGS_UNKNOWN_KEY);
 }
 
 PTEST(a_file_larger_than_the_limit_is_refused_with_the_defaults)

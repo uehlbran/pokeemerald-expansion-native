@@ -68,6 +68,8 @@ static struct {
     SDL_Texture *overlay;   /* NULL unless the overlay is started */
     SDL_Texture *indicator; /* NULL unless fast-forward is started */
     SDL_Rect indicator_place;
+    SDL_Point overlay_size;       /* the overlay texture's pixels */
+    bool overlay_painted_for_pad; /* which hint it shows (overlay_hint_for_pad) */
 } state;
 
 static int sdl_error(const char *call)
@@ -120,7 +122,19 @@ static int create_overlay(int scale)
                                       height);
     if (state.overlay == NULL)
         return sdl_error_on("SDL_CreateTexture", "overlay");
+    state.overlay_size = (SDL_Point){.x = width, .y = height};
+    state.overlay_painted_for_pad = overlay_hint_for_pad();
     return paint_texture(state.overlay, width, height, overlay_draw, "overlay");
+}
+
+/* The overlay's hint names the keyboard's keys or the controller's buttons,
+ * by which was used last (overlay.h): painted again when that changes. */
+static int repaint_overlay_hint(void)
+{
+    if (overlay_hint_for_pad() == state.overlay_painted_for_pad)
+        return 0;
+    state.overlay_painted_for_pad = overlay_hint_for_pad();
+    return paint_texture(state.overlay, state.overlay_size.x, state.overlay_size.y, overlay_draw, "overlay");
 }
 
 /* The fast-forward indicator's texture, its box in LCD pixels, drawn by
@@ -141,7 +155,7 @@ static int create_window_objects(const struct video_config *cfg)
 {
     state.window = SDL_CreateWindow(cfg->title, SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,
                                     (int)VIDEO_WIDTH * cfg->scale, (int)VIDEO_HEIGHT * cfg->scale,
-                                    SDL_WINDOW_RESIZABLE);
+                                    SDL_WINDOW_RESIZABLE | (cfg->fullscreen ? SDL_WINDOW_FULLSCREEN_DESKTOP : 0u));
     if (state.window == NULL)
         return sdl_error("SDL_CreateWindow");
     state.renderer = SDL_CreateRenderer(state.window, -1, 0);
@@ -203,10 +217,32 @@ int video_present(const uint16_t *frame)
     if (state.indicator != NULL && fastforward_indicator_shown()
         && SDL_RenderCopy(state.renderer, state.indicator, NULL, &state.indicator_place) != 0)
         return sdl_error_on("SDL_RenderCopy", "indicator");
+    if (state.overlay != NULL && overlay_shown() && repaint_overlay_hint() != 0)
+        return -1;
     if (state.overlay != NULL && overlay_shown() && SDL_RenderCopy(state.renderer, state.overlay, NULL, NULL) != 0)
         return sdl_error_on("SDL_RenderCopy", "overlay");
     SDL_RenderPresent(state.renderer); /* returns void */
     return 0;
+}
+
+int video_set_fullscreen(bool fullscreen)
+{
+    if (!state.initialised) {
+        (void)fprintf(stderr, MODULE ": video_set_fullscreen: not initialised\n");
+        return -1;
+    }
+    if (state.headless)
+        return 0;
+    if (SDL_SetWindowFullscreen(state.window, fullscreen ? SDL_WINDOW_FULLSCREEN_DESKTOP : 0u) != 0)
+        return sdl_error("SDL_SetWindowFullscreen");
+    return 0;
+}
+
+bool video_is_fullscreen(void)
+{
+    if (!state.initialised || state.headless)
+        return false;
+    return (SDL_GetWindowFlags(state.window) & SDL_WINDOW_FULLSCREEN_DESKTOP) != 0;
 }
 
 bool video_poll_events(void (*on_event)(const union SDL_Event *event, void *ctx), void *ctx)
@@ -246,6 +282,7 @@ void video_shutdown(void)
     state.owns_video_subsystem = false;
     state.initialised = false;
     state.headless = false;
+    state.overlay_painted_for_pad = false;
 }
 
 /* 5 bits to 8 by replicating the top bits, so 0 -> 0 and 31 -> 255. */

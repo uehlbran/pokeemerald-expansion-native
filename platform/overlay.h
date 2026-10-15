@@ -11,13 +11,22 @@
  * F1 shows it and hides it. While it is shown the game runs on but reads
  * every button released (overlay_game_keys, which input.c applies to
  * KEYINPUT, from the keyboard, a controller or a script alike), so that
- * nothing pressed to read it or to quit reaches the game; Q then ends the
+ * nothing pressed to read it or to quit reaches the game; a button still
+ * held when it hides stays released until it is let go, so that the B that
+ * closed it from a controller does not back the game out of a menu next.
+ * Q then ends the
  * game the way closing the window does (frame.c), by the normal exit path:
  * the game's own save, if one is pending, is stored as at any exit, and the
  * platform writes nothing. F1 is SDL_SCANCODE_F1 (the same key on every
  * layout, refused as a button's key by settings.h); Q is the key that types
  * q (SDLK_q), wherever the layout puts it, so that the hint names the key
  * on the keyboard. Held keys repeat; a repeat does nothing.
+ *
+ * A controller does the same through controller.h's functions: Y shows and
+ * hides it, B hides it, X quits (overlay_handle_controller). The hint line
+ * names the keys, or the controller's buttons once the last thing the player
+ * pressed was a controller button or a trigger or stick pushed well over
+ * (overlay_hint_for_pad), and the keyboard's again at the next key.
  *
  * main starts it only for a run with a window whose keys come from the
  * keyboard: never headless, in test-runner mode or for a replay, so it can
@@ -39,13 +48,16 @@
 #include <SDL_keycode.h>
 #include <SDL_scancode.h>
 
+#include "controller.h"
 #include "font.h"
 
 #define OVERLAY_TOGGLE_SCANCODE SDL_SCANCODE_F1
 #define OVERLAY_QUIT_KEYCODE SDLK_q
 
-/* The first line, above the help text. */
+/* The first line, above the help text, for the keyboard; the controller's
+ * names its buttons (controller_function_label). */
 #define OVERLAY_HINT "Q: quit  F1: close"
+#define OVERLAY_PAD_HINT_SIZE 96u
 
 /* The colours, as 32-bit ARGB (video.c's texture): a black that lets the
  * game show through faintly, and white text. */
@@ -83,8 +95,19 @@ bool overlay_shown(void);
  * repeat, any event before init, and NULL do nothing. */
 enum overlay_request overlay_handle_event(const union SDL_Event *event);
 
+/* A controller function pressed or released (controller_handle_event's
+ * answer): the overlay's Y shows or hides it, B hides it, and X while shown
+ * asks to quit. Anything else, a release, and any call before init do
+ * nothing. */
+enum overlay_request overlay_handle_controller(const struct controller_edge *edge);
+
+/* Whether the player's last input was the controller's, so that the hint
+ * names its buttons; false until a controller button is pressed. */
+bool overlay_hint_for_pad(void);
+
 /* The buttons the game reads of keys (KEYINPUT bits, active high): all of
- * them, or none while the overlay is shown. */
+ * them, or none while the overlay is shown and, after it hides, none of those
+ * still held then. Call it once per frame with that frame's keys. */
 uint16_t overlay_game_keys(uint16_t keys);
 
 /* The glyphs' scale for a canvas width pixels wide: a window of scale s is

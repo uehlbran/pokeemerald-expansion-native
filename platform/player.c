@@ -3,6 +3,8 @@
  */
 #include "player.h"
 
+#include <SDL_stdinc.h>
+
 #include "help_text.h"
 #include "settings.h"
 #include "version.h"
@@ -30,6 +32,8 @@ int player_find(const struct options *options, const struct data_dir_host *host)
     player.help = (struct help_info){
         .version = version_string(),
         .keymap = &player.settings.keymap,
+        .pad = &player.settings.pad,
+        .fullscreen_key = player.settings.fullscreen_key,
         .fast_forward = &player.settings.fast_forward,
         .paths = &player.paths,
         .settings_found = player.settings.found,
@@ -50,6 +54,23 @@ const char *player_rtc_offset_path(void)
 const struct input_keymap *player_keymap(void)
 {
     return &player.settings.keymap;
+}
+
+const struct controller_bindings *player_controller(void)
+{
+    return &player.settings.pad;
+}
+
+bool player_starts_fullscreen(const struct options *options)
+{
+    return player_at_keyboard(options)
+           && fullscreen_at_start(player.settings.fullscreen,
+                                  fullscreen_on_steam_deck(SDL_getenv(FULLSCREEN_STEAM_DECK_VARIABLE)));
+}
+
+int player_fullscreen_key(void)
+{
+    return player.settings.fullscreen_key;
 }
 
 const struct fastforward_settings *player_fast_forward(void)

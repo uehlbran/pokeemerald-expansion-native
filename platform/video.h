@@ -14,7 +14,8 @@
  * With the help overlay started (overlay.h, before video_init), the window
  * also shows it over the frame while it is shown, and with fast-forward
  * started (fastforward.h, before video_init) its indicator while it is on;
- * the frame buffer and video_write_frame_ppm never see either.
+ * the frame buffer and video_write_frame_ppm never see either. The window can
+ * start fullscreen and be toggled (fullscreen.h has when).
  */
 #ifndef VIDEO_H
 #define VIDEO_H
@@ -44,6 +45,7 @@ struct video_config {
     bool headless;     /* no window; present discards */
     int scale;         /* 1..VIDEO_MAX_SCALE, also checked in headless mode */
     const char *title; /* window title, not NULL */
+    bool fullscreen;   /* the window starts as desktop fullscreen (fullscreen.h); ignored headless */
 };
 
 /* Returns 0 on success, nonzero after printing a message to stderr. On
@@ -63,6 +65,15 @@ int video_present(const uint16_t *frame);
  * passed to on_event). In headless mode nothing is pumped and it returns
  * true. */
 bool video_poll_events(void (*on_event)(const union SDL_Event *event, void *ctx), void *ctx);
+
+/* Makes the window desktop fullscreen (SDL_WINDOW_FULLSCREEN_DESKTOP: the
+ * screen's own resolution, no mode change, the frame scaled and letterboxed
+ * as in the window) or a window again. Returns 0, or nonzero after printing a
+ * message to stderr; headless it does nothing and returns 0. */
+int video_set_fullscreen(bool fullscreen);
+
+/* Whether the window is fullscreen now; false headless. */
+bool video_is_fullscreen(void);
 
 /* Releases texture, renderer, window in reverse order. Safe after a failed
  * or partial init, without init, and twice. */

@@ -31,6 +31,15 @@
  * reason; a toggle switched on stays on, and the game runs on fast under the
  * overlay, which hides the indicator.
  *
+ * A controller does the same through controller.h's two functions, hold
+ * (the right trigger) and toggle (a click of the right stick), passed in as
+ * the edges controller_handle_event answers (fastforward_handle_controller,
+ * called after every event): a press is the overlay's while it is shown, as
+ * a key's is; the hold ends with the release, with the controller going away
+ * (SDL sends no release for a pulled cable) and with the window losing the
+ * focus, because it lasts only as long as controller_held says some
+ * controller holds the control.
+ *
  * The indicator, "FF 2x", "FF 3x", "FF 4x" or "FF max", is drawn in the
  * screen's top-right corner while fast-forward is on (fastforward_draw_indicator
  * into a canvas; video.c owns the texture and draws it over the frame, never
@@ -49,6 +58,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "controller.h"
 #include "font.h"
 #include "frame_pacer.h"
 
@@ -132,6 +142,11 @@ bool fastforward_enabled(void);
 /* An SDL event, as the frame loop polls them (above). Anything else, any
  * event before init, and NULL do nothing. */
 void fastforward_handle_event(const union SDL_Event *event);
+
+/* A controller's edge, as controller_handle_event answered it for an
+ * event; call it after every event, whatever the answer, so that a hold
+ * whose control is no longer held ends. Before init it does nothing. */
+void fastforward_handle_controller(const struct controller_edge *edge);
 
 /* Whether fast-forward is on: held or toggled on. */
 bool fastforward_active(void);

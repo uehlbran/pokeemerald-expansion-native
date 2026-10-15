@@ -22,6 +22,11 @@
 #define FAST_FORWARD_TOGGLE_SETTING "fast_forward_toggle"
 #define FAST_FORWARD_SPEED_SETTING "fast_forward_speed"
 #define FAST_FORWARD_AUDIO_SETTING "fast_forward_audio"
+#define FULLSCREEN_SETTING "fullscreen"
+#define FULLSCREEN_KEY_SETTING "fullscreen_toggle"
+#define AUTO_VALUE "auto"
+#define YES_VALUE "yes"
+#define NO_VALUE "no"
 #define UNLIMITED_VALUE "unlimited"
 #define PLAY_VALUE "play"
 #define MUTE_VALUE "mute"
@@ -63,6 +68,7 @@ struct parse {
     struct settings *settings;
     struct key_line hold;
     struct key_line toggle;
+    struct key_line pad[CONTROLLER_FUNCTION_COUNT];
 };
 
 static bool is_blank(char c)
@@ -164,6 +170,19 @@ static bool parse_audio(struct span value, enum fastforward_audio *out)
     return true;
 }
 
+static bool parse_fullscreen(struct span value, enum fullscreen_setting *out)
+{
+    if (span_is(value, AUTO_VALUE))
+        *out = FULLSCREEN_AUTO;
+    else if (span_is(value, YES_VALUE))
+        *out = FULLSCREEN_YES;
+    else if (span_is(value, NO_VALUE))
+        *out = FULLSCREEN_NO;
+    else
+        return false;
+    return true;
+}
+
 /* The index in input_buttons() of the button called name, or
  * INPUT_BUTTON_COUNT. */
 static size_t find_button(struct span name)
@@ -186,6 +205,68 @@ static void apply_key(struct settings *settings, uint32_t line, size_t button, s
         add_problem(settings, line, SETTINGS_RESERVED_KEY, value);
     else
         settings->keymap.scancodes[button] = scancode;
+}
+
+static void apply_fullscreen_key(struct settings *settings, uint32_t line, struct span value)
+{
+    char name[KEY_NAME_SIZE];
+    const int scancode = span_to_string(value, name, sizeof name) ? input_scancode_from_name(name) : INPUT_NO_SCANCODE;
+    if (scancode == INPUT_NO_SCANCODE)
+        add_problem(settings, line, SETTINGS_UNKNOWN_KEY, value);
+    else if (scancode == OVERLAY_TOGGLE_SCANCODE)
+        add_problem(settings, line, SETTINGS_RESERVED_KEY, value);
+    else
+        settings->fullscreen_key = scancode;
+}
+
+static void apply_pad_control(struct parse *parse, uint32_t line, size_t function, struct span value)
+{
+    char name[KEY_NAME_SIZE];
+    const int control = span_to_string(value, name, sizeof name) ? controller_control_from_name(name)
+                                                                 : CONTROLLER_NO_CONTROL;
+    if (control == CONTROLLER_NO_CONTROL) {
+        add_problem(parse->settings, line, SETTINGS_UNKNOWN_CONTROL, value);
+    } else {
+        parse->settings->pad.controls[function] = control;
+        parse->pad[function] = (struct key_line){.line = line, .value = value};
+    }
+}
+
+/* The function whose setting is called name, or CONTROLLER_FUNCTION_COUNT. */
+static size_t find_pad_function(struct span name)
+{
+    const struct controller_function_info *const functions = controller_functions();
+    for (size_t i = 0; i < CONTROLLER_FUNCTION_COUNT; i++) {
+        if (span_is(name, functions[i].setting))
+            return i;
+    }
+    return CONTROLLER_FUNCTION_COUNT;
+}
+
+/* Of two controller functions on one button, the one the later line set, or
+ * CONTROLLER_FUNCTION_COUNT if there are not two. */
+static size_t find_pad_clash(const struct parse *parse)
+{
+    const struct controller_bindings *const pad = &parse->settings->pad;
+    for (size_t i = 0; i < CONTROLLER_FUNCTION_COUNT; i++) {
+        for (size_t j = 0; j < i; j++) {
+            if (pad->controls[i] == pad->controls[j])
+                return parse->pad[i].line > parse->pad[j].line ? i : j;
+        }
+    }
+    return CONTROLLER_FUNCTION_COUNT;
+}
+
+/* The later line's function goes back to its default (settings.h). Each
+ * pass takes one function off a custom button, so the passes end. */
+static void keep_pad_apart(struct parse *parse)
+{
+    const struct controller_bindings defaults = controller_default_bindings();
+    for (size_t later = find_pad_clash(parse); later != CONTROLLER_FUNCTION_COUNT; later = find_pad_clash(parse)) {
+        add_problem(parse->settings, parse->pad[later].line, SETTINGS_SAME_CONTROL, parse->pad[later].value);
+        parse->settings->pad.controls[later] = defaults.controls[later];
+        parse->pad[later].line = 0;
+    }
 }
 
 static void apply_fast_forward_key(struct parse *parse, uint32_t line, struct span value, struct fastforward_key *key,
@@ -240,6 +321,11 @@ static bool apply_named(struct parse *parse, uint32_t line, struct span name, st
     } else if (span_is(name, FAST_FORWARD_AUDIO_SETTING)) {
         if (!parse_audio(value, &settings->fast_forward.audio))
             add_problem(settings, line, SETTINGS_BAD_AUDIO, value);
+    } else if (span_is(name, FULLSCREEN_SETTING)) {
+        if (!parse_fullscreen(value, &settings->fullscreen))
+            add_problem(settings, line, SETTINGS_BAD_FULLSCREEN, value);
+    } else if (span_is(name, FULLSCREEN_KEY_SETTING)) {
+        apply_fullscreen_key(settings, line, value);
     } else {
         return false;
     }
@@ -266,6 +352,11 @@ static void parse_line(struct parse *parse, uint32_t line, struct span raw)
     }
     if (apply_named(parse, line, name, value))
         return;
+    const size_t pad_function = find_pad_function(name);
+    if (pad_function != CONTROLLER_FUNCTION_COUNT) {
+        apply_pad_control(parse, line, pad_function, value);
+        return;
+    }
     const size_t button = find_button(name);
     if (button == INPUT_BUTTON_COUNT)
         add_problem(settings, line, SETTINGS_UNKNOWN_SETTING, name);
@@ -279,6 +370,9 @@ void settings_defaults(struct settings *out)
     out->keymap = input_default_keymap();
     out->scale = OPTIONS_DEFAULT_SCALE;
     out->fast_forward = fastforward_defaults();
+    out->pad = controller_default_bindings();
+    out->fullscreen = FULLSCREEN_AUTO;
+    out->fullscreen_key = FULLSCREEN_DEFAULT_SCANCODE;
 }
 
 void settings_parse(const char *text, size_t size, struct settings *out)
@@ -300,6 +394,7 @@ void settings_parse(const char *text, size_t size, struct settings *out)
     /* Twice: the default a refused line leaves may be the other line's key. */
     if (!keep_apart(&parse))
         (void)keep_apart(&parse);
+    keep_pad_apart(&parse);
 }
 
 static void report_call(const char *call, const char *path)
@@ -361,8 +456,11 @@ static void print_setting_names(FILE *out)
     for (size_t i = 0; i < INPUT_BUTTON_COUNT; i++)
         (void)fprintf(out, "%s, ", buttons[i].setting);
     (void)fputs(SCALE_SETTING ", " FAST_FORWARD_SETTING ", " FAST_FORWARD_TOGGLE_SETTING ", " FAST_FORWARD_SPEED_SETTING
-                              ", " FAST_FORWARD_AUDIO_SETTING,
+                              ", " FAST_FORWARD_AUDIO_SETTING ", " FULLSCREEN_SETTING ", " FULLSCREEN_KEY_SETTING,
                 out);
+    const struct controller_function_info *const functions = controller_functions();
+    for (size_t i = 0; i < CONTROLLER_FUNCTION_COUNT; i++)
+        (void)fprintf(out, ", %s", functions[i].setting);
 }
 
 static void print_problem(const struct settings_problem *problem, const char *path, FILE *out)
@@ -396,6 +494,20 @@ static void print_problem(const struct settings_problem *problem, const char *pa
         (void)fprintf(out,
                       "'%s' is the other fast-forward key too: one key cannot both hold and toggle, and this one "
                       "keeps its default",
+                      problem->text);
+        break;
+    case SETTINGS_UNKNOWN_CONTROL:
+        (void)fprintf(out,
+                      "'%s' is not a controller button name SDL knows (such as x, y, leftstick, rightstick, "
+                      "dpup, lefttrigger, righttrigger)",
+                      problem->text);
+        break;
+    case SETTINGS_SAME_CONTROL:
+        (void)fprintf(out, "'%s' is another function's controller button too: one button serves one function, and this one keeps its default",
+                      problem->text);
+        break;
+    case SETTINGS_BAD_FULLSCREEN:
+        (void)fprintf(out, "the fullscreen setting '%s' is not " YES_VALUE ", " NO_VALUE " or " AUTO_VALUE,
                       problem->text);
         break;
     case SETTINGS_BAD_SCALE:

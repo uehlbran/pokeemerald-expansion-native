@@ -10,19 +10,37 @@
 /* The button column's width: "Select" and a space ("Toggle" too). */
 #define BUTTON_COLUMN_WIDTH 7
 
-#define CONTROLLER_LINE "Controller: A, B, Back (Select), Start, the shoulders (L, R), the D-pad or the left stick"
+/* The function column's width: "Fast-forward toggle" and a space. */
+#define FUNCTION_COLUMN_WIDTH 20
 
-static void write_keys(const struct input_keymap *keymap, help_text_sink sink, void *context)
+#define CONTROLLER_LINE "  GBA buttons: A, B, Back (Select), Start, the shoulders (L, R), the D-pad or the left stick"
+
+static void write_keys(const struct help_info *info, help_text_sink sink, void *context)
 {
     char line[HELP_TEXT_LINE_SIZE];
     const struct input_button *const buttons = input_buttons();
     sink("Keyboard:", context);
     for (size_t i = 0; i < INPUT_BUTTON_COUNT; i++) {
         (void)snprintf(line, sizeof line, "  %-*s %s", BUTTON_COLUMN_WIDTH, buttons[i].name,
-                       input_scancode_name(keymap->scancodes[i]));
+                       input_scancode_name(info->keymap->scancodes[i]));
         sink(line, context);
     }
+    (void)snprintf(line, sizeof line, "  %-*s %s", BUTTON_COLUMN_WIDTH, "Fullscreen",
+                   input_scancode_name(info->fullscreen_key));
+    sink(line, context);
+}
+
+static void write_controller(const struct controller_bindings *pad, help_text_sink sink, void *context)
+{
+    char line[HELP_TEXT_LINE_SIZE];
+    const struct controller_function_info *const functions = controller_functions();
+    sink("Controller:", context);
     sink(CONTROLLER_LINE, context);
+    for (size_t i = 0; i < CONTROLLER_FUNCTION_COUNT; i++) {
+        (void)snprintf(line, sizeof line, "  %-*s %s", FUNCTION_COLUMN_WIDTH, functions[i].name,
+                       controller_control_label(pad->controls[i]));
+        sink(line, context);
+    }
 }
 
 static void write_fast_forward(const struct fastforward_settings *fast_forward, help_text_sink sink, void *context)
@@ -74,6 +92,7 @@ void help_text_write(const struct help_info *info, help_text_sink sink, void *co
     (void)snprintf(line, sizeof line, VERSION_PROGRAM_NAME " %s", info->version);
     sink(line, context);
     write_files(info, sink, context);
-    write_keys(info->keymap, sink, context);
+    write_keys(info, sink, context);
+    write_controller(info->pad, sink, context);
     write_fast_forward(info->fast_forward, sink, context);
 }

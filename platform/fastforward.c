@@ -53,6 +53,7 @@ static struct {
     bool enabled;
     bool held;
     bool toggled;
+    bool pad_held; /* the controller's hold was pressed and is not yet released */
     struct fastforward_settings settings;
 } fastforward;
 
@@ -172,6 +173,7 @@ int fastforward_init(const struct fastforward_settings *settings)
     fastforward.settings = *settings;
     fastforward.held = false;
     fastforward.toggled = false;
+    fastforward.pad_held = false;
     fastforward.enabled = true;
     return 0;
 }
@@ -181,6 +183,7 @@ void fastforward_shutdown(void)
     fastforward.enabled = false;
     fastforward.held = false;
     fastforward.toggled = false;
+    fastforward.pad_held = false;
 }
 
 bool fastforward_enabled(void)
@@ -221,9 +224,23 @@ void fastforward_handle_event(const union SDL_Event *event)
     }
 }
 
+void fastforward_handle_controller(const struct controller_edge *edge)
+{
+    if (!fastforward.enabled || edge == NULL)
+        return;
+    if (edge->pressed && !overlay_shown()) {
+        if (edge->function == CONTROLLER_FAST_FORWARD_TOGGLE)
+            fastforward.toggled = !fastforward.toggled;
+        else if (edge->function == CONTROLLER_FAST_FORWARD_HOLD)
+            fastforward.pad_held = true;
+    }
+    if (!controller_held(CONTROLLER_FAST_FORWARD_HOLD))
+        fastforward.pad_held = false;
+}
+
 bool fastforward_active(void)
 {
-    return fastforward.enabled && (fastforward.held || fastforward.toggled);
+    return fastforward.enabled && (fastforward.held || fastforward.toggled || fastforward.pad_held);
 }
 
 uint32_t fastforward_multiplier(void)

@@ -19,11 +19,23 @@
  *     fast_forward_toggle = shift+tab
  *     fast_forward_speed = 2
  *     fast_forward_audio = play
+ *     pad_overlay = x
+ *     pad_fast_forward = lefttrigger
+ *     fullscreen = yes
+ *     fullscreen_toggle = f12
  * A setting is a button's name (input_buttons' `setting`: a, b, select,
  * start, right, left, up, down, r, l), `scale`, or one of fast-forward's:
  * `fast_forward` (the key held), `fast_forward_toggle` (the key that
  * switches it on and off), `fast_forward_speed` (2, 3, 4 or `unlimited`)
- * and `fast_forward_audio` (`play`, sped up, or `mute`). A button's value is
+ * and `fast_forward_audio` (`play`, sped up, or `mute`); a controller
+ * function's, `pad_fast_forward`, `pad_fast_forward_toggle`, `pad_overlay`,
+ * `pad_overlay_close`, `pad_quit` and `pad_fullscreen` (controller.h), whose
+ * value is a button as SDL names it (SDL_GameControllerGetButtonFromString:
+ * x, y, leftstick, rightstick, dpup, ...) or lefttrigger or righttrigger; and
+ * fullscreen's, `fullscreen` (`yes`, `no`, or `auto`, the default: fullscreen
+ * on a Steam Deck only, fullscreen.h) and `fullscreen_toggle` (a key, F11).
+ * The controller's GBA buttons are not settings: they are SDL's layout, and
+ * Steam Input remaps them where a player wants others. A button's value is
  * a key as SDL names it (SDL_GetScancodeFromName: "Z", "Return", "Left
  * Shift", "Keypad 8", "F2", ...); a fast-forward key's is one too, after any
  * of `shift+`, `ctrl+` and `alt+` (fastforward_key_from_name); the scale is a
@@ -36,7 +48,9 @@
  * and fast-forward may share a key, as two buttons may. One key cannot both
  * hold and toggle: if the file makes the two one, the later of the lines
  * that set them is a problem and its setting keeps its default (checked
- * again, so that a line clashing with the other's default is one too). A
+ * again, so that a line clashing with the other's default is one too); the
+ * same goes for two controller functions on one button. F1 is refused as
+ * the fullscreen key too. A
  * line that is not `setting = value`, a setting that does not exist and a
  * value that is not one are problems: each is reported with its line number
  * and the line is ignored, the rest applies.
@@ -52,7 +66,9 @@
 #include <stdint.h>
 #include <stdio.h>
 
+#include "controller.h"
 #include "fastforward.h"
+#include "fullscreen.h"
 #include "input.h"
 
 /* The largest settings file read: a dozen lines need a few hundred bytes. */
@@ -72,7 +88,10 @@ enum settings_problem_kind {
     SETTINGS_BAD_SCALE,            /* text: the value, not 1 to OPTIONS_MAX_SCALE */
     SETTINGS_BAD_SPEED,            /* text: the value, not 2, 3, 4 or unlimited */
     SETTINGS_BAD_AUDIO,            /* text: the value, not play or mute */
-    SETTINGS_SAME_FAST_FORWARD_KEY /* text: the value, the other fast-forward key's too */
+    SETTINGS_SAME_FAST_FORWARD_KEY, /* text: the value, the other fast-forward key's too */
+    SETTINGS_UNKNOWN_CONTROL,       /* text: the value, which names no controller button */
+    SETTINGS_SAME_CONTROL,          /* text: the value, another function's button too */
+    SETTINGS_BAD_FULLSCREEN         /* text: the value, not yes, no or auto */
 };
 
 struct settings_problem {
@@ -85,13 +104,17 @@ struct settings {
     struct input_keymap keymap;
     int scale;
     struct fastforward_settings fast_forward;
+    struct controller_bindings pad;
+    enum fullscreen_setting fullscreen;
+    int fullscreen_key; /* an SDL_Scancode, never INPUT_NO_SCANCODE */
     bool found;           /* settings_load: the file was there */
     size_t problem_count; /* every problem, those beyond SETTINGS_MAX_PROBLEMS too */
     struct settings_problem problems[SETTINGS_MAX_PROBLEMS];
 };
 
 /* The defaults: input_default_keymap, OPTIONS_DEFAULT_SCALE,
- * fastforward_defaults, no problem. */
+ * fastforward_defaults, controller_default_bindings, fullscreen auto on
+ * FULLSCREEN_DEFAULT_SCANCODE, no problem. */
 void settings_defaults(struct settings *out);
 
 /* The defaults with the size bytes of text applied (text need not end in a
