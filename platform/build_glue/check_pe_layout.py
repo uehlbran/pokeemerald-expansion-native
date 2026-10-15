@@ -17,8 +17,7 @@ reads the PE headers and exits 1, printing one line per problem, unless:
     DllCharacteristics, the relocations-stripped flag set, an empty base
     relocation directory and no .reloc section;
   * its sections are in ascending order and adjacent, each at a multiple of
-    the section alignment, which the loader requires (research/probes/README.md,
-    probe W1: "as_linked" was refused, "filled_gaps" started 100 times in 100);
+    the section alignment, which the loader requires (loader probe W1: "as_linked" was refused, "filled_gaps" started 100 times in 100);
   * every GBA region, and the battle runner's stack, is a section at its GBA
     address, of exactly its size, writable, and the gaps between them are
     read-only (a writable gap would be charged to the process as memory);

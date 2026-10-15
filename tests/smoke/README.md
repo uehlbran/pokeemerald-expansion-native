@@ -234,9 +234,9 @@ Between them FROM and TO must write every dump and screenshot of
 `expected/`. The `restart` line is found from the expansion FROM wrote
 (`from/expanded.replay`, the cut script with its include expanded, ends just
 before it) and checked against the one TO wrote. A file without the header is
-never converted or taken for either layout (`docs/DECISIONS.md`, "The owner's
-five rulings on the independent review's open questions", ruling 2), which
-`headerless/` checks; one game per save is ruling 3 (`platform/save_lock.h`),
+never converted or taken for either layout (`docs/DECISIONS.md`, "Decisions on an independent
+review's open questions", decision 2), which
+`headerless/` checks; one game per save is decision 3 (`platform/save_lock.h`),
 which `busy/` checks with two real processes of different widths (the unit
 tests check it with forked children).
 

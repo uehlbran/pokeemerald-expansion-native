@@ -635,8 +635,8 @@ static int play(struct start *start)
      * thing before the process ends and only an instance started during that
      * final store could tell. Released before the restart, not handed on: on
      * Windows the new run is a child this process waits for, which could never
-     * take a lock its parent holds (docs/DECISIONS.md, the amendment to ruling
-     * (3)). */
+     * take a lock its parent holds (docs/DECISIONS.md, "The save's lock across a
+     * restart and a crash"). */
     save_lock_release();
     if (restart && status == MAIN_EXIT_OK)
         return restart_process(start->argc, start->argv, restart_epoch, restart_line);

@@ -170,11 +170,11 @@ whose layout assertions fail with 8-byte pointers: `src/list_menu.c:18`
 `data`) and `src/recorded_battle.c:34` (`RecordedBattleSaveFreeSpace`: the
 recorded battle no longer fits its save sector). Every other object
 compiles, and a trial link without those two fails only on the symbols they
-define (no relocation or layout error). Both are guarded now (milestone 7;
+define (no relocation or layout error). Both are guarded now (with the 64-bit work;
 `docs/UPSTREAM_MODIFICATIONS.md`, the `src/list_menu.c` and
 `include/recorded_battle.h` rows).
 
-## Replay bring-up (milestone 3): playing the opening
+## Replay bring-up: playing the opening
 
 Everything that stopped `tests/smoke/opening.replay` (or that the sanitized
 run reported along it), with its root cause. The opening now runs from boot
