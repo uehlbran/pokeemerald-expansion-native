@@ -12,7 +12,7 @@ Read this first; the sections below are the ledger behind it.
 
 ### The night of 2026-10-15 (the orchestrator's run while the owner sleeps)
 
-**Main** is at 41b10a1617 (code), pushed. Every gate is green on it at
+**Main** is at 8e6ac8d0fb (code), pushed. Every gate is green on it at
 both widths (the 24-step ledger at the end of this block).
 
 **Finished tonight.**
@@ -46,11 +46,29 @@ both widths (the 24-step ledger at the end of this block).
   subsystem, the pipes, the no-console log through a process started with
   no handles, both replays, the cross-OS save and the suite (run
   38693203706 on the branch).
+- Steam Deck (task h), merged at 8e6ac8d0fb. The controller does
+  everything the keyboard does: fast-forward held on the right trigger and
+  toggled by the right stick click, the help overlay on Y (B closes it, X
+  quits, and the hint names the controller's buttons after a controller
+  press), fullscreen on the left trigger; F11 toggles fullscreen for
+  everyone; a Deck (`SteamDeck=1`) starts fullscreen (1280x800: the
+  picture at 5x with bars), `fullscreen = auto|yes|no` in settings.ini
+  overrides it; every binding is rebindable (`pad_*` names) and listed in
+  the overlay and `--keys`. The Linux tarball is the Deck package: the
+  executable, SDL2 (`libSDL2-2.0.so.0` from the build image, with its
+  licence), a launcher script that puts its own folder first in the
+  library path, the licences and RUNNING.md, whose new Steam Deck section
+  says how to add it as a non-Steam game. Measured floors: the executable
+  needs glibc 2.34, the bundled SDL2 2.38 (SteamOS 3.8 has 2.41 by one
+  report; older SteamOS releases unmeasured). Sonnet worker; Sonnet review
+  with 20 mutants found one real bug, fixed: the B that closes the
+  overlay reached the game, because the close and the read happen in one
+  poll and the first test used a frame order the loop never has; also
+  the launcher's `cd` (broke relative paths), SDL2 bundled as your item
+  (h) specifies, a missing test, the docs.
 
-**In flight.** The Windows runner on main at 41b10a1617 (run
-38697083593). Next: macOS x86_64 (M2 to M5) on `macos-15-intel` (Opus),
-then Steam Deck (task h), the Apple-silicon spike (task i), a final
-review. DECISIONS.md has the macOS runner dates (x86_64 macOS runners end
+**In flight.** macOS x86_64 (M2 to M5) on `macos-15-intel`, Opus, on
+work/macos. Then the Apple-silicon spike (task i) and a final review. DECISIONS.md has the macOS runner dates (x86_64 macOS runners end
 in fall 2027) and what they change for the Apple-silicon question.
 
 **Broke and fixed.** The per-push CI run on main after the settings
@@ -70,14 +88,37 @@ keyboard and screen: Tab held and released, Shift+Tab on and off, the
 indicator, the sound at 2x, 3x, 4x and unlimited and with
 `fast_forward_audio = mute`, and Alt-Tab away while holding Tab (the
 game must drop back to normal speed). (2) A hands-on check of the
-console-free Windows build once it merges (double-click: no console;
-the log file; a command prompt still printing `--keys`). (3) Carried
+console-free Windows build (double-click: no console window;
+`pokeemerald.log` in `%APPDATA%\pokeemerald-expansion-native\pokeemerald-native\`;
+a command prompt still prints `--keys`; a second copy on the same save
+shows a message box naming the log). (2b) On a Steam Deck, with the Linux
+tarball from a release run (RUNNING.md, "Steam Deck", has the steps):
+[1] through the launcher the game loads the bundled SDL2
+(`LD_DEBUG=libs ./pokeemerald-native.sh 2>&1 | grep libSDL2` names the
+folder's copy); [2] copied to the home folder in Desktop Mode and added
+with "Add a Non-Steam Game" (file filter "All files") on
+`pokeemerald-native.sh`, it launches in Game Mode; [3] it starts
+fullscreen at 1280x800, the picture at 5x with black bars, with sound;
+[4] with Steam's default layout for a non-Steam game ("Gamepad" if not):
+A, B, Start, Back, the shoulders, the d-pad and the left stick play; the
+right trigger fast-forwards while held and the right stick click toggles
+it; Y opens the overlay, its hint reads `X: quit  B: close`, B closes it
+without the game reacting to that B, X quits; the left trigger toggles
+fullscreen once per pull; [5] turning off or pulling a controller while
+holding the right trigger ends fast-forward; [6] switching windows in
+Desktop Mode while holding it ends it too; [7] after a save and a
+restart the save is in
+`/home/deck/.local/share/pokeemerald-expansion-native/pokeemerald-native/`;
+[8] `fullscreen = no` in settings.ini gives a window and F11 toggles;
+[9] a `pad_overlay = x` line is accepted, and one button for two
+functions is reported on stderr. (3) Carried
 from before, below: the 65536 Hz audio-rate recommendation, the
 2026-10-14 Windows saves to move once, the optional installs. (4) One
 command, when convenient: `rm -r ~/.local/share/pokeemerald-expansion-native`.
 A reviewer's mutant of the console task (one that made Linux take the
 Windows no-console path) created that per-user directory on this
-machine at 23:50 (two empty directories now); the reviewer's own `rm`
+machine at 23:50 (it holds that run's `pokeemerald.log`, 2231 bytes,
+nothing else); the reviewer's own `rm`
 was refused by its permission check, and the orchestrator does not
 redo an action a worker was refused. No gate wrote it: the gates now
 check that the directory is unchanged by them instead of absent.
@@ -89,7 +130,10 @@ check that the directory is unchanged by them instead of absent.
 | The same 24 steps on the branch before the merge | 0a6c7ba0cb (fast-forward) | green |
 | Windows runner | 6a42fd7ade | run 38682653915 green |
 | The same 24 steps (the per-user directory unchanged by the gate) | 41b10a1617 (console removal) | green, the same totals |
-| Windows runner | 41b10a1617 | run 38697083593 in progress |
+| Windows runner | 41b10a1617 | run 38697083593 green; the per-push Linux run 38697084840 green |
+| The same 24 steps | 8e6ac8d0fb (Steam Deck) | green, the same totals |
+| Windows runner | 8e6ac8d0fb | run 38709681302 green; per-push Linux 38709682041 green |
+| Release workflow, publish off | 8e6ac8d0fb | run 38709729818: both archives built and their sums verify; the Linux tarball holds the executable, the launcher, libSDL2-2.0.so.0, SDL2-LICENSE.txt, LICENSE, README.txt, RUNNING.md, and run through the launcher from `/` it loads the bundled SDL2 and prints its version; the attestation step fails as on every run while the repository is private (nothing published, no tag) |
 
 
 **NOTE ON RELEASES (for the owner, at the owner's request).** A built
@@ -923,6 +967,8 @@ Nothing yet; nothing exists to be broken.
 | fastforward (hold and toggle keys, the pacer multiplier, audio, indicator) | Opus | Sonnet (mutation testing), orchestrator merge gate |
 | threadtest (the Linux watchdog test that failed on CI) | Sonnet | Sonnet (mutation testing), orchestrator merge gate |
 | console (no console window on Windows) | Sonnet | Sonnet (mutation testing), orchestrator merge gate |
+| macos (milestone 8, tasks M2 to M5: macOS x86_64) | Opus | in flight |
+| deck (task h: Steam Deck) | Sonnet | Sonnet (mutation testing), orchestrator merge gate |
 | interrupt | Opus | Sonnet |
 | psg | Opus | Sonnet |
 | save (flash, save_file) | Opus | Sonnet |

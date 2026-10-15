@@ -7,6 +7,7 @@
 #include "overlay.h"
 
 #include <stdio.h>
+#include <stdlib.h>
 
 #include <SDL_events.h>
 
@@ -19,6 +20,9 @@
 static struct {
     bool enabled;
     bool shown;
+    bool hint_for_pad;
+    bool shown_at_last_read;
+    uint16_t held_through; /* the buttons held since the overlay was shown */
     overlay_text_writer write_text;
 } overlay;
 
@@ -39,17 +43,13 @@ int overlay_init(overlay_text_writer write_text)
         (void)fprintf(stderr, "overlay: overlay_init needs the text's writer and is called once\n");
         return -1;
     }
-    overlay.write_text = write_text;
-    overlay.shown = false;
-    overlay.enabled = true;
+    overlay = (__typeof__(overlay)){.enabled = true, .write_text = write_text};
     return 0;
 }
 
 void overlay_shutdown(void)
 {
-    overlay.enabled = false;
-    overlay.shown = false;
-    overlay.write_text = NULL;
+    overlay = (__typeof__(overlay)){0};
 }
 
 bool overlay_enabled(void)
@@ -62,9 +62,24 @@ bool overlay_shown(void)
     return overlay.shown;
 }
 
+/* The device of a press: a key, a controller button, or an axis pushed
+ * well past its middle (a stick at rest drifts, a trigger past half is a
+ * press). */
+static void note_input_device(const SDL_Event *event)
+{
+    if (event->type == SDL_KEYDOWN)
+        overlay.hint_for_pad = false;
+    else if (event->type == SDL_CONTROLLERBUTTONDOWN
+             || (event->type == SDL_CONTROLLERAXISMOTION && abs(event->caxis.value) > CONTROLLER_TRIGGER_PRESS))
+        overlay.hint_for_pad = true;
+}
+
 enum overlay_request overlay_handle_event(const union SDL_Event *event)
 {
-    if (!overlay.enabled || event == NULL || event->type != SDL_KEYDOWN || event->key.repeat != 0)
+    if (!overlay.enabled || event == NULL)
+        return OVERLAY_CONTINUE;
+    note_input_device(event);
+    if (event->type != SDL_KEYDOWN || event->key.repeat != 0)
         return OVERLAY_CONTINUE;
     if (event->key.keysym.scancode == OVERLAY_TOGGLE_SCANCODE) {
         overlay.shown = !overlay.shown;
@@ -75,9 +90,40 @@ enum overlay_request overlay_handle_event(const union SDL_Event *event)
     return OVERLAY_CONTINUE;
 }
 
+enum overlay_request overlay_handle_controller(const struct controller_edge *edge)
+{
+    if (!overlay.enabled || edge == NULL || !edge->pressed)
+        return OVERLAY_CONTINUE;
+    if (edge->function == CONTROLLER_OVERLAY)
+        overlay.shown = !overlay.shown;
+    else if (edge->function == CONTROLLER_OVERLAY_CLOSE)
+        overlay.shown = false;
+    else if (edge->function == CONTROLLER_QUIT && overlay.shown)
+        return OVERLAY_QUIT;
+    return OVERLAY_CONTINUE;
+}
+
+bool overlay_hint_for_pad(void)
+{
+    return overlay.hint_for_pad;
+}
+
 uint16_t overlay_game_keys(uint16_t keys)
 {
-    return overlay.shown ? 0 : keys;
+    /* The frame loop closes the overlay and reads the keys in one poll, so
+     * the buttons held at the first read after it hid are the ones that
+     * closed it (or were held under it): latched whether or not a read saw
+     * them while it was shown. */
+    const bool just_hidden = overlay.shown_at_last_read && !overlay.shown;
+    overlay.shown_at_last_read = overlay.shown;
+    if (overlay.shown) {
+        overlay.held_through = keys;
+        return 0;
+    }
+    if (just_hidden)
+        overlay.held_through = keys;
+    overlay.held_through &= keys;
+    return (uint16_t)(keys & ~overlay.held_through);
 }
 
 size_t overlay_glyph_scale(size_t width)
@@ -138,7 +184,11 @@ void overlay_draw(const struct font_canvas *canvas)
     cursor.rows = fit(canvas->height, cursor.top, FONT_LINE_HEIGHT * scale);
     if (cursor.columns == 0)
         return;
-    draw_line(OVERLAY_HINT, &cursor);
+    char pad_hint[OVERLAY_PAD_HINT_SIZE];
+    if (overlay.hint_for_pad)
+        (void)snprintf(pad_hint, sizeof pad_hint, "%s: quit  %s: close", controller_function_label(CONTROLLER_QUIT),
+                       controller_function_label(CONTROLLER_OVERLAY_CLOSE));
+    draw_line(overlay.hint_for_pad ? pad_hint : OVERLAY_HINT, &cursor);
     draw_line("", &cursor);
     overlay.write_text(draw_line, &cursor);
 }

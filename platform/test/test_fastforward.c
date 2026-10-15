@@ -1,4 +1,4 @@
-// deps: input.c overlay.c font.c
+// deps: input.c overlay.c controller.c font.c
 /*
  * test_fastforward.c: fast-forward's keys and state (fastforward.c): the
  * key names with their modifiers, which presses are which key, the hold
@@ -530,6 +530,197 @@ PTEST(the_indicator_is_its_text_on_the_overlays_background)
     PT_ASSERT(four);
     PT_ASSERT(max);
     PT_ASSERT(indicator_draws(31, 10, NULL));
+}
+
+/* ---- the controller ---- */
+
+#define PAD 5
+
+/* An event through the controller and then fast-forward, as the frame loop passes it. */
+static void pad_send(const SDL_Event event)
+{
+    const struct controller_edge edge = controller_handle_event(&event);
+    fastforward_handle_event(&event);
+    fastforward_handle_controller(&edge);
+}
+
+static void pad_button(Uint32 type, SDL_GameControllerButton button)
+{
+    SDL_Event event;
+    SDL_zero(event);
+    event.type = type;
+    event.cbutton.which = PAD;
+    event.cbutton.button = (Uint8)button;
+    pad_send(event);
+}
+
+static void pad_trigger(Sint16 value)
+{
+    SDL_Event event;
+    SDL_zero(event);
+    event.type = SDL_CONTROLLERAXISMOTION;
+    event.caxis.which = PAD;
+    event.caxis.axis = SDL_CONTROLLER_AXIS_TRIGGERRIGHT;
+    event.caxis.value = value;
+    pad_send(event);
+}
+
+static void pad_removed(void)
+{
+    SDL_Event event;
+    SDL_zero(event);
+    event.type = SDL_CONTROLLERDEVICEREMOVED;
+    event.cdevice.which = PAD;
+    pad_send(event);
+}
+
+static void start_with_pad(void)
+{
+    const struct controller_bindings bindings = controller_default_bindings();
+    start();
+    controller_shutdown();
+    PT_ASSERT_EQ_INT(controller_init(&bindings), 0);
+}
+
+static void stop_with_pad(void)
+{
+    controller_shutdown();
+    overlay_shutdown();
+    fastforward_shutdown();
+}
+
+PTEST(the_right_trigger_holds_fast_forward_while_squeezed)
+{
+    start_with_pad();
+    pad_trigger(CONTROLLER_TRIGGER_PRESS); /* not past the threshold */
+    const bool below = fastforward_active();
+    pad_trigger(CONTROLLER_TRIGGER_PRESS + 1);
+    const bool held = fastforward_active();
+    const uint32_t multiplier = fastforward_multiplier();
+    pad_trigger(32767);
+    const bool squeezed = fastforward_active();
+    pad_trigger(0);
+    const bool released = fastforward_active();
+    stop_with_pad();
+    PT_ASSERT(!below);
+    PT_ASSERT(held);
+    PT_ASSERT_EQ_U32(multiplier, 2u);
+    PT_ASSERT(squeezed);
+    PT_ASSERT(!released);
+}
+
+PTEST(a_stick_click_toggles_on_and_off_and_the_release_changes_nothing)
+{
+    start_with_pad();
+    pad_button(SDL_CONTROLLERBUTTONDOWN, SDL_CONTROLLER_BUTTON_RIGHTSTICK);
+    const bool on = fastforward_active();
+    pad_button(SDL_CONTROLLERBUTTONUP, SDL_CONTROLLER_BUTTON_RIGHTSTICK);
+    const bool on_after_release = fastforward_active();
+    pad_button(SDL_CONTROLLERBUTTONDOWN, SDL_CONTROLLER_BUTTON_RIGHTSTICK);
+    const bool off = fastforward_active();
+    stop_with_pad();
+    PT_ASSERT(on);
+    PT_ASSERT(on_after_release);
+    PT_ASSERT(!off);
+}
+
+/* The button held down gives one press, however many frames it is held: the toggle does not
+ * flip on each. */
+PTEST(a_held_toggle_button_flips_once)
+{
+    start_with_pad();
+    pad_button(SDL_CONTROLLERBUTTONDOWN, SDL_CONTROLLER_BUTTON_RIGHTSTICK);
+    pad_button(SDL_CONTROLLERBUTTONDOWN, SDL_CONTROLLER_BUTTON_RIGHTSTICK);
+    const bool on = fastforward_active();
+    stop_with_pad();
+    PT_ASSERT(on);
+}
+
+/* SDL sends no release for a pulled cable. */
+PTEST(a_controller_removed_while_the_hold_is_down_ends_the_hold)
+{
+    start_with_pad();
+    pad_trigger(32767);
+    const bool held = fastforward_active();
+    pad_removed();
+    const bool after = fastforward_active();
+    const uint32_t multiplier = fastforward_multiplier();
+    stop_with_pad();
+    PT_ASSERT(held);
+    PT_ASSERT(!after);
+    PT_ASSERT_EQ_U32(multiplier, FRAME_PACER_NORMAL_SPEED);
+}
+
+PTEST(a_toggle_stays_on_when_the_controller_that_switched_it_on_is_removed)
+{
+    start_with_pad();
+    pad_button(SDL_CONTROLLERBUTTONDOWN, SDL_CONTROLLER_BUTTON_RIGHTSTICK);
+    pad_removed();
+    const bool on = fastforward_active();
+    stop_with_pad();
+    PT_ASSERT(on);
+}
+
+PTEST(the_window_losing_the_focus_ends_the_controllers_hold)
+{
+    start_with_pad();
+    pad_trigger(32767);
+    SDL_Event lost;
+    SDL_zero(lost);
+    lost.type = SDL_WINDOWEVENT;
+    lost.window.event = SDL_WINDOWEVENT_FOCUS_LOST;
+    pad_send(lost);
+    const bool after = fastforward_active();
+    stop_with_pad();
+    PT_ASSERT(!after);
+}
+
+PTEST(while_the_overlay_is_shown_the_controllers_presses_are_its_own)
+{
+    start_with_pad();
+    PT_ASSERT_EQ_INT(overlay_init(no_text), 0);
+    press_f1();
+    pad_trigger(32767);
+    const bool hold = fastforward_active();
+    pad_button(SDL_CONTROLLERBUTTONDOWN, SDL_CONTROLLER_BUTTON_RIGHTSTICK);
+    const bool toggle = fastforward_active();
+    pad_trigger(0);
+    press_f1();
+    pad_trigger(32767);
+    const bool after = fastforward_active();
+    stop_with_pad();
+    PT_ASSERT(!hold);
+    PT_ASSERT(!toggle);
+    PT_ASSERT(after);
+}
+
+/* Held, then the overlay: on until the trigger comes up, which ends it under the overlay too. */
+PTEST(under_the_overlay_the_controllers_hold_still_ends_on_its_release)
+{
+    start_with_pad();
+    PT_ASSERT_EQ_INT(overlay_init(no_text), 0);
+    pad_trigger(32767);
+    press_f1();
+    const bool on_under_it = fastforward_active();
+    pad_trigger(0);
+    const bool after = fastforward_active();
+    stop_with_pad();
+    PT_ASSERT(on_under_it);
+    PT_ASSERT(!after);
+}
+
+PTEST(the_controllers_edges_do_nothing_before_init_and_for_null)
+{
+    fastforward_shutdown();
+    const struct controller_edge hold = {.function = CONTROLLER_FAST_FORWARD_HOLD, .pressed = true};
+    fastforward_handle_controller(&hold);
+    PT_ASSERT(!fastforward_active());
+    start();
+    fastforward_handle_controller(NULL);
+    fastforward_handle_controller(&hold); /* held by no controller: ended at once */
+    const bool active = fastforward_active();
+    fastforward_shutdown();
+    PT_ASSERT(!active);
 }
 
 PTEST_MAIN()

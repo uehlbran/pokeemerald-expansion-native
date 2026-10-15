@@ -16,7 +16,7 @@
  * loop's poll; fast-forward's sound runs on SDL's dummy audio device too,
  * which plays its queue at the device's rate, and the pacer in real time.
  */
-// deps: lcd_status.c gba_memmap.c interrupt.c timer.c dma.c transfer_bounds.c ppu.c ppu_bg.c ppu_obj.c ppu_window.c ppu_blend.c psg.c psg_channel.c psg_square.c psg_wave.c psg_noise.c audio.c video.c input.c overlay.c font.c flash.c save_file.c frame_pacer.c game_hooks.c debug_channel.c m4a_output.c sound_mix.c audio_dump.c sound_grid.c fastforward.c sound_speedup.c
+// deps: lcd_status.c gba_memmap.c interrupt.c timer.c dma.c transfer_bounds.c ppu.c ppu_bg.c ppu_obj.c ppu_window.c ppu_blend.c psg.c psg_channel.c psg_square.c psg_wave.c psg_noise.c audio.c video.c input.c overlay.c controller.c font.c flash.c save_file.c frame_pacer.c game_hooks.c debug_channel.c m4a_output.c sound_mix.c audio_dump.c sound_grid.c fastforward.c fullscreen.c sound_speedup.c
 #include <setjmp.h>
 #include <stdbool.h>
 #include <stdint.h>
@@ -33,7 +33,9 @@
 #include "audio.h"
 #include "audio_dump.h"
 #include "dma.h"
+#include "controller.h"
 #include "fastforward.h"
+#include "fullscreen.h"
 #include "test_support.h"
 #include "flash.h"
 #include "frame.h"
@@ -195,6 +197,8 @@ static bool start(uint32_t frame_limit, const char *screenshot_path, const char 
 
 static void stop(void)
 {
+    fullscreen_shutdown();
+    controller_shutdown();
     fastforward_shutdown();
     overlay_shutdown();
     frame_shutdown();
@@ -1265,6 +1269,208 @@ PTEST(mute_pauses_the_device_and_resumes_it_with_the_queue_emptied)
     PT_ASSERT_EQ_U32(stale, 0u);
     PT_ASSERT(paused_during_preroll);
     PT_ASSERT(resumed);
+}
+
+/* ---- the controller and fullscreen ---- */
+
+#define TEST_PAD 3
+
+/* A window with the overlay, fast-forward, the controller's functions and the fullscreen key,
+ * as main starts them for a player. */
+static bool start_player(void)
+{
+    const struct controller_bindings bindings = controller_default_bindings();
+    return controller_init(&bindings) == 0 && fullscreen_init(FULLSCREEN_DEFAULT_SCANCODE) == 0
+           && start_fast_forward(2u, FASTFORWARD_AUDIO_PLAY);
+}
+
+static bool push_pad_button(Uint32 type, SDL_GameControllerButton button)
+{
+    SDL_Event event;
+    SDL_zero(event);
+    event.type = type;
+    event.cbutton.which = TEST_PAD;
+    event.cbutton.button = (Uint8)button;
+    return SDL_PushEvent(&event) == 1;
+}
+
+static bool push_pad_trigger(SDL_GameControllerAxis axis, Sint16 value)
+{
+    SDL_Event event;
+    SDL_zero(event);
+    event.type = SDL_CONTROLLERAXISMOTION;
+    event.caxis.which = TEST_PAD;
+    event.caxis.axis = (Uint8)axis;
+    event.caxis.value = value;
+    return SDL_PushEvent(&event) == 1;
+}
+
+static bool push_pad_removed(void)
+{
+    SDL_Event event;
+    SDL_zero(event);
+    event.type = SDL_CONTROLLERDEVICEREMOVED;
+    event.cdevice.which = TEST_PAD;
+    return SDL_PushEvent(&event) == 1;
+}
+
+PTEST(the_right_trigger_fast_forwards_while_squeezed_and_the_pull_of_the_cable_ends_it)
+{
+    PT_ASSERT(start_player());
+    const bool squeezed = push_pad_trigger(SDL_CONTROLLER_AXIS_TRIGGERRIGHT, 32767);
+    bool ran = run_frames(1);
+    const uint32_t held = frame_pacer_multiplier();
+    const bool unplugged = push_pad_removed();
+    ran = run_frames(1) && ran;
+    const uint32_t after = frame_pacer_multiplier();
+    stop();
+    PT_ASSERT(squeezed && unplugged && ran);
+    PT_ASSERT_EQ_U32(held, 2u);
+    PT_ASSERT_EQ_U32(after, FRAME_PACER_NORMAL_SPEED);
+}
+
+PTEST(the_trigger_let_go_ends_the_hold_and_the_stick_click_toggles_once)
+{
+    PT_ASSERT(start_player());
+    bool pushed = push_pad_trigger(SDL_CONTROLLER_AXIS_TRIGGERRIGHT, 32767);
+    bool ran = run_frames(1);
+    pushed = push_pad_trigger(SDL_CONTROLLER_AXIS_TRIGGERRIGHT, 0) && pushed;
+    ran = run_frames(1) && ran;
+    const uint32_t released = frame_pacer_multiplier();
+    pushed = push_pad_button(SDL_CONTROLLERBUTTONDOWN, SDL_CONTROLLER_BUTTON_RIGHTSTICK) && pushed;
+    pushed = push_pad_button(SDL_CONTROLLERBUTTONDOWN, SDL_CONTROLLER_BUTTON_RIGHTSTICK) && pushed; /* still held */
+    ran = run_frames(3) && ran;
+    const uint32_t toggled = frame_pacer_multiplier();
+    stop();
+    PT_ASSERT(pushed && ran);
+    PT_ASSERT_EQ_U32(released, FRAME_PACER_NORMAL_SPEED);
+    PT_ASSERT_EQ_U32(toggled, 2u); /* held for three frames, flipped once */
+}
+
+PTEST(the_overlay_opens_and_closes_from_the_controller_alone)
+{
+    PT_ASSERT(start_player());
+    bool pushed = push_pad_button(SDL_CONTROLLERBUTTONDOWN, SDL_CONTROLLER_BUTTON_Y);
+    bool ran = run_frames(1);
+    const bool shown = overlay_shown();
+    pushed = push_pad_button(SDL_CONTROLLERBUTTONDOWN, SDL_CONTROLLER_BUTTON_B) && pushed;
+    ran = run_frames(1) && ran;
+    const bool hidden = !overlay_shown();
+    stop();
+    PT_ASSERT(pushed && ran);
+    PT_ASSERT(shown);
+    PT_ASSERT(hidden);
+}
+
+PTEST(quit_from_the_controller_ends_the_game_with_status_0_only_from_the_shown_overlay)
+{
+    PT_ASSERT(start_player());
+    bool pushed = push_pad_button(SDL_CONTROLLERBUTTONDOWN, SDL_CONTROLLER_BUTTON_X);
+    const enum frame_result before = frame_run();
+    pushed = push_pad_button(SDL_CONTROLLERBUTTONUP, SDL_CONTROLLER_BUTTON_X) && pushed;
+    pushed = push_pad_button(SDL_CONTROLLERBUTTONDOWN, SDL_CONTROLLER_BUTTON_Y) && pushed;
+    pushed = push_pad_button(SDL_CONTROLLERBUTTONDOWN, SDL_CONTROLLER_BUTTON_X) && pushed;
+    const enum frame_result after = frame_run();
+    const int status = frame_exit_status();
+    stop();
+    PT_ASSERT(pushed);
+    PT_ASSERT_EQ_INT(before, FRAME_CONTINUE);
+    PT_ASSERT_EQ_INT(after, FRAME_EXIT);
+    PT_ASSERT_EQ_INT(status, 0);
+}
+
+/* KEYINPUT while the overlay is shown: every button released, the controller's included. */
+PTEST(the_game_reads_every_button_released_while_the_overlay_opened_by_the_controller_is_shown)
+{
+    PT_ASSERT(start_player());
+    input_script_set(INPUT_KEY_A);
+    PT_ASSERT(run_frames(1));
+    const uint16_t before = *io(KEYINPUT_OFFSET);
+    const bool pushed = push_pad_button(SDL_CONTROLLERBUTTONDOWN, SDL_CONTROLLER_BUTTON_Y);
+    PT_ASSERT(run_frames(1));
+    const bool shown = overlay_shown();
+    const uint16_t during = *io(KEYINPUT_OFFSET);
+    stop();
+    PT_ASSERT(pushed && shown);
+    PT_ASSERT_EQ_U32(before, KEYINPUT_NONE & ~INPUT_KEY_A);
+    PT_ASSERT_EQ_U32(during, KEYINPUT_NONE);
+}
+
+PTEST(f11_and_the_left_trigger_toggle_fullscreen_once_per_press)
+{
+    PT_ASSERT(start_player());
+    const bool starts_windowed = !video_is_fullscreen();
+    bool pushed = push_key_event(SDL_KEYDOWN, SDL_SCANCODE_F11, KMOD_NONE);
+    bool ran = run_frames(1);
+    const bool by_key = video_is_fullscreen();
+    pushed = push_pad_trigger(SDL_CONTROLLER_AXIS_TRIGGERLEFT, 20000)
+             && push_pad_trigger(SDL_CONTROLLER_AXIS_TRIGGERLEFT, 32767)
+             && push_pad_trigger(SDL_CONTROLLER_AXIS_TRIGGERLEFT, 30000) && pushed;
+    ran = run_frames(3) && ran;
+    const bool by_pad = !video_is_fullscreen(); /* one press: back to the window, and it stays */
+    stop();
+    PT_ASSERT(pushed && ran);
+    PT_ASSERT(starts_windowed);
+    PT_ASSERT(by_key);
+    PT_ASSERT(by_pad);
+}
+
+/* The real loop closes the overlay and reads the keys in one poll. */
+PTEST(the_b_that_closes_the_overlay_is_not_read_by_the_game_until_it_is_let_go)
+{
+    PT_ASSERT(start_player());
+    PT_ASSERT(run_frames(1));
+    bool pushed = push_pad_button(SDL_CONTROLLERBUTTONDOWN, SDL_CONTROLLER_BUTTON_Y);
+    PT_ASSERT(run_frames(1)); /* shown, nothing held */
+    input_script_set(INPUT_KEY_B);
+    pushed = push_pad_button(SDL_CONTROLLERBUTTONDOWN, SDL_CONTROLLER_BUTTON_B) && pushed;
+    PT_ASSERT(run_frames(1));
+    const bool hidden = !overlay_shown();
+    const uint16_t at_close = *io(KEYINPUT_OFFSET);
+    PT_ASSERT(run_frames(1));
+    const uint16_t still_down = *io(KEYINPUT_OFFSET);
+    input_script_set(0);
+    PT_ASSERT(run_frames(1));
+    input_script_set(INPUT_KEY_B);
+    PT_ASSERT(run_frames(1));
+    const uint16_t pressed_again = *io(KEYINPUT_OFFSET);
+    stop();
+    PT_ASSERT(pushed && hidden);
+    PT_ASSERT_EQ_U32(at_close, KEYINPUT_NONE);
+    PT_ASSERT_EQ_U32(still_down, KEYINPUT_NONE);
+    PT_ASSERT_EQ_U32(pressed_again, KEYINPUT_NONE & ~INPUT_KEY_B);
+}
+
+/* The trigger let go is a release, not a second press. */
+PTEST(letting_go_of_the_fullscreen_button_does_not_toggle_again)
+{
+    PT_ASSERT(start_player());
+    bool pushed = push_pad_trigger(SDL_CONTROLLER_AXIS_TRIGGERLEFT, 32767);
+    bool ran = run_frames(1);
+    const bool pulled = video_is_fullscreen();
+    pushed = push_pad_trigger(SDL_CONTROLLER_AXIS_TRIGGERLEFT, 0) && pushed;
+    ran = run_frames(1) && ran;
+    const bool after_release = video_is_fullscreen();
+    pushed = push_pad_button(SDL_CONTROLLERBUTTONDOWN, SDL_CONTROLLER_BUTTON_Y) && pushed; /* unrelated edges too */
+    pushed = push_pad_button(SDL_CONTROLLERBUTTONUP, SDL_CONTROLLER_BUTTON_Y) && pushed;
+    ran = run_frames(1) && ran;
+    const bool after_others = video_is_fullscreen();
+    stop();
+    PT_ASSERT(pushed && ran);
+    PT_ASSERT(pulled);
+    PT_ASSERT(after_release);
+    PT_ASSERT(after_others);
+}
+
+PTEST(a_fullscreen_key_not_started_does_nothing)
+{
+    PT_ASSERT(start_windowed());
+    const bool pushed = push_key_event(SDL_KEYDOWN, SDL_SCANCODE_F11, KMOD_NONE);
+    const bool ran = run_frames(1);
+    const bool fullscreen = video_is_fullscreen();
+    stop();
+    PT_ASSERT(pushed && ran);
+    PT_ASSERT(!fullscreen);
 }
 
 PTEST_MAIN()

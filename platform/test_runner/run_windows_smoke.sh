@@ -181,7 +181,11 @@ has_line "Data directory (--data-dir): keys" || fail "--keys does not name the d
 has_line "Save: keys/pokeemerald.sav" || fail "--keys does not name the save in the data directory"
 has_line "Clock: keys/pokeemerald.rtc" || fail "--keys does not name the clock's file in the data directory"
 has_line "Settings: keys/settings.ini (not there: the defaults)" || fail "--keys does not say the settings file is not there"
-has_line "  A       Z" || fail "--keys does not show A on Z, the default"
+has_line "  A          Z" || fail "--keys does not show A on Z, the default"
+has_line "  Fullscreen F11" || fail "--keys does not show fullscreen on F11, the default"
+has_line "  Fast-forward hold    Right trigger" || fail "--keys does not show the controller's fast-forward hold"
+has_line "  Help overlay         Y" || fail "--keys does not show the controller's help overlay button"
+has_line "  Overlay quit         X" || fail "--keys does not show the controller's quit button"
 keys_version=$(head -n 1 "$scratch/stdout" | tr -d '\r')
 [[ $keys_version =~ ^pokeemerald-native\ [A-Za-z0-9._+-]+$ ]] || fail "--keys does not start with the version"
 [ "$(sed -n 2p "$scratch/stdout" | tr -d '\r')" = "Data directory (--data-dir): keys" ] \
@@ -191,7 +195,7 @@ echo "== --keys with a settings file in the data directory"
 printf 'a = q\r\nnot a setting\r\n' > "$work/keys/settings.ini" || fail "cannot write keys/settings.ini"
 run_plain "$exe" "$work" --keys --data-dir keys
 [ $code -eq 0 ] || fail "--keys with settings: exit status $code"
-has_line "  A       Q" || fail "--keys does not show A on Q, the settings file's"
+has_line "  A          Q" || fail "--keys does not show A on Q, the settings file's"
 has_line "Settings: keys/settings.ini" || fail "--keys does not name the settings file it read"
 grep -qF "settings: keys/settings.ini:2: 'not a setting' is not a 'setting = value' line" "$scratch/stderr" \
     || fail "the settings file's bad line 2 is not reported"
@@ -218,7 +222,7 @@ piped=$(cd "$work" && timeout $LIMIT_SECONDS "$exe" --version | cat)
 [ "$(printf '%s' "$piped" | tr -d '\r')" = "${keys_version#pokeemerald-native }" ] \
     || fail "--version through a pipe does not print the version"
 piped=$(cd "$work" && timeout $LIMIT_SECONDS "$exe" --keys --data-dir keys | cat)
-printf '%s\n' "$piped" | tr -d '\r' | grep -qxF "  A       Q" || fail "--keys through a pipe does not show A on Q"
+printf '%s\n' "$piped" | tr -d '\r' | grep -qxF "  A          Q" || fail "--keys through a pipe does not show A on Q"
 piped=$(cd "$work" && timeout $LIMIT_SECONDS "$exe" --bogus-option 2>&1 | cat)
 printf '%s\n' "$piped" | grep -qF "options: bad argument '--bogus-option'" \
     || fail "a bad argument's report does not reach a pipe on standard error"

@@ -1,4 +1,4 @@
-// deps: data_dir.c settings.c help_text.c input.c overlay.c font.c version.c fastforward.c
+// deps: data_dir.c settings.c fullscreen.c help_text.c input.c overlay.c controller.c font.c version.c fastforward.c
 /*
  * test_player.c: the player's side of a run (player.c): which runs get the
  * help overlay and fast-forward, the files and the settings found for a run (with --data-dir
@@ -207,8 +207,83 @@ PTEST(keys_prints_the_lines_the_overlay_is_given)
     PT_ASSERT_EQ_INT(status, 0);
     PT_ASSERT_EQ_STR(printed, given.text);
     PT_ASSERT(strncmp(printed, expected_start, strlen(expected_start)) == 0);
-    PT_ASSERT(strstr(printed, "\nKeyboard:\n  A       Z\n") != NULL);
-    PT_ASSERT(strstr(printed, "\nFast-forward:\n  Hold    Tab\n  Toggle  Shift+Tab\n  Speed   2x\n") != NULL);
+    PT_ASSERT(strstr(printed, "\nKeyboard:\n  A          Z\n") != NULL);
+    PT_ASSERT(strstr(printed, "\n  Fullscreen F11\nController:\n  GBA buttons: ") != NULL);
+    PT_ASSERT(strstr(printed, "\n  Overlay quit         X\n") != NULL);
+    PT_ASSERT(strstr(printed, "\nFast-forward:\n  Hold       Tab\n  Toggle     Shift+Tab\n  Speed      2x\n") != NULL);
+}
+
+/* player_starts_fullscreen for a run in a scratch data directory whose settings file holds
+ * text (NULL: none), with SteamDeck set to deck (NULL: unset). */
+static void find_and_ask(const char *text, const char *deck, struct options o, bool *fullscreen)
+{
+    char dir[TSUP_PATH_SIZE];
+    char settings[TSUP_PATH_SIZE + 16u];
+    PT_ASSERT(tsup_make_temp_directory(dir, sizeof dir, "player"));
+    PT_ASSERT(in_dir(dir, "settings.ini", settings, sizeof settings));
+    PT_ASSERT(text == NULL || write_file(settings, text));
+    o.data_dir = dir;
+    PT_ASSERT(deck != NULL ? tsup_set_environment("SteamDeck", deck) : tsup_unset_environment("SteamDeck"));
+    PT_ASSERT_EQ_INT(player_find(&o, &no_host), 0);
+    *fullscreen = player_starts_fullscreen(&o);
+    PT_ASSERT(tsup_unset_environment("SteamDeck"));
+    PT_ASSERT(tsup_remove_tree(dir));
+}
+
+static bool starts_fullscreen(const char *text, const char *deck, struct options o)
+{
+    bool fullscreen = false;
+    find_and_ask(text, deck, o, &fullscreen);
+    return fullscreen;
+}
+
+PTEST(a_window_starts_fullscreen_on_a_deck_and_not_elsewhere)
+{
+    PT_ASSERT(starts_fullscreen(NULL, "1", windowed()));
+    PT_ASSERT(!starts_fullscreen(NULL, NULL, windowed()));
+    PT_ASSERT(!starts_fullscreen(NULL, "0", windowed()));
+    PT_ASSERT(!starts_fullscreen(NULL, "true", windowed()));
+}
+
+PTEST(the_fullscreen_setting_overrides_the_deck)
+{
+    PT_ASSERT(!starts_fullscreen("fullscreen = no\n", "1", windowed()));
+    PT_ASSERT(starts_fullscreen("fullscreen = yes\n", NULL, windowed()));
+    PT_ASSERT(starts_fullscreen("fullscreen = auto\n", "1", windowed()));
+    PT_ASSERT(starts_fullscreen("fullscreen = yes\n", "0", windowed()));
+}
+
+/* A replay, a gate and the test runner never change with the machine they run on. */
+PTEST(a_deck_changes_nothing_for_a_run_without_a_player_at_the_keyboard)
+{
+    struct options headless = windowed();
+    headless.headless = true;
+    struct options replay = windowed();
+    replay.replay_path = "opening.replay";
+    struct options runner = windowed();
+    runner.test_runner = true;
+    PT_ASSERT(!starts_fullscreen("fullscreen = yes\n", "1", headless));
+    PT_ASSERT(!starts_fullscreen("fullscreen = yes\n", "1", replay));
+    PT_ASSERT(!starts_fullscreen(NULL, "1", headless));
+    PT_ASSERT(!starts_fullscreen(NULL, "1", replay));
+    PT_ASSERT(!starts_fullscreen(NULL, "1", runner));
+}
+
+PTEST(the_controller_and_the_fullscreen_key_come_from_the_settings)
+{
+    char dir[TSUP_PATH_SIZE];
+    char settings[TSUP_PATH_SIZE + 16u];
+    PT_ASSERT(tsup_make_temp_directory(dir, sizeof dir, "player"));
+    PT_ASSERT(in_dir(dir, "settings.ini", settings, sizeof settings));
+    PT_ASSERT(write_file(settings, "pad_overlay = leftstick\nfullscreen_toggle = f12\n"));
+    struct options o = windowed();
+    o.data_dir = dir;
+    const int found = player_find(&o, &no_host);
+    PT_ASSERT(tsup_remove_tree(dir));
+    PT_ASSERT_EQ_INT(found, 0);
+    PT_ASSERT_EQ_INT(player_controller()->controls[CONTROLLER_OVERLAY], SDL_CONTROLLER_BUTTON_LEFTSTICK);
+    PT_ASSERT_EQ_INT(player_controller()->controls[CONTROLLER_QUIT], SDL_CONTROLLER_BUTTON_X);
+    PT_ASSERT_EQ_INT(player_fullscreen_key(), SDL_SCANCODE_F12);
 }
 
 PTEST_MAIN()

@@ -2033,3 +2033,125 @@ macOS 27 ("macOS ships as x86_64 under Rosetta" above). Both horizons fall
 around 2027, so the native Apple-silicon question (PLAN.md item (i), the
 spike) is no longer about speed on newer Macs: it decides whether macOS stays
 supported and tested after 2027 at all. The spike's report weighs it so.
+
+## 2026-10-15: Steam Deck: controller functions, fullscreen and the package
+
+The owner's item (h) (PLAN.md "Milestone 8 plan"), as built. The Deck is the
+Linux 64-bit build, so this is the handheld experience on top of it. The
+player's account is `docs/RUNNING.md` "Steam Deck", "Fullscreen" and the
+controller table under "Keys".
+
+**Controller bindings.** The Deck reaches SDL as a standard game controller
+under Steam Input. The GBA buttons stay as input.c has them (A, B, Back as
+Select, Start, shoulders, D-pad and left stick); they are not rebindable,
+because Steam Input remaps the whole pad where a player wants that, and a
+second remapping layer would only add a way to break the game's own layout.
+The six other functions each have one control (button or trigger), chosen from
+what the GBA layout leaves free:
+
+| Function | Default | Why |
+|---|---|---|
+| fast-forward hold | right trigger | the owner's suggestion; a held function suits a trigger, pulled past about half travel |
+| fast-forward toggle | right stick click | the owner's suggestion; a click is a deliberate switch |
+| help overlay | Y | the one face button the GBA layout does not use |
+| overlay close | B | B is "back"; closing is backing out |
+| overlay quit | X | the other free face button; shown only in the overlay, so no accident in play |
+| fullscreen | left trigger | deliberate, and not a stick click, which Deck players press by accident while steering; the right trigger holds, the left one switches the screen |
+
+Rebinding is `pad_fast_forward`, `pad_fast_forward_toggle`, `pad_overlay`,
+`pad_overlay_close`, `pad_quit`, `pad_fullscreen` in settings.ini, by SDL's
+button names (`SDL_GameControllerGetButtonFromString`) plus `lefttrigger` and
+`righttrigger`. One button serves one function (the later line reverts to its
+default; the loop ends because each pass takes a function off a custom
+button). A bound button still does its GBA job as well: refusing GBA buttons
+would forbid choices a player might want (A to quit, say) for no gain. Triggers are pressed past
+16000 and released below 8000 of 32767 (hysteresis, so a trigger resting at
+the threshold does not chatter). The hint line of the overlay names the
+controller's buttons (`X: quit  B: close`) after a controller button or a
+stick or trigger pushed well over was the last input, and the keyboard's again
+at the next key; video.c repaints the overlay texture when that changes.
+
+**Per-controller state from events.** `controller.c` keeps what each controller
+(by SDL instance id, up to the four input.c opens) holds from the events alone,
+so tests push events and need no device. The reason for tracking: SDL sends no
+button-up for a pulled cable, and a hold must not stay on. A controller's
+removal and the window losing focus release what it held, and
+`fastforward_handle_controller` ends the hold whenever no controller holds
+its control.
+
+**One behaviour change outside the Deck.** A button held at the first read
+after the overlay hides stays released until it is let go (`overlay_game_keys`):
+the frame loop closes the overlay and reads the keys in one poll, so the B
+that closes it would otherwise reach the game and back it out of a menu (a
+first version latched only keys seen while shown, which the loop never gives;
+review caught it). It applies to the keyboard and scripts alike (the overlay
+never exists in replays).
+
+**Fullscreen.** `SteamDeck` in the environment set to exactly `1` is a Deck
+(`fullscreen_on_steam_deck`, a pure function; `0`, unset, `true` or `11` are
+not); a Deck starts in desktop fullscreen (`SDL_WINDOW_FULLSCREEN_DESKTOP`:
+the screen's own resolution, no mode change) under the existing logical size,
+integer scale and letterbox. F11 (rebindable, `fullscreen_toggle`) and the
+left trigger toggle it for everyone. I **added** `fullscreen = auto|yes|no`
+(auto, the default, is the Deck rule), because without it a Deck player who
+prefers a window would have to toggle on every launch, and the brief allowed
+the setting for that reason; it also lets a desktop player start fullscreen.
+Fullscreen and the controller start only for runs with a player at the
+keyboard (`player_at_keyboard`), so `SteamDeck=1` changes nothing in a
+replay, a gate or the test runner (checked below).
+
+**The package.** The owner's item (h) asks for a self-contained package
+(binary, SDL2, licences, launcher script), so the Linux tarball now holds the
+executable, `pokeemerald-native.sh`, `libSDL2-2.0.so.0` (the file the release
+job's executable resolves, copied under its soname with `cp --dereference`,
+from Ubuntu 24.04's libsdl2-2.0-0), its zlib licence as `SDL2-LICENSE.txt`
+(Ubuntu's `copyright` file, as the Windows zip carries SDL2's licence), the
+project `LICENSE` and the pages. The launcher puts its own folder first in
+`LD_LIBRARY_PATH`, so an executable started directly still uses the system's
+SDL2 and the launcher uses the bundled one, and it does not change the working
+directory, so relative `--replay`, `--save`, `--data-dir` and `--out` mean
+what the caller typed (portable mode finds `settings.ini` through
+`SDL_GetBasePath`, not the working directory). Measured on the build image
+(`objdump -T`, `objdump -p`): the executable needs glibc 2.34
+(`pthread_create` and `__libc_start_main` moved into libc in 2.34); the bundled
+SDL2 needs 2.38 and, besides glibc and libm, 17 libraries from the system
+(libasound, libpulse, libsamplerate, libX11, libXext, libXcursor, libXi,
+libXfixes, libXrandr, libXss, libdrm, libgbm, libwayland-egl,
+libwayland-client, libwayland-cursor, libxkbcommon, libdecor). The floor
+rises from 2.34 to 2.38 by bundling; a SteamOS 3.8 Deck reports glibc 2.41
+(https://forum.godotengine.org/t/steam-deck-cant-launch-linux-build-due-to-outdated-glibc-version-build-targeting-newer-glibc-version/143218),
+which meets it; I found no source for older SteamOS releases or for the
+system libraries on a Deck, which the checklist covers. The CI image is
+unchanged: the requirement is met on the current Deck.
+
+**Tests, and the order.** The code was written before its tests, against the
+night's test-first rule; to show the tests are not decoration, every new test
+was run against a mutant of the code and failed there. 54 mutants, and every
+new test failed against at least one of them: the five the brief names (hold
+not released on removal: `removing_a_controller_releases_what_it_held`,
+`a_controller_removed_while_the_hold_is_down_ends_the_hold` and the frame
+test `the_right_trigger_fast_forwards_while_squeezed_and_the_pull_of_the_cable_ends_it`;
+the overlay letting buttons through while shown: `f1_shows_and_hides_it_and_the_game_reads_no_button_while_shown`,
+`the_game_reads_no_button_while_the_overlay_is_shown`,
+`the_game_reads_every_button_released_while_the_overlay_opened_by_the_controller_is_shown`;
+Deck true for `SteamDeck=0`: `unset_zero_and_other_values_are_not_a_deck` and
+`a_window_starts_fullscreen_on_a_deck_and_not_elsewhere`; the trigger
+threshold inverted: `a_trigger_is_pressed_past_its_threshold_and_released_below_the_lower_one`
+and eight more; the toggle firing on every frame the button is held:
+`a_button_already_held_or_released_twice_is_no_edge`, `a_held_toggle_button_flips_once`,
+`the_trigger_let_go_ends_the_hold_and_the_stick_click_toggles_once`) and 49
+others, one per behaviour. The review then found two gaps and each got a
+test that fails first: the latch (`the_b_that_closes_the_overlay_in_the_same_poll_is_not_the_games`,
+fails against the first version, and the loop-order frame test
+`the_b_that_closes_the_overlay_is_not_read_by_the_game_until_it_is_let_go`) and
+the fullscreen button firing on release too
+(`letting_go_of_the_fullscreen_button_does_not_toggle_again`). The harness is the scratchpad's `mutate.py`.
+
+**Only the owner can check, on a Deck** (the list is in the report of this
+task; RUNNING.md "Steam Deck" is the procedure): that the launcher starts the
+game with the bundled SDL2 (`LD_DEBUG=libs` shows it) and the system libraries
+the SDL2 needs are there; that the game starts fullscreen in Game Mode at 1280x800 with the
+picture at 5x, black bars; that the right trigger, the stick click, Y, B, X and
+the left trigger do what the table says on the real Steam Input layout for a
+non-Steam game; that unplugging a controller (a Bluetooth pad turned off) while
+the trigger is held ends fast-forward; the save's path; sound.
