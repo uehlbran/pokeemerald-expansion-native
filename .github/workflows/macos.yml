@@ -104,7 +104,7 @@ jobs:
 
   linux:
     name: Linux 64-bit game, its save (gate h's first stage), its struct layout
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
@@ -284,7 +284,7 @@ jobs:
 
   linux-suite:
     name: The suite on Linux 64-bit, plain and sanitized (the results to equal)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
@@ -320,7 +320,7 @@ jobs:
     name: Compare the suites and the struct layouts; gate h's last stage on Linux
     needs: [linux, game, suite, linux-suite]
     if: always() && needs.linux.result == 'success'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
