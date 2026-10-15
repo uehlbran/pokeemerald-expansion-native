@@ -47,10 +47,10 @@ both widths (the 24-step ledger at the end of this block).
   no handles, both replays, the cross-OS save and the suite (run
   38693203706 on the branch).
 
-**In flight.** The Windows runner on main at 41b10a1617 (run
-38697083593). Next: macOS x86_64 (M2 to M5) on `macos-15-intel` (Opus),
-then Steam Deck (task h), the Apple-silicon spike (task i), a final
-review. DECISIONS.md has the macOS runner dates (x86_64 macOS runners end
+**In flight.** macOS x86_64 (M2 to M5) on `macos-15-intel`, Opus, on
+work/macos, and beside it Steam Deck (task h), Sonnet, on work/deck (the
+Deck is the Linux build, so it needs no runner and shares no code with
+macOS). Then the Apple-silicon spike (task i) and a final review. DECISIONS.md has the macOS runner dates (x86_64 macOS runners end
 in fall 2027) and what they change for the Apple-silicon question.
 
 **Broke and fixed.** The per-push CI run on main after the settings
@@ -89,7 +89,7 @@ check that the directory is unchanged by them instead of absent.
 | The same 24 steps on the branch before the merge | 0a6c7ba0cb (fast-forward) | green |
 | Windows runner | 6a42fd7ade | run 38682653915 green |
 | The same 24 steps (the per-user directory unchanged by the gate) | 41b10a1617 (console removal) | green, the same totals |
-| Windows runner | 41b10a1617 | run 38697083593 in progress |
+| Windows runner | 41b10a1617 | run 38697083593 green; the per-push Linux run 38697084840 green |
 
 
 **NOTE ON RELEASES (for the owner, at the owner's request).** A built
@@ -923,6 +923,8 @@ Nothing yet; nothing exists to be broken.
 | fastforward (hold and toggle keys, the pacer multiplier, audio, indicator) | Opus | Sonnet (mutation testing), orchestrator merge gate |
 | threadtest (the Linux watchdog test that failed on CI) | Sonnet | Sonnet (mutation testing), orchestrator merge gate |
 | console (no console window on Windows) | Sonnet | Sonnet (mutation testing), orchestrator merge gate |
+| macos (milestone 8, tasks M2 to M5: macOS x86_64) | Opus | in flight |
+| deck (task h: Steam Deck) | Sonnet | in flight |
 | interrupt | Opus | Sonnet |
 | psg | Opus | Sonnet |
 | save (flash, save_file) | Opus | Sonnet |
