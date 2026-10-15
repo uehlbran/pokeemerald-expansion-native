@@ -1,14 +1,20 @@
 # Contributing
 
-This repository is the native PC build of pokeemerald-expansion. Two kinds
-of code live in it: expansion's (`src/`, `include/`, `data/`, `test/` and
-the rest, pinned at `expansion/1.17.1`) and ours (`platform/`, `tests/`,
-`Makefile.native`, the build glue, the documents). The rules differ for the
+This repository is the native PC build of pokeemerald-expansion. It holds two
+kinds of code. Expansion's (`src/`, `include/`, `data/`, `test/` and the
+rest) is pinned at `expansion/1.17.1`. Ours is `platform/`, `tests/`,
+`Makefile.native`, the build glue and the documents. The rules differ for the
 two; `docs/ARCHITECTURE.md` explains the boundary.
 
-Upstream's own contribution guide is kept at
-`docs/upstream-CONTRIBUTING.md`. It applies to rh-hideout's repository, not
-to this one.
+Upstream's contribution guide is kept at `docs/upstream-CONTRIBUTING.md`. It
+applies to rh-hideout's repository, not to this one.
+
+## How this code was written
+
+The platform layer was written with AI coding agents under human direction.
+It is held to the gates below: the test suite against the GBA baseline, the
+replays, the sanitizers, and independent review with mutation testing. The
+same rules apply to any contribution, however it was written.
 
 ## Building
 
@@ -22,44 +28,44 @@ make -C platform test BITS=32
 ## The rules
 
 `docs/C-RULES.md` is the full text and applies to everything we write.
-Rules 1 to 4 below are from it; rule 5 is from the policy at the top of
+Rules 1 to 4 are from it; rules 5 and 6 are from the policy at the top of
 `docs/UPSTREAM_MODIFICATIONS.md`.
 
-1. Warnings are errors for our files: `-std=gnu17 -Wall -Wextra -Wshadow
+1. Warnings are errors in our files: `-std=gnu17 -Wall -Wextra -Wshadow
    -Wstrict-prototypes -Wconversion -Werror`. Expansion's headers are
-   included with `-isystem` or `-idirafter`, so their warnings are not
-   ours; do not edit expansion's code to quiet one.
+   included with `-isystem` or `-idirafter`, so their warnings are not ours.
+   Do not edit expansion's code to quiet one.
 2. Every unit test runs under AddressSanitizer, UndefinedBehaviorSanitizer
-   and leak detection. A run with a sanitizer report is not green.
-   A leak suppression needs a written reason in the repository.
+   and leak detection. A run with a sanitizer report is not green. A leak
+   suppression needs a written reason in the repository.
 3. Test first, from GBATEK. The test for a piece of hardware behaviour is
-   written from the specification, fails against an empty module, and then
-   the implementation is made to pass it. Edge cases are part of the first
-   version: boundary addresses, zero and maximum lengths, wraparound,
+   written from the specification and fails against an empty module; then
+   the implementation is made to pass it. The first version includes the
+   edge cases: boundary addresses, zero and maximum lengths, wraparound,
    invalid input, error-path cleanup.
 4. Do not copy code from the reference ports (pokeemerald-native,
    pokeemerald-multiplatform, pokemon-regionalidades). Two of them credit
-   GPL and MPL emulators as the source of their code, which cannot be relicensed under this
-   project's MIT license. Read them for structure and pitfalls; write ours
-   from GBATEK and from expansion's own sources.
+   GPL and MPL emulators as the source of their code, and that code cannot
+   be relicensed under this project's MIT license. Read the ports for
+   structure and pitfalls; write ours from GBATEK and from expansion's own
+   sources.
 5. One guard macro, `PLATFORM_NATIVE`, for every change to an expansion
    file. The change is as small as it can be, sits inside
-   `#if PLATFORM_NATIVE` (or `#if !PLATFORM_NATIVE`), keeps the GBA
-   build's output unchanged, and has a row in
-   `docs/UPSTREAM_MODIFICATIONS.md`. Where the guarded block adds lines
-   to a `src/` file it is followed by `#line N`, N being the upstream line
-   number of the first unchanged line after it, so the `__LINE__` values
-   baked into the ROM do not move. The convention and how to check it are
-   at the top of that file. Before changing an expansion file at all, ask
-   whether a link-time substitution, a build-time filter or a shim in
-   `platform/` can do it; the policy prefers those.
+   `#if PLATFORM_NATIVE` (or `#if !PLATFORM_NATIVE`), keeps the GBA build's
+   output unchanged, and has a row in `docs/UPSTREAM_MODIFICATIONS.md`.
+   Where the block adds lines to a `src/` file, `#line N` follows it, N being
+   the upstream line number of the first unchanged line after it, so the
+   `__LINE__` values baked into the ROM do not move. The top of that file
+   gives the convention and how to check it. Before changing an expansion
+   file at all, ask whether a link-time substitution, a build-time filter or
+   a shim in `platform/` can do the job; the policy prefers those.
 6. Where the width of a pointer matters, test it inside the native guard:
-   `#if __SIZEOF_POINTER__ == 8` in C (a predefined macro, true in every
-   translation unit; not `UINTPTR_MAX`, which is undefined in a header included
-   before `<stdint.h>` and makes the test silently false) and
-   `.ifdef NATIVE_POINTER_SIZE_8` in assembly (defined for `BITS=64` only). The
-   block keeps the 32-bit text on its own lines, first, so that the sanitized
-   32-bit executable (which embeds line numbers) does not change:
+   `#if __SIZEOF_POINTER__ == 8` in C and `.ifdef NATIVE_POINTER_SIZE_8` in
+   assembly (defined for `BITS=64` only). Do not use `UINTPTR_MAX`: it is
+   undefined in a header included before `<stdint.h>`, which makes the test
+   silently false. The block keeps the 32-bit text on its own lines, first,
+   so that the sanitized 32-bit executable (which embeds line numbers) does
+   not change:
 
    ```
    #if PLATFORM_NATIVE
@@ -78,14 +84,14 @@ Rules 1 to 4 below are from it; rule 5 is from the policy at the top of
 
 ## Gates
 
-A change is merged when all of these pass. Documents are part of a change: a
-change that alters behaviour updates the documents describing it in the same
-branch (gate (g)). `docs/BUILDING.md`, "Gates", is
-the list of gates (a to h) with the command for each. Gate (a) is
-release-level: a native build from a clean clone with the documented
-prerequisites, run before a release or a large change is declared done. Gate (h), the
-cross-width save round trip (`tests/smoke/run_cross_width.sh`), is run by
-a change to the save format, `platform/save_*` or `SaveBlock1`.
+A change is merged when the gates that apply to it pass. `docs/BUILDING.md`,
+"Gates", lists gates (a) to (h) with the command for each. Documents are part
+of a change: one that alters behaviour updates the documents describing it in
+the same branch (gate (g)). Gate (a), a native build from a clean clone with
+the documented prerequisites, is run before a release or a large change is
+declared done. Gate (h), the cross-width save round trip
+(`tests/smoke/run_cross_width.sh`), is run by a change to the save format,
+`platform/save_*` or `SaveBlock1`.
 
 1. Platform unit tests, both widths: `make -C platform test BITS=32` and
    `BITS=64`; a change under `platform/` or `tools/patchelf` also passes
@@ -134,8 +140,8 @@ the repository: after a change to the m4a engine, `make -C platform/m4a/difftest
 Hygiene, not a gate: `git diff --check` is clean.
 
 If a gate result changes on purpose, say why in the commit message.
-`tests/smoke/run.sh ... --update` rewrites the expected files; read the
-diff of `tests/smoke/expected/` before committing it.
+`tests/smoke/run.sh ... --update` rewrites the expected files; read the diff
+of `tests/smoke/expected/` before committing it.
 
 ## Adding a platform module
 
@@ -190,11 +196,11 @@ decision says why that approach.
 
 ## Upstream
 
-Do not file issues or pull requests upstream from this repository's work
-without this project's maintainers' decision. The seven reports already filed
-were closed by rh-hideout; they are linked from the rows of
-`docs/UPSTREAM_MODIFICATIONS.md` that say "Reported upstream". Bugs we find in
-expansion are fixed under guards here and recorded in that file.
+Do not file issues or pull requests upstream on this project's behalf without
+the maintainer's decision. Seven reports have been filed and closed
+(`docs/UPGRADING.md`); the rows of `docs/UPSTREAM_MODIFICATIONS.md` that say
+"Reported upstream" link them. Bugs we find in expansion are fixed under
+guards here and recorded in that file.
 
 ## What will not be accepted
 
@@ -204,8 +210,7 @@ expansion are fixed under guards here and recorded in that file.
 - A ROM, a save from a cartridge, or anything extracted from a cartridge.
   Everything builds from the source and assets in the repository.
 - Assets (graphics, audio, text) that are not already expansion's. This
-  is the project's rule: no ROM and no assets are
-  distributed.
+  project distributes no ROM and no assets.
 - Code copied from emulators or from the reference ports, in whole or in
   part.
 - A test that is skipped, empty, always passes, or covers only the happy
