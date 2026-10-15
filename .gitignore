@@ -69,3 +69,5 @@ __pycache__
 # The native build's default real-time clock offset file (platform/main.c);
 # its default save, pokeemerald.sav, is already matched by *.sa*.
 /pokeemerald.rtc
+
+/notes/

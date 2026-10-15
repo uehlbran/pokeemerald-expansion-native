@@ -10,6 +10,7 @@
 
 #include "audio.h"
 #include "ptest.h"
+#include "sound_grid.h"
 #include "test_support.h"
 
 #define TEST_RATE_HZ 65536u
@@ -49,6 +50,7 @@ PTEST(the_device_opens_at_the_grid_rate_and_at_rates_a_driver_would_convert_from
      * from the driver's takes SDL's conversion. Queued bytes are the
      * request's, counted before conversion. */
     static const uint32_t rates[] = {65536u, 48000u, 44100u};
+    PT_ASSERT_EQ_U32(SOUND_GRID_RATE_HZ, rates[0]);
     use_dummy_driver();
     for (size_t i = 0; i < sizeof rates / sizeof rates[0]; i++) {
         PT_ASSERT_EQ_INT(audio_init(rates[i], AUDIO_DEVICE), 0);

@@ -23,7 +23,7 @@
  *    executable's code is, so the code stays under the 0x42000000 the tag bit
  *    of platform/script_tag.h needs, and above every region.
  *  - The loader maps an image only if its sections are adjacent, in ascending
- *    order (research/probes/README.md: "as_linked" was refused by Windows,
+ *    order (loader probe W1: "as_linked" was refused by Windows,
  *    "filled_gaps" started 100 times in 100). So the stretches between the
  *    regions are sections of their own (.gap0 ..), uninitialised and
  *    read-only, which are neither stored in the file nor charged as memory.

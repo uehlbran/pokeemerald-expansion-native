@@ -224,8 +224,9 @@ single-threaded, no callback, at the 65536 Hz PWM grid Emerald
 selects (GBATEK SOUNDBIAS, "Amplitude Resolution/Sampling Cycle", mode 1),
 not at the engine's 13379 Hz: the
 PSG is sampled on that grid and the engine's frame is read on it by
-zero-order hold on cycle time (`platform/sound_grid.h`; DECISIONS.md, the
-audio rate entries of 2026-10-14 and 2026-10-15 and the PSG entry's amendments).
+zero-order hold on cycle time (`platform/sound_grid.h`; DECISIONS.md, decision (1) of
+"Decisions on an independent review's open questions", the PSG entry's amendments and the
+audio grid entry of 2026-10-15).
 
 ### DMA: a channel model, immediate for NOW, polled for HBLANK and VBLANK
 
@@ -323,7 +324,7 @@ a power of two, x86 `.align` is a byte count). Nine of the fifteen
 macro-level fixes the ports made (`.if` on symbols, the undefined-map
 check), which become recorded modifications of `asm/macros/*.inc` only
 where a filter cannot do it. Pointers in data stay `.4byte` on 32-bit; the
-64-bit milestone introduces `ptrvalue` and `ptr_align` as native-vanilla
+64-bit work introduces `ptrvalue` and `ptr_align` as native-vanilla
 did. The GBA `Makefile` must never see `src/platform`, which it does not
 because it wildcards `src/*.c` and `src/*/*.c`: regionalidades's
 `filter-out src/platform/%` is the precedent if that changes.
@@ -366,13 +367,13 @@ documentation; the game code remains as upstream has it; and we do not
 copy code from the ports, so no GPL or MPL obligation attaches to our
 files. See `../LICENSE` and `DECISIONS.md`.
 
-## Open questions carried into milestone 2
+## Open questions at the start of the platform work
 
 - Whether placing `.rodata` at 0x08000000 (the executable's read-only
   data is about 25 MiB on GBA and the ROM window is 32 MiB) is worth it
   to keep `field_name_box.c`'s `ROM_START..ROM_END` check and
   `malloc.c`'s location encoding working, or whether those two sites get
-  guarded modifications. The worker decides on evidence and records it.
+  guarded modifications. Decide on evidence and record it.
 - Whether the native `.sbss` (EWRAM data) exceeds 256 KiB on x86; if it
   does, the leak check in the test runner needs a guarded bound.
 - Which `data/*.s` macro files need source changes versus filter rules.

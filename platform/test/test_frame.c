@@ -870,7 +870,7 @@ PTEST(a_game_pak_interrupt_stops_the_loop_with_a_failure)
 
 /* --- frame_run: sound --------------------------------------------------- */
 
-/* The output grid (sound_grid.h): 280896 cycles a frame, 512 a sample, so
+/* The output grid (sound_grid.h): 280896 cycles a frame, 256 a sample, so
  * the first frame holds 1097 samples and carries 64 cycles, and the second,
  * from 64, holds 1097 too (and carries 128). */
 #define FIRST_FRAME_SAMPLES 1097u

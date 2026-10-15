@@ -15,8 +15,8 @@ suite expansion runs on the GBA.
 
 ## Status
 
-Verified by an automated gate (the gates and their commands are in
-[docs/BUILDING.md](docs/BUILDING.md#gates)):
+What is verified, by automated gates unless the item says otherwise (the
+gates and their commands are in [docs/BUILDING.md](docs/BUILDING.md#gates)):
 
 - The 32-bit build boots through the intro to the title screen, and
   plays the opening from New Game through the first battle and a save, a
@@ -35,7 +35,7 @@ Verified by an automated gate (the gates and their commands are in
 - Windows (x86-64 only, cross-built from Linux) runs the platform's unit
   tests, a start-up smoke, both replays, expansion's suite (equal to
   Linux 64-bit, test by test) and the cross-OS save gate on a Windows
-  runner, and the owner verified the build by hand on 2026-10-14: boot,
+  runner, and the build was run by hand on 2026-10-14: boot,
   the opening, the first battle, a save and its reload
   (docs/BUILDING.md, "Windows").
 - The player's files: the save, the clock's offset and a settings file
@@ -51,7 +51,7 @@ Verified by an automated gate (the gates and their commands are in
   fullscreen by default on a Deck (`SteamDeck=1`), F11 for everyone, and a
   tarball that runs as a non-Steam game from the home directory
   ([docs/RUNNING.md](docs/RUNNING.md), "Steam Deck"). Unit-tested, not tried
-  on a Deck: the owner's hand-check list is in docs/STATUS.md, "Needs the owner" (2b).
+  on a Deck: the hand-check list is in docs/DECISIONS.md, "Steam Deck: controller functions, fullscreen and the package".
 - Fast-forward: Tab held, or Shift+Tab to switch it on and off, at 2x (3x,
   4x or unlimited in the settings file), with the sound sped up or muted
   and an indicator in the corner; the frame pacer alone changes, so the
@@ -60,7 +60,7 @@ Verified by an automated gate (the gates and their commands are in
 
 Not working or not verified:
 
-- macOS: not started. Linux (built under WSL2 Ubuntu 24.04) and Windows
+- macOS: no macOS build in this tree; an x86_64 port is on the branch work/macos, unmerged and not yet run on a Mac. Linux (built under WSL2 Ubuntu 24.04) and Windows
   are the platforms.
 - GBA save interchange: native saves use the host's struct layout and are
   not GBA `.sav` files.
@@ -110,7 +110,6 @@ regression reference.
   and the gates.
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): the platform layer, its
   boundary with expansion, the memory model and the frame.
-- [docs/STATUS.md](docs/STATUS.md): what is verified, by which gate.
 - [docs/DECISIONS.md](docs/DECISIONS.md): decisions with their alternatives.
 - [docs/UPSTREAM_MODIFICATIONS.md](docs/UPSTREAM_MODIFICATIONS.md): every
   change to an expansion file.

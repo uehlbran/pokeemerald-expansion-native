@@ -3,8 +3,8 @@
  *
  * Expected values worked by hand from GBATEK: a frame is 280896 cycles
  * ("LCD Dimensions and Timings"), the grid one sample every 2^24 / 65536 =
- * 256 cycles (SOUNDBIAS mode 1, "Resampling to 65.536kHz"), so a frame is
- * 1097 samples and 64 cycles, 1097.25 on average; FIFO sample i of an
+ * 256 cycles (SOUNDBIAS mode 1, "Amplitude Resolution/Sampling Cycle"), so
+ * a frame is 1097 samples and 64 cycles, 1097.25 on average; FIFO sample i of an
  * n-sample frame is held from timer overflow i to overflow i + 1, every
  * 280896 / n cycles (1254 for the engine's 224, 2926 for 96; src/m4a.c
  * SampleFreqSet, REG_TM0CNT_L = -(280896 / pcmSamplesPerVBlank)). Output
