@@ -631,7 +631,6 @@ PTEST(a_held_toggle_button_flips_once)
     start_with_pad();
     pad_button(SDL_CONTROLLERBUTTONDOWN, SDL_CONTROLLER_BUTTON_RIGHTSTICK);
     pad_button(SDL_CONTROLLERBUTTONDOWN, SDL_CONTROLLER_BUTTON_RIGHTSTICK);
-    pad_button(SDL_CONTROLLERBUTTONDOWN, SDL_CONTROLLER_BUTTON_RIGHTSTICK);
     const bool on = fastforward_active();
     stop_with_pad();
     PT_ASSERT(on);

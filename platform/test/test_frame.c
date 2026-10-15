@@ -1338,6 +1338,7 @@ PTEST(the_trigger_let_go_ends_the_hold_and_the_stick_click_toggles_once)
     ran = run_frames(1) && ran;
     const uint32_t released = frame_pacer_multiplier();
     pushed = push_pad_button(SDL_CONTROLLERBUTTONDOWN, SDL_CONTROLLER_BUTTON_RIGHTSTICK) && pushed;
+    pushed = push_pad_button(SDL_CONTROLLERBUTTONDOWN, SDL_CONTROLLER_BUTTON_RIGHTSTICK) && pushed; /* still held */
     ran = run_frames(3) && ran;
     const uint32_t toggled = frame_pacer_multiplier();
     stop();

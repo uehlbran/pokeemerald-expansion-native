@@ -215,8 +215,10 @@ PTEST(init_needs_valid_bindings_and_is_called_once)
 PTEST(before_init_and_for_null_events_do_nothing)
 {
     controller_shutdown();
+    PT_ASSERT_EQ_INT(press(PAD_ONE, SDL_CONTROLLER_BUTTON_A).function, CONTROLLER_NO_FUNCTION);
     PT_ASSERT_EQ_INT(press(PAD_ONE, SDL_CONTROLLER_BUTTON_Y).function, CONTROLLER_NO_FUNCTION);
     PT_ASSERT(!controller_held(CONTROLLER_OVERLAY));
+    PT_ASSERT(!controller_held(CONTROLLER_FAST_FORWARD_HOLD));
     start();
     PT_ASSERT_EQ_INT(controller_handle_event(NULL).function, CONTROLLER_NO_FUNCTION);
     controller_shutdown();
