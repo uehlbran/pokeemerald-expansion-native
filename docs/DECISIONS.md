@@ -2572,13 +2572,21 @@ fail, as do directories and names without an extension. The exceptions are exact
 frame image, save, clock) passes, and each rejected class fails (executable,
 shared library, object, archive, other binary, directory, no extension, and
 the pattern rules above), one case per extension. Beyond the path lines it fails `docker://` steps; external reusable
-workflows (job or step); and, in any `run:` text, `gh release
-upload/edit`, `gh api` writes and uploads (a field flag, attached or with `=`, which makes
-the request a POST; `--input`; any method but GET, HEAD and DELETE, in any
-case; the artifact cleanup uses DELETE), `curl` with an upload flag (short
-flags attached or clustered, `--data*`, `--form`, `--json`), `wget --post-*`,
-`--body-*` and a method other than GET, `gh gist create`, `git push` (with
-options before it), `docker push` and the like. The one command allowed is
+workflows (job or step); and `run:` text that uploads. A `run:` text is split
+into simple commands (at newlines, `&&`, `||`, `|`, `;` and `&`) and each is
+read as words with the shell's quoting removed, so a flag counts in the command
+that has it, however it is spelled or quoted, and not in a later command. The
+findings: `gh release upload/edit`, `gh gist create`, a body or asset file given
+to any other `gh` command (`--body-file`, `-F`), `gh api` writes (a field flag,
+attached or with `=`, which makes the request a POST unless a method says
+otherwise; `--input`; any `-X`/`--method` whose value, quotes removed, is not
+literally GET, HEAD or DELETE in any case, so a variable fails; the artifact
+cleanup uses DELETE), `curl` with an upload flag (short flags attached or
+clustered, `--data*`, `--form`, `--json`), `wget --post-*`, `--body-*` and a
+method that is not GET, HEAD or DELETE, `rsync` or `scp` to a remote, `git
+push` (whatever options come before it), `docker push` and the like. A command
+word inside a string (`echo "git push"`) is found too: the rule
+fails safe. The one command allowed is
 release.yml's `gh release create`, in a step or job whose `if` requires
 `inputs.publish`. Amended 2026-10-15 (the review before the repository went
 public), four sentences. Third-party actions are no longer judged by words in
@@ -2599,10 +2607,10 @@ converted assets and ccache data, never a linked game, test runner or
 archive. A cache holds whatever its path names, and a path cannot be judged
 by its spelling (an executable has no extension), so a new cache means
 checking that its path holds none of those and adding it to the list and to
-the self-test's copy of it. The self-test also pins `ALLOWED_ACTIONS`
-and `ALLOWED_CACHE_PATHS` against literal copies, so a change to either
-shows in the self-test's diff. What the scripts and make targets that a `run:` step calls do
-is not checked; reading them stays a review duty, as it is for any change to
+the self-test's literal copy of it. The self-test also keeps a literal copy of
+`ALLOWED_ACTIONS` and compares both, so a change to either list fails the
+self-test until the copy changes too and shows in its diff. What the scripts
+and make targets that a `run:` step calls do is not checked; reading them stays a review duty, as it is for any change to
 those files. `make -C platform
 glue-test` runs the self-test and then the check on the real tree, so the
 platform gate and the local pre-merge gate fail on a bad upload; it also
