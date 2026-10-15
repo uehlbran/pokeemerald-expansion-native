@@ -38,6 +38,14 @@ Verified by an automated gate (the gates and their commands are in
   runner, and the owner verified the build by hand on 2026-10-14: boot,
   the opening, the first battle, a save and its reload
   (docs/BUILDING.md, "Windows").
+- The player's files: the save, the clock's offset and a settings file
+  (`settings.ini`, which moves the GBA buttons to other keys and sets the
+  window's scale) live in a per-user data directory, or beside the
+  executable in portable mode; `--keys` prints the keys and the paths, and
+  F1 shows them in an overlay over the game that also quits it
+  ([docs/RUNNING.md](docs/RUNNING.md)). Unit tests cover the rules, the
+  settings file and the overlay's picture; the Windows start-up smoke checks
+  the paths `--keys` prints, in a given and in a portable directory.
 
 Not working or not verified:
 
@@ -46,7 +54,8 @@ Not working or not verified:
 - GBA save interchange: native saves use the host's struct layout and are
   not GBA `.sav` files.
 - Nothing past Birch's lab in play, the windowed path with a real display
-  and audio device, and most menus that neither replay opens have no gate.
+  and audio device (the F1 overlay included: its picture is unit-tested, not
+  seen on a screen), and most menus that neither replay opens have no gate.
   The renderer and the sound mixer are covered by unit tests and, beyond
   those, only by the replays' screenshots and the intro's audio.
 
@@ -69,20 +78,22 @@ The commands of the 32-bit build, the unit tests and the suite:
 ```
 make -f Makefile.native -j"$(nproc)" native BITS=32
 ./build/native32/pokeemerald-native                 # a window, scale 3
-./build/native32/pokeemerald-native --headless --silent --unthrottled --frames 9000 --screenshot title.ppm
+./build/native32/pokeemerald-native --headless --silent --unthrottled --frames 9000 --screenshot title.ppm --data-dir out
 make -C platform test BITS=32                       # the platform's unit tests, sanitized
 make -f Makefile.native -j"$(nproc)" check BITS=32  # expansion's test suite on the native build
 ```
 
 Keys: arrows, Z (A), X (B), A (L), S (R), Return (Start), Backspace
-(Select). The first build converts every graphic (34 s on 32 cores). Expansion's
+(Select), F1 for the help overlay and its quit; `settings.ini` changes them
+and `--keys` prints them with the save's path. The first build converts every graphic (34 s on 32 cores). Expansion's
 own `make` and `make check` still build and test the GBA ROM, which is the
 regression reference.
 
 ## Documentation
 
 - [docs/RUNNING.md](docs/RUNNING.md): for players: running the game, the
-  keys, the options, the files it writes.
+  keys and the settings file, the F1 overlay and quitting, where the files
+  live (per-user or portable), the options.
 - [docs/BUILDING.md](docs/BUILDING.md): prerequisites, every build variant
   and the gates.
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): the platform layer, its

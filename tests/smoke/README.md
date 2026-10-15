@@ -35,7 +35,10 @@ ASAN_OPTIONS=halt_on_error=0 tests/smoke/run_debug_menu.sh build/native64-san/po
 
 `run.sh` builds nothing. It runs the replay with `--headless --silent
 --unthrottled --rtc-fixed 1700000000` and a save file and RTC offset file in
-`OUTDIR/work/`, then compares:
+`OUTDIR/work/` (`--save` and `--rtc-offset`: with both given, a headless run
+looks for no data directory and reads no settings file, so a replay never
+touches the player's per-user directory, `platform/data_dir.h`), then
+compares:
 
 - every dump with `expected/<name>.txt`, fact by fact; the `frame` fact is
   left out (it counts this build's timing, which any change to the engine
