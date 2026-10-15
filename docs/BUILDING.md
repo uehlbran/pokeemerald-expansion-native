@@ -320,8 +320,14 @@ and stops), into `build/sdl2-mingw/` (not committed); SDL is under the zlib
 licence, which allows this and shipping `SDL2.dll` beside the executable. The
 build uses the package's headers and import library directly, not its
 `sdl2.pc`, which carries another machine's prefix and asks for `-mwindows` and
-SDL's `WinMain` shim; `SDL_MAIN_HANDLED` and `-mconsole` take their place,
-and `main` tells SDL with `SDL_SetMainReady` (on every OS).
+SDL's `WinMain` shim; `SDL_MAIN_HANDLED` takes its place, and `main` tells
+SDL with `SDL_SetMainReady` (on every OS). The game links with `-mwindows`
+(the "Windows GUI" subsystem, so that Explorer opens no console window; it
+keeps its own `main`, which MinGW-w64's start-up code for a GUI program
+calls), the unit tests with `-mconsole`; `check_pe_layout.py --gui` and
+`--console` check the subsystem of each, and `objdump -p` shows it
+(`Subsystem 00000002 (Windows GUI)`). Where the messages go is
+`platform/console.h`'s and `docs/RUNNING.md`'s.
 
 What the build does, in two makes (`Makefile.native`, "The Windows
 cross-build"): the first is the Linux 64-bit data (`build/native64/`) with its
@@ -355,7 +361,7 @@ The platform library alone: `make -C platform lib TARGET_OS=windows BITS=64`
 (`platform/build/64-windows/`). The unit tests, cross-built here and run on Windows (below):
 `make -C platform test TARGET_OS=windows BITS=64` writes every test that runs
 on Windows to `platform/build/64-windows/test/` (the portable ones and
-`platform/test/windows/`'s, 81 executables, with `SDL2.dll`); each is linked
+`platform/test/windows/`'s, 83 executables, with `SDL2.dll`); each is linked
 with the PE scripts and checked by `check_pe_layout.py` like the game. The
 Windows sources' static analysis: `make -C platform lint TARGET_OS=windows
 BITS=64` (clang-tidy for the MinGW-w64 target, with its headers, and cppcheck;
@@ -399,6 +405,7 @@ where the build left them:
 # Git Bash
 platform/test_runner/run_windows_tests.sh platform/build/64-windows/test
 platform/test_runner/run_windows_smoke.sh build/native64-windows/pokeemerald-native.exe
+pwsh platform/test_runner/run_windows_no_console.ps1 build/native64-windows/pokeemerald-native.exe
 tests/smoke/run.sh build/native64-windows/pokeemerald-native.exe out/open64
 tests/smoke/run_debug_menu.sh build/native64-windows/pokeemerald-native.exe out/dbg64
 tests/smoke/run_cross_os.sh load build/native64-windows/pokeemerald-native.exe out/cross-os/save/work/from out/cross-os/load
@@ -421,7 +428,7 @@ platform/test_runner/compare_suite_results.sh suite-linux64.log suite-windows.lo
 - `run_windows_tests.sh` runs every test executable as `make -C platform
   test` does on Linux (each to its end; a failure if it exits non-zero or its
   output has no "N passed, 0 failed"; its output and its standard error kept
-  beside it) and ends with "all 81 Windows test executables passed". Each
+  beside it) and ends with "all 83 Windows test executables passed". Each
   runs from a copy under its own name, deleted when it ends: an executable of
   this layout costs about 1 GiB of the system's commit charge from its first
   start until its file is deleted (the image's 1 GiB, gaps included, is
@@ -442,9 +449,15 @@ platform/test_runner/compare_suite_results.sh suite-linux64.log suite-windows.lo
   with a `settings.ini` there, its key and its bad line's number; `--version`
   the version alone, the one `--keys` printed;
   and a copy of the executable beside a `settings.ini` (portable mode) must
-  name the copy's directory and the files in it. No run uses the per-user
+  name the copy's directory and the files in it. It also reads the PE
+  header's subsystem (2, Windows GUI) and runs `--version`, `--keys` and a bad
+  argument through a pipe. No run uses the per-user
   directory, so the machine's `%APPDATA%` is never written. The script runs
-  against the Linux executable too.
+  against the Linux executable too (without the subsystem check).
+- `run_windows_no_console.ps1` (PowerShell, `pwsh`) starts the game as Explorer
+  does, through `Win32_Process.Create` with no handles and no console, with
+  `--version --data-dir` and passes when `pokeemerald.log` there holds the
+  version line and only it, again over a log left by an earlier start.
 - The replays (gates d and e) compare with the Linux expectations unchanged:
   the Windows build draws the same frames and dumps the same facts as the
   Linux 64-bit one (the same code and data, bit-fields laid out as GCC lays

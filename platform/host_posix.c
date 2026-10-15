@@ -30,6 +30,7 @@
 #include <time.h>
 #include <unistd.h>
 
+#include "host_console.h"
 #include "host_fault.h"
 #include "host_file.h"
 #include "host_internal.h"
@@ -41,6 +42,22 @@ _Static_assert(sizeof(off_t) == sizeof(int64_t), "host_file_seek needs a 64-bit 
 
 /* POSIX: the environment, which the application declares. */
 extern char **environ;
+
+/* --- host_console: nothing to attach to ---------------------------------------- */
+
+/* The terminal, a pipe or a file: whatever the parent gave is what the C
+ * library's streams already are, and a program is never without them in a
+ * way that a console could mend. */
+enum host_stream_kind host_console_stream_kind(enum host_stream which)
+{
+    (void)which;
+    return HOST_STREAM_CONSOLE;
+}
+
+bool host_console_attach_parent(void)
+{
+    return false;
+}
 
 /* --- host_fault: the divide error ------------------------------------------ */
 

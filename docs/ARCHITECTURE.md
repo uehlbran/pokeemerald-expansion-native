@@ -175,10 +175,11 @@ returned to the caller (`main` decides what to do; modules never call
 | `game_hooks` | the game's control-flow assembly (test runner jumps, the battle runner's stack, delay loops) | n/a (game code) | yes |
 | `crt0`, `rom_header`, `gcn_multiboot`, `decompress_asm` | the `src/*.s` the native build does not assemble | n/a (game code) | yes |
 | `options` | the command line | n/a | yes |
+| `console` | nothing: where the messages go when a Windows GUI program may have no console (the streams the parent gave, its console, or `pokeemerald.log`), and the message box of a start-up failure in that last case | n/a | yes (against a fake host) |
 | `replay`, `replay_parse`, `replay_include`, `replay_session` | nothing: the input-replay script, its parser, its `include` expansion and the glue to the running game | n/a | yes (against a fake host), except `replay_session`, covered only by the replays |
 | `inspect`, `inspect_menu`, `inspect_args`, `inspect_decode`, `symbols` | nothing: the facts a replay reads from expansion's variables, the ranges of their arguments, and function names from the map of the executable's symbols the link writes beside it | n/a | `inspect_args`, `inspect_decode`, `symbols` yes; `inspect`, `inspect_menu` only through the replays |
 | `restart` | a switch-off and switch-on: re-exec of the process for the replay's `restart` | n/a | yes |
-| `host_memory`, `host_fault`, `host_process`, `host_image`, `host_stack`, `host_file` (sources `host_posix.c`, `host_linux.c`) | nothing on the GBA: what the modules above need from the operating system, one header per concern (below, "The host layer") | n/a | yes (one test per header) |
+| `host_memory`, `host_fault`, `host_process`, `host_image`, `host_stack`, `host_file`, `host_console` (sources `host_posix.c`, `host_linux.c`) | nothing on the GBA: what the modules above need from the operating system, one header per concern (below, "The host layer") | n/a | yes (one test per header) |
 | `main` | power-on | n/a | no |
 
 Header-only: `gba_irq.h` (the fourteen interrupt sources), `gba_timing.h`
@@ -224,6 +225,7 @@ the unit tests' time limit.
 | `host_image.h` | the bounds of the executable's image and of the main thread's stack; its read-only segments | `transfer_bounds`, `game_hooks` (`PlatformIsRomPointer`) | `__executable_start`, `__data_start`, `_end`, `getauxval(AT_PHDR)`, `pthread_getattr_np` |
 | `host_stack.h` | running a function on a stack of the caller's choosing | `game_hooks` (`PlatformCallWithStack`) | `ucontext`, with AddressSanitizer's fiber annotations |
 | `host_thread.h` | a one-shot deadline kept by a thread that only sets the caller's atomic flag: the unit tests' per-test time limit (`ptest.h`); the one thread in the platform (`DECISIONS.md`, "The test time limit is kept by a flag-setting thread") | `test/ptest.h` | `pthread` and a condition variable (`host_posix.c`) |
+| `host_console.h` | what the standard output and error are (a pipe, a file, a console, nothing), and attaching to the parent's console | `console` | always "given" and nothing to attach (the terminal, the pipe or the file the parent gave) |
 | `host_file.h` | opening a file the same way everywhere, writing a whole buffer (from a fault handler too), durable file replacement, an exclusive lock on a file, `mkdir` with a mode, the local time | `save_file`, `save_lock`, `rtc_offset_store`, `crash_reboot`, `arm_division`, `replay_session`, `rtc` | `open` with `O_CLOEXEC`, `write`, `fsync`, `rename`, a directory's `fsync`, `flock`, `mkdir`, `localtime_r` |
 
 The sources are one per OS family: `host_posix.c` holds what Linux and macOS
@@ -238,8 +240,8 @@ cross-build. A port adds its sources and its value. `crt0` and `main` also use
 the toolchain (the linker scripts' own symbols, weak references, SDL's
 `main`) but call nothing of the OS's, so they are not users.
 
-Windows (`host_windows.c`, `host_windows_fault.c`, `host_windows_stack.c`,
-`host_windows_thread.c`; `platform/README.md` has the call-by-call table) keeps
+Windows (`host_windows.c`, `host_windows_console.c`, `host_windows_fault.c`,
+`host_windows_stack.c`, `host_windows_thread.c`; `platform/README.md` has the call-by-call table) keeps
 every header's contract, with three differences of substance. The divide error
 is caught by a vectored exception handler, called before any frame's handler,
 which hands `EXCEPTION_INT_DIVIDE_BY_ZERO` and `EXCEPTION_INT_OVERFLOW` (x86's

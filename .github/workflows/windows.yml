@@ -10,7 +10,8 @@
 #   cross-build-suite  the Windows test runner build (TEST=1)
 #   linux-suite        expansion's suite on the Linux 64-bit build, the
 #                      results the Windows ones must equal (gate b)
-#   windows            the unit tests, the start-up smoke, the replays (gates
+#   windows            the unit tests, the start-up smoke, the start with no
+#                      console (the GUI program's log), the replays (gates
 #                      d and e), gate h's second stage on the Linux save, and
 #                      the suite through expansion's hydra under MSYS2
 #                      (docs/DECISIONS.md, "The suite on Windows runs under
@@ -309,7 +310,7 @@ jobs:
           path: suite-linux64.log
 
   windows:
-    name: Run on Windows (unit tests, smoke, replays, save, suite)
+    name: Run on Windows (unit tests, smoke, no console, replays, save, suite)
     needs: [cross-build, cross-build-suite]
     runs-on: windows-latest
     timeout-minutes: 15
@@ -343,6 +344,16 @@ jobs:
       - name: The start-up smoke
         if: always()
         run: platform/test_runner/run_windows_smoke.sh build/native64-windows/pokeemerald-native.exe
+
+      # The game is a GUI program: started with no handles and no console, as
+      # Explorer starts it, it writes pokeemerald.log in the data directory
+      # (the smoke above checks the PE subsystem, and --version and --keys
+      # through a pipe; the replays and the suite below read the game's output
+      # through pipes and files).
+      - name: No console window (the log of a start with no handles and no console)
+        if: always()
+        shell: pwsh
+        run: platform/test_runner/run_windows_no_console.ps1 build/native64-windows/pokeemerald-native.exe
 
       - name: Gates d and e, the replays
         if: always()

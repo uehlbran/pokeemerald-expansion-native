@@ -62,7 +62,7 @@ SYMBOL_MAP_SELECT = $$4 == "FUNC" && $$5 != "" && $$1 != ""
 
 else ifeq ($(TARGET_OS),windows)
 
-HOST_SRCS := host_windows.c host_windows_fault.c host_windows_stack.c host_windows_thread.c host_linked.c
+HOST_SRCS := host_windows.c host_windows_console.c host_windows_fault.c host_windows_stack.c host_windows_thread.c host_linked.c
 HOST_TEST_DIRS := windows
 HOST_TEST_SUPPORT_DIR := windows
 # A PE symbol table has types ("Function") but no sizes, and an address of zero

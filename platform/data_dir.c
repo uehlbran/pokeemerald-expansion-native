@@ -149,8 +149,8 @@ static bool use_portable_dir(const struct data_dir_host *host, struct data_paths
     return true;
 }
 
-static enum data_dir_error find_dir(const struct options *options, const struct data_dir_host *host,
-                                    struct data_paths *out)
+enum data_dir_error data_dir_find(const struct options *options, const struct data_dir_host *host,
+                                  struct data_paths *out)
 {
     if (options->data_dir != NULL)
         return use_given_dir(options->data_dir, out);
@@ -175,7 +175,7 @@ enum data_dir_error data_dir_resolve(const struct options *options, const struct
      * one is reported even by a run that gives every file its own path. */
     const bool needs_dir = options->data_dir != NULL || options->save_path == NULL || options->rtc_offset_path == NULL
                            || reads_settings;
-    if (needs_dir && find_dir(options, host, out) != DATA_DIR_OK)
+    if (needs_dir && data_dir_find(options, host, out) != DATA_DIR_OK)
         return DATA_DIR_ERR;
     if (!place(options->save_path, out->dir, DATA_DIR_SAVE_NAME, out->save)
         || !place(options->rtc_offset_path, out->dir, DATA_DIR_RTC_OFFSET_NAME, out->rtc_offset))

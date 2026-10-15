@@ -101,6 +101,13 @@ const struct data_dir_host *data_dir_sdl_host(void);
 enum data_dir_error data_dir_resolve(const struct options *options, const struct data_dir_host *host,
                                      struct data_paths *out);
 
+/* Only the directory of the rule above, in out->dir and out->mode, whether or
+ * not this run needs a file in it (out is not cleared first): the place of the
+ * log of a run with no console (console.h). Returns DATA_DIR_OK, or
+ * DATA_DIR_ERR after a report on stderr. */
+enum data_dir_error data_dir_find(const struct options *options, const struct data_dir_host *host,
+                                  struct data_paths *out);
+
 /* "dir" and "name" as one path: dir as given, a "/" if it does not end in
  * a separator (host_file_name_offset's; "/" works on Windows too), then
  * name. False if the result does not fit size bytes (out is then ""). */
