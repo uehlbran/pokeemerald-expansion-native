@@ -1,0 +1,48 @@
+name: Bug report
+description: Something in the native build does not work as it should
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        This repository is source only. No ROM, no executable and no build of the game is distributed here, and none may be attached to an issue: no ROM, no game files. A save file or a screenshot is fine.
+
+        You build the game yourself; [docs/BUILDING.md](https://github.com/uehlbran/pokeemerald-expansion-native/blob/main/docs/BUILDING.md) says how.
+
+        If the bug also happens in the GBA build of pokeemerald-expansion, it is expansion's own and belongs in [its repository](https://github.com/rh-hideout/pokeemerald-expansion/issues), not here.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened, and what did you expect?
+      description: Say what you saw and what you thought should happen instead.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Output of `pokeemerald-native --version`
+      description: The commit the game was built from, for example `a554c4080f`. It ends in `-dirty` if the build had uncommitted changes, and is `unknown` for a build made without git.
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Operating system and how it was built
+      description: For example Linux 64-bit, Linux 32-bit, Windows (cross-built from Linux) or Steam Deck, with the commit you built.
+    validations:
+      required: false
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: What to do, starting from a new game or a save file you attach, to see the bug.
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: The terminal output on Linux, or `pokeemerald.log` in the data directory on Windows (docs/RUNNING.md says where it is). Paste it here.
+      render: text
+    validations:
+      required: false
