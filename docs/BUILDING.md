@@ -547,5 +547,6 @@ the GitHub release. Each archive holds the executable, `LICENSE`, `RUNNING.md`
 and a short `README.txt`; the Windows zip also holds `SDL2.dll` and SDL2's
 licence. `platform/build_glue/check_workflow_uploads.py` fails the platform
 gate if any workflow's upload could match more than text, frame images, saves and clock files, release.yml's
-archives excepted under `publish`. No public release is made without an
+archives excepted under `publish`, if a workflow uses an action that is not on its allowlist, or if a cache path is not
+on its list of the paths cached today. No public release is made without an
 explicit decision to publish (`docs/DECISIONS.md`, "Why no public release").

@@ -19,10 +19,10 @@ line of `with.path` must be a pattern that:
 Every non-local `uses:` must be an action on the allowlist ALLOWED_ACTIONS (owner/repo, any
 subpath, any ref): the actions the tree uses today. Adding an action means adding it there, which
 is the review point. Every `uses: ./<path>` is resolved against the root and the action file it
-names (action.yml or action.yaml) is checked like the rest; one that is missing fails. The paths of
-`actions/cache` (also its save and restore forms) may hold compiled objects, converted assets and
-ccache data, never a linked game or test runner: a path that is, holds or could hold one of
-LINK_DIRECTORIES, or ends in a binary or archive extension, fails. It also fails docker:// steps;
+names (action.yml or action.yaml) is checked like the rest; one that is missing fails. Every `path:` line of
+`actions/cache` (also its save and restore forms) must be one of ALLOWED_CACHE_PATHS, the exact paths
+cached today: a cache may hold compiled objects, converted assets and ccache data, never a linked game,
+test runner or archive of either, and a new cache path is added only after checking that. It also fails docker:// steps;
 external reusable workflows; and, in `run:` text, gh release/api uploads and writes, curl
 uploads, git push and similar (RUN_COMMANDS).
 
@@ -37,7 +37,6 @@ Usage: check_workflow_uploads.py [--root DIR] | --self-test
 Exit 0 and no output when every workflow passes; otherwise one line per problem, exit 1.
 Needs PyYAML (python3-yaml).
 """
-import fnmatch
 import json
 import os
 import re
@@ -141,18 +140,33 @@ ALLOWED_ACTIONS = ("actions/checkout", "actions/download-artifact", "actions/att
                    "actions/configure-pages", "actions/deploy-pages", "vampire/setup-wsl",
                    "mheap/github-action-required-labels", "octokit/request-action")
 
-# Where a linked build lands (Makefile.native: build/native<bits>[-test][-windows]; platform/Makefile:
-# platform/build; the release archives: dist). A cache path that overlaps one, as a parent, a child
-# or by a wildcard, could hold the game or the test runner.
-LINK_DIRECTORIES = ("build/native*", "build/*windows*", "platform/build", "dist")
+# The paths the tree caches today, exact strings of the `path:` lines of every actions/cache step: the
+# host build tools (tools/<name>/<name>), ccache's directory, the converted assets and SDL2's MinGW
+# release. None holds a linked game, test runner or archive. A cache path not listed here fails; adding
+# one means checking that, then adding it here and to the self-test's copy of this list.
+ALLOWED_CACHE_PATHS = (
+    "tools/bin2c/bin2c", "tools/gbafix/gbafix", "tools/gbagfx/gbagfx", "tools/jsonproc/jsonproc",
+    "tools/mapjson/mapjson", "tools/mid2agb/mid2agb", "tools/preproc/preproc", "tools/ramscrgen/ramscrgen",
+    "tools/rsfont/rsfont", "tools/scaninc/scaninc", "tools/trainerproc/trainerproc",
+    "tools/compresSmol/compresSmol", "tools/compresSmol/compresSmolTilemap", "tools/wav2agb/wav2agb",
+    "tools/patchelf/patchelf", "tools/mgba-rom-test-hydra/mgba-rom-test-hydra",
+    "~/.cache/ccache", "wsl-cache/ccache", "build/assets-native", "build/sdl2-mingw", "wsl-cache/sdl2-mingw",
+)
 
 # Commands in `run:` text that send files somewhere (checked per logical line, continuations joined).
+# A request method that sends nothing: gh api reads with GET or HEAD, and the artifact cleanup deletes.
+SAFE_METHOD = r"(get|head|delete)\b"
 RUN_COMMANDS = (
     ("gh release create", re.compile(r"\bgh\s+release\s+create\b")),
     ("gh release", re.compile(r"\bgh\s+release\s+(upload|edit|delete-asset)\b")),
-    ("gh api upload", re.compile(r"\bgh\s+api\b.*(uploads\.github\.com|/upload|--input|\s-[Ff]\s|--field|--raw-field|-X\s*(POST|PUT|PATCH)|--method\s+(POST|PUT|PATCH))")),
-    ("curl upload", re.compile(r"\bcurl\b.*\s(-T|--upload-file|-F|--form|--json|--data-binary|--data-raw|--data|-d)(\s|=|$)")),
-    ("git push", re.compile(r"\bgit\s+(-\S+\s+)*push\b")),
+    ("gh gist", re.compile(r"\bgh\s+gist\s+create\b")),
+    # gh api sends a POST once it has a field (-f or -F, --field, --raw-field, attached or with =), a body
+    # (--input) or any method but GET, HEAD or DELETE. The flags are matched without regard to case.
+    ("gh api upload", re.compile(r"\bgh\s+api\b.*(uploads\.github\.com|/upload|--input|\s-f|--field|--raw-field"
+                                r"|(-X|--method)[\s=]*(?!%s)[a-z])" % SAFE_METHOD, re.I)),
+    ("curl upload", re.compile(r"\bcurl\b.*\s(-[A-Za-z]*[TFd]|--upload-file|--form|--json|--data)")),
+    ("wget upload", re.compile(r"\bwget\b.*\s(--post-|--body-|--method[\s=]*(?!get\b)[a-z])", re.I)),
+    ("git push", re.compile(r"\bgit\s+(-\S+(\s+[^-\s]\S*)?\s+)*push\b")),
     ("other upload", re.compile(r"\b(docker\s+push|npm\s+publish|twine\s+upload|scp|rsync\s.*:|aws\s+s3|gsutil|rclone)\b")),
 )
 # The one command that may appear: release.yml creating the release, in a publish-only step or job.
@@ -163,34 +177,6 @@ def run_findings(text):
     """The names of the upload commands in the `run:` text $1."""
     joined = re.sub(r"\\\n", " ", text)
     return [label for line in joined.splitlines() for label, pattern in RUN_COMMANDS if pattern.search(line)]
-
-
-def segments_overlap(first, second):
-    """True if the path patterns $1 and $2 (lists of segments) can name the same file or one inside the other."""
-    for one, other in zip(first, second):
-        if one == "**" or other == "**":
-            return True
-        if not (fnmatch.fnmatchcase(one, other) or fnmatch.fnmatchcase(other, one)):
-            return False
-    return True
-
-
-def problems_of_cache_pattern(pattern):
-    """The problems of one line of an actions/cache path; empty if it passes."""
-    if pattern.startswith("!"):
-        return []  # an exclusion only narrows what is cached
-    if "${{" in pattern:
-        return ["has an expression, which cannot be checked"]
-    segments = [part.lower() for part in pattern.replace("\\", "/").split("/") if part not in ("", ".")]
-    if pattern.startswith("/") or ".." in segments:
-        return ["is outside the checkout or climbs out of it, which cannot be checked against the link directories"]
-    ext = extension_of(pattern.rstrip("/"))
-    if ext in BINARY_EXTENSIONS or re.search(r"[*?\[\]]", ext):
-        return ["ends in %s, a binary or archive name, or a wildcard that could be one" % (ext or "nothing")]
-    for link in LINK_DIRECTORIES:
-        if segments_overlap(segments, link.split("/")):
-            return ["is, holds or could hold %s, where a linked build lands" % link]
-    return []
 
 
 class LocalActions:
@@ -260,10 +246,10 @@ def check_step(name, where, step, job, found, local=None):
         if path is None or not str(path).strip():
             found.append("%s: a cache with no path" % where)
         else:
-            for line in str(path).splitlines():
-                pattern = line.strip()
-                found.extend("%s: cache path %s %s" % (where, pattern, problem)
-                             for problem in problems_of_cache_pattern(pattern) if pattern)
+            found.extend("%s: cache path %s is not on the allowlist (ALLOWED_CACHE_PATHS): adding a cache means "
+                         "adding its path there, after checking that it holds no linked game, test runner or archive"
+                         % (where, line.strip())
+                         for line in str(path).splitlines() if line.strip() and line.strip() not in ALLOWED_CACHE_PATHS)
     elif low and owner_repo not in ALLOWED_ACTIONS:
         found.append("%s: uses %s, an action that is not on the allowlist "
                      "(add it to ALLOWED_ACTIONS only after reading it)" % (where, uses))
@@ -435,14 +421,56 @@ def self_test():
                            ("gh api -f (an implied POST)", "gh api repos/o/r/releases -f tag_name=v1"),
                            ("gh api --raw-field (an implied POST)", "gh api repos/o/r/releases --raw-field tag_name=v1"),
                            ("curl --json", "curl --json @game.json https://example.com/x"),
+                           ("gh api --field", "gh api repos/o/r/releases --field tag_name=v1"),
+                           ("gh api -F", "gh api repos/o/r/releases -F tag_name=v1"),
+                           ("gh api attached -f", "gh api repos/o/r/releases -ftag_name=v1"),
+                           ("gh api attached -F", "gh api repos/o/r/releases -Fbody=@notes.txt"),
+                           ("gh api --field=", "gh api repos/o/r/releases --field=tag_name=v1"),
+                           ("gh api --raw-field=", "gh api repos/o/r/releases --raw-field=tag_name=v1"),
+                           ("gh api --method=POST", "gh api repos/o/r/releases --method=POST"),
+                           ("gh api --method post", "gh api repos/o/r/releases --method post"),
+                           ("gh api -XPOST", "gh api repos/o/r/releases -XPOST"),
+                           ("gh api -X put", "gh api repos/o/r/releases/1 -X put"),
+                           ("gh api -X PATCH", "gh api repos/o/r/releases/1 -X PATCH"),
+                           ("gh api --input", "gh api repos/o/r/releases --input body.json"),
+                           ("gh gist create", "gh gist create game.exe"),
+                           ("curl -d", "curl -d @game.exe https://example.com/x"),
+                           ("curl -d attached", "curl -dfoo https://example.com/x"),
+                           ("curl -F attached", "curl -Ffile=@game.exe https://example.com/x"),
+                           ("curl -T attached", "curl -Tgame.exe https://example.com/x"),
+                           ("curl --upload-file=", "curl --upload-file=game.exe https://example.com/x"),
+                           ("curl --data-urlencode", "curl --data-urlencode x@game.exe https://example.com/x"),
+                           ("curl --data-binary=", "curl --data-binary=@game.exe https://example.com/x"),
+                           ("curl --data-raw", "curl --data-raw x https://example.com/x"),
+                           ("curl --form=", "curl --form=file=@game.exe https://example.com/x"),
+                           ("curl a short-option cluster with -F", "curl -sSF file=@game.exe https://example.com/x"),
+                           ("wget --post-file", "wget --post-file=game.exe https://example.com/x"),
+                           ("wget --post-data", "wget --post-data=x https://example.com/x"),
+                           ("wget --method", "wget --method=PUT https://example.com/x"),
+                           ("wget --body-file", "wget --body-file=game.exe https://example.com/x"),
+                           ("git -C x push", "git -C out push origin HEAD"),
+                           ("git -c k=v push", "git -c user.name=x push origin HEAD"),
+                           ("git --no-pager push", "git --no-pager push origin HEAD"),
                            ("curl continued line", "curl --silent \\\n  -F file=@game.exe https://example.com/x"),
                            ("git push", "git push origin HEAD:refs/heads/x"),
                            ("docker push", "docker push example/game:1")):
         expect("bad: run: " + label, "native.yml", step_workflow("run: |\n  " + command.replace("\n", "\n  ")), "run:")
         expect("bad: run: " + label + " in release.yml without publish", "release.yml",
                step_workflow("run: |\n  " + command.replace("\n", "\n  ")), "run:")
-    expect("good: run: curl download, gh api read and delete", "native.yml",
-           step_workflow("run: |\n  curl -sSL https://example.com/x | tar -xz\n  gh api repos/o/r/actions/runs/1/artifacts\n  gh api -X DELETE repos/o/r/actions/artifacts/1"), None)
+    for label, command in (("curl download", "curl -sSL https://example.com/x | tar -xz"),
+                           ("curl -fsSL --output", "curl -fsSL --output sdl2.tar.gz https://example.com/x"),
+                           ("curl -o", "curl -sSLo sdl2.tar.gz https://example.com/x"),
+                           ("wget -O", "wget -O sdl2.tar.gz https://example.com/x"),
+                           ("gh api read", "gh api repos/o/r/actions/runs/1/artifacts"),
+                           ("gh api --method GET", "gh api --method GET repos/o/r/actions/runs"),
+                           ("gh api --method=get", "gh api --method=get repos/o/r/actions/runs"),
+                           ("gh api -X GET", "gh api -X GET repos/o/r/actions/runs"),
+                           ("gh api -X HEAD", "gh api -X HEAD repos/o/r/actions/runs"),
+                           ("gh api -X DELETE (a deletion sends nothing)", "gh api -X DELETE repos/o/r/actions/artifacts/1"),
+                           ("gh api --method=delete", "gh api --method=delete repos/o/r/actions/artifacts/1"),
+                           ("git status and log", "git status --short\n  git log -1"),
+                           ("git -C x log", "git -C out log -1")):
+        expect("good: run: " + label, "native.yml", step_workflow("run: |\n  " + command.replace("\n", "\n  ")), None)
     expect("good: run: gh api graphql read with a GET method", "native.yml",
            step_workflow("run: gh api --method GET repos/o/r/actions/runs"), None)
     release_create = "run: gh release create v1 dist/a.zip"
@@ -454,30 +482,55 @@ def self_test():
     expect("bad: archive, publish and true or always", "release.yml",
            workflow(["dist/*.zip"], step_if="inputs.publish && true || always()"), ".zip")
     # The allowlist of third-party actions: every one the tree uses passes, any other fails.
-    for action in ALLOWED_ACTIONS:
+    allowed = ("actions/checkout", "actions/download-artifact", "actions/attest-build-provenance",
+               "actions/configure-pages", "actions/deploy-pages", "vampire/setup-wsl",
+               "mheap/github-action-required-labels", "octokit/request-action")
+    if ALLOWED_ACTIONS != allowed:
+        failures.append("ALLOWED_ACTIONS is %s, the self-test pins %s: change both, after reading the action" % (ALLOWED_ACTIONS, allowed))
+    for action in allowed:
         expect("good: allowed action " + action, "native.yml", step_workflow("uses: %s@v1" % action), None)
+    expect("good: a subpath of an allowed action is the allowed action", "native.yml",
+           step_workflow("uses: actions/checkout/sub@v4"), None)
+    expect("bad: a subpath of an action that is not allowed", "native.yml",
+           step_workflow("uses: someone/setup-thing/sub@v4"), "allowlist")
     for action in ("someone/setup-thing@v1", "actions/unknown-thing@v1", "Someone/Setup-Thing@v1",
                    "actions-extra/checkout@v4", "actions/checkout-fork@v4"):
         expect("bad: action not on the allowlist " + action, "native.yml", step_workflow("uses: " + action), "allowlist")
-    # Caches: the paths of today's caches pass; a path that could hold a linked build fails.
-    def cache_workflow(paths):
-        return step_workflow("uses: actions/cache@v4\nwith:\n  key: k\n  path: |\n" + "".join("    %s\n" % line for line in paths))
+    # Caches: an allowlist of exact paths, the ones the tree caches today.
+    tools = ("bin2c", "gbafix", "gbagfx", "jsonproc", "mapjson", "mid2agb", "preproc", "ramscrgen", "rsfont",
+             "scaninc", "trainerproc", "compresSmol/compresSmol", "compresSmol/compresSmolTilemap", "wav2agb",
+             "patchelf", "mgba-rom-test-hydra")
+    cache_ok = tuple("tools/%s/%s" % ((tool, tool) if "/" not in tool else (tool.split("/")[0], tool.split("/")[1]))
+                     for tool in tools) + ("~/.cache/ccache", "wsl-cache/ccache", "build/assets-native",
+                                            "build/sdl2-mingw", "wsl-cache/sdl2-mingw")
+    if ALLOWED_CACHE_PATHS != cache_ok:
+        failures.append("ALLOWED_CACHE_PATHS is %s, the self-test pins %s: change both, after checking the path" % (ALLOWED_CACHE_PATHS, cache_ok))
+    cache_message = "ALLOWED_CACHE_PATHS"
 
-    for path in ("build/assets-native", "build/sdl2-mingw", "~/.cache/ccache", "wsl-cache/ccache", "wsl-cache/sdl2-mingw",
-                 "tools/gbagfx/gbagfx", "tools/patchelf/patchelf", "tools/mgba-rom-test-hydra/mgba-rom-test-hydra"):
+    def cache_workflow(paths, action="actions/cache@v4"):
+        return step_workflow("uses: %s\nwith:\n  key: k\n  path: |\n" % action + "".join("    %s\n" % line for line in paths))
+
+    for path in cache_ok:
         expect("good: cache of " + path, "native.yml", cache_workflow([path]), None)
-    expect("good: a cache with an exclusion", "native.yml", cache_workflow(["~/.cache/ccache", "!~/.cache/ccache/tmp"]), None)
-    for path in ("build/native64", "build/native64/pokeemerald-native", "build/native32-test", "build/native64-windows",
-                 "build/native64-test-windows/", "build/x64-windows", "build/*windows*", "platform/build", "platform/build/64-nosan",
-                 "dist", "dist/pokeemerald-native.tar.gz", "build", "build/**", "build/native*", "build/*", "*", "**", ".",
-                 "./build/native64", "out/pokeemerald-native.exe", "out/SDL2.dll", "out/*.zip", "out/game.tar.gz", "pokeemerald.gba",
-                 "build\\native64", "${{ matrix.path }}", "/home/runner/work/r/r/build/native64", "../r/build/native64", "out/*.*"):
-        expect("bad: cache of " + path, "native.yml", cache_workflow(["~/.cache/ccache", path]), "cache")
-    expect("bad: the cache/save form", "native.yml",
-           step_workflow("uses: actions/cache/save@v4\nwith:\n  key: k\n  path: build/native64\n"), "cache")
-    expect("bad: the cache/restore form", "native.yml",
-           step_workflow("uses: actions/cache/restore@v4\nwith:\n  key: k\n  path: build/native64\n"), "cache")
-    expect("bad: a cache with no path", "native.yml", step_workflow("uses: actions/cache@v4\nwith:\n  key: k\n"), "cache")
+    expect("good: today's tool block and ccache in one path", "native.yml", cache_workflow(cache_ok), None)
+    expect("good: blank lines and indentation in a path block", "native.yml",
+           cache_workflow(["~/.cache/ccache", "", "  build/sdl2-mingw  "]), None)
+    expect("bad: the path in the message is the line, stripped", "native.yml",
+           cache_workflow(["~/.cache/ccache", "", "  build/native64  "]), "cache path build/native64 is not on the allowlist")
+    expect("good: a one-line path", "native.yml",
+           step_workflow("uses: actions/cache@v4\nwith:\n  key: k\n  path: ~/.cache/ccache\n"), None)
+    for path in ("out/pokeemerald-native", "pokeemerald-native-*", "$GITHUB_WORKSPACE/build/native64",
+                 "~/work/r/r/build/native64", "build/native64", "x.EXE", "x.tgz", "build/native64/pokeemerald-native",
+                 "build/native64-windows", "platform/build", "dist", "dist/pokeemerald-native.tar.gz", "build", "build/**",
+                 "*", ".", "./build/assets-native", "build/assets-native/", "Build/assets-native", "BUILD/ASSETS-NATIVE",
+                 "~/.cache/ccache/", "tools/gbagfx/GBAGFX", "tools/gbagfx", "out/game.exe/", "build\\native64",
+                 "${{ matrix.path }}", "/home/runner/work/r/r/build/native64", "../r/build/native64", "!~/.cache/ccache/tmp"):
+        expect("bad: cache of " + path, "native.yml", cache_workflow(["~/.cache/ccache", path]), cache_message)
+    for action in ("actions/cache/save@v4", "actions/cache/restore@v4", "Actions/Cache@v4"):
+        expect("bad: " + action + " is checked by the cache rule", "native.yml",
+               cache_workflow(["build/native64"], action), cache_message)
+        expect("good: " + action + " with an allowed path", "native.yml", cache_workflow(["~/.cache/ccache"], action), None)
+    expect("bad: a cache with no path", "native.yml", step_workflow("uses: actions/cache@v4\nwith:\n  key: k\n"), "a cache with no path")
 
     def expect_tree(label, files, wanted):
         """files: path -> text, written under a scratch root; wanted as in expect()."""
@@ -513,6 +566,19 @@ def self_test():
     expect_tree("good: a local reusable workflow that exists", {
         WORKFLOW_DIR + "/w.yml": "on: push\njobs:\n  j:\n    uses: ./.github/workflows/x.yml\n",
         WORKFLOW_DIR + "/x.yml": "on: workflow_call\njobs:\n  k:\n    runs-on: x\n    steps:\n      - run: echo\n"}, None)
+    expect_tree("bad: a job-level uses of a local action that is missing", {
+        WORKFLOW_DIR + "/w.yml": "on: push\njobs:\n  j:\n    uses: ./missing\n"}, "missing")
+    expect_tree("bad: a local file that is not a workflow", {
+        WORKFLOW_DIR + "/w.yml": caller % "./file.txt", "file.txt": "x\n"}, "neither a workflow nor an action directory")
+    expect_tree("bad: a workflow-like file outside .github/workflows", {
+        WORKFLOW_DIR + "/w.yml": "on: push\njobs:\n  j:\n    uses: ./other/x.yml\n", "other/x.yml": "on: workflow_call\n"},
+        "neither a workflow nor an action directory")
+    expect_tree("bad: an action.yaml under .github/actions that nothing uses", {
+        WORKFLOW_DIR + "/w.yml": "on: push\njobs:\n  j:\n    runs-on: x\n    steps:\n      - run: echo\n",
+        ACTION_DIR + "/idle/action.yaml": action_of % upload_step}, ".exe")
+    expect_tree("bad: an action.yml under .github/actions that nothing uses", {
+        WORKFLOW_DIR + "/w.yml": "on: push\njobs:\n  j:\n    runs-on: x\n    steps:\n      - run: echo\n",
+        ACTION_DIR + "/idle/action.yml": action_of % upload_step}, ".exe")
     with tempfile.TemporaryDirectory() as root:
         os.makedirs(os.path.join(root, WORKFLOW_DIR))
         os.makedirs(os.path.join(root, ACTION_DIR, "up"))

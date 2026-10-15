@@ -2573,9 +2573,12 @@ frame image, save, clock) passes, and each rejected class fails (executable,
 shared library, object, archive, other binary, directory, no extension, and
 the pattern rules above), one case per extension. Beyond the path lines it fails `docker://` steps; external reusable
 workflows (job or step); and, in any `run:` text, `gh release
-upload/edit`, `gh api` writes and uploads (including `-f` and `--raw-field`,
-which make the request a POST), `curl` with an upload flag (including
-`--json`), `git push`, `docker push` and the like. The one command allowed is
+upload/edit`, `gh api` writes and uploads (a field flag, attached or with `=`, which makes
+the request a POST; `--input`; any method but GET, HEAD and DELETE, in any
+case; the artifact cleanup uses DELETE), `curl` with an upload flag (short
+flags attached or clustered, `--data*`, `--form`, `--json`), `wget --post-*`,
+`--body-*` and a method other than GET, `gh gist create`, `git push` (with
+options before it), `docker push` and the like. The one command allowed is
 release.yml's `gh release create`, in a step or job whose `if` requires
 `inputs.publish`. Amended 2026-10-15 (the review before the repository went
 public), four sentences. Third-party actions are no longer judged by words in
@@ -2587,15 +2590,18 @@ is a change to that list, which is the review point. Every `uses: ./<path>`
 is resolved against the repository root and the action file it names
 (`action.yml` or `action.yaml`) is checked like the rest, so a composite
 action anywhere in the tree is read and a reference to a file that is not
-there fails. The `path` lines of `actions/cache` (and its save and restore
-forms) may name compiled objects, converted assets and ccache data, never a
-linked game or test runner: a line that is, holds or could hold (as a parent,
-a child or by a wildcard) `build/native*`, `build/*windows*`, `platform/build`
-or `dist`, or ends in a binary or archive extension, fails; today's caches
-pass (the host build tools `tools/*/<tool>`, `~/.cache/ccache`,
-`wsl-cache/ccache`, `build/assets-native`, `build/sdl2-mingw` and
-`wsl-cache/sdl2-mingw` lie outside those directories and have no such
-extension). What the scripts and make targets that a `run:` step calls do
+there fails. Every `path` line of `actions/cache` (and its save
+and restore forms) must be one of an allowlist of exact strings
+(`ALLOWED_CACHE_PATHS`): the 16 host build tools `tools/<name>/<name>`,
+`~/.cache/ccache`, `wsl-cache/ccache`, `build/assets-native`,
+`build/sdl2-mingw` and `wsl-cache/sdl2-mingw`, which hold compiled objects,
+converted assets and ccache data, never a linked game, test runner or
+archive. A cache holds whatever its path names, and a path cannot be judged
+by its spelling (an executable has no extension), so a new cache means
+checking that its path holds none of those and adding it to the list and to
+the self-test's copy of it. The self-test also pins `ALLOWED_ACTIONS`
+and `ALLOWED_CACHE_PATHS` against literal copies, so a change to either
+shows in the self-test's diff. What the scripts and make targets that a `run:` step calls do
 is not checked; reading them stays a review duty, as it is for any change to
 those files. `make -C platform
 glue-test` runs the self-test and then the check on the real tree, so the
