@@ -2566,8 +2566,8 @@ in this order:
      (text, logs, the gates' frame images and the save gates' saves and
      clocks, by extension); no executable, test runner, library, object,
      archive, converted data or output directory among them (no workflow
-     uploads the game, ever: "CI artifacts never hold the game beyond a
-     run").
+     uploads the game, ever: "No workflow uploads the game"; the
+     platform gate's `check_workflow_uploads.py` passes on this file).
 2. The same workflow on `main` after the merge, and its nightly from then on.
 3. The owner's own Mac, Intel or Apple silicon under Rosetta: the build from a
    fresh clone with the Homebrew line of `docs/BUILDING.md`, the game in a

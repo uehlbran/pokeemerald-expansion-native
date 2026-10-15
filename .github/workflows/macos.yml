@@ -24,10 +24,11 @@
 #                    Linux build on the save the Mac wrote); the two struct
 #                    layouts
 #
-# NO WORKFLOW UPLOADS THE GAME, EVER (docs/DECISIONS.md, "CI artifacts never
-# hold the game beyond a run", as the owner tightened it): a built
-# executable holds the complete game's assets, and a public repository's
-# artifacts are public. So no game, test runner, archive, converted data or
+# NO WORKFLOW UPLOADS THE GAME, EVER (docs/DECISIONS.md, "No workflow uploads
+# the game"): a built executable holds the complete game's assets, and a
+# public repository's artifacts are public.
+# platform/build_glue/check_workflow_uploads.py checks every upload path
+# here. So no game, test runner, archive, converted data or
 # output directory is uploaded, at any retention: each job that needs a
 # build makes it (the macOS jobs on the Mac; `compare` builds the Linux game
 # again for gate h's last stage). Between jobs pass only a stage's save and
