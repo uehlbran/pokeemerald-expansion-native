@@ -10,6 +10,7 @@
 
 #include <pthread.h>
 #include <signal.h>
+#include <stdbool.h>
 #include <stddef.h>
 #include <sys/ucontext.h>
 #include <time.h>
@@ -31,6 +32,14 @@ const char *host_process_exec_path(void);
  * on macOS F_FULLFSYNC, which empties the drive's own cache as well
  * (host_macos.c says why). Returns 0, or -1 with errno set. */
 int host_file_flush(int descriptor);
+
+/* Whether F_FULLFSYNC's error, error, says that the file system has no such
+ * flush, so that macOS's host_file_flush falls back to fsync: ENOTSUP (as on
+ * some network volumes), ENOTTY and EINVAL (a descriptor or file system the
+ * call does not apply to). Any other error (EIO from the drive, EBADF, EINTR)
+ * is reported, not hidden behind an fsync that may succeed. In host_posix.c,
+ * so that the Linux gate tests it (test/posix/test_host_file_posix.c). */
+bool host_file_flush_falls_back(int error);
 
 /* Initialises the watchdog's condition variable (host_thread.h) so that its
  * timed waits are measured on the monotonic clock, which a step of the wall

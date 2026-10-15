@@ -432,7 +432,7 @@ platform/test_runner/compare_suite_results.sh suite-linux64.log suite-windows.lo
 - `run_windows_tests.sh` runs every test executable as `make -C platform
   test` does on Linux (each to its end; a failure if it exits non-zero or its
   output has no "N passed, 0 failed"; its output and its standard error kept
-  beside it) and ends with "all 87 Windows test executables passed". Each
+  beside it) and ends with "all 88 Windows test executables passed". Each
   runs from a copy under its own name, deleted when it ends: an executable of
   this layout costs about 1 GiB of the system's commit charge from its first
   start until its file is deleted (the image's 1 GiB, gaps included, is
@@ -515,9 +515,9 @@ Nothing below has run on a Mac yet beyond the two probes
 (`research/probes/README.md`, probes M0 and M2): the macOS workflow's first
 runs were refused by GitHub before any job started (the account's billing,
 2026-10-15), so the build, the unit tests and the gates are written and
-rehearsed on Linux only. The rehearsal: the game built with clang passes both
-replays, plain and sanitized, and its suite equals GCC's test by test, plain
-and sanitized; every game and test source, filtered for Mach-O, compiles for
+rehearsed on Linux only. The rehearsal (below, "The clang rehearsal on
+Linux"): the game built with clang passes both replays, plain and sanitized,
+and its suite equals GCC's test by test, plain and sanitized; every game and test source, filtered for Mach-O, compiles for
 `x86_64-apple-macos11`; the test objects' event scripts are split, assembled,
 converted and checked end to end. `docs/DECISIONS.md`, "The macOS port waits
 for its first runs on a Mac", lists what the first runs must show.
@@ -603,13 +603,43 @@ clang-tidy lint of the macOS sources needs the Mac's headers: `make -C
 platform lint-tidy BITS=64 LINT_SRCS="host_macos.c ..."` with Homebrew's
 `llvm` on `PATH` (`macos.yml` names the files).
 
+### The clang rehearsal on Linux
+
+The Mac's compiler on Linux, from the tree as it is: `TARGET_CC=clang` builds
+expansion's code with clang (the platform library stays GCC's; its clang build
+is the unit tests' line below), and an object directory of its own keeps it
+apart from GCC's. `TARGET_CC_IS_CLANG` then selects
+`platform/build_glue/c_filter_clang.sed` (`.hword` as `.2byte`, and the
+section variables left unpadded by AddressSanitizer, as on the Mac), and the
+test objects' event scripts go to GNU as (`-fno-integrated-as`), whose
+dialect they are written in:
+
+```
+make -f Makefile.native -j"$(nproc)" native BITS=64 TARGET_CC=clang OBJ_DIR=build/native64-clang
+make -f Makefile.native -j"$(nproc)" native BITS=64 TARGET_CC=clang SANITIZE=1 OBJ_DIR=build/native64-clang-san
+tests/smoke/run.sh build/native64-clang/pokeemerald-native out/clang-open      # and run_debug_menu.sh, and the -san
+make -f Makefile.native -j"$(nproc)" check BITS=64 TARGET_CC=clang OBJ_DIR=build/native64-test-clang
+make -f Makefile.native -j"$(nproc)" check BITS=64 TARGET_CC=clang SANITIZE=1 OBJ_DIR=build/native64-test-clang-san
+make -C platform -j"$(nproc)" test BITS=64 CC=clang BUILD_DIR=build/64-clang
+make -C platform -j"$(nproc)" test BITS=64 TSAN=1 CC=clang BUILD_DIR=build/64-tsan-clang
+```
+
+Compare the suites with GCC's of the same commit with
+`platform/test_runner/compare_suite_results.sh`, and run the sanitized replays
+with `ASAN_OPTIONS=halt_on_error=0` and look for reports in their logs. What
+the rehearsal cannot show is the Mach-O link and everything after it: those
+are the first runs' (`docs/DECISIONS.md`, "The macOS port waits for its first
+runs on a Mac").
+
 ### The macOS workflow
 
 `.github/workflows/macos.yml` (nightly at 06:17 UTC, an hour after
 `windows.yml`, and by hand, `gh workflow run macos.yml`) runs on
-`macos-15-intel` only (`docs/DECISIONS.md`, "macOS CI runs on macos-15-intel
-only"): the unit tests under ASan and UBSan and under TSan, clang-tidy on the
-macOS sources and patchelf's Mach-O test; the game plain and sanitized, its
+`macos-15-intel` (`docs/DECISIONS.md`, "macOS CI runs on macos-15-intel
+only", and its amendment for the one `rosetta` job on `macos-latest`, which
+runs the x86_64 unit tests and the opening replay under Rosetta 2 on Apple
+silicon): the unit tests under ASan and UBSan and under TSan, clang-tidy on the
+macOS sources and patchelf's Mach-O tests; the game plain and sanitized, its
 segments and libraries (`otool`), both replays of each and the macOS stage of
 the cross-OS save gate (`tests/smoke/run_cross_os.sh load` on the save the
 Linux build wrote, then `back` on Linux); the suite plain and sanitized,

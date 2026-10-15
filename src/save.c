@@ -699,6 +699,30 @@ static u16 CalculateChecksum(void *data, u16 size)
     return ((checksum >> 16) + checksum);
 }
 
+#if PLATFORM_NATIVE
+// The save blocks' pointers are still NULL when the game first calls this at boot
+// (before SetSaveBlocksPointers), and C has no arithmetic on a null pointer (until
+// C2y), so the sector addresses are computed as integers: the same values.
+static void UpdateSaveAddresses(void)
+{
+    int i = SECTOR_ID_SAVEBLOCK2;
+    gRamSaveSectorLocations[i].data = (void *)((uintptr_t)gSaveBlock2Ptr + sSaveSlotLayout[i].offset);
+    gRamSaveSectorLocations[i].size = sSaveSlotLayout[i].size;
+
+    for (i = SECTOR_ID_SAVEBLOCK1_START; i <= SECTOR_ID_SAVEBLOCK1_END; i++)
+    {
+        gRamSaveSectorLocations[i].data = (void *)((uintptr_t)gSaveBlock1Ptr + sSaveSlotLayout[i].offset);
+        gRamSaveSectorLocations[i].size = sSaveSlotLayout[i].size;
+    }
+
+    for (; i <= SECTOR_ID_PKMN_STORAGE_END; i++)
+    {
+        gRamSaveSectorLocations[i].data = (void *)((uintptr_t)gPokemonStoragePtr + sSaveSlotLayout[i].offset);
+        gRamSaveSectorLocations[i].size = sSaveSlotLayout[i].size;
+    }
+}
+#else
+#line 694
 static void UpdateSaveAddresses(void)
 {
     int i = SECTOR_ID_SAVEBLOCK2;
@@ -717,6 +741,8 @@ static void UpdateSaveAddresses(void)
         gRamSaveSectorLocations[i].size = sSaveSlotLayout[i].size;
     }
 }
+#endif
+#line 712
 
 u8 HandleSavingData(u8 saveType)
 {

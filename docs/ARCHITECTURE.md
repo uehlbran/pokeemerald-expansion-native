@@ -46,6 +46,15 @@ Not GBA memory, placed below 2^27 so its addresses fit the battle test
 runner's 27-bit fields: the stack `PlatformCallWithStack` runs the battle
 tests' functions on, 1 MiB at 0x01800000 (`gba_regions.ld`).
 
+The executable's own code and data start at 0x40000000. Its code ends below
+0x42000000 (bit 25 is the event scripts' tag, `platform/script_tag.h`), and
+its writable data lies outside 0x42000000-0x42FFFFFF (and 0x52000000 on),
+where an address's bits 24-27 read as EWRAM's and expansion would take a
+buffer for EWRAM (`src/librfu_rfu.c`): the plain builds' data ends below
+0x42000000, the sanitized builds' starts at 0x43000000 (`gba_regions.ld`,
+`gba_writable_data_floor`; `-segaddr __DATA` on macOS), and every link check
+refuses data in such a window.
+
 On Windows (a cross-build from Linux with MinGW-w64, x86-64 only) the regions
 are sections of the PE image, because a PE section's address is an offset above
 the image base and the image cannot start at 0x40000000 with the regions below
@@ -85,7 +94,7 @@ loads the executable (`platform/gba_regions.macho.s`, `platform/target.mk`;
 | `__GBA_OAM` | 0x07000000 | `__oam` |
 | `__GBA_SRAM` | 0x0E000000 | `__sram` |
 | `__TEXT` | 0x40000000 | the header, the code (which must end below 0x42000000, the script tag's bit), then read-only data, which may go past it as `.rodata` does on Linux |
-| `__DATA` | after `__TEXT` | the pointers dyld fills, `__const`, the test table `__tests`, `__data`, the game's `__game_data`, `__game_bss` and `__game_common`, and the program's own zero-filled data |
+| `__DATA` | after `__TEXT`; 0x43000000 in the sanitized builds | the pointers dyld fills, `__const`, the test table `__tests`, `__data`, the game's `__game_data`, `__game_bss` and `__game_common`, and the program's own zero-filled data |
 | `__LINKEDIT` | last | the symbol tables |
 
 The image is not PIE, has no chained fixups (without them ld64 honours the

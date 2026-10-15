@@ -385,6 +385,11 @@ bool host_file_write_from_handler(host_handler_file file, const void *bytes, siz
     return written;
 }
 
+bool host_file_flush_falls_back(int error)
+{
+    return error == ENOTSUP || error == ENOTTY || error == EINVAL;
+}
+
 int host_file_sync(int descriptor)
 {
     return host_file_flush(descriptor);

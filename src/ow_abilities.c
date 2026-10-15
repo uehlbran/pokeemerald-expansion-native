@@ -14,7 +14,16 @@ static UNUSED bool32 IsFalse(enum Species species);
 static UNUSED bool32 IsTrue(enum Species species);
 static UNUSED bool32 IsTrueIfUndiscoveredEggGroup(enum Species species);
 
+#if PLATFORM_NATIVE
+// The functions return bool32; the table's const-qualified return type made
+// it another function type (clang's function check, and its
+// -Wincompatible-function-pointer-types).
+static bool32 (*const sSynchronizeModes[])(enum Species) =
+#else
+#line 17
 static const bool32 (*const sSynchronizeModes[])(enum Species) = 
+#endif
+#line 18
 {
 #if OW_SYNCHRONIZE_NATURE == GEN_3
     [WILDMON_ORIGIN] = HasHalfChance,
@@ -49,7 +58,13 @@ static const bool32 (*const sSynchronizeModes[])(enum Species) =
 #endif
 };
 
+#if PLATFORM_NATIVE
+static bool32 (*const sCuteCharmModes[])(enum Species) =
+#else
+#line 52
 static const bool32 (*const sCuteCharmModes[])(enum Species) = 
+#endif
+#line 53
 {
     [WILDMON_ORIGIN] = HasTwoThirdsChance,
     [STATIC_WILDMON_ORIGIN] = HasTwoThirdsChance,

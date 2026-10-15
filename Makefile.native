@@ -253,11 +253,10 @@ CFLAGS := $(ARCH_FLAGS) -O$(O_LEVEL) -std=gnu17 -fno-pie \
 ifeq ($(TARGET_CC_IS_CLANG),0)
   CFLAGS += -Wno-attribute-alias
 else
-  # Clang makes an incompatible function pointer an error by default since
-  # version 16; GCC 13 warns. Expansion has some (a const-qualified return
-  # type in src/ow_abilities.c's table), so clang keeps them warnings too:
-  # still reported, as GCC reports them, and upstream's to fix.
-  CFLAGS += -Wno-error=incompatible-function-pointer-types
+  # Clang makes an incompatible function pointer an error (since version 16)
+  # where GCC 13 warns. Expansion's only ones, the const-qualified return type
+  # of src/ow_abilities.c's two tables, are fixed under the guard, so it stays
+  # an error.
   # Clang's x86-64 tuning divides two 64-bit values that fit in 32 bits with
   # a 32-bit DIV ("idivq-to-divl"); by zero, platform/arm_division.c would
   # then complete libgcc's 32-bit rule where the GBA's code calls the 64-bit
@@ -287,36 +286,48 @@ endif
 # 28 MB (measured 2026-10-08), slower but the same checks. GCC takes the
 # threshold as a --param, clang as an option of its back end.
 #
-# Clang's -fsanitize=undefined checks two things in C that GCC's does not.
-# "function": that a function is called through a pointer of its own type;
-# expansion calls many through pointers of another type, which the GBA's
-# calling convention makes work (DecodeLOtANSLoop in src/decompress.c, the
-# field effects, the debug menu's actions). "pointer-overflow" includes, in
-# C, a zero offset applied to a null pointer, which C2y defines and GCC's
-# check of the same name does not report (src/save.c's UpdateSaveAddresses
-# adds each sector's offset to the save blocks' pointers before they are
-# set). Both are upstream's, and the same objects built by GCC report
-# neither. So that a clang build reports what GCC's reports, both checks are
-# off for expansion's objects, as shift-base is (measured: both replays of
-# the sanitized clang build on Linux reported only those, at 8 sites, and
-# matched otherwise); the GCC build keeps its own pointer-overflow check
-# (docs/DECISIONS.md, "The sanitizers on macOS").
+# Clang's -fsanitize=undefined checks two things in C that GCC's does not:
+# "function", that a function is called through a pointer of its own type,
+# and, under "pointer-overflow", arithmetic on a null pointer. Both stay on
+# for every object. The sites the sanitized clang build reported are fixed
+# under the guard (src/decompress.c, src/field_player_avatar.c,
+# src/event_object_movement.c, src/save.c) but three, where one call takes
+# functions of many types from a table that cannot say which
+# (platform/test_runner/SUITE-LOG.md, "Clang's function and pointer-overflow
+# checks", has each site):
+#   src/field_effect.c FieldEffectScript_CallNative calls every field effect
+#   native (data/field_effect_scripts.s; u8, bool8 or u32) as u32 (*)(void);
+#   natively it keeps the result's low byte, which is all every one returns,
+#   so only the type the call is checked against differs;
+#   src/scrcmd.c ScrCmd_special calls every special (data/specials.inc; void,
+#   u8, bool8 or u16) as u16 (*)(void) and discards the result;
+#   src/debug.c DebugTask_HandleMenuInput_General calls every debug menu action
+#   that takes a parameter as void (*)(u8, const void *), the table's type,
+#   whatever pointer type the action declares (a submenu's options, a flag, a
+#   script): the menu tables hold actions of a dozen types in one field.
+# Those three objects are built without the "function" check, and nothing else
+# is.
 GAME_SANITIZER_FLAGS := -fsanitize=address,undefined -fno-sanitize=shift-base -fsanitize-recover=address \
                         -fno-omit-frame-pointer
 ifeq ($(TARGET_CC_IS_CLANG),1)
-  GAME_SANITIZER_FLAGS += -fno-sanitize=function,pointer-overflow -mllvm -asan-instrumentation-with-call-threshold=0
+  GAME_SANITIZER_FLAGS += -mllvm -asan-instrumentation-with-call-threshold=0
 else
   GAME_SANITIZER_FLAGS += --param=asan-instrumentation-with-call-threshold=0
 endif
 ifeq ($(SANITIZE),1)
   CFLAGS += $(GAME_SANITIZER_FLAGS)
+ifeq ($(TARGET_CC_IS_CLANG),1)
+$(C_BUILDDIR)/field_effect.o $(C_BUILDDIR)/scrcmd.o $(C_BUILDDIR)/debug.o: CFLAGS += -fno-sanitize=function
+endif
 endif
 # AddressSanitizer's use-after-return detection (on by default at run time)
 # moves address-taken locals to heap frames that are poisoned when the
-# function returns. The battle test runner relies on the opposite: a test
-# function's locals stay where they are after it returns, and the runner
-# writes results into them (test/test_runner_battle.c, InvokeTestFunction;
-# platform/game_hooks.h, PlatformCallWithStack). So the test objects are
+# function returns. The battle test runner needs them on the stack it gives
+# the test function (platform/game_hooks.h, PlatformCallWithStack): its
+# queued events keep a variable's address in 27 or 28 bits
+# (include/test/battle.h), which a heap frame's does not fit, and it tells a
+# capture into the function's variables by its place on that stack
+# (test/test_runner_battle.c, "A capture"). So the test objects are
 # compiled without that detection (GCC's parameter, since GCC 13 has no
 # -fsanitize-address-use-after-return; clang's option); everything else
 # keeps it.
@@ -333,6 +344,9 @@ ifeq ($(TARGET_OS),windows)
   C_FILTER_SCRIPT := platform/build_glue/c_filter_coff.sed
 else ifeq ($(TARGET_OS),Darwin)
   C_FILTER_SCRIPT := platform/build_glue/c_filter_macho.sed
+else ifeq ($(TARGET_CC_IS_CLANG),1)
+  # clang on Linux, the macOS build's compiler rehearsed (docs/BUILDING.md).
+  C_FILTER_SCRIPT := platform/build_glue/c_filter_clang.sed
 endif
 C_FILTER := sed -f $(C_FILTER_SCRIPT)
 
@@ -592,6 +606,9 @@ endif
 NATIVE_LDFLAGS := -m$(BITS) $(GBA_LAYOUT_LDFLAGS) $(GUI_LDFLAGS) \
                   $(addprefix $(GBA_LINKER_SCRIPT_FLAG),$(NATIVE_LINKER_SCRIPTS)) \
                   $(NATIVE_DEFINED_SYMBOLS) $(NATIVE_LINK_SANITIZERS)
+ifeq ($(SANITIZE),1)
+  NATIVE_LDFLAGS += $(GBA_SANITIZED_LAYOUT_LDFLAGS)
+endif
 # The objects in the order the link takes them. ld64 lays a section's parts
 # out in that order and has no script to say otherwise, so on macOS the
 # regions' objects come first and last (platform/gba_regions.macho.s says
@@ -891,22 +908,14 @@ endif
 ifeq ($(BITS)/$(TARGET_CC_IS_CLANG),64/0)
 $(TEST_OBJS): CFLAGS += -malign-data=abi
 endif
-# The battle tests' functions run once per phase (GIVEN, WHEN, SCENE, THEN,
-# include/test/battle.h), and a local that one phase gives the runner to
-# write into (HP_BAR's captureDamage) is read by a later call, from the same
-# stack slot (platform/game_hooks.h, PlatformCallWithStack). For the
-# compiler each call's locals are new and uninitialised, and clang's loop
-# optimiser uses that: it keeps a local that a phase's loop (GIVEN's `for`)
-# stores into in a register and stores it once at the loop's exit, which the
-# other phases' calls pass too, so "Beat Up's damage doesn't consider STAB"
-# wrote the GIVEN phase's 0 over the damage the runner had written before the
-# THEN phase read it. GCC leaves the store in the loop. LLVM's
-# -disable-licm-promotion turns that one transformation off for the test
-# objects; -O0 would too, but changes which stale values the tests that read a
-# local no phase set happen to see ("Hidden Power's type is determined by
-# IVs" then read an item that does not exist), where -O2 sees GCC's.
+# On Linux the test objects' event scripts (include/test/overworld_script.h)
+# are inline assembly in GNU as's dialect, which clang's own assembler
+# refuses; clang hands them to GNU as, as GCC does. (macOS splits them out,
+# below.)
 ifeq ($(TARGET_CC_IS_CLANG),1)
-$(TEST_OBJS): CFLAGS += -mllvm -disable-licm-promotion
+ifneq ($(TARGET_OS),Darwin)
+$(TEST_OBJS): CFLAGS += -fno-integrated-as
+endif
 endif
 ifeq ($(SANITIZE),1)
 $(TEST_OBJS): CFLAGS += $(GAME_TEST_SANITIZER_FLAGS)

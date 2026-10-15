@@ -43,6 +43,7 @@
 #include "host_internal.h"
 #include "host_memory.h"
 #include "host_process.h"
+#include "x86_divide.h"
 
 #if !defined(__x86_64__)
 #error "host_macos.c is for x86_64 macOS: arm64 cannot load the fixed-address image (docs/DECISIONS.md)"
@@ -104,75 +105,16 @@ uintptr_t host_fault_general_register(const struct host_fault *fault, unsigned n
 /* macOS gives a SIGFPE that kill or raise sends FPE_INTDIV too, as it gives a
  * divide error (probe M2, research/probes/README.md), so si_code alone cannot
  * tell them apart. A divide error is also a DIV or IDIV at the program
- * counter, where the processor stopped: F6 or F7 with 6 or 7 in the ModRM
- * byte's reg field, after any legacy prefixes and a REX prefix (Intel SDM
- * vol. 2, 2.1, 2.2.1 and the DIV and IDIV pages). A SIGFPE sent while the
+ * counter, where the processor stopped (x86_divide.h). A SIGFPE sent while the
  * program counter happens to be at such an instruction still reads as a
  * divide error (docs/DECISIONS.md, "On macOS a SIGFPE sent by kill looks like
  * a divide error"). The bytes read are at the saved program counter, in code
  * that is mapped: the instruction that faulted, or raise's own. */
-/* The legacy prefixes (Intel SDM vol. 2, 2.1.1): segment overrides, operand
- * and address size, LOCK, REPNE and REP; then REX, 0100WRXB (2.2.1). */
-#define PREFIX_SEGMENT_ES 0x26u
-#define PREFIX_SEGMENT_CS 0x2Eu
-#define PREFIX_SEGMENT_SS 0x36u
-#define PREFIX_SEGMENT_DS 0x3Eu
-#define PREFIX_SEGMENT_FS 0x64u
-#define PREFIX_SEGMENT_GS 0x65u
-#define PREFIX_OPERAND_SIZE 0x66u
-#define PREFIX_ADDRESS_SIZE 0x67u
-#define PREFIX_LOCK 0xF0u
-#define PREFIX_REPNE 0xF2u
-#define PREFIX_REP 0xF3u
-#define REX_HIGH_MASK 0xF0u
-#define REX_HIGH_BITS 0x40u
-#define MAX_PREFIXES 14u /* an instruction is at most 15 bytes */
-/* DIV and IDIV: F6 (r/m8) or F7 with /6 or /7, the ModRM byte's reg field. */
-#define OPCODE_GROUP3_BYTE 0xF6u
-#define OPCODE_GROUP3 0xF7u
-#define MODRM_REG_SHIFT 3u
-#define MODRM_FIELD_MASK 7u
-#define MODRM_REG_DIV 6u
-#define MODRM_REG_IDIV 7u
-
-static bool is_legacy_prefix(unsigned char byte)
-{
-    switch (byte) {
-    case PREFIX_SEGMENT_ES:
-    case PREFIX_SEGMENT_CS:
-    case PREFIX_SEGMENT_SS:
-    case PREFIX_SEGMENT_DS:
-    case PREFIX_SEGMENT_FS:
-    case PREFIX_SEGMENT_GS:
-    case PREFIX_OPERAND_SIZE:
-    case PREFIX_ADDRESS_SIZE:
-    case PREFIX_LOCK:
-    case PREFIX_REPNE:
-    case PREFIX_REP:
-        return true;
-    default:
-        return false;
-    }
-}
-
-static bool is_rex_prefix(unsigned char byte)
-{
-    return (byte & REX_HIGH_MASK) == REX_HIGH_BITS;
-}
-
 bool host_fault_is_divide_error(const struct host_fault *fault)
 {
     if (fault->signal_number != SIGFPE || fault->info->si_code != FPE_INTDIV)
         return false;
-    const unsigned char *const code = (const unsigned char *)host_fault_register(fault, HOST_FAULT_PC);
-    size_t at = 0;
-    while (at < MAX_PREFIXES && is_legacy_prefix(code[at]))
-        at++;
-    if (is_rex_prefix(code[at]))
-        at++;
-    const unsigned reg = ((unsigned)code[at + 1u] >> MODRM_REG_SHIFT) & MODRM_FIELD_MASK;
-    return (code[at] == OPCODE_GROUP3_BYTE || code[at] == OPCODE_GROUP3)
-           && (reg == MODRM_REG_DIV || reg == MODRM_REG_IDIV);
+    return x86_divide_at((const unsigned char *)host_fault_register(fault, HOST_FAULT_PC));
 }
 
 /* --- host_process: the executable's path ------------------------------------------ */
@@ -347,13 +289,14 @@ int host_image_main_stack(struct host_span *out)
  * is what docs/C-RULES.md's crash-safe save needs; on a directory it makes the
  * rename into it durable the same way. A file system without it (some network
  * and FAT volumes) refuses the call, and fsync is then the best the system
- * offers. Measured on the runner's APFS volume: 4 to 24 ms for the 128 KiB
+ * offers; any other error is the caller's to report
+ * (host_file_flush_falls_back). Measured on the runner's APFS volume: 4 to 24 ms for the 128 KiB
  * save, 3 to 4 ms for its directory (probe M2). */
 int host_file_flush(int descriptor)
 {
     if (fcntl(descriptor, F_FULLFSYNC) == 0)
         return 0;
-    if (errno == EBADF)
+    if (!host_file_flush_falls_back(errno))
         return -1;
     return fsync(descriptor);
 }

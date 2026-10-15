@@ -6995,9 +6995,18 @@ void InitNpcForMovement(struct ObjectEvent *objectEvent, struct Sprite *sprite, 
     sprite->sActionFuncId = 1;
 }
 
+#if PLATFORM_NATIVE
+// The copy has the table's own type (u8 (*)(enum Direction)), which the call below goes through.
+static void InitMovementNormal(struct ObjectEvent *objectEvent, struct Sprite *sprite, enum Direction direction, u8 speed)
+{
+    u8 (*functions[ARRAY_COUNT(sDirectionAnimFuncsBySpeed)])(enum Direction);
+#else
+#line 6998
 static void InitMovementNormal(struct ObjectEvent *objectEvent, struct Sprite *sprite, enum Direction direction, u8 speed)
 {
     u8 (*functions[ARRAY_COUNT(sDirectionAnimFuncsBySpeed)])(u8);
+#endif
+#line 7001
 
     memcpy(functions, sDirectionAnimFuncsBySpeed, sizeof sDirectionAnimFuncsBySpeed);
     InitNpcForMovement(objectEvent, sprite, direction, speed);

@@ -9,6 +9,13 @@ ASSUMPTIONS
 #define HITS 5
 SINGLE_BATTLE_TEST("Shell Bell recovers 1/8 of HP from after the last hit from all hits of a multi hit move")
 {
+#if PLATFORM_NATIVE
+    // On the GBA THEN's call sets this test's captured variables to their
+    // initial values again, so its THEN compares those; natively the captures
+    // reach THEN, and it fails (platform/test_runner/SUITE-LOG.md, class 11).
+    KNOWN_FAILING;
+#endif
+#line 12
     s16 multiHitDamage[HITS];
     s16 totalDamage = 0;
     s16 shellBellRecovery = 0;
@@ -174,6 +181,13 @@ SINGLE_BATTLE_TEST("Shell Bell does not activate on Future Sight if the original
 
 SINGLE_BATTLE_TEST("Shell Bell does not activate on Future Sight if the original user is on the field")
 {
+#if PLATFORM_NATIVE
+    // On the GBA THEN's call sets this test's captured variables to their
+    // initial values again, so its THEN compares those; natively the captures
+    // reach THEN, and it fails (platform/test_runner/SUITE-LOG.md, class 11).
+    KNOWN_FAILING;
+#endif
+#line 177
     s16 damage = 0;
     s16 healed = 0;
 

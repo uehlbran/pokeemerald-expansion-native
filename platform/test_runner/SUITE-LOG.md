@@ -156,6 +156,92 @@ or a screenshot, whose images need every frame); the
 suite takes about 40 seconds on 32 cores (the GBA baseline about 2.5 to
 3 minutes under mGBA).
 
+### 11. Captures that reach THEN (7 tests): native KNOWN_FAILING (M8)
+
+A battle test's function is called for GIVEN, WHEN and SCENE, and again for
+THEN after the battle. `HP_BAR(..., captureDamage: &damage)` and the other
+captures hand the runner the address of a variable of the first call, and
+the battle wrote the value there after that call had returned; THEN's call
+read the variable without setting it. Undefined twice over (a write through
+a pointer whose object's lifetime ended, a read of an uninitialised
+variable): GCC's code happens to read the value back from the same stack
+slot, clang -O2's does not (Beat Up's two tests read 0, which a clang flag,
+`-disable-licm-promotion`, only hid). Natively the runner now keeps the
+value and runs SCENE again at the start of THEN's call, which writes it
+into that call's variable (`test/test_runner_battle.c`, "A capture";
+`docs/UPSTREAM_MODIFICATIONS.md`), so THEN reads what the battle captured,
+with GCC and with clang alike.
+
+On the GBA a capture into a variable with an initialiser never reaches
+THEN: THEN's call runs the initialiser again over the slot the battle wrote.
+Seven tests pass there only because of it, their THEN comparing the
+initial values (zeros); natively the captures arrive and they fail. They
+are KNOWN_FAILING natively (a guarded `KNOWN_FAILING;` in each), so the
+native suite's results differ from the GBA baseline in these 7 as in the 9
+benchmarks:
+
+| Test | File | Native failure | Why |
+|---|---|---|---|
+| "Substitute creates a Substitute at the cost of 1/4 users maximum HP" | `test/battle/move_effect/substitute.c` | `EXPECT_EQ(92, 122)` | SCENE reads the HP into `maxHP` (`GetMonData`); run again for THEN it reads it after the battle, less the cost |
+| "Shed Tail creates a Substitute at the cost of 1/2 users maximum HP and switches the user out" | `shed_tail.c` | `EXPECT_EQ(122, 245)` | the same, Shed Tail |
+| "Shell Bell recovers 1/8 of HP from after the last hit from all hits of a multi hit move" | `test/battle/hold_effect/shell_bell.c` | `EXPECT_EQ(0, 6)` | SCENE sums the hits' captured damage before the battle has captured any (`totalDamage` stays 0); the recovery does arrive |
+| "Shell Bell does not activate on Future Sight if the original user is on the field" (the second of two tests of that name, line 175) | `shell_bell.c` | `EXPECT_MUL_EQ(40, 0.75, -5)` | the captured heal is -5 for 40 damage, not -10: the test's expectation or the item's behaviour, upstream's to say |
+| "Lash Out damage is only boosted on the turn that Intimidate switches in" (parameter 1 of 2) | `test/battle/move_effect/lash_out.c` | `EXPECT_EQ(54, 36)` | the captured damages differ from what the test expects |
+| "Lash Out damage is boosted on turn 1 by switch in abilities" (2 of 4, Intimidate) | `lash_out.c` | `EXPECT_MUL_EQ(36, 1.33, 36)` | the same |
+| "Lash Out damage is boosted by Cotton Down activation in doubles" (2 of 2) | `lash_out.c` | `EXPECT_MUL_EQ(150, 2.0, 76)` | the same |
+
+An upstream report would say: a capture into a variable with an initialiser
+is lost on the GBA, so these tests check nothing (drafted here, not posted;
+upstream reports go out only with the owner's approval).
+
+Not a capture, and left as it is: "Dynamax: Dynamax expires after three
+turns and correctly converts HP according to Dynamax Level" reads
+`capturedDamage` for its Dynamax parameters, where SCENE queues no capture
+into it (`EXPECT_GE(finalHP, 200 - capturedDamage)`), so it reads what the
+first parameter's call left in that stack slot, on the GBA and natively.
+Found by filling the battle runner's stack with 0xA5 before every THEN call
+(a diagnostic build, not committed): that test failed ("2/12",
+`EXPECT_GE(190, 23331)`), and no other result changed, so no other test
+depends on a stale stack slot, the captures included.
+
+## Clang's function and pointer-overflow checks (M8)
+
+The sanitized build made with clang (the macOS build's compiler, rehearsed
+on Linux) checks two things GCC's UndefinedBehaviorSanitizer does not: a
+call through a pointer of another function type (`function`), and
+arithmetic on a null pointer (`pointer-overflow`, which GCC's check of the
+same name leaves out for a zero offset). Review ran the opening replay of
+that build without `-fno-sanitize=function,pointer-overflow`, which had hidden
+both for every expansion object, and found 8 sites in expansion's code; the
+debug menu replay adds a ninth (`src/debug.c`). Each, by the site the
+sanitizer names (the line numbers are upstream's):
+
+| Site | Check | Root cause | Native fix |
+|---|---|---|---|
+| `src/decompress.c:516` `SwitchToArmCallLOtANS` | function | `DecodeLOtANS`'s native branch passed `DecodeLOtANSLoop(const u32 *, u32 *, u8 *, u8 *)` as `(void *)` to the helper, which calls it as `(…, void *, void *)` | the native branch calls `DecodeLOtANSLoop` directly; the helper is under `#if !PLATFORM_NATIVE` |
+| `src/decompress.c:596` `SwitchToArmCallDecodeSymtANS` | function | the same function as `(…, u16 *, u16 *)` | the same, its `u16` buffer passed as the `u8 *` the loop takes |
+| `src/decompress.c:932` `SwitchToArmCallDecodeInstructions` | function | `DecodeInstructions(u32, const u8 *, const u16 *, u16 *)` as `(…, void *)` | the same |
+| `src/event_object_movement.c:6817` `UpdateObjectEventCurrentMovement` | function | the player's callback, `ObjectEventCB2_NoMovement2`, a `u8 (void)` cast to `bool8 (*)(struct ObjectEvent *, struct Sprite *)` (`src/field_player_avatar.c:352`); called every frame | natively it has the callback's type (`src/field_player_avatar.c`) |
+| `src/event_object_movement.c:7004` `InitMovementNormal` | function | `sDirectionAnimFuncsBySpeed`, `u8 (*)(enum Direction)`, copied into an array of `u8 (*)(u8)` and called through it | natively the copy has the table's type |
+| `src/scrcmd.c:146` `ScrCmd_special` | function | `gSpecials` (data/specials.inc, assembled) holds specials of every return type, called as `u16 (*)(void)`; here `InitSecretBaseDecorationSprites`, a `void (void)`, whose result is discarded | none possible without a type per special, which the table does not have: `scrcmd.o` is built without the `function` check (`Makefile.native`) |
+| `src/field_effect.c:897` `FieldEffectScript_CallNative` | function | every field effect native (data/field_effect_scripts.s) called as `u32 (*)(void)`; 43 of 93 return `u8` or `bool8`, and on x86-64 the upper bits of EAX after such a return are not defined (on the GBA the callee extends them), so the stored value could hold garbage. Today it does not where it matters (Ash Puff's sprite id, stored in an `s16`: GCC's `CreateSpriteAtEnd` returns a value it has compared in full against 63) | natively only the low byte is kept, all any native returns (sprite ids, task ids, bools); the call's type still differs, so `field_effect.o` is built without the `function` check |
+| `src/debug.c:1665` `DebugTask_HandleMenuInput_General` | function | the debug menu's options hold their action as `const void *` and call one that takes a parameter as `void (*)(u8, const void *)`; the actions declare their own pointer type (here `DebugAction_OpenSubMenuFlagsVars(u8, const struct DebugMenuOption *)`; others a flag, a script), a dozen in one field | none short of giving every action the table's type: `debug.o` is built without the `function` check |
+| `src/save.c:702` `UpdateSaveAddresses` | pointer-overflow | the save blocks' pointers are NULL the first time it runs at boot, and it adds each sector's offset to them | natively the addresses are computed as integers, the same values |
+
+The sanitized suite built by clang (the same checks; `docs/BUILDING.md`, "The
+clang rehearsal on Linux") reports these sites that the GCC-built sanitized
+suite does not, besides the ones above:
+
+| Site | Check | Root cause | Native fix |
+|---|---|---|---|
+| `test/test_runner_battle.c:112`, `:118` (native lines) `CallSingleTestFunction`, `CallDoubleTestFunction` | function | every battle test's function takes its own `struct ResultN *` first; the test table holds it as a `SingleBattleTestFunction` or `DoubleBattleTestFunction`, whose first parameter is `void *` (`include/test/battle.h` casts it there), and the GBA's Thumb routines call it with no type | these two native functions, the platform's replacement for the Thumb routines, are `no_sanitize("function")` under clang (`CALLS_TEST_FUNCTION`), and nothing else is |
+| `src/ow_abilities.c:118` `GetSynchronizedNature` | function | `sSynchronizeModes` (and `sCuteCharmModes`, not reached) hold `bool32 (enum Species)` functions as `const bool32 (*)(enum Species)`: a const-qualified return type, another function type to clang (and its `-Wincompatible-function-pointer-types`) | natively both tables have the functions' type |
+| `test/test_test_runner.c:33` "Tests resume after CRASH" | function | the test calls a null function pointer on purpose (it is `KNOWN_CRASHING`); the check reports the call before the crash | none: the crash is the test |
+| `test/test_runner_battle.c:728`, `:790` (`battleRecordTurns[...][...]`), `:1591` (`expectedAiScores[...][...][...]`) | bounds (index) | the runner takes the address of a turn's record past `MAX_TURNS` (16) when a battle runs longer; clang checks the index of an address it takes, GCC only of a load | not fixed: upstream's runner, the address is not read; present before this work too |
+
+No blanket exclusion remains: every other expansion object keeps both
+checks, on Linux and on macOS.
+
 ## Runs
 
 The GBA baseline was rerun for its per-test results (2 minutes 36 seconds,
@@ -177,6 +263,7 @@ run compared with it test by test.
 | 11 | 5862 | 5405 | 18 | 9 | 421 | 0 | 0 | after merging main (work/replay's script-tag untagging): class 4 closed; per test equal to the GBA baseline but for the 9 benchmarks; 44 s |
 | SANITIZE=1 | 5862 | 5402 | 18 | 9 | 421 | 3 | 1 | the sanitized run below, before the palettes were padded: 3 CRASH (fatal AddressSanitizer reports), 9 assumption failures; 78 s |
 | SANITIZE=1 | 5862 | 5405 | 18 | 9 | 421 | 0 | 0 | eight battle-animation palettes padded; per test the GBA baseline but for the 9 benchmarks; 76 s |
+| M8 review, 64 bits (GCC, and clang plain and sanitized: the same, test by test) | 5884 | 5417 | 25 | 9 | 421 | 0 | 0 | the capture replay (class 11): 7 tests KNOWN_FAILING natively; 9 native tests of the replay (`test/capture_replay.c`), 3 of which expect ERROR and are counted with the known failures; the 13 native-only tests of earlier milestones; 9 assumption failures (class 8) |
 
 ## Notes from review
 

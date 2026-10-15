@@ -178,8 +178,10 @@ git diff OLD NEW -- tools/mgba-rom-test-hydra tools/patchelf tools/scaninc tools
   `ld_script_modern.ld` and `ld_script_test.ld`: new sections or symbols.
   `platform/build_glue/LINK-NEEDS.md` lists what the link needs; a new
   undefined symbol shows up at link time and belongs in that table.
-- `platform/build_glue/asm_filter.py`, `c_filter.sed`,
-  `overworld_macros.py`: new assembler constructs or `preproc` output.
+- `platform/build_glue/asm_filter.py`, `c_filter.sed` (and its variants
+  for Windows, macOS and clang on Linux, `c_filter_coff.sed`,
+  `c_filter_macho.sed`, `c_filter_clang.sed`), `overworld_macros.py`: new
+  assembler constructs or `preproc` output.
   `asm_syntax.py` reads the comments, statements, labels and directives
   the filter and the battle script checker share.
 - `platform/build_glue/elf_object.py` (reads an ELF64 object for the data

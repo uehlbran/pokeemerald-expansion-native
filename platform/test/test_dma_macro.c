@@ -109,19 +109,11 @@ static void teardown(void)
  * it is upstream's code, so the functions that expand those macros are
  * exempt from that one check; the native game build meets the same report.
  * DMA_CLEAR also ORs that negative int with a u32 size, which
- * -Wsign-conversion reports inside expansion's macro text. And each macro
- * asserts the alignment of its source and destination with _Alignof applied
- * to them, expressions, a GNU extension of gnu17 that GCC accepts silently and
- * clang reports where the macro is expanded, here; it is expansion's text
- * (include/gba/macro.h), which every game object compiles too, so clang's
- * report of it is left out of these functions as GCC's -Wsign-conversion is
- * of game_clear. */
+ * -Wsign-conversion reports inside expansion's macro text. (Each macro also
+ * asserts its operands' alignment; natively with __alignof__, which clang
+ * takes without the report it gives _Alignof of an expression:
+ * include/gba/macro.h.) */
 #define EXPANSION_SIGNED_SHIFT __attribute__((no_sanitize("shift")))
-
-#if defined(__clang__)
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wgnu-alignof-expression"
-#endif
 
 EXPANSION_SIGNED_SHIFT static void game_copy16(void)
 {
@@ -161,10 +153,6 @@ static void game_scanline_effect_start(const u16 *table, volatile void *destinat
     DmaStop(0);
     DmaSet(0, table, destination, SCANLINE_16BIT);
 }
-
-#if defined(__clang__)
-#pragma clang diagnostic pop
-#endif
 
 PTEST(dma_copy16_copies_and_leaves_the_registers_as_on_the_gba)
 {

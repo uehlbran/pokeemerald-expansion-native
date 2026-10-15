@@ -563,8 +563,8 @@ static bool patch_macho(char *f, size_t file_size, int argc, char *argv[])
                 continue;
             const struct MachSection *where = &sections[section - 1];
             uint64_t value = read_le64(record + NLIST_VALUE_AT);
-            if (where->offset == 0 || where->size > file_size - where->offset || value < where->addr
-                || value - where->addr >= where->size)
+            if (where->offset == 0 || where->offset > file_size || where->size > file_size - where->offset
+                || value < where->addr || value - where->addr >= where->size)
             {
                 fprintf(stderr, "%s: not stored in the file\n", argv[j]);
                 return false;

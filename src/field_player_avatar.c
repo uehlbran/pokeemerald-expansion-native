@@ -64,7 +64,15 @@ EWRAM_DATA struct PlayerAvatar gPlayerAvatar = {};
 EWRAM_DATA struct SpinData gPlayerSpinData = {};
 
 // static declarations
+#if PLATFORM_NATIVE
+// UpdateObjectEventCurrentMovement calls it through bool8 (*)(struct ObjectEvent *, struct Sprite *):
+// natively it has that type, so that the call is through its own type.
+static bool8 ObjectEventCB2_NoMovement2(struct ObjectEvent *objectEvent, struct Sprite *sprite);
+#else
+#line 67
 static u8 ObjectEventCB2_NoMovement2(void);
+#endif
+#line 68
 static bool8 TryUpdatePlayerSpinDirection(void);
 static bool8 TryInterruptObjectEventSpecialAnim(struct ObjectEvent *, enum Direction);
 static void npc_clear_strange_bits(struct ObjectEvent *);
@@ -349,10 +357,22 @@ static bool8 (*const sPlayerAvatarSecretBaseMatSpin[])(struct Task *, struct Obj
 
 void MovementType_Player(struct Sprite *sprite)
 {
+#if PLATFORM_NATIVE
+    UpdateObjectEventCurrentMovement(&gObjectEvents[sprite->data[0]], sprite, ObjectEventCB2_NoMovement2);
+#else
+#line 352
     UpdateObjectEventCurrentMovement(&gObjectEvents[sprite->data[0]], sprite, (bool8 (*)(struct ObjectEvent *, struct Sprite *))ObjectEventCB2_NoMovement2);
+#endif
+#line 353
 }
 
+#if PLATFORM_NATIVE
+static bool8 ObjectEventCB2_NoMovement2(struct ObjectEvent *objectEvent, struct Sprite *sprite)
+#else
+#line 355
 static u8 ObjectEventCB2_NoMovement2(void)
+#endif
+#line 356
 {
     return 0;
 }

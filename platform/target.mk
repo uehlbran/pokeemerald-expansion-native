@@ -19,6 +19,11 @@
 #   TARGET_EXE_SUFFIX    the executable's suffix
 #   GBA_LAYOUT_LDFLAGS   the link flags that put the image where gba_regions.ld
 #                        and gba_game.ld expect it
+#   GBA_SANITIZED_LAYOUT_LDFLAGS   added for the sanitized game and test runner
+#                        (Makefile.native, SANITIZE=1), whose read-only data
+#                        passes 0x42000000: their writable data starts at
+#                        0x43000000, clear of the addresses a GBA test of bits
+#                        24-27 takes for EWRAM (gba_regions.ld says why)
 #   REGIONS_LD_NAME, GAME_LD_NAME   the file names of those two linker scripts
 #                        (in platform/), and GBA_LINKER_SCRIPT_FLAG, the flag
 #                        that hands the linker each (GNU ld: -T; macOS's ld64,
@@ -56,6 +61,7 @@ endif
 GBA_LINKER_SCRIPT_FLAG := -Wl,-T,
 GBA_LAYOUT_FIRST :=
 GBA_LAYOUT_LAST :=
+GBA_SANITIZED_LAYOUT_LDFLAGS :=
 
 ifeq ($(TARGET_OS),Linux)
 
@@ -66,6 +72,7 @@ SDL_LIBS   := $(shell pkg-config --libs sdl2)
 # Non-PIE, the image at 0x40000000, clear of every region on both bit widths
 # (docs/ARCHITECTURE.md, "The memory model").
 GBA_LAYOUT_LDFLAGS := -no-pie -Wl,-Ttext-segment=0x40000000
+GBA_SANITIZED_LAYOUT_LDFLAGS := -Wl,--defsym,gba_writable_data_floor=0x43000000
 CONSOLE_LDFLAGS :=
 GUI_LDFLAGS :=
 REGIONS_LD_NAME := gba_regions.ld
@@ -123,6 +130,9 @@ MACHO_SEGMENT_LDFLAGS := -Wl,-segaddr,__GBA_CALLSTK,0x01800000 -Wl,-segaddr,__GB
 MACHO_WEAK_LDFLAGS := -Wl,-U,_gba_game_objects_linked -Wl,-U,_gPlatformTestEntrySize \
                       -Wl,-U,_PlatformTestTableBadEntry
 GBA_LAYOUT_LDFLAGS := $(MACHO_IMAGE_LDFLAGS) $(MACHO_SEGMENT_LDFLAGS) $(MACHO_WEAK_LDFLAGS)
+# __DATA follows __TEXT, which in the sanitized builds passes 0x42000000 (its
+# read-only data); check_macho_layout.py refuses writable data there.
+GBA_SANITIZED_LAYOUT_LDFLAGS := -Wl,-segaddr,__DATA,0x43000000
 GBA_LINKER_SCRIPT_FLAG := -Wl,-alias_list,
 REGIONS_LD_NAME := gba_regions.macho.aliases
 GAME_LD_NAME := gba_game.macho.aliases

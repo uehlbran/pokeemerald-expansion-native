@@ -198,7 +198,7 @@ SIGNAL_JUMP_ENV := $(if $(filter 1,$(TSAN)),TSAN_OPTIONS=halt_on_error=1:exitcod
 PLATFORM_SRCS := $(filter-out host_%.c,$(wildcard *.c)) $(HOST_SRCS)
 MODULE_SRCS := $(PLATFORM_SRCS) $(wildcard m4a/m4a_*.c)
 MODULE_OBJS := $(MODULE_SRCS:%.c=$(OBJ_DIR)/%.o)
-HOST_OBJS   := $(HOST_SRCS:%.c=$(OBJ_DIR)/%.o)
+HOST_OBJS   := $(HOST_SRCS:%.c=$(OBJ_DIR)/%.o) $(HOST_MODULE_SRCS:%.c=$(OBJ_DIR)/%.o)
 # The tests every target runs (test/test_*.c) and the tests only this OS can
 # run (test/<dir>/test_*.c for each of host.mk's HOST_TEST_DIRS), whose binaries
 # carry the directory's name as a suffix (a port adds its directory and its
@@ -460,15 +460,20 @@ lint: lint-tidy lint-cppcheck
 # with fake executables, which run here; with TARGET_OS=windows, patchelf on
 # a PE file built with MinGW-w64 instead (the Windows workflow's Linux job
 # runs it: the platform gate runs on Linux alone); on macOS, patchelf on a
-# Mach-O executable (the macOS workflow runs it).
+# Mach-O executable (the macOS workflow runs it). patchelf on Mach-O objects
+# clang makes for macOS runs on Linux and on macOS; on Linux, gba_regions.ld's
+# assertions on where the writable data may lie.
 tools-test:
 	$(MAKE) -C .. -f make_tools.mk check-tools
 ifeq ($(TARGET_OS),windows)
 	test_runner/test_patchelf_pe.sh
 else ifeq ($(TARGET_OS),Darwin)
 	test_runner/test_patchelf_macho.sh
+	test_runner/test_patchelf_macho_object.sh
 else
 	test_runner/test_patchelf.sh
+	test_runner/test_patchelf_macho_object.sh
+	test_runner/test_link_layout_elf.sh
 	test_runner/test_hydra_end_of_output.sh
 	test_runner/test_run_windows_tests.sh
 	test_runner/test_native_rom_test_windows.sh

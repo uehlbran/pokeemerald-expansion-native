@@ -22,6 +22,12 @@ unless:
     platform/script_tag.h's tag (gba_regions.ld asserts the same of etext).
     The read-only data after the code in __TEXT may reach past it, as
     .rodata does on Linux;
+  * no section of a writable segment of the image (__DATA and any other
+    above 0x40000000 mapped writable) lies where an address's bits 24-27 read
+    as EWRAM's, 0x42000000-0x42FFFFFF and the like (check_support.ewram_alias):
+    src/librfu_rfu.c would take a buffer there for EWRAM. The sanitized
+    builds' __TEXT passes 0x42000000, so target.mk puts their __DATA at
+    0x43000000;
   * every GBA region, and the battle runner's stack, is a segment at its GBA
     address, readable and writable, of the region's size in whole pages;
     EWRAM's marker section (__ewram_end, gba_regions_end.macho.s) starts at
@@ -46,7 +52,7 @@ import struct
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))   # python3 -I leaves the script's directory off
-from check_support import CheckError, problems_match   # noqa: E402
+from check_support import CheckError, ewram_alias, problems_match   # noqa: E402
 from macho_object import (CPU_TYPE_X86_64, HEADER_FIELDS, HEADER_SIZE, LC_SEGMENT_64, LOAD_COMMAND_FIELDS,   # noqa: E402
                           MH_MAGIC_64, SECTION_FIELDS, SECTION_SIZE, SEGMENT_FIELDS, SEGMENT_SIZE)
 
@@ -142,6 +148,15 @@ def check_image(flags, segments, commands):
                     and section.address + section.size > CODE_LIMIT:
                 problems.append("%s,%s ends at 0x%x, past 0x%08x, where platform/script_tag.h's tag bit would be "
                                 "ambiguous" % (segment.name, section.name, section.address + section.size, CODE_LIMIT))
+    for segment in segments:
+        if not segment.initprot & VM_PROT_WRITE:
+            continue
+        for section in segment.sections:
+            alias = ewram_alias(section.address, section.address + section.size)
+            if alias is not None:
+                problems.append("%s,%s is writable and reaches 0x%x, whose bits 24-27 read as EWRAM's: "
+                                "src/librfu_rfu.c would take a buffer there for EWRAM" % (segment.name, section.name,
+                                                                                          alias))
     return problems
 
 
@@ -301,10 +316,39 @@ def self_test():
                   ("__stubs", CODE_LIMIT - 4, 8, S_ATTR_PURE_INSTRUCTIONS | S_ATTR_SOME_INSTRUCTIONS)]
     expect("stubs past the tag bit", pack_executable(replaced(good, "__TEXT", size=0x2002000, sections=stubs_past)),
            ["__TEXT,__stubs ends"])
+    some_past = [("__text", IMAGE_BASE + 0x1000, 0x1000, S_ATTR_PURE_INSTRUCTIONS),
+                 ("__some", CODE_LIMIT - 4, 8, S_ATTR_SOME_INSTRUCTIONS)]
+    expect("a section with some instructions past the tag bit",
+           pack_executable(replaced(good, "__TEXT", size=0x2002000, sections=some_past)), ["__TEXT,__some ends"])
     data_past = [("__text", IMAGE_BASE + 0x1000, 0x1000000, S_ATTR_PURE_INSTRUCTIONS),
                  ("__const", IMAGE_BASE + 0x1001000, 0x2000000, 0)]
     expect("read-only data past it, as .rodata on Linux",
            pack_executable(replaced(good, "__TEXT", size=0x3001000, sections=data_past)), [])
+    sanitized_text = replaced(good, "__TEXT", size=0x2F00000, sections=data_past[:1] + [
+        ("__const", IMAGE_BASE + 0x1001000, 0x1EFF000, 0)])
+    data_at = lambda address, sections: replaced(sanitized_text, "__DATA", address=address, sections=sections)
+    expect("the sanitized layout: __DATA from 0x43000000",
+           pack_executable(data_at(0x43000000, [("__data", 0x43000000, 0x10), ("__game_bss", 0x43001000, 0x100),
+                                                ("__game_common", 0x43001100, 0x40)])), [])
+    expect("__DATA after a __TEXT that passes 0x42000000",
+           pack_executable(data_at(0x42F00000, [("__data", 0x42F00000, 0x10), ("__game_bss", 0x42F01000, 0x100),
+                                                ("__game_common", 0x42F01100, 0x40)])),
+           ["__DATA,__data is writable and reaches 0x42f00000, whose bits 24-27 read as EWRAM's",
+            "__DATA,__game_bss is writable and reaches 0x42f01000", "__DATA,__game_common is writable and reaches"])
+    expect("zero-filled data reaching 0x42000000",
+           pack_executable(replaced(good, "__DATA", sections=[("__data", IMAGE_BASE + 0x31C000, 0x10),
+                                                              ("__game_bss", IMAGE_BASE + 0x31D000, 0x1CE3001),
+                                                              ("__game_common", 0x42000001, 0x40)])),
+           ["__DATA,__game_bss is writable and reaches 0x42000000", "__DATA,__game_common is writable"])
+    expect("the next window", pack_executable(data_at(0x43000000, [("__data", 0x43000000, 0x10),
+                                                                   ("__game_bss", 0x43001000, 0x0EFFF001),
+                                                                   ("__game_common", 0x52000001, 0x40)])),
+           ["__DATA,__game_bss is writable and reaches 0x52000000", "__DATA,__game_common is writable"])
+    read_only_data = [segment if segment[0] != "__DATA" else
+                      ("__DATA", 0x42000000, 0x2000, [("__data", 0x42000000, 0x10), ("__game_bss", 0x42001000, 0x100),
+                                                      ("__game_common", 0x42001100, 0x40)], VM_PROT_READ)
+                      for segment in good]
+    expect("a read-only segment there is no matter", pack_executable(read_only_data), [])
     expect("a region moved", pack_executable(replaced(good, "__GBA_VRAM", address=0x06100000)), ["__GBA_VRAM is at"])
     expect("a region missing", pack_executable([segment for segment in good if segment[0] != "__GBA_OAM"]),
            ["__GBA_OAM: no such segment"])

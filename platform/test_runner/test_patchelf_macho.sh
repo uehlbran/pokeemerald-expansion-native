@@ -10,7 +10,8 @@
 # the end of its section's bytes, a file whose load commands run past its end
 # and one with no symbol table; a name the executable lacks is skipped, as the
 # ELF and PE paths do, leaving the file as it was. Runs on macOS only
-# (`make -C platform tools-test` there).
+# (`make -C platform tools-test` there); test_patchelf_macho_object.sh tests
+# the same path on Linux too, on the object files clang makes for macOS.
 set -euo pipefail
 root=$(cd "$(dirname "$0")/../.." && pwd)
 patchelf=$root/tools/patchelf/patchelf
@@ -89,11 +90,14 @@ if "$patchelf" "$exe.p" gTestRunnerArgv "$(printf 'x%.0s' {1..33})" 2>/dev/null;
 fi
 echo "patchelf: a Mach-O value longer than its symbol refused"
 # Refused, and the file left as it was: a refusal must come before any write.
+# A refusal is exit status 1 (a crash is not one).
 refused_unchanged() {
     local file=$1 what=$2; shift 2
+    local status=0
     cp "$file" "$tmp/before"
-    if "$patchelf" "$file" "$@" 2>/dev/null; then
-        echo "patchelf accepted $what" >&2; exit 1
+    "$patchelf" "$file" "$@" 2>/dev/null || status=$?
+    if [ "$status" -ne 1 ]; then
+        echo "patchelf did not refuse $what (exit status $status)" >&2; exit 1
     fi
     cmp -s "$tmp/before" "$file" || { echo "patchelf changed the file while refusing $what" >&2; exit 1; }
     echo "patchelf: $what refused"

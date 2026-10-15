@@ -148,3 +148,30 @@ INSERT AFTER .bss;
  * starts at 0x40000000; data is never tagged, so a large .data or .bss, as
  * the sanitizers make, is no problem). */
 ASSERT(etext < 0x42000000, "the code reaches 0x42000000: platform/script_tag.h's tag bit would be ambiguous");
+
+/* Expansion asks whether an address is in EWRAM by its bits 24-27 alone, as
+ * every address of 02000000-02FFFFFF is EWRAM or one of its mirrors on the
+ * GBA (GBATEK "GBA Memory Map"): src/librfu_rfu.c's rfu_initializeAPI
+ * refuses an API buffer there. Natively, in the image, those are the
+ * addresses 0x42000000-0x42FFFFFF (then 0x52000000 and up): a variable there
+ * is taken for EWRAM. The sanitized builds' read-only data passes 0x42000000
+ * and their writable data would follow it into that window (measured: from
+ * 0x429BDD08 in the game, 0x42F08110 in the test runner; gRfuAPIBuffer was
+ * refused there in a clang build, and AgbRFU_SoftReset read through the NULL
+ * that left). So the writable data (the default script's data segment, from
+ * .tdata to the end of .bss) starts at gba_writable_data_floor if the
+ * read-only data ends below it: target.mk sets 0x43000000 for SANITIZE=1
+ * (GBA_SANITIZED_LAYOUT_LDFLAGS); elsewhere it is 0 and the data follows the
+ * read-only data, ending below 0x42000000. The ASSERTs fail a link whose
+ * writable data meets either window; check_pe_layout.py and
+ * check_macho_layout.py refuse the same in the other formats. */
+PROVIDE(gba_writable_data_floor = 0);
+SECTIONS
+{
+    . = MAX(., gba_writable_data_floor);
+    gba_writable_data_start = .;
+}
+INSERT BEFORE .tdata;
+ASSERT(gba_writable_data_start >= 0x43000000 || _end <= 0x42000000,
+       "the writable data reaches 0x42000000-0x42FFFFFF, whose bits 24-27 read as EWRAM's (src/librfu_rfu.c): link it from 0x43000000 (gba_writable_data_floor)");
+ASSERT(_end <= 0x52000000, "the writable data reaches 0x52000000, whose bits 24-27 read as EWRAM's (src/librfu_rfu.c)");

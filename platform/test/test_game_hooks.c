@@ -104,8 +104,10 @@ PTEST(locals_stay_put_between_calls)
     struct probe probe = {0};
     PlatformCallWithStack(record_local, &probe, NULL);
     volatile uint32_t *first = probe.local_address;
-    /* After the call, the runner writes results into the function's locals
-     * through pointers taken during it (HP_BAR captures). */
+    /* After the call, the GBA's runner writes results into the function's
+     * locals through pointers taken during it (HP_BAR captures); natively it
+     * keeps them for the next call (PlatformIsCallStackAddress), but the
+     * stack is still the GBA's: what a call leaves is there for the next. */
     *first = UINT32_C(0xC0FFEE42);
     PlatformCallWithStack(record_local, &probe, NULL);
     PT_ASSERT_EQ_INT(probe.calls, 2);
@@ -123,6 +125,25 @@ PTEST(call_with_stack_ignores_the_games_stack_top)
     PT_ASSERT_EQ_INT(probe.calls, 1);
     for (size_t i = 0; i < sizeof games_stack; i++)
         PT_ASSERT_EQ_INT(games_stack[i], 0xA5);
+}
+
+/* --- PlatformIsCallStackAddress (test/test_runner_battle.c captures) ---- */
+
+PTEST(call_stack_addresses_are_the_platform_stacks_and_no_others)
+{
+    struct probe probe = {0};
+    PlatformCallWithStack(record_local, &probe, NULL);
+    const struct host_span stack = host_memory_call_stack();
+    volatile uint32_t here = 0;
+    PT_ASSERT(stack.start != 0);
+    PT_ASSERT(PlatformIsCallStackAddress(address_of(probe.local_address)));
+    PT_ASSERT(PlatformIsCallStackAddress(stack.start));
+    PT_ASSERT(PlatformIsCallStackAddress(stack.end - 1u));
+    PT_ASSERT(!PlatformIsCallStackAddress(stack.end));
+    PT_ASSERT(!PlatformIsCallStackAddress(stack.start - 1u));
+    PT_ASSERT(!PlatformIsCallStackAddress(address_of(&here)));
+    PT_ASSERT(!PlatformIsCallStackAddress(GBA_EWRAM_BASE));
+    PT_ASSERT(!PlatformIsCallStackAddress(0));
 }
 
 static void count_call(void *context)

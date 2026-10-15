@@ -894,7 +894,17 @@ void FieldEffectScript_LoadPalette(u8 **script)
 void FieldEffectScript_CallNative(u8 **script, u32 *val)
 {
     u32 (*func)(void) = (u32 (*)(void))FieldEffectScript_ReadWord(script);
+#if PLATFORM_NATIVE
+    // Field effect natives return u8, bool8 or u32 (field_effect_scripts.s says not which),
+    // and every result is a sprite id, a task id or a bool, below 256. A u8 or bool8 return
+    // leaves the upper bits of EAX undefined on x86-64, where the GBA's ABI has the callee
+    // extend it, so only the low byte is kept.
+    *val = (u8)func();
+#else
+#line 897
     *val = func();
+#endif
+#line 898
     (*script) += 4;
 }
 

@@ -18,6 +18,7 @@
 
 #include "host_file.h"
 #include "host_file_fixture.h"
+#include "host_internal.h" /* host_file_flush_falls_back, a host file's helper */
 #include "posix_child.h"
 #include "posix_support.h"
 #include "ptest.h"
@@ -277,6 +278,20 @@ PTEST(an_open_file_syncs_and_a_bad_descriptor_does_not)
     PT_ASSERT_EQ_INT(bad_error, EBADF);
     PT_ASSERT(contents);
     PT_ASSERT(removed);
+}
+
+/* macOS's host_file_flush: F_FULLFSYNC's errors that mean "no such flush
+ * here" fall back to fsync, the others are reported (host_internal.h). */
+PTEST(only_a_missing_full_flush_falls_back_to_fsync)
+{
+    PT_ASSERT(host_file_flush_falls_back(ENOTSUP));
+    PT_ASSERT(host_file_flush_falls_back(ENOTTY));
+    PT_ASSERT(host_file_flush_falls_back(EINVAL));
+    PT_ASSERT(!host_file_flush_falls_back(EIO));
+    PT_ASSERT(!host_file_flush_falls_back(EBADF));
+    PT_ASSERT(!host_file_flush_falls_back(EINTR));
+    PT_ASSERT(!host_file_flush_falls_back(ENOSPC));
+    PT_ASSERT(!host_file_flush_falls_back(0));
 }
 
 PTEST(the_directory_of_a_path_syncs_wherever_the_path_points)

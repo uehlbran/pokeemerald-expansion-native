@@ -81,6 +81,9 @@ static const char *BattlerIdentifier(enum BattlerId battlerId);
 // stacks is the platform layer's job: it calls entry(context) with the
 // stack pointer at stackTop and returns when entry returns.
 void PlatformCallWithStack(void (*entry)(void *context), void *context, void *stackTop);
+// Whether address is on the stack PlatformCallWithStack runs entry on: the
+// address of one of the test function's variables.
+bool PlatformIsCallStackAddress(uintptr_t address);
 
 struct SingleTestCall
 {
@@ -103,13 +106,24 @@ struct DoubleTestCall
     DoubleBattleTestFunction function;
 };
 
-static void CallSingleTestFunction(void *context)
+// A test function's first parameter is its own Result struct (include/test/
+// battle.h, BATTLE_TEST_ARGS_SINGLE), which the table's function types give
+// as void *; the GBA's Thumb routines below call it with no type at all.
+// Natively these two calls go through the table's types, so clang's check
+// of a call's function type is off for them (and only them).
+#if defined(__clang__)
+#define CALLS_TEST_FUNCTION __attribute__((no_sanitize("function")))
+#else
+#define CALLS_TEST_FUNCTION
+#endif
+
+CALLS_TEST_FUNCTION static void CallSingleTestFunction(void *context)
 {
     struct SingleTestCall *call = context;
     call->function(call->results, call->i, call->player, call->opponent);
 }
 
-static void CallDoubleTestFunction(void *context)
+CALLS_TEST_FUNCTION static void CallDoubleTestFunction(void *context)
 {
     struct DoubleTestCall *call = context;
     call->function(call->results, call->i, call->playerLeft, call->opponentLeft, call->playerRight, call->opponentRight);
@@ -140,6 +154,207 @@ static void InvokeTwoVsOneTestFunctionWithStack(void *results, u32 i, struct Bat
 static void InvokeOneVsTwoTestFunctionWithStack(void *results, u32 i, struct BattlePokemon *playerLeft, struct BattlePokemon *opponentLeft, struct BattlePokemon *playerRight, struct BattlePokemon *opponentRight, OneVsTwoBattleTestFunction function, void *stack)
 {
     InvokeDoubleTestFunctionWithStack(results, i, playerLeft, opponentLeft, playerRight, opponentRight, function, stack);
+}
+
+// A capture (HP_BAR's captureHP: and captureDamage:, SUB_HIT's
+// captureDamage:, EXPERIENCE_BAR's captureGainedExp:, CATCHING_CHANCE) most
+// often names a variable of the test function. The function is called once
+// for GIVEN, WHEN and SCENE and once more for THEN, after the battle. On the
+// GBA the battle writes the value through the address SCENE's call queued,
+// into the frame that call left on the test stack, and THEN's call reads the
+// variable from the same stack slot without writing it first: a write
+// through a pointer to a variable whose lifetime has ended, then a read of
+// an uninitialised one, which an optimiser compiles as it likes (clang -O2
+// reads 0 in Beat Up's tests). Natively the battle keeps the value of a
+// capture into the test function's variables here instead (an address on the
+// stack PlatformCallWithStack runs it on), and THEN's call runs SCENE again
+// first: the queue functions queue the same events with the addresses of
+// that call's variables, and CloseScene writes the kept values through them,
+// so THEN reads variables written in its own call. CloseScene then puts the
+// events of SCENE's first run back, as the battle's next trial needs them.
+enum CaptureWidth
+{
+    CAPTURE_U16,
+    CAPTURE_S16,
+    CAPTURE_U32,
+    CAPTURE_S32,
+};
+
+STATIC_ASSERT(MAX_QUEUED_EVENTS <= 32, capturedMaskHoldsEveryQueuedEvent);
+
+static struct
+{
+    u32 capturedMask; // Bit i set: capturedValues[i] holds queued event i's value.
+    u32 capturedValues[MAX_QUEUED_EVENTS];
+    bool8 replaying; // THEN's call is to run SCENE again.
+    enum ExpectFailState expectedFailState; // Before SCENE ran again.
+    u8 queuedEventsCount;
+    struct QueuedEvent queuedEvents[MAX_QUEUED_EVENTS]; // As SCENE's first run queued them.
+} sCaptures;
+
+// TRUE if the event is a capture; then *address and *width say where and how
+// the battle's value is written. An HP, SUB_HIT or EXPERIENCE_BAR event holds
+// an address above 0xFFFF (as the Try* functions test), else a value.
+static bool32 GetCapture(const struct QueuedEvent *event, uintptr_t *address, enum CaptureWidth *width)
+{
+    switch (event->type)
+    {
+    case QUEUED_HP_EVENT:
+        *address = event->as.hp.address;
+        *width = event->as.hp.type == HP_EVENT_NEW_HP ? CAPTURE_U16 : CAPTURE_S16;
+        return *address > 0xFFFF;
+    case QUEUED_SUB_HIT_EVENT:
+        *address = event->as.subHit.address;
+        *width = CAPTURE_U16;
+        return *address > 0xFFFF;
+    case QUEUED_EXP_EVENT:
+        *address = event->as.exp.address;
+        *width = event->as.exp.type == EXP_EVENT_NEW_EXP ? CAPTURE_U32 : CAPTURE_S32;
+        return *address > 0xFFFF;
+    case QUEUED_CATCH_CHANCE_EVENT:
+        *address = event->as.capture.address;
+        *width = CAPTURE_U32;
+        return TRUE;
+    default:
+        return FALSE;
+    }
+}
+
+static void WriteCapture(uintptr_t address, enum CaptureWidth width, u32 value)
+{
+    switch (width)
+    {
+    case CAPTURE_U16:
+        *(u16 *)address = (u16)value;
+        break;
+    case CAPTURE_S16:
+        *(s16 *)address = (s16)value;
+        break;
+    case CAPTURE_U32:
+        *(u32 *)address = value;
+        break;
+    case CAPTURE_S32:
+        *(s32 *)address = (s32)value;
+        break;
+    }
+}
+
+// The battle reached queued event i, a capture to `address`.
+static void Capture(s32 i, uintptr_t address, enum CaptureWidth width, u32 value)
+{
+    if (PlatformIsCallStackAddress(address))
+    {
+        sCaptures.capturedValues[i] = value;
+        sCaptures.capturedMask |= 1u << i;
+    }
+    else
+    {
+        WriteCapture(address, width, value);
+    }
+}
+
+// A trial (or the re-run of a failed one) starts with nothing captured.
+static void ForgetCaptures(void)
+{
+    sCaptures.capturedMask = 0;
+    sCaptures.replaying = FALSE;
+}
+
+// Called before THEN's call: SCENE runs again in it if SCENE queued a
+// capture into the test function's variables.
+static void PrepareSceneReplay(void)
+{
+    u32 i;
+    uintptr_t address;
+    enum CaptureWidth width;
+
+    sCaptures.replaying = FALSE;
+    for (i = 0; i < DATA.queuedEventsCount; i++)
+    {
+        if (GetCapture(&DATA.queuedEvents[i], &address, &width) && PlatformIsCallStackAddress(address))
+            sCaptures.replaying = TRUE;
+    }
+    if (!sCaptures.replaying)
+        return;
+
+    sCaptures.queuedEventsCount = DATA.queuedEventsCount;
+    memcpy(sCaptures.queuedEvents, DATA.queuedEvents, sizeof(DATA.queuedEvents));
+    DATA.queuedEventsCount = 0;
+    DATA.queueGroupType = QUEUE_GROUP_NONE;
+    DATA.queueGroupStart = 0;
+    STATE->runScene = TRUE;
+}
+
+// Whether this call runs SCENE again. A test that ends between
+// PrepareSceneReplay and CloseScene (a failed check, which long-jumps out)
+// leaves `replaying` set; the next test's STATE starts with runThen clear.
+static bool32 IsReplayingScene(void)
+{
+    return sCaptures.replaying && STATE->runThen;
+}
+
+// Called after THEN's call returned, in the same TestRunner_Battle_AfterLastTurn
+// as PrepareSceneReplay (THEN's own loop has cleared runThen by then).
+static void FinishSceneReplay(void)
+{
+    if (sCaptures.replaying)
+    {
+        sCaptures.replaying = FALSE;
+        Test_ExitWithResult(TEST_RESULT_ERROR, SourceLine(0), "%s:%d: SCENE did not run again in THEN's call, so its captures were not written", gTestRunnerState.test->filename, SourceLine(0));
+    }
+}
+
+// Whether SCENE's second run queued event i as its first run did.
+static bool32 IsSameEvent(u32 i)
+{
+    const struct QueuedEvent *again = &DATA.queuedEvents[i];
+    const struct QueuedEvent *first = &sCaptures.queuedEvents[i];
+    uintptr_t address;
+    enum CaptureWidth width;
+
+    if (again->type != first->type
+     || again->sourceLineOffset != first->sourceLineOffset
+     || again->groupType != first->groupType
+     || again->groupSize != first->groupSize)
+        return FALSE;
+    if (sCaptures.capturedMask & (1u << i))
+        return GetCapture(again, &address, &width) && PlatformIsCallStackAddress(address);
+    return TRUE;
+}
+
+void OpenScene(void)
+{
+    // SCENE's second run must not open an EXPECT_FAIL's scene a second time.
+    if (IsReplayingScene())
+        sCaptures.expectedFailState = gTestRunnerState.expectedFailState;
+}
+
+void CloseScene(u32 sourceLine)
+{
+    u32 i;
+    uintptr_t address;
+    enum CaptureWidth width;
+
+    STATE->runScene = FALSE;
+    if (!IsReplayingScene())
+        return;
+    sCaptures.replaying = FALSE;
+    gTestRunnerState.expectedFailState = sCaptures.expectedFailState;
+
+    if (DATA.queuedEventsCount != sCaptures.queuedEventsCount)
+        Test_ExitWithResult(TEST_RESULT_ERROR, sourceLine, "%s:%d: SCENE queued %d events when it ran again in THEN's call, %d the first time", gTestRunnerState.test->filename, sourceLine, DATA.queuedEventsCount, sCaptures.queuedEventsCount);
+    for (i = 0; i < DATA.queuedEventsCount; i++)
+    {
+        if (!IsSameEvent(i))
+            Test_ExitWithResult(TEST_RESULT_ERROR, sourceLine, "%s:%d: SCENE queued another event at %s:%d when it ran again in THEN's call", gTestRunnerState.test->filename, sourceLine, gTestRunnerState.test->filename, SourceLine(DATA.queuedEvents[i].sourceLineOffset));
+    }
+
+    for (i = 0; i < DATA.queuedEventsCount; i++)
+    {
+        if ((sCaptures.capturedMask & (1u << i)) && GetCapture(&DATA.queuedEvents[i], &address, &width))
+            WriteCapture(address, width, sCaptures.capturedValues[i]);
+    }
+    memcpy(DATA.queuedEvents, sCaptures.queuedEvents, sizeof(DATA.queuedEvents));
 }
 #else
 #line 78
@@ -466,6 +681,10 @@ static void ResetTestInventory()
 static void StartBattle(void)
 {
     memset(&DATA.trial, 0, sizeof(DATA.trial));
+#if PLATFORM_NATIVE
+    ForgetCaptures();
+#endif
+#line 399
 
     SetVariablesForRecordedBattle(&DATA.recordedBattle);
     if (STATE->trials)
@@ -1222,10 +1441,22 @@ static s32 TryHP(s32 i, s32 n, enum BattlerId battlerId, u32 oldHP, u32 newHP)
                 switch (event->type)
                 {
                 case HP_EVENT_NEW_HP:
+#if PLATFORM_NATIVE
+                    Capture(i, event->address, CAPTURE_U16, newHP);
+#else
+#line 1155
                     *(u16 *)(u32)(event->address) = newHP;
+#endif
+#line 1156
                     break;
                 case HP_EVENT_DELTA_HP:
+#if PLATFORM_NATIVE
+                    Capture(i, event->address, CAPTURE_S16, oldHP - newHP);
+#else
+#line 1158
                     *(s16 *)(u32)(event->address) = oldHP - newHP;
+#endif
+#line 1159
                     break;
                 }
                 return i;
@@ -1328,7 +1559,13 @@ static s32 TrySubHit(s32 i, s32 n, enum BattlerId battlerId, u32 damage, bool32 
             }
             else
             {
+#if PLATFORM_NATIVE
+                Capture(i, event->address, CAPTURE_U16, damage);
+#else
+#line 1261
                 *(u16 *)(u32)(event->address) = damage;
+#endif
+#line 1262
                 return i;
             }
         }
@@ -1743,10 +1980,22 @@ static s32 TryExp(s32 i, s32 n, enum BattlerId battlerId, u32 oldExp, u32 newExp
                 switch (event->type)
                 {
                 case EXP_EVENT_NEW_EXP:
+#if PLATFORM_NATIVE
+                    Capture(i, event->address, CAPTURE_U32, newExp);
+#else
+#line 1676
                     *(u32 *)(u32)(event->address) = newExp;
+#endif
+#line 1677
                     break;
                 case EXP_EVENT_DELTA_EXP:
+#if PLATFORM_NATIVE
+                    Capture(i, event->address, CAPTURE_S32, oldExp - newExp);
+#else
+#line 1679
                     *(s32 *)(u32)(event->address) = oldExp - newExp;
+#endif
+#line 1680
                     break;
                 }
                 return i;
@@ -2069,7 +2318,13 @@ static s32 TryCatchChance(s32 i, s32 n, u32 catchChance)
             continue;
 
         event = &DATA.queuedEvents[i].as.capture;
+#if PLATFORM_NATIVE
+        Capture(i, event->address, CAPTURE_U32, catchChance);
+#else
+#line 2002
         *(u32 *)(u32)(event->address) = catchChance;
+#endif
+#line 2003
         return i;
     }
     return -1;
@@ -2219,9 +2474,17 @@ void TestRunner_Battle_AfterLastTurn(void)
         Test_ExitWithResult(TEST_RESULT_FLAKY, expectedLine, "%s:%d: Expected unmatched %s, but got %s at %s:%d", filename, expectedLine, expectedMacro, gotMacro, filename, gotLine);
     }
 
+#if PLATFORM_NATIVE
+    PrepareSceneReplay();
+#endif
+#line 2152
     STATE->runThen = TRUE;
     STATE->runFinally = STATE->runParameter + 1 == STATE->parameters && STATE->runTrial + 1 >= STATE->trials;
     InvokeTestFunction(test);
+#if PLATFORM_NATIVE
+    FinishSceneReplay();
+#endif
+#line 2155
     STATE->runThen = FALSE;
     STATE->runFinally = FALSE;
 }
@@ -2279,6 +2542,10 @@ static void CB2_BattleTest_NextTrial(void)
         gTestRunnerState.result = TEST_RESULT_PASS;
         DATA.recordedBattle.rngSeed = MakeRngValue(STATE->runTrial);
         memset(&DATA.trial, 0, sizeof(DATA.trial));
+#if PLATFORM_NATIVE
+        ForgetCaptures();
+#endif
+#line 2212
         ResetTestInventory();
         SetVariablesForRecordedBattle(&DATA.recordedBattle);
         SetMainCallback2(CB2_InitBattle);

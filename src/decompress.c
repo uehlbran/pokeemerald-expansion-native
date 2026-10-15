@@ -530,13 +530,13 @@ LOOP_STORE:
     sBitIndex = bitIndex;
     sDataPtr = data - 1;
 }
-
+#if !PLATFORM_NATIVE // natively DecodeLOtANS calls DecodeLOtANSLoop itself
 //  Dark Egg magic
 ARM_FUNC __attribute__((no_reorder)) static void SwitchToArmCallLOtANS(const u32 *data, u32 *ykTable, void *resultVec, void *resultVecEnd, void (*decodeFunction)(const u32 *data, u32 *ykTable, void *resultVec, void *resultVecEnd))
 {
     decodeFunction(data, ykTable, resultVec, resultVecEnd);
 }
-
+#endif
 //  Function that decodes tANS encoded LO data, resulting data is u8 values
 static void DecodeLOtANS(const u32 *data, const u32 *pFreqs, u8 *resultVec, u32 count)
 {
@@ -546,8 +546,8 @@ static void DecodeLOtANS(const u32 *data, const u32 *pFreqs, u8 *resultVec, u32 
     u32 remainingCount = count % 2;
 
 #if PLATFORM_NATIVE
-    // Native code cannot run from a copy in a stack buffer: pass the function itself.
-    SwitchToArmCallLOtANS(data, sWorkingYkTable, resultVec, &resultVec[count - remainingCount], (void *) DecodeLOtANSLoop);
+    // Native code cannot run from a copy in a stack buffer, nor needs a switch to ARM: a direct call.
+    DecodeLOtANSLoop(data, sWorkingYkTable, resultVec, &resultVec[count - remainingCount]);
 #else
     u32 funcBuffer[FUNC_BUFFER_SIZE(DecodeLOtANSLoop, SwitchToArmCallLOtANS)];
 
@@ -623,19 +623,19 @@ ARM_FUNC __attribute__((flatten, noinline, no_reorder)) __attribute__((optimize(
     sBitIndex = bitIndex;
     sDataPtr = data - 1;
 }
-
+#if !PLATFORM_NATIVE // natively DecodeSymtANS calls DecodeLOtANSLoop itself
 ARM_FUNC __attribute__((no_reorder)) static void SwitchToArmCallDecodeSymtANS(const u32 *data, u32 *ykTable, u16 *resultVec, u16 *resultVecEnd, void (*decodeFunction)(const u32 *data, u32 *ykTable, u16 *resultVec, u16 *resultVecEnd))
 {
     decodeFunction(data, ykTable, resultVec, resultVecEnd);
 }
-
+#endif
 static void DecodeSymtANS(const u32 *data, const u32 *pFreqs, u16 *resultVec, u32 count)
 {
     BuildDecompressionTable(pFreqs, sWorkingYkTable);
 
 #if PLATFORM_NATIVE
-    // Native code cannot run from a copy in a stack buffer: pass the function the GBA copies.
-    SwitchToArmCallDecodeSymtANS(data, sWorkingYkTable, resultVec, &resultVec[count], (void *) DecodeLOtANSLoop);
+    // The function the GBA copies, called directly; it stores halfwords through its u8 pointers.
+    DecodeLOtANSLoop(data, sWorkingYkTable, (u8 *)resultVec, (u8 *)&resultVec[count]);
 #else
     u32 funcBuffer[FUNC_BUFFER_SIZE(DecodeLOtANSLoop, SwitchToArmCallLOtANS)];
     // CopyFuncToIwram(funcBuffer, DecodeSymtANSLoop, SwitchToArmCallDecodeSymtANS);
@@ -970,19 +970,19 @@ ARM_FUNC __attribute__((flatten, noinline, no_reorder)) __attribute__((optimize(
         }
     } while (loVec < loVecEnd);
 }
-
+#if !PLATFORM_NATIVE // natively DecodeInstructionsIwram calls DecodeInstructions itself
 //  Dark Egg magic
 ARM_FUNC __attribute__((no_reorder)) static void SwitchToArmCallDecodeInstructions(u32 headerLoSize, const u8 *loVec, const u16 *symVec, void *dest, void (*decodeFunction)(u32 headerLoSize, const u8 *loVec, const u16 *symVec, void *dest))
 {
     decodeFunction(headerLoSize, loVec, symVec, dest);
 }
-
+#endif
 //  Dark Egg magic
 static void DecodeInstructionsIwram(u32 headerLoSize, const u8 *loVec, const u16 *symVec, void *dest)
 {
 #if PLATFORM_NATIVE
-    // Native code cannot run from a copy in a stack buffer: pass the function itself.
-    SwitchToArmCallDecodeInstructions(headerLoSize, loVec, symVec, dest, (void *) DecodeInstructions);
+    // Native code cannot run from a copy in a stack buffer, nor needs a switch to ARM: a direct call.
+    DecodeInstructions(headerLoSize, loVec, symVec, dest);
 #else
     u32 funcBuffer[FUNC_BUFFER_SIZE(DecodeInstructions, SwitchToArmCallDecodeInstructions)];
 

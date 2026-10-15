@@ -52,6 +52,13 @@ SINGLE_BATTLE_TEST("Lash Out damage is boosted if the user's stats are dropped t
 
 SINGLE_BATTLE_TEST("Lash Out damage is only boosted on the turn that Intimidate switches in")
 {
+#if PLATFORM_NATIVE
+    // On the GBA THEN's call sets this test's captured variables to their
+    // initial values again, so its THEN compares those; natively the captures
+    // reach THEN, and it fails (platform/test_runner/SUITE-LOG.md, class 11).
+    KNOWN_FAILING;
+#endif
+#line 55
     s16 damage[3] = {0};
     enum Move move = MOVE_NONE;
 
@@ -84,6 +91,13 @@ SINGLE_BATTLE_TEST("Lash Out damage is only boosted on the turn that Intimidate 
 
 SINGLE_BATTLE_TEST("Lash Out damage is boosted on turn 1 by switch in abilities")
 {
+#if PLATFORM_NATIVE
+    // On the GBA THEN's call sets this test's captured variables to their
+    // initial values again, so its THEN compares those; natively the captures
+    // reach THEN, and it fails (platform/test_runner/SUITE-LOG.md, class 11).
+    KNOWN_FAILING;
+#endif
+#line 87
     s16 damage[2] = {0};
     enum Species species = SPECIES_NONE;
     enum Ability ability = ABILITY_NONE;
@@ -118,6 +132,13 @@ SINGLE_BATTLE_TEST("Lash Out damage is boosted on turn 1 by switch in abilities"
 
 DOUBLE_BATTLE_TEST("Lash Out damage is boosted by Cotton Down activation in doubles")
 {
+#if PLATFORM_NATIVE
+    // On the GBA THEN's call sets this test's captured variables to their
+    // initial values again, so its THEN compares those; natively the captures
+    // reach THEN, and it fails (platform/test_runner/SUITE-LOG.md, class 11).
+    KNOWN_FAILING;
+#endif
+#line 121
     s16 damage[2] = {0};
     enum Ability ability = ABILITY_NONE;
 

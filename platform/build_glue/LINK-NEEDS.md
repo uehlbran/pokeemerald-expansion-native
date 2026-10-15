@@ -22,7 +22,7 @@ native` links `build/native<bits>[-test][-san]/pokeemerald-native[-test]`
 | `FastUnsafeCopy32`, `LZ77UnCompWRAMOptimized` | `platform/decompress_asm.c`; `src/decompress.c` (guarded) no longer copies code, so natively only `LZ77UnCompWRAMOptimized` is referenced and `LZ77UnCompWRAMOptimized_end` is not needed |
 | `GameCubeMultiBoot_*` | `platform/gcn_multiboot.c` (no GameCube: progress stays "none") |
 | `RomHeaderGameCode`, `RomHeaderSoftwareVersion` | `platform/rom_header.c` ("BPEE", 0) |
-| `PlatformWaitCycles`, `PlatformJumpToAgbMainLoop`, `PlatformTestRunnerExit`, `PlatformCallWithStack`, `PlatformDebugOpen`, `PlatformDebugSend`, `PlatformIsRomPointer` | `platform/game_hooks.c` (`PlatformDebugOpen` and `PlatformDebugSend` reach `platform/debug_channel.c`) |
+| `PlatformWaitCycles`, `PlatformJumpToAgbMainLoop`, `PlatformTestRunnerExit`, `PlatformCallWithStack`, `PlatformIsCallStackAddress`, `PlatformDebugOpen`, `PlatformDebugSend`, `PlatformIsRomPointer` | `platform/game_hooks.c` (`PlatformDebugOpen` and `PlatformDebugSend` reach `platform/debug_channel.c`) |
 | `PlatformAllocationSiteBase` (`src/malloc.c`'s allocation-site offsets) | `gba_game.ld`: `__executable_start`, GNU ld's first byte of the image |
 | `platform_call_stack_start`/`_end` (the battle runner's stack, below 2^27) | `gba_regions.ld` `.platform_call_stack` at 0x01800000 |
 | `main` | `platform/main.c` |

@@ -2034,6 +2034,14 @@ around 2027, so the native Apple-silicon question (PLAN.md item (i), the
 spike) is no longer about speed on newer Macs: it decides whether macOS stays
 supported and tested after 2027 at all. The spike's report weighs it so.
 
+Amended after the first review of the port: one job, `rosetta`, runs on
+`macos-latest` (arm64), because the x86_64 build on Apple silicon is what
+most Macs will run and nothing had shown it: an x86_64 Homebrew in
+`/usr/local` under Rosetta 2, the unit tests built and run as x86_64, the
+game built by `tools/build-native.sh --os macos` under `arch -x86_64` (what
+`docs/BUILDING.md` tells an Apple-silicon Mac to do), and the opening
+replay. Every other job stays on `macos-15-intel`.
+
 ## 2026-10-15: Steam Deck: controller functions, fullscreen and the package
 
 The owner's item (h) (PLAN.md "Milestone 8 plan"), as built. The Deck is the
@@ -2259,7 +2267,11 @@ durable, renamed over the old one, and the directory made durable. On macOS
 reported the save written could lose it. `host_file_flush` on macOS is
 `fcntl(F_FULLFSYNC)`, for the file and for its directory, and falls back to
 `fsync` where the file system refuses it (some network and FAT volumes),
-which is then the best the system offers. The cost, measured on the
+which is then the best the system offers: on `ENOTSUP`, `ENOTTY` and
+`EINVAL` only. Any other error (`EIO` from the drive, say) is reported, not
+covered by an `fsync` that may succeed (review: the first version fell back on
+every error but `EBADF`; SQLite falls back on any, which reports a failed
+flush as a success). The cost, measured on the
 runner's APFS volume (probe M2): 4.5 to 24 ms for the 128 KiB save against
 under 1 ms for `fsync`, 3.5 to 4.3 ms for the directory, once per save. The
 alternative, plain `fsync`, is what Linux's `fsync` already gives on Linux
@@ -2327,34 +2339,54 @@ GCC's on Linux in four ways, each handled where it arises:
   probe M2). The unit tests run with `detect_leaks=0` there
   (`platform/Makefile`, `SANITIZER_ENV`); every leak they could show is
   caught by the same tests on Linux.
-- **Two UndefinedBehaviorSanitizer checks GCC does not make are off for
-  expansion's objects**: `function` (a call through a pointer of another
-  function type, which expansion makes in many places and the GBA's calling
-  convention makes work) and `pointer-overflow`, whose C form reports a zero
-  offset applied to a null pointer (C2y defines it; `src/save.c` does it at
-  boot). The sanitized replays of a clang build on Linux reported exactly
-  those, at 8 sites, and nothing else; with them off they pass as GCC's do.
-  The cost: clang's pointer-overflow check of real overflows is off for the
-  game's code on macOS; GCC's runs on Linux every night. The platform
-  library keeps every check on every OS.
+- **Two UndefinedBehaviorSanitizer checks GCC does not make stay on**:
+  `function` (a call through a pointer of another function type) and
+  `pointer-overflow` in its C form (arithmetic on a null pointer). The
+  sanitized replays of a clang build on Linux reported 8 sites in
+  expansion's code, and nothing else; at first both checks were turned off
+  for every expansion object, which review called what it was, 8 defects
+  hidden and any future one with them. Now six are fixed under the guard
+  (`src/decompress.c` three times, `src/field_player_avatar.c`,
+  `src/event_object_movement.c`, `src/save.c`), and three objects, where one
+  call takes functions of many types from a table that cannot say which, are
+  built without the `function` check alone: `src/field_effect.o` (whose
+  native result is now cut to the byte every native returns, since a `u8`
+  return leaves EAX's upper bits undefined on x86-64), `src/scrcmd.o`
+  (`gSpecials`) and `src/debug.o` (the debug menu's actions; a ninth site,
+  which the debug menu replay showed).
+  `platform/test_runner/SUITE-LOG.md`, "Clang's function and
+  pointer-overflow checks", has every site and its root cause.
 - **Section variables.** GCC's AddressSanitizer leaves a variable with a
   section of its own unpadded; clang's pads it with redzones, which would
   overflow EWRAM's 256 KiB and break the test table's array. The C filter
   adds `no_sanitize("address")` to those variables
-  (`c_filter_macho.sed`), so they are laid out as with GCC.
+  (`c_filter_macho.sed`, and `c_filter_clang.sed` for clang on Linux), so
+  they are laid out as with GCC.
+- **Where the writable data lies.** Expansion asks whether an address is in
+  EWRAM by its bits 24-27 (`src/librfu_rfu.c`), which in the image are 2 for
+  0x42000000-0x42FFFFFF. The sanitized builds' read-only data passes
+  0x42000000 and their writable data followed it there: review saw
+  `gRfuAPIBuffer` refused as "in EWRAM" in a clang build on Linux and the
+  game die in `InitRFU`. The sanitized builds now link their writable data
+  from 0x43000000 (`platform/target.mk`, `GBA_SANITIZED_LAYOUT_LDFLAGS`:
+  `gba_writable_data_floor` on Linux, `-segaddr __DATA` on macOS), and every
+  link check refuses writable data in such a window (`gba_regions.ld`'s
+  ASSERTs, `check_pe_layout.py`, `check_macho_layout.py`). The plain builds
+  are unchanged: their data ends near 0x41E00000, and the checks will say
+  when it grows into the window.
 - **Spellings**: clang takes AddressSanitizer's call threshold as a back-end
   option and has `-fsanitize-address-use-after-return=never` where GCC 13
   has a `--param` (`Makefile.native`).
 
 ThreadSanitizer runs the unit tests on macOS as on Linux.
 
-## 2026-10-15: Clang builds the game as GCC does: three code-generation choices made explicit
+## 2026-10-15: Clang builds the game as GCC does: two code-generation choices made explicit, one undefined behaviour fixed
 
 The macOS build's compiler is clang. Built with clang on Linux, the game
 passed both replays at once, but the suite differed from GCC's in 6 of 5,875
-results; each difference was a choice clang makes where GCC makes another,
-and each is now made explicitly (`Makefile.native`, with the reason where the
-flag is):
+results; four were a choice clang makes where GCC makes another, now made
+explicitly (`Makefile.native`, with the reason where the flag is), and two
+were undefined behaviour in expansion's test harness, now fixed:
 
 - **Clang's narrow divisions by zero get libgcc's rule at their width.**
   Clang compiles a C division whose operands it knows fit 8 or 16 bits to an
@@ -2369,16 +2401,37 @@ flag is):
   (`-idivq-to-divl`): it would divide two 64-bit values that fit 32 bits
   with a 32-bit DIV, which by zero gets the 32-bit rule where the GBA's code
   calls the 64-bit `__udivdi3`.
-- **LICM's scalar promotion is off for the test objects**
-  (`-mllvm -disable-licm-promotion`): the battle tests' functions run once per
-  phase, and a local one phase hands the runner is read by a later call from
-  the same stack slot; clang kept a loop's stores to such a local in a
-  register and stored it once at the loop's exit, over what the runner had
-  written ("Beat Up's damage doesn't consider STAB", 2 results). `-O0` for
-  the test objects fixed those and changed which stale values two other
-  tests read; the one transformation off keeps `-O2`'s otherwise.
+- **LICM's scalar promotion was off for the test objects; the cause is now
+  fixed instead**: the battle tests' functions run once per phase, and a capture
+  (`HP_BAR(..., captureDamage: &damage)`) made the runner write into a
+  variable of a call that had returned, which a later call read from the
+  same stack slot. `-mllvm -disable-licm-promotion` made clang's code read it
+  as GCC's does, for the two Beat Up results that showed it; review showed
+  the cause, undefined behaviour in expansion's test harness that one flag
+  cannot cover (a 15-line reproducer reads 0 at clang -O2 with or without
+  it). The flag is gone: natively the runner keeps a capture's value and
+  runs SCENE again at the start of THEN's call, which writes it into that
+  call's variable (`test/test_runner_battle.c`, "A capture";
+  `include/test/battle.h`, `SCENE`), so the read is defined. Beat Up's 15
+  tests pass at clang -O2. Seven tests whose captured variables have an
+  initialiser passed on the GBA only because THEN's call reset them, and
+  fail now that the captures arrive; they are KNOWN_FAILING natively
+  (`platform/test_runner/SUITE-LOG.md`, class 11).
 
-With the three, the clang-built Linux suite equals GCC's in all 5,875 results.
+With the first two and the capture replay, the clang-built Linux suite
+equals GCC's in all 5,884 results, plain and sanitized (5,417 PASS, 25
+KNOWN_FAILING, and 3 ERROR, the replay's own tests of its errors, which
+expect that result; `test/capture_replay.c` added 9 tests).
+
+The rehearsal is reproducible from the tree (docs/BUILDING.md, "macOS",
+"The clang rehearsal on Linux"): `TARGET_CC=clang` with an object directory
+of its own selects `platform/build_glue/c_filter_clang.sed` (`c_filter.sed`'s
+rule and the two of the Mach-O filter that clang needs on ELF too: `.hword`
+written as `.2byte`, and the section variables left unpadded by
+AddressSanitizer), and the test objects' event scripts, GNU as's dialect,
+go to GNU as (`-fno-integrated-as`) as GCC's do. The platform library stays
+GCC's there; its clang build is `make -C platform test CC=clang
+BUILD_DIR=build/64-clang`.
 
 ## 2026-10-15: On macOS a SIGFPE sent by kill looks like a divide error
 
@@ -2419,22 +2472,28 @@ refused before any job started: "recent account payments have failed or your
 spending limit needs to be increased", which stopped every job on the account
 that night, the Windows nightly's too. Only the owner can change that, so the
 branch was finished and rehearsed on Linux (a clang build of the game passes
-both replays and equals GCC's suite, plain and sanitized; every game and test
-source, filtered for Mach-O, compiles for macOS; the test objects' event
-scripts go through their whole pipeline), and it does not merge until the runs
-below pass, in this order:
+both replays and equals GCC's suite, plain and sanitized, reproducible from
+the tree: docs/BUILDING.md, "The clang rehearsal on Linux"; every game and
+test source, filtered for Mach-O, compiles for macOS; the test objects' event
+scripts go through their whole pipeline; patchelf's Mach-O path runs on
+clang's Mach-O objects), and it does not merge until the runs below pass, in
+this order:
 
 1. `macos.yml` by hand on the branch (`gh workflow run macos.yml --ref
    work/macos`; GitHub dispatches a workflow only if its file is on the
    default branch, so `macos.yml` must reach `main` first, alone or with a
    push trigger restored on the branch for the one run). Its jobs must show:
-   - **unit**: 97 unit test binaries (79 portable, 13 `posix/`, 5 `darwin/`)
-     each "N passed, 0 failed" under ASan and UBSan, and 96 under TSan
+   - **unit**: 99 unit test binaries (80 portable, 14 `posix/`, 5 `darwin/`)
+     each "N passed, 0 failed" under ASan and UBSan, and 98 under TSan
      (`test_crt0` is not run under it); clang-tidy clean on the macOS
      sources; `test_patchelf_macho.sh` to its last line, including "the
-     patched Mach-O executable runs and reads the patched values";
-   - **game**: the link passes `check_macho_layout.py` (silent); `otool -l`'s
-     segments as `docs/ARCHITECTURE.md`'s table gives them; `otool -L` names
+     patched Mach-O executable runs and reads the patched values", and
+     `test_patchelf_macho_object.sh` to its last line;
+   - **game**: the link passes `check_macho_layout.py` (silent), plain and
+     sanitized (the sanitized `__DATA` at 0x43000000, past the window where
+     an address's bits 24-27 read as EWRAM's; if ld64 adds a writable
+     `__DATA_CONST` before it, the check names it and it takes a `-segaddr`
+     too); `otool -l`'s segments as `docs/ARCHITECTURE.md`'s table gives them; `otool -L` names
      Homebrew's SDL2 (expected `/usr/local/opt/sdl2-compat/lib/libSDL2-2.0.0.dylib`)
      and the system's libraries only; `--keys` names
      `~/Library/Application Support/pokeemerald-expansion-native/pokeemerald-native/`;
@@ -2442,11 +2501,26 @@ below pass, in this order:
      screenshots", the same sanitized with no sanitizer report; gate h's
      load stage PASS on the Linux save;
    - **suite**: the test runner's own tests (two crash on purpose and are
-     restarted), then 5,875 results (5,418 PASS, 2 CRASH, 7 EXPECTED_FAIL,
-     18 KNOWN_FAILING, 9 ASSUMPTION_FAIL, 421 TO_DO), plain and sanitized;
-   - **compare**: "PASS: the same 5875 tests with the same results" for the
+     restarted), then 5,884 results (5,417 PASS, 2 CRASH, 3 ERROR (expected:
+     `test/capture_replay.c`), 7 EXPECTED_FAIL, 25 KNOWN_FAILING, 9
+     ASSUMPTION_FAIL, 421 TO_DO), plain and sanitized,
+     and no UndefinedBehaviorSanitizer `function` or `pointer-overflow`
+     report (`platform/test_runner/SUITE-LOG.md` has the sites, and the three
+     objects built without the `function` check);
+   - **compare**: "PASS: the same 5884 tests with the same results" for the
      plain and for the sanitized suite against Linux 64-bit's; gate h's back
      stage PASS; the two 64-bit struct layouts identical.
+   - **rosetta** (macos-latest, Apple silicon): Rosetta 2 present or
+     installed, an x86_64 Homebrew in `/usr/local`; the toolchain step shows
+     `x86_64` and an x86_64 `make`; the same 99 unit test binaries "N passed,
+     0 failed", built and run as x86_64 under Rosetta 2;
+     `tools/build-native.sh --os macos` builds the game (it says the Rosetta
+     setup is unverified and goes on); the opening replay "PASS: 27 dumps, 26
+     screenshots" under Rosetta 2. Probe M0 showed the layout under
+     Rosetta 2 (61 of 61 checks, 100 of 100 starts); this is the first time
+     the game itself runs there, and its divisions by zero (`FPE_INTDIV` with
+     the DIV at the program counter, which the unit tests'
+     `test_arm_division*` and `test_host_fault*` check).
 2. The same workflow on `main` after the merge, and its nightly from then on.
 3. The owner's own Mac, Intel or Apple silicon under Rosetta: the build from a
    fresh clone with the Homebrew line of `docs/BUILDING.md`, the game in a
@@ -2454,8 +2528,19 @@ below pass, in this order:
    `~/Library/Application Support`.
 
 What the first run is most likely to show, from what the probes did not
-cover: whether ld-prime takes `-alias_list` (the probe passed each alias as
-`-alias`; the files could become flags); whether `sdl2-compat` honours
+cover, the likeliest first: whether ld-prime takes `-alias_list` (the probe
+passed each alias as `-alias`). If it refuses the files (an "unknown option"
+or a symbol it cannot find), the fallback is the same pairs as flags: in
+`platform/target.mk` the two `-Wl,-alias_list,FILE` become one
+`-Wl,-alias,'NAME',ALIAS` per non-comment line of each `.aliases` file,
+generated with `sed`, the `$` of the `section$start$` names doubled for make
+and the word single-quoted for the shell; the files stay the single source.
+Then: whether the sanitized suites compare clean, since a runner's result
+line can be cut by another runner's AddressSanitizer report on the shared
+stderr (`platform/test_runner/SUITE-LOG.md`, "The sanitized run at 64 bits";
+the clang rehearsal's sanitized suite on Linux lost one line of 5,884 so,
+"Autotomize cannot decrease weight below 0.1kg" read as "Shadow bytes ...");
+a compare that fails on such a line alone is that, not a difference. And: whether `sdl2-compat` honours
 `SDL_AUDIODRIVER` and `SDL_VIDEODRIVER` set after the library is loaded
 (`test_audio`'s and `test_video`'s refused-driver tests, and the dummy
 drivers the gates ask for); ThreadSanitizer's own memory layout beside the

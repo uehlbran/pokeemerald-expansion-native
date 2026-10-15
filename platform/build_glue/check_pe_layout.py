@@ -26,7 +26,10 @@ reads the PE headers and exits 1, printing one line per problem, unless:
   * above it, the sections the loader keeps (not the discardable debug
     sections) are read-only first and writable after (gba_game.pe.ld moves
     the initialised data there), so that the program's mutable data is one
-    stretch, which host_windows.c's host_image_writable gives;
+    stretch, which host_windows.c's host_image_writable gives; and no
+    writable section of the image lies where an address's bits 24-27 read
+    as EWRAM's (0x42000000-0x42FFFFFF, ...: check_support.ewram_alias), which
+    src/librfu_rfu.c would take for EWRAM;
   * its resources hold the application manifest (type RT_MANIFEST, id 1) and
     the manifest sets the active code page to UTF-8 (build_glue/
     windows_manifest.xml, linked through target.mk), without which the
@@ -44,7 +47,7 @@ import struct
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))   # python3 -I leaves the script's directory off
-from check_support import CheckError, problems_match   # noqa: E402
+from check_support import CheckError, ewram_alias, problems_match   # noqa: E402
 
 IMAGE_BASE = 0x01800000
 CODE_ADDRESS = 0x40001000
@@ -271,6 +274,11 @@ def check_image(image, subsystem_flag):
         elif not section.writable and first_writable is not None:
             problems.append("%s is read-only but follows the writable %s: the writable sections must come last"
                             % (section.name, first_writable.name))
+    for section in image.sections:   # the regions lie below the image's 0x40000000, which ewram_alias starts at
+        alias = ewram_alias(section.address, section.address + section.size) if section.writable else None
+        if alias is not None:
+            problems.append("%s is writable and reaches %#x, whose bits 24-27 read as EWRAM's: src/librfu_rfu.c "
+                            "would take a buffer there for EWRAM" % (section.name, alias))
     if image.manifest is None:
         problems.append("there is no application manifest (resource type 24, id 1): target.mk links "
                         "windows_manifest.o into every executable")
@@ -294,7 +302,7 @@ def self_test():
     READ_ONLY_INITIALISED = 0x00000040 | 0x40000000
     READ_WRITE_INITIALISED = 0x00000040 | 0x40000000 | 0x80000000
 
-    def layout():
+    def layout(rdata_size=0x10, data_size=0x10, bss_size=0x10):
         sections = []
         address = IMAGE_BASE + 0x1000
         for what, region_address, size in REGIONS:
@@ -304,10 +312,13 @@ def self_test():
             address = region_address + round_up(size, 0x1000)
         sections.append(Section(".gap", address, CODE_ADDRESS - address, READ_ONLY_UNINITIALISED))
         sections.append(Section(".text", CODE_ADDRESS, 0x1234, 0x60000020))
-        sections.append(Section(".rdata", CODE_ADDRESS + 0x2000, 0x10, READ_ONLY_INITIALISED))
-        sections.append(Section(".data", CODE_ADDRESS + 0x3000, 0x10, READ_WRITE_INITIALISED))
-        sections.append(Section(".bss", CODE_ADDRESS + 0x4000, 0x10, READ_WRITE_UNINITIALISED))
-        sections.append(Section(".debug", CODE_ADDRESS + 0x5000, 0x10, READ_ONLY_INITIALISED | 0x02000000))
+        address = CODE_ADDRESS + 0x2000
+        for name, size, flags in ((".rdata", rdata_size, READ_ONLY_INITIALISED),
+                                  (".data", data_size, READ_WRITE_INITIALISED),
+                                  (".bss", bss_size, READ_WRITE_UNINITIALISED),
+                                  (".debug", 0x10, READ_ONLY_INITIALISED | 0x02000000)):
+            sections.append(Section(name, address, size, flags))
+            address += round_up(size, 0x1000)
         return Image(IMAGE_BASE, 0x1000, 0x0001 | 0x0002, 0x0100, 0, sections, GOOD_MANIFEST)
 
     GOOD_MANIFEST = (b'<assembly><application><windowsSettings><activeCodePage '
@@ -358,6 +369,18 @@ def self_test():
     image.sections[-1].flags &= ~0x02000000
     expect("a kept read-only section after the data", check_image(image, "--gui"),
            [".debug is read-only but follows the writable .data"])
+    # .rdata starts at 0x40003000, .data and .bss follow it page by page.
+    expect("data reaching 0x42000000", check_image(layout(rdata_size=0x1FFC000, data_size=0x1001), "--gui"),
+           [".data is writable and reaches 0x42000000, whose bits 24-27 read as EWRAM's",
+            ".bss is writable and reaches 0x42001000"])
+    expect("bss reaching it", check_image(layout(rdata_size=0x1FFB000, data_size=0x1000, bss_size=0x1001), "--gui"),
+           [".bss is writable and reaches 0x42000000"])
+    expect("data and bss ending at 0x42000000",
+           check_image(layout(rdata_size=0x1FFB000, data_size=0x1000, bss_size=0x1000), "--gui"), [])
+    expect("read-only data across the window, the data from its end",
+           check_image(layout(rdata_size=0x2FFD000, bss_size=0x0EFFF000), "--gui"), [])
+    expect("bss into the next window", check_image(layout(rdata_size=0x2FFD000, bss_size=0x0EFFF001), "--gui"),
+           [".bss is writable and reaches 0x52000000"])
     image = layout()
     image.manifest = None
     expect("no manifest", check_image(image, "--gui"), ["there is no application manifest"])

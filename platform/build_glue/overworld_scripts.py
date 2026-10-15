@@ -241,6 +241,13 @@ def self_test():
            split(SELF_TEST_C.replace("BLOCK1", "0").replace("BLOCK2", "0"), "S"),
            (SELF_TEST_EXPECTED_C.replace(SELF_TEST_EXPECTED_C.splitlines()[6], "    const u8 *a = 0;")
             .replace(SELF_TEST_EXPECTED_C.splitlines()[8], "    const u8 *b = 0;"), "", []))
+    # A block whose string spans lines, as the preprocessor can leave one: the
+    # lines after it keep their numbers (the compiler's diagnostics name them).
+    spread = block("setvar 0x8000, 2; end;").replace('"1:\\n" ', '"1:\\n"\n        ', 1)
+    expect("a block over two lines leaves its line break",
+           split("const u8 *c = %s;\nint after;\n" % spread, "S")[0],
+           "const u8 *c = ({ const u8 *_script; { extern const unsigned char S_1[]; _script = S_1; }\n"
+           " _script; });\nint after;\n")
     expect("decode", decode(r'"a\n" "\"\\" "\101\x42"'), 'a\n"\\AB')
     expect("a name that is not an identifier", split("", "a-b")[2], ["the name 'a-b' is not an identifier"])
     for name, text, wanted in SELF_TEST_REFUSALS:

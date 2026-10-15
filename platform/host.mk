@@ -66,6 +66,9 @@ SYMBOL_MAP_SELECT = $$4 == "FUNC" && $$5 != "" && $$1 != ""
 else ifeq ($(TARGET_OS),Darwin)
 
 HOST_SRCS := host_posix.c host_macos.c host_macos_stack.c host_linked.c
+# The portable modules a host file calls, linked wherever the host files are:
+# host_macos.c asks x86_divide whether a SIGFPE's instruction is a division.
+HOST_MODULE_SRCS := x86_divide.c
 # posix as on Linux, and darwin: what only macOS has (_NSGetExecutablePath, the
 # Mach-O image's load commands, F_FULLFSYNC, its own system calls' numbers).
 HOST_TEST_DIRS := posix darwin

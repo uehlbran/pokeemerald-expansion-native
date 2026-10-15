@@ -27,7 +27,17 @@ u16 ArcTan2(s16 x, s16 y);
 
 void CpuSet(const void *src, void *dest, u32 control);
 
-#if MODERN
+#if PLATFORM_NATIVE
+// NOTE: Assumes 16-bit CpuSets unless control is a constant and has
+// CPU_SET_32BIT set.
+#define CpuSet(src, dest, control) \
+    do \
+    { \
+        _Static_assert(__alignof__(src) >= __builtin_choose_expr(__builtin_constant_p(control), ((control) & CPU_SET_32BIT) ? 4 : 2, 2), "source potentially unaligned"); \
+        _Static_assert(__alignof__(dest) >= __builtin_choose_expr(__builtin_constant_p(control), ((control) & CPU_SET_32BIT) ? 4 : 2, 2), "destination potentially unaligned"); \
+        CpuSet(src, dest, control); \
+    } while (0)
+#elif MODERN
 // NOTE: Assumes 16-bit CpuSets unless control is a constant and has
 // CPU_SET_32BIT set.
 #define CpuSet(src, dest, control) \

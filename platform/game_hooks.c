@@ -187,6 +187,12 @@ void PlatformCallWithStack(void (*entry)(void *context), void *context, void *st
     }
 }
 
+bool PlatformIsCallStackAddress(uintptr_t address)
+{
+    const struct host_span stack = host_memory_call_stack();
+    return address >= stack.start && address < stack.end;
+}
+
 /* --- PlatformIsRomPointer -------------------------------------------------- */
 
 bool PlatformIsRomPointer(uintptr_t address)

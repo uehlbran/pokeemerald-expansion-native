@@ -150,12 +150,22 @@ bool PlatformIsRomPointer(uintptr_t address);
  * the runner state it lives in; so stackTop is not used: every call starts
  * at the top of one platform-owned stack of GAME_HOOKS_CALL_STACK_SIZE
  * bytes below GAME_HOOKS_CALL_STACK_LIMIT, which nothing else uses, so locals
- * survive between calls and land at the same addresses each time, which is
- * what the runner relies on (and their addresses fit its 27-bit fields). The
+ * survive between calls and land at the same addresses each time, as on the
+ * GBA, and their addresses fit the runner's 27-bit fields. Natively the
+ * runner does not write into a call's locals after it returned: it keeps a
+ * capture's value until THEN's call (PlatformIsCallStackAddress). The
  * switch is host_stack's, annotated for AddressSanitizer's fiber support.
  * A longjmp out of entry (PlatformJumpToAgbMainLoop, PlatformTestRunnerExit)
  * first switches back to the caller's stack. Not reentrant: a call from
  * inside entry runs entry on the current stack, with a report. */
 void PlatformCallWithStack(void (*entry)(void *context), void *context, void *stackTop);
+
+/* test/test_runner_battle.c (native only): whether address is on the stack
+ * PlatformCallWithStack runs entry on, that is, the address of a battle test
+ * function's variable. The runner keeps the value of a capture into one
+ * (HP_BAR's captureDamage:, ...) until THEN's call, where SCENE runs again
+ * and the value is written into that call's variable ("A capture" there).
+ * False for every address when the stack is not linked. */
+bool PlatformIsCallStackAddress(uintptr_t address);
 
 #endif /* PLATFORM_GAME_HOOKS_H */

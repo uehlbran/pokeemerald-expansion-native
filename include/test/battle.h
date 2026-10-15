@@ -1219,7 +1219,18 @@ void GivePlayerItem(u32 sourceLine, enum Item, u32 quantity);
 
 /* Scene */
 
+#if PLATFORM_NATIVE
+// THEN's call runs SCENE again when SCENE captured into the test function's
+// variables, so that THEN reads values written in its own call (see "A
+// capture" in test/test_runner_battle.c).
+void OpenScene(void);
+void CloseScene(u32 sourceLine);
+#define SCENE for (OpenScene(); gBattleTestRunnerState->runScene; CloseScene(__LINE__))
+#else
+#line 1222
 #define SCENE for (; gBattleTestRunnerState->runScene; gBattleTestRunnerState->runScene = FALSE)
+#endif
+#line 1223
 
 #define ONE_OF for (OpenQueueGroup(__LINE__, QUEUE_GROUP_ONE_OF); gBattleTestRunnerState->data.queueGroupType != QUEUE_GROUP_NONE; CloseQueueGroup(__LINE__))
 #define NONE_OF for (OpenQueueGroup(__LINE__, QUEUE_GROUP_NONE_OF); gBattleTestRunnerState->data.queueGroupType != QUEUE_GROUP_NONE; CloseQueueGroup(__LINE__))

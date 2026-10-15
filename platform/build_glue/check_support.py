@@ -15,6 +15,9 @@ one. This module holds the parts that are the same in all three:
   * matching_rule(): which "object-glob symbol-glob ..." rule applies to a
     symbol, with '{stem}' standing for the object's name without '.o'
     (the lists data_address_words.txt and check_data_layout.RULES).
+  * ewram_alias(): where writable data in the executable would be taken for
+    EWRAM by a test of an address's bits 24-27 (check_pe_layout.py and
+    check_macho_layout.py refuse it; gba_regions.ld asserts the same).
   * gnu_as(): the command of the GNU assembler that the self-tests of the
     object readers, the converter and the checkers assemble their ELF
     fixtures with: $GNU_AS if it is set, else `as`. On macOS `as` is
@@ -72,6 +75,31 @@ def matching_rule(rules, object_name, symbol_name):
     return None
 
 
+# GBATEK "GBA Memory Map": 02000000-02FFFFFF is EWRAM and its mirrors, so
+# expansion tests an address's bits 24-27 for 2 to ask whether it is in EWRAM
+# (src/librfu_rfu.c rfu_initializeAPI refuses an API buffer there). In the
+# native executable, linked from 0x40000000 up, the addresses with those bits
+# 2 are 0x42000000-0x42FFFFFF, then 0x52000000-0x52FFFFFF and so on; a
+# variable there would be taken for EWRAM.
+IMAGE_START = 0x40000000
+NIBBLE_BLOCK = 0x10000000
+EWRAM_NIBBLE_OFFSET, EWRAM_NIBBLE_SIZE = 0x02000000, 0x01000000
+
+
+def ewram_alias(start, end):
+    """The first address of [start, end) at or above IMAGE_START whose bits
+    24-27 are 2, as EWRAM's are, or None."""
+    address = max(start, IMAGE_START)
+    while address < end:
+        window = address - address % NIBBLE_BLOCK + EWRAM_NIBBLE_OFFSET
+        if window <= address < window + EWRAM_NIBBLE_SIZE:
+            return address
+        if address < window:
+            return window if window < end else None
+        address = window - EWRAM_NIBBLE_OFFSET + NIBBLE_BLOCK
+    return None
+
+
 def gnu_as():
     """The GNU assembler's command as a list: $GNU_AS split as a shell would, else ['as']."""
     return shlex.split(os.environ.get("GNU_AS") or "as")
@@ -107,6 +135,17 @@ def self_test():
     expect("rule: first match wins", matching_rule(rules, "a.o", "gOther"), 2)
     expect("rule: the symbol matches but the object does not", matching_rule(rules[:1], "b.o", "gTable"), None)
     expect("rule: none", matching_rule(rules, "b.o", "Other"), None)
+    expect("ewram_alias: below the window", ewram_alias(0x41000000, 0x42000000), None)
+    expect("ewram_alias: reaching it", ewram_alias(0x41000000, 0x42000001), 0x42000000)
+    expect("ewram_alias: inside it", ewram_alias(0x429BDD08, 0x44C9E940), 0x429BDD08)
+    expect("ewram_alias: from its first byte", ewram_alias(0x42000000, 0x42000001), 0x42000000)
+    expect("ewram_alias: its last byte", ewram_alias(0x42FFFFFF, 0x43000000), 0x42FFFFFF)
+    expect("ewram_alias: from its end", ewram_alias(0x43000000, 0x52000000), None)
+    expect("ewram_alias: the next block's", ewram_alias(0x43000000, 0x52000010), 0x52000000)
+    expect("ewram_alias: past the next block's", ewram_alias(0x53000000, 0x62000000), None)
+    expect("ewram_alias: the GBA's EWRAM itself is not the image's", ewram_alias(0x02000000, 0x02040000), None)
+    expect("ewram_alias: from below the image", ewram_alias(0x02000000, 0x42000001), 0x42000000)
+    expect("ewram_alias: empty", ewram_alias(0x42000010, 0x42000010), None)
     saved = os.environ.pop("GNU_AS", None)
     try:
         expect("gnu_as: as by default", gnu_as(), ["as"])
