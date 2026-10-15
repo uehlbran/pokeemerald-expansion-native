@@ -18,9 +18,9 @@
  * one exception is crash_reboot's handler, which, in test-runner mode,
  * replaces a crashed process with a fresh run of the same program.
  *
- * Before any module starts, main finds the player's files (data_dir.h: the
+ * Before any module starts, main finds the player's files (player.h: the
  * data directory, the save, the clock's offset and the settings file, read
- * then; settings.h) and takes the save's lock (save_lock.h), so that a
+ * then) and takes the save's lock (save_lock.h), so that a
  * second instance on the same save stops there, and it releases the lock
  * once every module has stopped, after the last store and before a restart,
  * whose new run finds the same files from the same arguments and takes the
@@ -61,11 +61,11 @@
 #include "frame_pacer.h"
 #include "game_hooks.h"
 #include "gba_memmap.h"
-#include "help_text.h"
 #include "input.h"
 #include "interrupt.h"
 #include "options.h"
 #include "overlay.h"
+#include "player.h"
 #include "ppu.h"
 #include "psg.h"
 #include "replay_session.h"
@@ -74,7 +74,6 @@
 #include "save_convert.h"
 #include "save_file.h"
 #include "save_lock.h"
-#include "settings.h"
 #include "timer.h"
 #include "transfer_bounds.h"
 #include "version.h"
@@ -102,20 +101,6 @@ extern void (*gIntrTable[])(void);
 /* main's two jump targets: the end of the game, and SoftReset. */
 static jmp_buf exit_target;
 static jmp_buf reset_target;
-
-/* The player's files, the settings read from one of them, and what --keys
- * and the overlay show of both: found once, before any module starts
- * (find_player_files), and kept for the run, since modules point into
- * them. */
-static struct data_paths player_paths;
-static struct settings player_settings;
-static struct help_info player_help;
-
-/* A path of player_paths, or NULL for a file the run has none of. */
-static const char *path_or_null(const char *path)
-{
-    return path[0] != '\0' ? path : NULL;
-}
 
 /* --- The modules, in dependency order ------------------------------------ */
 
@@ -232,7 +217,7 @@ static int64_t read_fixed_clock(void)
 
 static int start_rtc(const struct options *o)
 {
-    const char *const offset_path = path_or_null(player_paths.rtc_offset);
+    const char *const offset_path = player_rtc_offset_path();
     fixed_clock_base = o->rtc_fixed_epoch;
     if (o->rtc_fixed) /* no host time zone in a deterministic run */
         return rtc_init_utc(read_fixed_clock, offset_path);
@@ -254,26 +239,18 @@ static int start_bios(const struct options *o)
     return 0;
 }
 
-/* The overlay's text: what --keys prints. */
-static void write_player_help(overlay_line_sink sink, void *context)
-{
-    help_text_write(&player_help, sink, context);
-}
-
-/* The help overlay, for a window played from the keyboard only (overlay.h
- * says why); before video, which draws it into its texture. */
+/* The help overlay, for a window played from the keyboard only
+ * (player_wants_overlay); before video, which draws it into its texture. */
 static int start_overlay(const struct options *o)
 {
-    if (o->headless || o->test_runner || o->replay_path != NULL)
-        return 0;
-    return overlay_init(write_player_help);
+    return player_wants_overlay(o) ? overlay_init(player_write_help) : 0;
 }
 
 static int start_video(const struct options *o)
 {
     struct video_config config = {
         .headless = o->headless,
-        .scale = o->scale_given ? o->scale : player_settings.scale,
+        .scale = player_window_scale(o),
         .title = MAIN_WINDOW_TITLE,
     };
     return video_init(&config);
@@ -283,8 +260,7 @@ static int start_input(const struct options *o)
 {
     /* Headless there is no window to take keys from, and a replay supplies
      * them; the script source reads "no key pressed" until a replay sets it. */
-    return input_init(o->headless || o->replay_path != NULL ? INPUT_SOURCE_SCRIPT : INPUT_SOURCE_HOST,
-                      &player_settings.keymap);
+    return input_init(o->headless || o->replay_path != NULL ? INPUT_SOURCE_SCRIPT : INPUT_SOURCE_HOST, player_keymap());
 }
 
 static int start_flash(const struct options *o)
@@ -330,7 +306,7 @@ static int adopt_save_layout(const char *path, uint32_t pointer_bits)
 static int start_save_file(const struct options *o)
 {
     (void)o;
-    const char *const path = path_or_null(player_paths.save);
+    const char *const path = player_save_path();
     if (save_file_init(path) != SAVE_FILE_OK)
         return -1;
     int status = save_file_load();
@@ -542,43 +518,6 @@ static int restart_process(int argc, char **argv, int64_t epoch, uint32_t line)
     return MAIN_EXIT_FAILURE;
 }
 
-/* The data directory and the files in it, and the settings file's
- * contents (reported on stderr if any line is wrong), before the save's lock
- * is taken; test-runner mode has none of them. Returns 0, or -1 (reported). */
-static int find_player_files(const struct options *o)
-{
-    if (data_dir_resolve(o, data_dir_sdl_host(), &player_paths) != DATA_DIR_OK)
-        return -1;
-    if (player_paths.settings[0] == '\0')
-        settings_defaults(&player_settings);
-    else if (settings_load(player_paths.settings, &player_settings) != 0)
-        return -1;
-    player_help = (struct help_info){
-        .version = version_string(),
-        .keymap = &player_settings.keymap,
-        .paths = &player_paths,
-        .settings_found = player_settings.found,
-    };
-    return 0;
-}
-
-static void print_line(const char *line, void *context)
-{
-    FILE *const out = context;
-    (void)fprintf(out, "%s\n", line);
-}
-
-/* --keys: help_text's lines on stdout. */
-static int print_keys(void)
-{
-    help_text_write(&player_help, print_line, stdout);
-    if (fflush(stdout) != 0 || ferror(stdout)) {
-        (void)fprintf(stderr, "main: writing the keys to standard output failed\n");
-        return MAIN_EXIT_FAILURE;
-    }
-    return MAIN_EXIT_OK;
-}
-
 int main(int argc, char **argv)
 {
     struct options options;
@@ -590,16 +529,18 @@ int main(int argc, char **argv)
         return MAIN_EXIT_OK;
     }
     if (options.version) {
-        (void)printf(VERSION_PROGRAM_NAME " %s\n", version_string());
+        (void)printf("%s\n", version_string());
         return MAIN_EXIT_OK;
     }
-    if (find_player_files(&options) != 0)
+    /* The data directory and the files in it, and the settings file's
+     * contents, before the save's lock is taken. */
+    if (player_find(&options, data_dir_sdl_host()) != 0)
         return MAIN_EXIT_FAILURE;
     if (options.keys)
-        return print_keys();
+        return player_print_keys(stdout) == 0 ? MAIN_EXIT_OK : MAIN_EXIT_FAILURE;
 
     /* Test-runner mode has no save path: it writes no save and takes no lock. */
-    const char *const save_path = path_or_null(player_paths.save);
+    const char *const save_path = player_save_path();
     if (save_path != NULL && save_lock_take(save_path) != SAVE_LOCK_OK)
         return MAIN_EXIT_FAILURE; /* reported */
     if (!start_steps(module_steps, MODULE_STEP_COUNT, &options)) {

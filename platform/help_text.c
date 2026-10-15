@@ -51,6 +51,6 @@ void help_text_write(const struct help_info *info, help_text_sink sink, void *co
     char line[HELP_TEXT_LINE_SIZE];
     (void)snprintf(line, sizeof line, VERSION_PROGRAM_NAME " %s", info->version);
     sink(line, context);
-    write_keys(info->keymap, sink, context);
     write_files(info, sink, context);
+    write_keys(info->keymap, sink, context);
 }

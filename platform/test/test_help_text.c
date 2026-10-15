@@ -41,6 +41,10 @@ PTEST(the_defaults_per_user_line_for_line)
 {
     static const char *const expected[] = {
         "pokeemerald-native v1-test",
+        "Data directory (per-user): /home/p/.local/share/pen/app/",
+        "Save: /home/p/.local/share/pen/app/pokeemerald.sav",
+        "Clock: /home/p/.local/share/pen/app/pokeemerald.rtc",
+        "Settings: /home/p/.local/share/pen/app/settings.ini (not there: the defaults)",
         "Keyboard:",
         "  A       Z",
         "  B       X",
@@ -53,10 +57,6 @@ PTEST(the_defaults_per_user_line_for_line)
         "  R       S",
         "  L       A",
         "Controller: A, B, Back (Select), Start, the shoulders (L, R), the D-pad or the left stick",
-        "Data directory (per-user): /home/p/.local/share/pen/app/",
-        "Save: /home/p/.local/share/pen/app/pokeemerald.sav",
-        "Clock: /home/p/.local/share/pen/app/pokeemerald.rtc",
-        "Settings: /home/p/.local/share/pen/app/settings.ini (not there: the defaults)",
     };
     const struct input_keymap keymap = input_default_keymap();
     const struct data_paths paths = paths_in(DATA_DIR_PER_USER, "/home/p/.local/share/pen/app/");
@@ -78,10 +78,10 @@ PTEST(the_keys_in_force_and_a_settings_file_found_portable)
     memset(&collected, 0, sizeof collected);
     help_text_write(&info, collect, &collected);
     PT_ASSERT_EQ_STR(collected.lines[0], "pokeemerald-native unknown");
-    PT_ASSERT_EQ_STR(collected.lines[2], "  A       Space");
-    PT_ASSERT_EQ_STR(collected.lines[11], "  L       Left Shift");
-    PT_ASSERT_EQ_STR(collected.lines[13], "Data directory (portable): C:\\Games\\pen\\");
-    PT_ASSERT_EQ_STR(collected.lines[16], "Settings: C:\\Games\\pen\\settings.ini");
+    PT_ASSERT_EQ_STR(collected.lines[6], "  A       Space");
+    PT_ASSERT_EQ_STR(collected.lines[15], "  L       Left Shift");
+    PT_ASSERT_EQ_STR(collected.lines[1], "Data directory (portable): C:\\Games\\pen\\");
+    PT_ASSERT_EQ_STR(collected.lines[4], "Settings: C:\\Games\\pen\\settings.ini");
 }
 
 PTEST(a_given_directory_and_a_run_without_settings_or_directory)
@@ -91,16 +91,16 @@ PTEST(a_given_directory_and_a_run_without_settings_or_directory)
     const struct help_info info = {.version = "x", .keymap = &keymap, .paths = &paths, .settings_found = true};
     memset(&collected, 0, sizeof collected);
     help_text_write(&info, collect, &collected);
-    PT_ASSERT_EQ_STR(collected.lines[13], "Data directory (--data-dir): out/");
+    PT_ASSERT_EQ_STR(collected.lines[1], "Data directory (--data-dir): out/");
     paths = (struct data_paths){.mode = DATA_DIR_UNUSED};
     (void)snprintf(paths.save, sizeof paths.save, "a.sav");
     (void)snprintf(paths.rtc_offset, sizeof paths.rtc_offset, "a.rtc");
     memset(&collected, 0, sizeof collected);
     help_text_write(&info, collect, &collected);
-    PT_ASSERT_EQ_STR(collected.lines[13], "Data directory: none");
-    PT_ASSERT_EQ_STR(collected.lines[14], "Save: a.sav");
-    PT_ASSERT_EQ_STR(collected.lines[15], "Clock: a.rtc");
-    PT_ASSERT_EQ_STR(collected.lines[16], "Settings: none read");
+    PT_ASSERT_EQ_STR(collected.lines[1], "Data directory: none");
+    PT_ASSERT_EQ_STR(collected.lines[2], "Save: a.sav");
+    PT_ASSERT_EQ_STR(collected.lines[3], "Clock: a.rtc");
+    PT_ASSERT_EQ_STR(collected.lines[4], "Settings: none read");
 }
 
 PTEST_MAIN()

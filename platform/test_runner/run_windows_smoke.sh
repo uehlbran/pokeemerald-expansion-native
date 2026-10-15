@@ -28,7 +28,8 @@
 #
 # Then the player's files as --keys prints them (docs/RUNNING.md): with
 # --data-dir, the four paths in it, the default keys, and, with a settings.ini
-# there, its key and its bad line reported by number; --version; and portable
+# there, its key and its bad line reported by number; --version, the version
+# alone, the one --keys printed first; and portable
 # mode, a copy of the executable (and SDL2.dll) beside a settings.ini, whose
 # --keys names the copy's directory as SDL_GetBasePath gives it (Windows'
 # form, through cygpath, with its trailing separator).
@@ -173,7 +174,10 @@ has_line "Save: keys/pokeemerald.sav" || fail "--keys does not name the save in 
 has_line "Clock: keys/pokeemerald.rtc" || fail "--keys does not name the clock's file in the data directory"
 has_line "Settings: keys/settings.ini (not there: the defaults)" || fail "--keys does not say the settings file is not there"
 has_line "  A       Z" || fail "--keys does not show A on Z, the default"
-head -n 1 "$scratch/stdout" | tr -d '\r' | grep -q '^pokeemerald-native [A-Za-z0-9._+-]*$' || fail "--keys does not start with the version"
+keys_version=$(head -n 1 "$scratch/stdout" | tr -d '\r')
+[[ $keys_version =~ ^pokeemerald-native\ [A-Za-z0-9._+-]+$ ]] || fail "--keys does not start with the version"
+[ "$(sed -n 2p "$scratch/stdout" | tr -d '\r')" = "Data directory (--data-dir): keys" ] \
+    || fail "--keys does not name the data directory right after the version"
 
 echo "== --keys with a settings file in the data directory"
 printf 'a = q\r\nnot a setting\r\n' > "$work/keys/settings.ini" || fail "cannot write keys/settings.ini"
@@ -187,7 +191,8 @@ grep -qF "settings: keys/settings.ini:2: 'not a setting' is not a 'setting = val
 echo "== --version"
 run_plain "$exe" "$work" --version
 [ $code -eq 0 ] || fail "--version: exit status $code"
-tr -d '\r' < "$scratch/stdout" | grep -qx 'pokeemerald-native [A-Za-z0-9._+-]*' || fail "--version does not print the version alone"
+[ "$(tr -d '\r' < "$scratch/stdout")" = "${keys_version#pokeemerald-native }" ] \
+    || fail "--version does not print the version alone, the one --keys printed"
 
 echo "== portable: a copy of the executable beside a settings.ini"
 portable="$scratch/portable"
