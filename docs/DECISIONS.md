@@ -2931,3 +2931,103 @@ platform/arm_division_libgcc/libgcc_division.txt in full, every row.
 This starts nothing. No Apple-silicon work starts until the owner says so
 in a later session; the ruling fixes only how P1 is built if it is ever
 scheduled.
+
+## 2026-10-15: CI artifacts never hold the game beyond a run
+
+The repository goes public soon, as source only. On a public repository
+every workflow artifact is downloadable by any logged-in GitHub user, and a
+built executable (the game, the test runner, any archive of either)
+contains the complete game's assets, which this project never distributes
+(README; "Why no public release" above). So no artifact may hold the game
+or any part of it beyond the minutes a job needs.
+
+**The audit.** Every `actions/upload-artifact` step of the four workflows of
+this project, with what its `path` matched and what was done. Upstream's
+build.yml and labels.yml upload nothing; docs.yml's only upload is
+`actions/upload-pages-artifact` of `docs/book` (upstream's mdBook output of
+the documentation, no game; it is filtered to upstream's branches and does
+not run here). The smoke scripts (tests/smoke/*.sh, lib.sh, save_steps.sh)
+write into `out/` only what the game's `--out`, `--save` and
+`--rtc-offset` write and what the scripts derive from it: dumps (`.txt`),
+screenshots (`.ppm`, `failed.ppm`), `expanded.replay`, saves (`.sav`,
+`before.sav`), clock files (`.rtc`), the game's `stdout.log`/`stderr.log`,
+sanitizer lists (`.all`, `.known-patterns`) and `.diff` files. None copies
+or links an executable, a ROM, converted assets or a symbol map there
+(`cp` in them copies saves and clock files); the Windows smoke works in
+`mktemp -d`, outside `out/`, and its copies of the executable are removed
+by the script; the hydra's patched copy sits beside the test runner in
+`build/`, removed on exit. Nothing sets a core file's location to `out/`.
+A save written by a replay holds the replay's game state (the player, the
+party, the map), not expansion's assets, which live in the executable; the
+screenshots are 240x160 frames of the replay's scenes.
+
+| Workflow, artifact | What `path` matched | Game-bearing | Disposition |
+| --- | --- | --- | --- |
+| native.yml `replay-outputs-*` (6 steps, failure only) | `out/` whole | no (only the above) | narrowed to `out/**/*.EXT`, one pattern per extension (txt, log, ppm, sav, rtc, diff, replay, all, known-patterns; no braces, @actions/glob sets nobrace and `{a,b}` matches nothing); excludes anything else that might ever land in `out/` (executables, `.symbols`, `.o`, cores) |
+| windows.yml `windows-build` | the Windows game `.exe`, its `.symbols`, `SDL2.dll`, the 70 unit-test `.exe`s and `.symbols`, the Linux save directory | yes (the game and the tests) | `retention-days: 1`, deleted by `cleanup` |
+| windows.yml `linux-build` | the Linux game and its `.symbols` | yes | `retention-days: 1`, deleted by `cleanup` |
+| windows.yml `windows-suite-build` | the Windows test runner `.exe` and `SDL2.dll` | yes | `retention-days: 1`, deleted by `cleanup` |
+| windows.yml `suite-linux64` | `suite-linux64.log` | no | kept (on the keep list) |
+| windows.yml `windows-results` | `out/suite-windows.log`, the whole `again/` directory | no (log; dumps, screenshots, saves) | narrowed to the log and `again/*.EXT`, one pattern per extension (txt, ppm, sav, rtc, log); kept |
+| windows.yml `cross-os-save-outputs`, `compare-outputs`, `windows-logs-before-the-suite`, `windows-logs` (failure only) | `out/` whole (and the unit tests' `*.log`) | no | narrowed as native.yml's, one pattern per extension; kept |
+| release.yml `linux-archive`, `windows-archive` | the tarball, the zip | yes | uploaded only with `publish`, one day, deleted by `cleanup` |
+| release.yml `release-files` | both archives and `SHA256SUMS.txt` | yes | created only with `publish`, one day (was 14), deleted by `cleanup`; the release is the publication |
+| probes.yml `probe-windows-layout`, `probe-macos-layout`, `probe-macos-arm64-layout` | `research/probes/*/out/*.txt` | no | unchanged: the reports and run logs are text; the probe executables, objects and linker outputs in the same `out/` do not match `*.txt`, and a probe holds no game (a few empty sections and a C file) |
+
+**The mechanism.** The rule is stated at the top of each of the four
+workflows. Game-bearing artifacts that carry a build between jobs
+(windows.yml's three) get `retention-days: 1`, and a last job, `cleanup`
+(`if: always()`, `needs:` every other job of the workflow, so that it runs
+after the consumers have finished; `permissions: actions: write` and
+`contents: read` on that job only), runs the composite action
+`.github/actions/delete-run-artifacts`. The action lists this run's
+artifacts through the API and deletes (`gh api -X DELETE
+repos/{owner}/{repo}/actions/artifacts/<id>`) every one whose name is not on
+the job's explicit keep list of artifacts without the game, then lists
+again and fails if a deletion failed or anything not kept is left. The
+default is therefore closed: a new artifact that is not named as safe is
+deleted, and a listing that fails fails the job. windows.yml's list:
+`suite-linux64`, `windows-results`, `windows-logs-before-the-suite`,
+`windows-logs`, `cross-os-save-outputs`, `compare-outputs`. release.yml's
+list is empty. The failure-only uploads name their files by extension, so a
+binary that lands in `out/` is not uploaded; the cost is that a file of
+another kind written there is not kept either (add its extension when a
+script starts writing one). Expired artifacts are skipped in the listing, and the check after the deletions re-lists up to 5 times, 3 s apart, failing only if a non-kept artifact is still listed after the last try. If `cleanup` cannot run or fails, the exposure is the one-day retention, not zero. Because the builds are deleted, a finished run cannot re-run a single failed job; "re-run all jobs" is the way. native.yml uploads nothing game-bearing and
+needs no `cleanup`.
+
+**release.yml.** Without `publish` (the default) a run builds and checks
+each archive in its own job and uploads nothing: the contents listed and
+compared with the seven (Linux) or six (Windows) files each must hold, the
+Linux executable started headless from the unpacked tarball through its
+launcher (`--version`, then `--headless --frames 60`, save and clock in a
+scratch directory), the Windows executable's PE format checked (it cannot
+start on a Linux runner; windows.yml starts the same build on Windows), and
+the SHA-256 of each archive printed in the log. With `publish` the archives
+go to the jobs after them as one-day artifacts, `checksums` makes
+`SHA256SUMS.txt` and the attestations (the step is now on the publish path
+only, so a run without `publish` no longer ends red on a private
+repository), `publish` creates the release, and `cleanup` deletes the
+artifacts. The tag validation and the never-cancelled concurrency group
+are unchanged.
+
+**Not run.** Actions refuses every job for billing, so none of this could be
+run on a runner when it was written; it was checked by reading, by parsing
+each workflow as YAML and by reading every `needs:` and `if:` chain. The
+first runs after billing returns are its proof, and each must show: windows.yml's
+`cleanup` listing its deletions (`delete windows-build`, `delete
+linux-build`, `delete windows-suite-build`, and `kept` for the rest); no
+game-bearing artifact on the finished run's page; a release.yml run
+without `publish` with no artifact at all and the SHA-256 lines in the
+two jobs' logs; and, once, a run with `publish` on a scratch tag in a
+private copy, if the owner wants the publish path seen before it is used.
+Also to show: a release.yml run without `publish` ends green with no
+artifact on the page and `cleanup` deleting nothing; `cleanup` running and
+deleting after a failed job and after a cancelled run; `inputs.publish`
+evaluated as a boolean in the job- and step-level `if:`s; the `objdump` line
+and the 60-frame start passing on the runner; the GITHUB_TOKEN's DELETE
+succeeding (a 403 "Resource not accessible by integration" would mean
+`actions: write` is not enough); the builds surviving until `cleanup`, so
+`windows` and `compare` still download them. Things to look at in those runs: that `sparse-checkout` finds the local
+action, that `gh api --paginate --jq` prints the tab-separated lines the
+action reads, that the second listing no longer shows a deleted artifact,
+and that the globs match what the failure paths wrote.

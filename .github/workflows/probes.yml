@@ -1,3 +1,9 @@
+# Artifacts (docs/DECISIONS.md, "CI artifacts never hold the game beyond a run"):
+# no artifact may hold the game or any part of it beyond the run, because a
+# public repository's artifacts are public. This file uploads the probes' text reports only
+# (out/*.txt and the macOS link probe's report.txt); the probe executables stay on the
+# runner, and none holds the game.
+#
 # Milestone 8 loader and toolchain probes (research/probes/README.md). Manual
 # trigger only, one probe a run:
 #   gh workflow run probes.yml --ref <branch> -f probe=m2

@@ -1,0 +1,78 @@
+# The last step of a workflow that carries a build between jobs: deletes every
+# artifact of this run whose name is not on the keep list, so that the game
+# (a built executable holds the complete game's assets) is not downloadable
+# after the run, whatever the artifact's retention. The keep list is the
+# explicit list of the workflow's artifacts that hold no game (logs, suite
+# results, replay dumps); an artifact added to the workflow and not named
+# there is deleted, so a new game-bearing artifact cannot be forgotten
+# silently. Fails if the listing, a deletion or the check afterwards fails.
+# docs/DECISIONS.md, "CI artifacts never hold the game beyond a run".
+#
+# The job that uses this action needs `permissions: actions: write` (and
+# contents: read for the checkout that finds this file), and `needs:` every
+# other job of the workflow with `if: always()`.
+name: Delete this run's artifacts
+description: Delete every artifact of the run whose name is not on the keep list; fail if one cannot be deleted.
+
+inputs:
+  keep:
+    description: 'Names of the artifacts to keep, one per line (artifacts that hold no game).'
+    required: false
+    default: ''
+  token:
+    description: 'A token with actions: write.'
+    required: false
+    default: ${{ github.token }}
+
+runs:
+  using: composite
+  steps:
+    - name: Delete the artifacts that are not on the keep list
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.token }}
+        GH_REPO: ${{ github.repository }}
+        RUN_ID: ${{ github.run_id }}
+        KEEP: ${{ inputs.keep }}
+      run: |
+        set -euo pipefail
+        listing() {
+          gh api --paginate "repos/$GH_REPO/actions/runs/$RUN_ID/artifacts" \
+            --jq '.artifacts[] | select(.expired | not) | [.id, .name] | @tsv'
+        }
+        kept() { printf '%s\n' "$KEEP" | grep -Fxq -- "$1"; }
+        # Captured first, so that a listing that fails fails the step (a
+        # process substitution would hide its status).
+        before=$(listing)
+        failed=0
+        while IFS=$'\t' read -r id name; do
+          [ -n "$id" ] || continue
+          if kept "$name"; then
+            echo "kept    $name (artifact $id)"
+            continue
+          fi
+          echo "delete  $name (artifact $id)"
+          if ! gh api -X DELETE "repos/$GH_REPO/actions/artifacts/$id"; then
+            echo "::error::could not delete the artifact $name ($id)"
+            failed=1
+          fi
+        done <<< "$before"
+        # Listing again, up to 5 times 3 s apart (the API may lag behind a
+        # deletion): fails only if a non-kept artifact is still listed after
+        # the last try.
+        left=1
+        for try in 1 2 3 4 5; do
+          left=0
+          after=$(listing)
+          while IFS=$'\t' read -r id name; do
+            [ -n "$id" ] || continue
+            if ! kept "$name"; then
+              echo "try $try: the artifact $name ($id) is still listed"
+              left=1
+            fi
+          done <<< "$after"
+          [ "$left" -eq 0 ] && break
+          [ "$try" -eq 5 ] || sleep 3
+        done
+        [ "$left" -eq 0 ] || echo "::error::artifacts that are not on the keep list are still on the run"
+        [ "$failed" -eq 0 ] && [ "$left" -eq 0 ]

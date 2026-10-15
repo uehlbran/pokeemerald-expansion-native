@@ -1,32 +1,43 @@
 # The release pipeline: the Linux 64-bit tarball, the Windows 64-bit zip and
-# the macOS x86_64 tarball, their SHA-256 sums and build-provenance attestations, kept on the run as
-# artifacts. By hand only.
+# the macOS x86_64 tarball, their SHA-256 sums and build-provenance
+# attestations. By hand only.
 #
 # THE OWNER'S RULE: no public release and no tag without the owner's explicit
 # instruction. A built executable contains the complete game's assets, so a
 # public release is legally the same as distributing a ROM, which this project
 # does not do (docs/DECISIONS.md, "Why no public release"). The default is
-# therefore `publish: false`: the archives stay on the workflow run for the
-# owner's own testing, and nothing is created. `publish: true` with a `tag`
-# creates a GitHub release at the built commit; nobody but the owner sets it.
+# therefore `publish: false`: each archive is built and checked in its own job
+# (its contents listed and compared with what it must hold, the Linux
+# executable started headless, the SHA-256 printed in the log; the macOS one
+# started from its archive), and NOTHING is uploaded or created. `publish:
+# true` with a `tag` uploads the archives for the jobs after it and creates a
+# GitHub release at the built commit; nobody but the owner sets it.
+#
+# Artifacts (docs/DECISIONS.md, "CI artifacts never hold the game beyond a
+# run"): no artifact may hold the game or any part of it beyond the run, and a
+# public repository's artifacts are public. The archives are uploaded only
+# with `publish`, for one day, and the last job, `cleanup`, deletes every
+# artifact of the run (it keeps none); the release is the publication. A
+# finished run cannot re-run a single failed job (its archives are deleted):
+# use "re-run all jobs".
 #
 #   check-inputs   the tag, validated before anything else runs
-#   linux          the 64-bit build and tarball
-#   windows        the MinGW-w64 cross-build (as windows.yml) and zip
-#   macos          the macOS build (as macos.yml, on macos-15-intel only) and
-#                  tarball: unsigned, SDL's dylibs bundled
-#   checksums      SHA256SUMS.txt and the attestations, over the archives
+#   linux          the 64-bit build, the tarball, its check
+#   windows        the MinGW-w64 cross-build (as windows.yml), the zip, its check
+#   macos          the macOS build (as macos.yml, on macos-15-intel only), the
+#                  tarball (unsigned, SDL's dylibs bundled), its check
+#   checksums      only with `publish`: SHA256SUMS.txt and the attestations
 #   publish        only with `publish`: the GitHub release
+#   cleanup        always, last: deletes the run's artifacts
 #
 # Verify a download with `gh attestation verify <file> --repo <owner>/<repo>`
 # and `sha256sum --check SHA256SUMS.txt`.
 #
-# NOTE: this repository is private. actions/attest-build-provenance works in a
-# private repository only on GitHub Enterprise Cloud (its README). Here the
+# NOTE: actions/attest-build-provenance works in a private repository only on
+# GitHub Enterprise Cloud (its README); on a user-owned private repository the
 # step fails with "Feature not available for user-owned private repositories"
-# (run 38660260570, 2026-10-15), after the archives and the sums were uploaded,
-# so the run ends red with the files on it. The step is unconditional on
-# purpose, with no switch: it works, unchanged, once the repository is public.
+# (run 38660260570, 2026-10-15). It runs on the publish path only, which the
+# owner takes once the repository is public, where it works unchanged.
 name: release
 
 on:
@@ -103,11 +114,37 @@ jobs:
           rm -r "dist/$name"
           ls -l dist
 
+      - name: Check the tarball (contents, headless start) and print its SHA-256
+        run: |
+          set -euo pipefail
+          archive=$(ls dist/*.tar.gz)
+          [ "$(printf '%s\n' "$archive" | wc -l)" -eq 1 ]
+          base=$(basename "$archive" .tar.gz)
+          tar -tzf "$archive" | sort | tee "$RUNNER_TEMP/listing.txt"
+          for file in pokeemerald-native pokeemerald-native.sh LICENSE RUNNING.md README.txt libSDL2-2.0.so.0 SDL2-LICENSE.txt; do
+            grep -qx "$base/$file" "$RUNNER_TEMP/listing.txt" || { echo "release: $file is missing from $archive" >&2; exit 1; }
+          done
+          [ "$(grep -vc '/$' "$RUNNER_TEMP/listing.txt")" -eq 7 ] || { echo "release: $archive holds more than the seven files it should" >&2; exit 1; }
+          # Started from the unpacked archive as a player would (the launcher
+          # puts the bundled SDL2 first), headless, with its save and clock
+          # in a scratch directory.
+          scratch=$(mktemp -d)
+          tar -xzf "$archive" -C "$scratch"
+          mkdir "$scratch/home"
+          export HOME="$scratch/home" XDG_DATA_HOME="$scratch/home/.local/share" SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy
+          "$scratch/$base/pokeemerald-native.sh" --version
+          "$scratch/$base/pokeemerald-native.sh" --headless --silent --unthrottled --frames 60 \
+            --save "$scratch/check.sav" --rtc-offset "$scratch/check.rtc"
+          rm -rf "$scratch"
+          sha256sum -- "$archive"
+
       - name: ccache statistics
         if: always()
         run: ccache -s
 
+      # Only with `publish`: the next jobs build the release from it.
       - name: Upload the tarball
+        if: inputs.publish
         uses: actions/upload-artifact@v4
         with:
           name: linux-archive
@@ -145,11 +182,33 @@ jobs:
           rm -r "dist/$name"
           ls -l dist
 
+      - name: Check the zip (contents, a PE executable) and print its SHA-256
+        run: |
+          set -euo pipefail
+          archive=$(ls dist/*.zip)
+          [ "$(printf '%s\n' "$archive" | wc -l)" -eq 1 ]
+          base=$(basename "$archive" .zip)
+          unzip -Z1 "$archive" | sort | tee "$RUNNER_TEMP/listing.txt"
+          for file in pokeemerald-native.exe SDL2.dll LICENSE RUNNING.md README.txt SDL2-LICENSE.txt; do
+            grep -qx "$base/$file" "$RUNNER_TEMP/listing.txt" || { echo "release: $file is missing from $archive" >&2; exit 1; }
+          done
+          [ "$(grep -vc '/$' "$RUNNER_TEMP/listing.txt")" -eq 6 ] || { echo "release: $archive holds more than the six files it should" >&2; exit 1; }
+          # A Windows executable cannot start on this runner (windows.yml
+          # starts the same build on Windows): its format is checked instead.
+          scratch=$(mktemp -d)
+          unzip -q "$archive" "$base/pokeemerald-native.exe" -d "$scratch"
+          x86_64-w64-mingw32-objdump -f "$scratch/$base/pokeemerald-native.exe" | tee "$scratch/pe.txt"
+          grep -q 'file format pei-x86-64' "$scratch/pe.txt"
+          rm -rf "$scratch"
+          sha256sum -- "$archive"
+
       - name: ccache statistics
         if: always()
         run: ccache -s
 
+      # Only with `publish`: the next jobs build the release from it.
       - name: Upload the zip
+        if: inputs.publish
         uses: actions/upload-artifact@v4
         with:
           name: windows-archive
@@ -231,7 +290,9 @@ jobs:
         if: always()
         run: ccache -s
 
+      # Only with `publish`: the next jobs build the release from it.
       - name: Upload the tarball
+        if: inputs.publish
         uses: actions/upload-artifact@v4
         with:
           name: macos-archive
@@ -240,7 +301,8 @@ jobs:
           retention-days: 1
 
   checksums:
-    name: Checksums and attestations
+    name: Checksums and attestations (publish only)
+    if: inputs.publish
     needs: [linux, windows, macos]
     runs-on: ubuntu-24.04
     timeout-minutes: 10
@@ -270,6 +332,7 @@ jobs:
           cd dist
           sha256sum -- *.tar.gz *.zip | tee SHA256SUMS.txt
 
+      # One day, deleted by `cleanup`; the release job below downloads it.
       - name: Upload the archives and the sums
         uses: actions/upload-artifact@v4
         with:
@@ -279,11 +342,9 @@ jobs:
             dist/*.zip
             dist/SHA256SUMS.txt
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 1
 
-      # After the upload, so that the archives and the sums stay on the run for
-      # the owner's testing even when this step fails (the private-repository
-      # note at the top).
+      # The publish path only (the job is skipped without `publish`).
       - name: Attest the archives (private repository note at the top)
         uses: actions/attest-build-provenance@v4
         with:
@@ -330,3 +391,25 @@ jobs:
           you allow it (RUNNING.md, "macOS"). SDL is bundled.
           NOTES
           gh release create "$TAG" --target "$GITHUB_SHA" --title "$TAG" --notes-file notes.md dist/*.tar.gz dist/*.zip dist/SHA256SUMS.txt
+
+  # The last job: deletes every artifact of this run, whether or not the
+  # release was made (the release holds the files; the run keeps none). It
+  # fails if one cannot be deleted or one is left.
+  cleanup:
+    name: Delete the archives from the run
+    if: always()
+    needs: [check-inputs, linux, windows, macos, checksums, publish]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      actions: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: .github/actions
+          persist-credentials: false
+
+      - uses: ./.github/actions/delete-run-artifacts
+        with:
+          keep: ''
