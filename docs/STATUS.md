@@ -46,6 +46,25 @@ both widths (the 24-step ledger at the end of this block).
   subsystem, the pipes, the no-console log through a process started with
   no handles, both replays, the cross-OS save and the suite (run
   38693203706 on the branch).
+- The Apple-silicon spike (task i), report only, in 39 minutes of its
+  two-hour cap: DECISIONS.md "Native Apple silicon: the spike's findings"
+  and PLAN.md "Native Apple silicon: what a port would take". The answer:
+  a sliding arm64 build is feasible without editing expansion's headers or
+  any other expansion file, but not by redefining addresses in headers. XNU
+  refuses any arm64 executable without a 4 GiB page zero and nothing maps
+  below it, so the GBA addresses become offsets in a window at 2^32 or above,
+  expansion's compiled code is rewritten at build time by two LLVM IR filters
+  (integer/pointer conversions, and division, since arm64's x/0 gives 0
+  where the GBA's libgcc gives other values in 22 of 28 cases), and the
+  data's 41,946 address words are written as offsets. Measured here: the
+  window model passes 14 of 14 idiom checks on expansion's unmodified
+  headers (the control segfaults); the filtered IR of every src file
+  compiles for x86_64 and aarch64 (765 of 767; the two are a known C-filter
+  rule); the division filter matches all 193 libgcc rows; an I/O loop costs
+  3 to 4% more. Cost: 7 to 9 worker tasks, about 1,500 lines. Not run: the
+  whole game in the window (the first task if you say go) and four probes
+  that need the arm64 runner. The probes are on work/spike (unmerged, on
+  origin).
 - Steam Deck (task h), merged at 8e6ac8d0fb. The controller does
   everything the keyboard does: fast-forward held on the right trigger and
   toggled by the right stick click, the help overlay on Y (B closes it, X
@@ -82,9 +101,7 @@ is in its DECISIONS entry "The macOS port waits for its first runs on a
 Mac"; macos.yml must reach main or carry a push trigger once to be
 dispatched). Now in work/macos: the release archive for macOS, `tools/
 build-native.sh --os macos` and RUNNING's Gatekeeper section (Sonnet), and
-a first-pass Sonnet review of the port. The Apple-silicon spike (Opus, two
-hours, local evidence and M0's runner data) runs beside them. Then the
-final review. DECISIONS.md has the macOS runner dates (x86_64 macOS runners end
+a first-pass Sonnet review of the port. Then the final review. DECISIONS.md has the macOS runner dates (x86_64 macOS runners end
 in fall 2027) and what they change for the Apple-silicon question.
 
 **Broke and fixed.** The per-push CI run on main after the settings
@@ -122,6 +139,15 @@ windows.yml and release.yml use that label, so the release's executable
 and its bundled SDL2 would then need a newer glibc than SteamOS 3.8's 2.41
 may have. Pinning both to `ubuntu-24.04`, as native.yml already is, is in
 tonight's cleanup branch.
+(0b) The Apple-silicon decisions (DECISIONS.md, "Native Apple silicon:
+the spike's findings", "What the owner must decide"): whether macOS stays
+supported after 2027 (x86_64 macOS runners end in fall 2027 and Rosetta
+narrows after macOS 27); whether the arm64 build may rewrite expansion's
+compiled code at build time (about 2,300 conversions and 424 divisions)
+instead of some 500 guarded source edits; later, ASLR kept or a launcher
+without it; the macos-latest minutes. Recommendation: the Linux half
+(P1, 3 to 4 tasks, no runner, decides the expansion side) after work/macos
+merges, the arm64 half only if macOS is to stay after 2027.
 (1) A hands-on check of fast-forward on a real
 keyboard and screen: Tab held and released, Shift+Tab on and off, the
 indicator, the sound at 2x, 3x, 4x and unlimited and with
@@ -1007,7 +1033,7 @@ Nothing yet; nothing exists to be broken.
 | threadtest (the Linux watchdog test that failed on CI) | Sonnet | Sonnet (mutation testing), orchestrator merge gate |
 | console (no console window on Windows) | Sonnet | Sonnet (mutation testing), orchestrator merge gate |
 | macos (milestone 8, tasks M2 to M5: macOS x86_64; unmerged, waits for the runner) | Opus; Sonnet for the release, script and RUNNING follow-up | Sonnet (in flight) |
-| spike (task i: native Apple silicon, report only) | Opus | orchestrator |
+| spike (task i: native Apple silicon, report only; work/spike unmerged) | Opus | orchestrator |
 | deck (task h: Steam Deck) | Sonnet | Sonnet (mutation testing), orchestrator merge gate |
 | interrupt | Opus | Sonnet |
 | psg | Opus | Sonnet |

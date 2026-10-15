@@ -284,6 +284,12 @@ Order of work:
    probe, a size estimate for the real port and a recommendation; then
    stop and put it in front of the owner (DECISIONS.md "Native Apple
    silicon: a spike, not a port").
+   Done 2026-10-15 as a report, with GitHub Actions blocked for billing:
+   from XNU's source, probe M0's runner data and measurements on Linux
+   (clang's aarch64 target, qemu-aarch64); DECISIONS.md "Native Apple
+   silicon: the spike's findings" and the section "Native Apple silicon:
+   what a port would take" at the end of this file. Four runner probes
+   (A1 to A4) remain; the owner decides.
 2. An inventory of the Windows (MinGW) and macOS ports, no code (an Opus
    worker, to the session scratchpad and summarised here): what in
    `platform/` and the build glue is Linux-specific (the regions mapped
@@ -353,3 +359,121 @@ test runner; W9 the Windows CI job; then M1 to M5 for macOS x86_64 by
 the same method. Not attempted: Windows i686, sanitizers under MinGW,
 building the game on Windows, the GBA ROM there, macOS arm64 before the
 owner decides.
+
+## Native Apple silicon: what a port would take
+
+Not started. The port goes ahead only on the owner's decision: DECISIONS.md
+"Native Apple silicon: the spike's findings" has the evidence, the four
+decisions and the recommendation. This section is the work if the answer is
+go.
+
+**The design.** Every GBA address the game holds in 32 bits is an offset in a
+window at a base B of 2^32 or above. The window holds the regions and the image
+at their Linux addresses: the call stack at B + 0x01800000, EWRAM at B +
+0x02000000 and so on, and the code at B + 0x40000000. So every 32-bit value
+the game sees is the value it has on Linux today.
+
+Expansion's compiled code is rewritten at build time by two LLVM IR filters:
+
+- int/pointer conversions: a pointer becomes its offset; an integer from 1 to
+  2^32-1 becomes B plus it; 0 stays null; larger values pass unchanged;
+- divisions by a variable call helpers with the GBA libgcc's results.
+
+The data's 4-byte address words are written as `target - window`. The
+platform layer translates at its own boundary. No expansion file is edited:
+`__builtin_setjmp` in `src/script.c` and `.hword` in `src/libisagbprn.c` are
+C-filter rules, as in work/macos.
+
+Spike of 2026-10-15. The prototypes are on work/spike under
+`research/probes/arm64_spike/`;
+they are the starting point, not code to copy unreviewed.
+
+**Order, with the stop gates.**
+
+**P0. The runner probes**, one task (`research/probes/`, probes.yml, a
+macos-latest job), each under a minute:
+
+- A1: an arm64 PIE with segments at 2^32 plus the GBA addresses;
+- A2: the same binary started with `_POSIX_SPAWN_DISABLE_ASLR`;
+- A3: ld64 linking 32-bit `target - window` words;
+- A4: `mach_vm_allocate` at 0x02000000.
+
+DECISIONS has each one's pass condition. Stop if neither A1 nor A2 holds:
+nothing then puts the image in the window. Can run in parallel with P1.
+
+**P1. The window model on Linux x86_64**, 3 to 4 tasks, no runner. It is the
+arm64 layout's twin with B = 2^32, and it decides whether the expansion side
+works.
+
+1. **P1a, the IR filters as build glue** (`platform/build_glue/`). The rebase
+   and division rules come from the prototypes (rebasefilter.py and
+   divfilter.py, 90 and 86 lines), and the tool refuses every form it does not
+   recognise. Self-tests:
+   - all 193 rows of `libgcc_division.txt`;
+   - the idioms of `window_test.c`;
+   - a corpus of the IR forms seen in the 384 files.
+
+   About 500 lines with tests.
+2. **P1b, expansion's C through clang on Linux.** work/macos's clang family in
+   Makefile.native, and COMPILE_C emitting pre-optimisation IR, filtering it
+   and compiling it. C-filter rules for `script.c` (the three
+   `__builtin_setjmp`/`__builtin_longjmp` and the `intptr_t breakTo[5]`
+   buffer) and for libisagbprn.c's `.hword`.
+   `-Wno-error=incompatible-function-pointer-types` for `ow_abilities.c`.
+   Gate: the ordinary layout (B = 0) built this way passes both replays and
+   `make check` at 64 bits, plain and sanitized, so the filters change nothing
+   where B is 0.
+3. **P1c, the shifted layout (a `WINDOW=1` build).**
+   - `gba_regions.ld` and `gba_game.ld` 2^32 higher, their ASSERTs with them.
+   - The 41,946 words written as `target - 2^32`, with `check_relocations.py`
+     extended to check it.
+   - The platform's boundary: gba_memmap, dma.c, the interrupt vector, flash,
+     crash_reboot's 0x03007F00, transfer_bounds and inspect (67
+     `(uintptr_t)` casts in 16 files).
+
+   Gate: every Linux gate at 64 bits with `WINDOW=1`, plain and sanitized:
+   - both replays frame for frame;
+   - `make check`;
+   - the cross-width save gate (a save from the B = 0 build loads).
+4. **P1d, the cost.** The replays' frame times with and without the filters,
+   recorded in DECISIONS.
+
+Stop gate: if P1c's gates cannot be made to pass, stop and report what broke.
+The likely cause is a pointer moved through memory as a 32-bit integer, which
+the filter cannot see.
+
+**P2. arm64 macOS**, 3 to 4 tasks, on the runner, after P0 and P1.
+
+1. **P2a, the Mach-O arm64 link.**
+   - Variant W-a: work/macos's `gba_regions.macho.s` and its `-segaddr`
+     segments 2^32 higher, the mGBA debug page as a 16 KiB segment at
+     0x1_04FF_C000, with B read at start from the window's first segment.
+   - Variant W-b: the same image started by a launcher with
+     `_POSIX_SPAWN_DISABLE_ASLR`, with B the constant 2^32.
+
+   Also `check_macho_layout.py` for arm64 and the ad-hoc signature. Gate: A1's
+   checks (or A2's) on the game's own binary.
+2. **P2b, the arm64 host.**
+   - The fault context for crash_reboot only (`__darwin_arm_thread_state64`).
+   - No `arm_division`: the filter replaces it.
+   - The stack switch in AArch64 assembly, in place of work/macos's 154-line
+     x86_64 `host_macos_stack.c`.
+   - The monotonic wait, as on macOS x86_64.
+3. **P2c, CI and packaging.** A macos-latest job in the nightly tier only
+   (minutes are billed at 10x): the build, both replays, `make check`, the
+   data-layout check and the cross-width save gate. Then an arm64 tarball
+   beside the x86_64 one, or one universal binary; decide then.
+
+**Sizes.** P0 one task; P1 3 to 4 tasks; P2 3 to 4 tasks; about 1,500 new lines
+on top of work/macos. The measured inputs:
+
+- 2,273 integer/pointer conversions in the IR, of which the filter rewrites
+  2,125 (the truncating ones need nothing with B = 2^32), and 424 divisions;
+- 41,946 data words handled by one converter rule;
+- the platform's 67 casts in 16 files.
+
+Nothing in expansion's files changes, and the save format does not change:
+clang lays out every game struct identically for arm64-apple-macos11 and
+x86_64-linux-gnu (`results/layout_compare.txt`).
+
+**Not attempted:** Windows on ARM (the same design would apply), and iOS.

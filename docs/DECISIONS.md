@@ -2155,3 +2155,285 @@ picture at 5x, black bars; that the right trigger, the stick click, Y, B, X and
 the left trigger do what the table says on the real Steam Input layout for a
 non-Steam game; that unplugging a controller (a Bluetooth pad turned off) while
 the trigger is held ends fast-forward; the save's path; sound.
+
+## 2026-10-15: Native Apple silicon: the spike's findings
+
+**The answer.** A sliding build for arm64 macOS is feasible without editing any
+of expansion's headers (or any other expansion file beyond what work/macos
+already carries), but not by redefining addresses in headers: the regions can
+never be at the GBA addresses on arm64, so the build treats every 32-bit
+address in the game as an offset in one window at 4 GiB or above that holds
+the regions and the image at their Linux addresses, rewrites expansion's
+compiled code at build time with two LLVM IR filters (integer/pointer
+conversions; division), both prototyped and measured here, and links the
+window as one image, which three runner probes must confirm; it costs about 7
+to 9 worker tasks (about 1,500 new lines on top of work/macos), and I recommend
+the Linux half now, as a bounded experiment with a stop gate, and the arm64
+half only if macOS is to stay supported after 2027. The mechanism is proven
+here on expansion's own headers and idioms and on the compiled IR of every
+src/*.c, not yet on the whole running game, which is the first step of the
+plan.
+
+Everything below was measured on this machine on 2026-10-15 unless it names a
+run. The probes are on branch work/spike (unmerged, kept on origin;
+commits 7a968e0964, 4e4399105a and b55d33ef3b), in `research/probes/arm64_spike/`, with their
+outputs in `results/`; nothing there is meant to merge. Runners: none
+(GitHub Actions refuses every job on this account since about 03:40 local), so
+the arm64 macOS facts come from probe M0's runs and from XNU's source.
+
+To reproduce, from the repository root after `make -f Makefile.native -j16
+native BITS=64`, with `P=research/probes/arm64_spike` and S a scratch directory:
+
+    $P/build_div.sh && python3 -I $P/compare_div.py            # question 3
+    $P/divfilter/run_test.sh                                    # division filter test
+    ls src/*.c | xargs -n 4 -P 16 $P/divfilter/expansion_ir.sh  # every file's IR
+    python3 -I $P/divfilter/count_casts.py $P/divfilter/out/expansion/*.x86_64.ll
+    $P/rebase/run.sh && $P/rebase/all_rebase.sh                 # the window model
+    $P/syntax_all.sh $S/casts -fno-pie -Wpointer-to-int-cast -Wint-to-pointer-cast
+    PRE_IQUOTE=$P/wrap_symbols $P/syntax_all.sh $S/sym -fPIE -Wno-int-to-pointer-cast
+    PRE_IQUOTE=$P/wrap_variable $P/syntax_all.sh $S/var -fPIE -Wno-int-to-pointer-cast
+    (CC_COMPILE=clang on the last two for clang's errors)
+    (cd build/native64 && python3 -I ../../$P/classify_words.py .)
+    $P/build_bench.sh && $P/layout/compare.sh
+
+**Question 1: can the regions be at their GBA addresses? No; settled without a
+runner.** XNU's source (apple-oss-distributions/xnu, main at f6217f891a,
+2025-10-04):
+
+- `bsd/kern/mach_loader.c:897-904`, in `load_machfile`: "64 bit ARM binary
+  must have 'hard page zero' of 4GB to cover the lower 32 bit address space";
+  an arm64 executable whose map's minimum address is below 0x100000000 is
+  refused (`LOAD_BADMACHO`). The only waivers are for 32-bit address spaces:
+  an `#if __x86_64__` block (`:844-851`) and a 4 KiB-compatibility branch
+  (`:874-893`). Neither applies to a 64-bit arm64 game. The test names
+  `CPU_TYPE_ARM64`, which is why the x86_64 build keeps the GBA addresses under
+  Rosetta (M0: 61 of 61 checks, 100 of 100 starts).
+- `mach_loader.c:2368-2419`, in `load_segment`: the page zero is made
+  "completely off limits by raising the VM map's minimum offset", and
+  `vm_map_raise_min_offset` (`osfmk/vm/vm_map.c:22014-22036`) never lowers it.
+- Every fixed-address allocation goes through `vm_map_locate_space_fixed`,
+  which returns `KERN_INVALID_ADDRESS` below the minimum (`vm_map.c:2549-2553`).
+  That covers `vm_map_enter` (`:3224`: `mmap` with `MAP_FIXED`, and
+  `mach_vm_allocate` and `mach_vm_map` with `VM_FLAGS_FIXED`) and
+  `vm_map_remap` (`:19782`: `mach_vm_remap`). No mechanism maps 0x02000000.
+- posix_spawn's `_POSIX_SPAWN_DISABLE_ASLR` (`bsd/sys/spawn.h:62`) only skips
+  the random slide (`mach_loader.c:788-799`).
+- A page zero "of 4 GiB minus the regions" cannot exist: a page zero is one
+  segment from address 0, and any that ends below 4 GiB is the refusal above.
+- M0 agrees (run 37922990222, job log of macos-latest): `MAP_FIXED` at
+  0x02000000 and 0x04000000 fails with ENOMEM under the default page zero
+  (A:302-306). A binary linked with `-pagezero_size 0x1000` (rounded up to
+  0x4000, A:308) is killed at start, status 137, in 100 of 100 runs (A:412).
+  In the second iteration (runs 37923542701 and 37925659422,
+  research/probes/README.md) every arm64 fixed-address layout link was
+  refused ("-no_pie ignored for arm64"; the debug page's 0x04FFF000 is not on a
+  16 KiB page), and `mapfixed` succeeded in 0 of 100 runs.
+- What the same source allows: the same layout 4 GiB higher. That is the
+  design below, and probes A1 and A2 test it.
+- Size for the port: nothing to build. This answer fixes the design, a window
+  base B of 2^32 or above.
+
+**Question 2: can the code reach the data from a slid image?** Reaching is not
+the problem. arm64 code addresses data relative to the program counter, and
+dyld rebases 8-byte pointers. The problem is every place that keeps an address
+in 32 bits or uses an integer as a GBA address. Counted from the sources and
+the 64-bit build (`make -f Makefile.native native BITS=64` at cee043d4c5):
+
+| What | Count (source) | Absorbed without touching expansion's headers? |
+|---|---|---|
+| Fixed addresses in headers | 11 macros in 3 headers: `REG_BASE` (`io_reg.h:4`, on which its 151 `REG_ADDR_` and 136 `REG_` macros are built); `SOUND_INFO_PTR`, `INTR_CHECK`, `INTR_VECTOR`, `ROM_START`, `EWRAM_START`, `IWRAM_START`, `PLTT`, `VRAM`, `OAM` (`defines.h:38-88`); `FLASH_BASE` (`flash_internal.h:4`). Uses: I/O registers 609 in src/*.c (28 `REG_ADDR_`, 581 `REG_`); in src/ and include/ outside the two defining headers (grep -ow), the VRAM forms 421, `OAM` 44, the palette forms 56, `FLASH_BASE` 11, `SOUND_INFO_PTR` 10, `EWRAM_START` 7, `INTR_CHECK` 4, `INTR_VECTOR` 3 | Yes, measured two ways. (a) Wrapper headers searched before `include/` (`#include_next`, then `#undef` and `#define`), with each region a link-time symbol: gcc compiles all 384 src/*.c with `-fPIE` and 0 errors. clang rejects 8 case labels (`scanline_effect.c:139-160`), because to clang a symbol minus a symbol is not an integer constant expression. With a run-time base variable instead, gcc fails 40 static initializers in 8 files, so a variable base cannot be absorbed by headers (`results/wrapper_errors.txt`). (b) The IR filter leaves the macros integers, which are the offsets, and adds B where an integer becomes a pointer: 1,137 constant conversions in 105 files. (b) is recommended: no wrapper, and it works under clang |
+| GBA addresses written out in .c files | 6, `src/libisagbprn.c:19-26` (the debug print ports) | (b) yes |
+| 4-byte address words in the data | 41,946 `R_X86_64_32` (in build/native64: `find data sound -name '*.o' \| xargs readelf -rW \| grep -c 'R_X86_64_32 '`). By target (`classify_words.py`): 20,570 script_data (the bytecode), 17,602 .rodata, 3,753 .text (58 of them carry the script tag), 21 EWRAM variables | Not by a header. By the data converter (platform/build_glue, not expansion), which writes each word as `target - window`, resolved at static link and the same at any slide. clang assembles this for arm64 Mach-O as `ARM64_RELOC_SUBTRACTOR` plus `ARM64_RELOC_UNSIGNED`, 4 bytes, unaligned and tagged words included (`delta32.s`). Whether ld64 links it is probe A3. Each word's value is unchanged: today's Linux address |
+| 8-byte words in the data | 19,208 `R_X86_64_64` | ordinary rebases; nothing to do |
+| 16-bit words | 8 `R_X86_64_16`, all enum constants (`B_MSG_MON_*`, `SPECIAL_*`) | not addresses |
+| The bit-25 script tag | 5 test or strip sites (`include/script.h`, `src/script.c`, through `platform/script_tag.h`); 58 tagged words | unchanged: the tag is a bit of the offset, and code stays at 0x40000000-0x42000000 of the window |
+| Integer/pointer conversions in expansion's C | gcc: `-Wpointer-to-int-cast` 149 warnings at 141 lines in 50 files, `-Wint-to-pointer-cast` 429 at 365 lines in 72 files (`results/casts_gcc.txt`). In clang's IR before optimisation: `ptrtoint` to i32 117, to i16 30, to i8 1, to i64 339 (and 11 in initializers); `inttoptr` 638 (from zext i32 123, sext i32 227, other i64 288) and 1,137 of constants (`results/ir_casts.txt`, `results/rebase_all.txt`) | Not by headers: these are casts in .c files (`T1_READ_PTR` and `T2_READ_PTR`, `global.h:115-122`, expand to them). By the IR filter, measured below |
+
+The IR filter's rule (`rebase/rebasefilter.py`, 90 lines):
+
+- An integer made from a pointer in the window is its offset.
+- An integer from 1 to 2^32-1 made into a pointer becomes B plus it.
+- 0 stays null.
+- Values of 2^32 and up pass unchanged. No valid pointer on arm64 macOS is
+  below 2^32, so the two never collide, and stack and heap pointers survive a
+  round trip through `uintptr_t`.
+
+With B = 2^32 a pointer's low 32 bits are already its offset, so the
+truncating casts need no rewrite.
+
+Measured on Linux (`rebase/run.sh`). `window_test.c` is compiled with
+expansion's unmodified `global.h`, `io_reg.h` and `defines.h` and with
+`platform/script_tag.h`. It is linked with the image at 0x140000000 and EWRAM
+and I/O sections at 0x102000000 and 0x104000000 (B = 2^32). Through the filter,
+14 of 14 checks pass:
+
+- `T1_READ_PTR` and `T2_READ_PTR` of unaligned window words;
+- a tagged native pointer tested, stripped and called;
+- expansion's EWRAM range test;
+- a pointer kept in two s16 task fields (`src/task.c:177-192`);
+- `REG_BG0HOFS` reaching the I/O section;
+- `BG_VRAM` arithmetic;
+- stack and heap pointers through `uintptr_t`;
+- a null word.
+
+The same program built without the filter fails the first pointer read and
+dies calling the function (SIGSEGV, status 139).
+
+Over every src/*.c (`rebase/all_rebase.sh`), the filtered IR compiles at -O2
+for x86_64 and for aarch64 in 765 of 767 cases. Both failures are libisagbprn.c's
+inline `.hword 0xEFFF`, which work/macos's `c_filter_macho.sed` already
+rewrites. clang makes no aarch64 IR for `src/script.c`: `__builtin_setjmp` (633,
+677, 714) is unsupported on AArch64. That needs a C-filter rule to `setjmp` with
+a `jmp_buf` (the buffer is `intptr_t breakTo[5]`, `script.c:611`), not a header.
+
+The struct layouts are not a cost. clang's record layouts of everything
+reachable from `global.h`, `global.fieldmap.h`, `gba/m4a_internal.h` and
+`save.h` are identical for arm64-apple-macos11 and x86_64-linux-gnu. The only
+differences are the compiler's `va_list` and libc's own records
+(`layout/compare.sh`, `results/layout_compare.txt`), so the save blocks keep
+their 64-bit Linux layout.
+
+The representative case (`iobench.c`; `results/iobench.txt`,
+`results/build_bench.txt`): four I/O writes and a read per iteration, 2x10^8
+iterations, native x86_64, gcc -O2, PIE:
+
+| Form | ns per iteration | AArch64 code (clang -O2 -fPIE) |
+|---|---|---|
+| fixed address | 0.554-0.562 | 88 bytes |
+| link-time symbol | 0.575-0.577 | 88 bytes |
+| run-time base | 0.575-0.576 | 112 bytes |
+
+The base is loaded once per function. The 3 to 4% is on a loop that does
+nothing else.
+
+On real files (.text bytes), the fixed form against the symbol form:
+
+| File | x86_64 | aarch64 |
+|---|---|---|
+| `gpu_regs.c` | 1,093 → 1,069 | 1,560 → 1,508 |
+| `dma3_manager.c` | 1,449 → 1,509 | 1,048 → 1,048 |
+| `scanline_effect.c` | 1,510 → 1,542 | not compiled (the case labels above) |
+
+With B constant (variant W-b below) constant addresses fold and cost nothing.
+With a slid B each costs a load of B. The game-level cost of the filter's
+selects is not measured.
+
+Size: the rebase filter made build glue with tests, about 400 lines; the
+converter's delta form and its checker, about 150; the platform's own boundary,
+where it turns GBA integers into pointers (67 `(uintptr_t)` casts in 16 of 83
+platform .c files; 24 lines name 0x02000000-0x07000000, 0x0E000000, 0x40000000
+or 0x42000000: DMA, the interrupt
+vector, flash, crash_reboot's 0x03007F00, transfer_bounds, inspect), about 200.
+
+**Question 3: what replaces the divide trap?** Measured under qemu-aarch64 8.2.2
+(`divprobe.c`, freestanding, raw syscalls; `results/divprobe.txt`):
+
+- SDIV or UDIV by zero gives a quotient of 0. The MSUB that clang emits for `%`
+  (`divshape.c`) then gives the dividend as the remainder.
+- INT_MIN / -1 gives INT_MIN, remainder 0, at 32 and at 64 bits.
+- No trap. This is the architecture's definition, not qemu's choice: in the Arm
+  ARM's (DDI 0487) A64 SDIV/UDIV pseudocode a zero divisor gives a zero result,
+  and the INT_MIN / -1 quotient is the low bits of +2^31.
+
+Against the GBA build's libgcc record (`platform/arm_division_libgcc/libgcc_division.txt`,
+apcs-gnu, the routines expansion's code calls), 6 rows are equal and 22 differ
+(`compare_div.py`): every n / 0 with n not 0 at both widths, and 0 / 0 at 64
+bits (libgcc gives 1). INT_MIN / -1 matches at both widths. So arm64's own
+result does not match, and something must replace the trap.
+
+The BIOS `Div` is unaffected: `platform/bios_arith.c` already tests for a zero
+divisor in C (1 call in src, `librfu_rfu.c:470`).
+
+- Rejected, measured: clang's `-fsanitize=integer-divide-by-zero -fsanitize-trap`
+  places one BRK per function after all of its checks (`divshape.c`, function
+  `two`: both divisors tested, one shared brk). A SIGTRAP handler cannot tell
+  which division faulted or where to resume.
+- Recommended, measured: the division IR filter (`divfilter/divfilter.py`, 86
+  lines; `pen_div.c`, 90). On IR before optimisation, so the optimiser never
+  sees an undefined division, every sdiv, udiv, srem and urem by a
+  non-constant divisor becomes a call to a helper with libgcc's results.
+  Divisions by constants other than 0 and -1 are kept.
+  - All 193 rows of `libgcc_division.txt` equal, with no trap and no handler;
+    the unfiltered control dies of SIGFPE, status 136
+    (`results/divfilter_test.txt`).
+  - Over every src/*.c: 424 divisions rewritten in 106 files (sdiv i32 214,
+    srem i32 107, udiv i32 87, urem i32 13, i64 3), 2,348 kept, 0 refused.
+  - Hardware divisions in the aarch64 objects: 466 before, 1 after. That one,
+    in `AnimTask_GlareEyeDots`, divides by plus or minus 4, which the optimiser
+    built from two kept `/ 4`.
+  - .text grows by 460 bytes over all the aarch64 objects
+    (`results/divfilter_expansion.txt`).
+- Size: the same build step as the rebase filter (one tool, two rewrites),
+  about 100 lines more with tests. `arm_division.c` stays for the x86 builds.
+
+**Cost.**
+
+- P0: four runner probes, one probes.yml job, under a minute each on
+  macos-latest (billed at 10x).
+- P1 (Linux, no runner), 3 to 4 tasks: the window model on Linux x86_64 with
+  B = 2^32, the twin of the arm64 layout. It covers the filters as build glue,
+  expansion's C through clang, the words as offsets, the linker scripts 2^32
+  higher and the platform's boundary, with every Linux gate run in that mode.
+- P2 (arm64 macOS), 3 to 4 tasks: the Mach-O arm64 link, the arm64 host
+  pieces (fault context for crash_reboot, an AArch64 stack switch in place of
+  work/macos's 154-line x86_64 `host_macos_stack.c`), SDL2, a macos-latest CI
+  job, packaging.
+- Total: 7 to 9 tasks, about 1,500 new lines on top of work/macos (work/macos at
+  c8cd418835 is itself 5,813 added lines in 72 files, `git diff --shortstat
+  main...work/macos`). No expansion file changes; the two clang cases above are
+  C-filter rules.
+- What could raise it:
+  - A pointer moved through memory as a 32-bit integer (a type pun) is
+    invisible to the filter, which sees conversions and not stores. P1's gates
+    find any.
+  - The filters' game-level speed.
+  - ld64 (A1 to A3).
+
+**Needs a runner.** One job each on macos-latest, under a minute.
+
+- A1: M0's layout probe linked for arm64 as a PIE, every segment address plus
+  0x1_0000_0000 and the debug segment at 0x1_04FF_C000. Does ld64 accept
+  `-segaddr` in an arm64 PIE, and over 100 runs is every region at its link
+  address plus one common slide? If yes, variant W-a: the window is one slid
+  image and B is the slide plus 2^32.
+- A2: the same binary started through posix_spawn with
+  `_POSIX_SPAWN_DISABLE_ASLR`, with and without the hardened runtime. Is the
+  slide 0 in 100 of 100? If yes, variant W-b: a launcher, B = 2^32 constant,
+  the cheapest code.
+- A3: `delta32.s` linked by ld64 into A1's binary, with every word read back as
+  target minus window, unaligned and tagged words included.
+- A4 (completeness; the source settles it): `mach_vm_allocate` and
+  `mach_vm_map` with `VM_FLAGS_FIXED` at 0x02000000 (expected
+  `KERN_INVALID_ADDRESS`), and a binary with `-pagezero_size 0xFE000000`
+  (expected killed, as M0's was).
+
+If A1 and A2 both fail, the regions can still be reserved at run time (mmap is
+free above 4 GiB), but nothing puts the image at B + 0x40000000. Code and data
+addresses would then not be window offsets, and the port stops there.
+
+**Recommendation.** P1 first, once work/macos has merged and well before the
+2027 horizons ("macOS CI runs on macos-15-intel only" above). It needs no
+runner and no Apple hardware, and it decides the expansion side: if the replays
+and the suite pass with B = 2^32 on Linux, the code side is done. P0 when Actions
+is back (minutes). P2 only if macOS is to stay supported and tested after 2027.
+Otherwise stop here, and ship x86_64 under Rosetta until macOS 27.
+
+**What the owner must decide.**
+
+1. Whether macOS should stay supported after 2027. If not, nothing more is done.
+2. Whether the arm64 build may rewrite expansion's compiled code instead of
+   editing it. No expansion file changes, but at build time the meaning of
+   about 2,300 integer/pointer conversions and 424 divisions changes. The
+   alternative is about 500 guarded source edits, against the modification
+   policy's preference.
+3. W-a (keeps ASLR) or W-b (the game re-spawned without ASLR), once A1 and A2
+   have run.
+4. The macos-latest minutes, billed at 10x, once Actions is paid again.
+
+**Not settled in the time.** The whole game in the window model (P1). The
+filters' cost in frame time. Everything that needs ld64 or the arm64 loader
+(A1 to A4). The hardened runtime's view of W-b. Whether Apple clang's IR text
+(a different LLVM than 18) parses with the filters' patterns: they refuse what
+they do not recognise, so a mismatch is a build failure and not a wrong game.
+The platform layer and SDL2 built for arm64 (there is no aarch64 sysroot
+here).
