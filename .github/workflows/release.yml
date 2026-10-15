@@ -1,0 +1,233 @@
+# The release pipeline: the Linux 64-bit tarball and the Windows 64-bit zip,
+# their SHA-256 sums and build-provenance attestations, kept on the run as
+# artifacts. By hand only.
+#
+# THE OWNER'S RULE: no public release and no tag without the owner's explicit
+# instruction. A built executable contains the complete game's assets, so a
+# public release is legally the same as distributing a ROM, which this project
+# does not do (docs/DECISIONS.md, "Why no public release"). The default is
+# therefore `publish: false`: the archives stay on the workflow run for the
+# owner's own testing, and nothing is created. `publish: true` with a `tag`
+# creates a GitHub release at the built commit; nobody but the owner sets it.
+#
+#   check-inputs   the tag, validated before anything else runs
+#   linux          the 64-bit build and tarball
+#   windows        the MinGW-w64 cross-build (as windows.yml) and zip
+#   checksums      SHA256SUMS.txt and the attestations, over both archives
+#   publish        only with `publish`: the GitHub release
+#
+# Verify a download with `gh attestation verify <file> --repo <owner>/<repo>`
+# and `sha256sum --check SHA256SUMS.txt`.
+#
+# NOTE: this repository is private. actions/attest-build-provenance works in a
+# private repository only on GitHub Enterprise Cloud (its README); on another
+# plan the attestation step fails and so does the run. The step is
+# unconditional on purpose, with no switch for it: a first dispatch shows which
+# case this is.
+name: release
+
+on:
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: 'Create a GitHub release (needs the owner''s explicit instruction)'
+        type: boolean
+        default: false
+      tag:
+        description: 'Release tag, vX.Y.Z (required with publish)'
+        type: string
+        default: ''
+
+permissions:
+  contents: read
+
+# Never cancelled: a run that publishes must finish. The event name is in the
+# group as in windows.yml.
+concurrency:
+  group: release-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  check-inputs:
+    name: Validate the inputs
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    permissions: {}
+    steps:
+      - name: The tag, when publishing
+        env:
+          PUBLISH: ${{ inputs.publish }}
+          TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          if [ "$PUBLISH" = true ]; then
+            if ! [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]]; then
+              echo "release: publishing needs a tag like v1.2.3 (or v1.2.3-rc.1); got '$TAG'" >&2
+              exit 1
+            fi
+          fi
+
+  linux:
+    name: Linux 64-bit tarball
+    needs: check-inputs
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/native-setup
+        with:
+          ccache-name: release-linux
+
+      - name: Build (docs/BUILDING.md; tools/build-native.sh runs the same make)
+        run: make -f Makefile.native -j"$(nproc)" native BITS=64
+
+      - name: Package
+        run: |
+          set -euo pipefail
+          name="pokeemerald-native-${GITHUB_SHA::10}-linux-x86_64"
+          mkdir -p "dist/$name"
+          cp build/native64/pokeemerald-native LICENSE docs/RUNNING.md .github/release/README.txt "dist/$name/"
+          tar --owner=0 --group=0 --numeric-owner -C dist -czf "dist/$name.tar.gz" "$name"
+          rm -r "dist/$name"
+          ls -l dist
+
+      - name: ccache statistics
+        if: always()
+        run: ccache -s
+
+      - name: Upload the tarball
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-archive
+          path: dist/*.tar.gz
+          if-no-files-found: error
+          retention-days: 1
+
+  windows:
+    name: Windows 64-bit zip (cross-built)
+    needs: check-inputs
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/native-setup
+        with:
+          ccache-name: release-windows
+
+      - uses: ./.github/actions/windows-cross-setup
+
+      - name: Cross-build the game (the Linux data, converted; the PE layout check)
+        run: make -f Makefile.native -j"$(nproc)" native BITS=64 TARGET_OS=windows
+
+      - name: Package
+        run: |
+          set -euo pipefail
+          name="pokeemerald-native-${GITHUB_SHA::10}-windows-x86_64"
+          mkdir -p "dist/$name"
+          cp build/native64-windows/pokeemerald-native.exe build/native64-windows/SDL2.dll LICENSE docs/RUNNING.md .github/release/README.txt "dist/$name/"
+          cp build/sdl2-mingw/LICENSE.txt "dist/$name/SDL2-LICENSE.txt"
+          (cd dist && zip -q -X -r "$name.zip" "$name")
+          rm -r "dist/$name"
+          ls -l dist
+
+      - name: ccache statistics
+        if: always()
+        run: ccache -s
+
+      - name: Upload the zip
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-archive
+          path: dist/*.zip
+          if-no-files-found: error
+          retention-days: 1
+
+  checksums:
+    name: Checksums and attestations
+    needs: [linux, windows]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: linux-archive
+          path: dist
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: windows-archive
+          path: dist
+
+      - name: SHA256SUMS.txt
+        run: |
+          set -euo pipefail
+          cd dist
+          sha256sum -- *.tar.gz *.zip | tee SHA256SUMS.txt
+
+      - name: Upload the archives and the sums
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-files
+          path: |
+            dist/*.tar.gz
+            dist/*.zip
+            dist/SHA256SUMS.txt
+          if-no-files-found: error
+          retention-days: 14
+
+      # After the upload, so that the archives and the sums stay on the run for
+      # the owner's testing even when this step fails (the private-repository
+      # note at the top).
+      - name: Attest the archives (private repository note at the top)
+        uses: actions/attest-build-provenance@v4
+        with:
+          subject-path: |
+            dist/*.tar.gz
+            dist/*.zip
+
+  publish:
+    name: Publish the GitHub release
+    if: inputs.publish
+    needs: [check-inputs, checksums]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-files
+          path: dist
+
+      - name: gh release create
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          cat > notes.md <<NOTES
+          Built from commit $GITHUB_SHA by the release workflow, run $GITHUB_RUN_ID.
+
+          Files: the Linux x86-64 tarball, the Windows x86-64 zip, and SHA256SUMS.txt.
+
+          Verify a download:
+
+              sha256sum --check SHA256SUMS.txt
+              gh attestation verify <file> --repo $GH_REPO
+
+          Requirements: Linux needs SDL2 2.0 installed (libsdl2-2.0-0), not bundled.
+          Windows needs Windows 10 version 1903 or later, 64-bit; the executable is
+          not signed, so SmartScreen warns: More info, then Run anyway.
+          NOTES
+          gh release create "$TAG" --target "$GITHUB_SHA" --title "$TAG" --notes-file notes.md dist/*.tar.gz dist/*.zip dist/SHA256SUMS.txt

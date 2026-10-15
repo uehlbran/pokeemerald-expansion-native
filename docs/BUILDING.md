@@ -1,5 +1,19 @@
 # Building
 
+One command builds the 64-bit game for an operating system, from a fresh
+checkout, once its prerequisites are installed (below). It checks them,
+naming what is missing, runs the build and prints where the executable is.
+It installs nothing:
+
+```
+tools/build-native.sh --os linux      # build/native64/pokeemerald-native
+tools/build-native.sh --os windows    # build/native64-windows/pokeemerald-native.exe
+```
+
+macOS: not yet (no port has been started). To play the result, see
+[RUNNING.md](RUNNING.md); the rest of this page is every variant and the
+gates.
+
 ## Linux (WSL2 or native), the primary target
 
 Verified on Ubuntu 24.04 under WSL2. Everything is headless; a window
@@ -262,9 +276,11 @@ The Windows executable is x86-64 only and is built on Linux with MinGW-w64
 (`TARGET_OS=windows`, `platform/target.mk`); the build machine needs nothing
 Windows. i686 is not attempted (`research/m8-inventory.md` 2.3). Nothing built
 this way can be run on the build machine without Wine, which is not part of
-the project: what is checked here is the link and the file it writes. The
-unit tests and a start-up smoke run on a Windows runner (below); the replays
-and expansion's suite do not run on Windows yet.
+the project: what is checked here is the link and the file it writes. The unit
+tests, a start-up smoke, both replays, expansion's suite and the cross-OS save
+gate run on a Windows runner (below), and the owner verified the build by
+hand on 2026-10-14: boot, the opening, the first battle, a save and its
+reload.
 
 It runs on Windows 10 version 1903 (the May 2019 Update, build 18362) or
 later, 64-bit. Every executable carries an application manifest that makes
@@ -281,6 +297,9 @@ sudo apt-get install -y gcc-mingw-w64-x86-64 binutils-mingw-w64-x86-64 mingw-w64
 make -f Makefile.native -j32 sdl2-mingw TARGET_OS=windows BITS=64   # SDL2 for MinGW, once
 make -f Makefile.native -j32 native TARGET_OS=windows BITS=64       # build/native64-windows/pokeemerald-native.exe
 ```
+
+Or, instead of the two makes, `tools/build-native.sh --os windows`, which
+checks the prerequisites first and runs the same makes.
 
 `native` fetches SDL2 itself when it is missing (`sdl2-mingw` is only for doing it
 alone). The fetch is the newest 2.30 release's `SDL2-devel-2.30.12-mingw.tar.gz`
@@ -452,3 +471,16 @@ through `GetCommandLineW` is not needed. One assumption did not hold: the
 page at 0x01000000 is not reliably free in a Windows process, whose own
 allocations below the image end near it, so the tests' fixed page is
 0x017F0000 (`test_host_memory.c`).
+
+## The release workflow
+
+`.github/workflows/release.yml` (by hand only) builds the Linux 64-bit tarball
+and the Windows 64-bit zip, with the same make commands as above (the Windows
+steps are `.github/actions/windows-cross-setup`, after
+`.github/actions/native-setup`), writes `SHA256SUMS.txt` and attests both
+archives (`gh attestation verify <file> --repo <owner>/<repo>`). Each archive
+holds the executable, `LICENSE`, `RUNNING.md` and a short `README.txt`; the
+Windows zip also holds `SDL2.dll` and SDL2's licence. The files stay on the run
+as artifacts for 14 days. The run creates a GitHub release only with the
+`publish` input and a `tag`, and no public release is made without the
+owner's explicit instruction (`docs/DECISIONS.md`, "Why no public release").
