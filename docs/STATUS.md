@@ -190,13 +190,13 @@ check that the directory is unchanged by them instead of absent.
 
 | Gate on main tonight | Commit | Result |
 |---|---|---|
-| The full gate, 24 steps: the platform gate (format, lint at both widths, sanitized unit tests at both widths, ThreadSanitizer, tools and glue tests); the builds at 32 and 64 bits, plain and sanitized; gates d and e on all four builds; gate b at 32 and 64 bits, plain and sanitized (5418 passed, 9 assumption failures each); gate h both ways; the Windows cross-build and its 83 tests built; the GBA ROM's sha1 | 6a42fd7ade (fast-forward) | green; the per-user data directory absent before and after |
-| The same 24 steps | e981eff71a (the watchdog test) | green, the same totals; 18 minutes warm |
+| The full gate, 24 steps: the platform gate (format, lint at both widths, sanitized unit tests at both widths, ThreadSanitizer, tools and glue tests); the builds at 32 and 64 bits, plain and sanitized; gates d and e on all four builds; gate b at 32 and 64 bits, plain and sanitized (5418 passed, 9 assumption failures each); gate h both ways; the Windows cross-build and its unit tests built (83 here); the GBA ROM's sha1 | 6a42fd7ade (fast-forward) | green; the per-user data directory absent before and after |
+| The same 24 steps | e981eff71a (the watchdog test) | green, the same suite totals, 83 Windows test executables; 18 minutes warm |
 | The same 24 steps on the branch before the merge | 0a6c7ba0cb (fast-forward) | green |
 | Windows runner | 6a42fd7ade | run 38682653915 green |
-| The same 24 steps (the per-user directory unchanged by the gate) | 41b10a1617 (console removal) | green, the same totals |
+| The same 24 steps (the per-user directory unchanged by the gate) | 41b10a1617 (console removal) | green, the same suite totals; 85 Windows test executables built |
 | Windows runner | 41b10a1617 | run 38697083593 green; the per-push Linux run 38697084840 green |
-| The same 24 steps | 8e6ac8d0fb (Steam Deck) | green, the same totals |
+| The same 24 steps | 8e6ac8d0fb (Steam Deck) | green, the same suite totals; 87 Windows test executables built |
 | Windows runner | 8e6ac8d0fb | run 38709681302 green; per-push Linux 38709682041 green |
 | Release workflow, publish off | 8e6ac8d0fb | run 38709729818: both archives built and their sums verify; the Linux tarball holds the executable, the launcher, libSDL2-2.0.so.0, SDL2-LICENSE.txt, LICENSE, README.txt, RUNNING.md, and run through the launcher from `/` it loads the bundled SDL2 and prints its version; the attestation step fails as on every run while the repository is private (nothing published, no tag) |
 
