@@ -294,10 +294,12 @@ page fails.
 
 ```
 sudo apt-get install -y gcc-mingw-w64-x86-64 binutils-mingw-w64-x86-64 mingw-w64-tools   # windres is in binutils
-tools/build-native.sh --os windows                                  # the two makes below, with the prerequisites checked
 make -f Makefile.native -j32 sdl2-mingw TARGET_OS=windows BITS=64   # SDL2 for MinGW, once
 make -f Makefile.native -j32 native TARGET_OS=windows BITS=64       # build/native64-windows/pokeemerald-native.exe
 ```
+
+Or, instead of the two makes, `tools/build-native.sh --os windows`, which
+checks the prerequisites first and runs the same makes.
 
 `native` fetches SDL2 itself when it is missing (`sdl2-mingw` is only for doing it
 alone). The fetch is the newest 2.30 release's `SDL2-devel-2.30.12-mingw.tar.gz`

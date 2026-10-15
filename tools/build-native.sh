@@ -65,7 +65,6 @@ need_command make build-essential
 need_command git git
 need_command python3 python3
 need_command pkg-config pkg-config
-need_command curl curl
 need_command tar tar
 need_command sha256sum coreutils
 if command -v pkg-config > /dev/null 2>&1; then
@@ -81,6 +80,7 @@ if [ "$target_os" = linux ]; then
         pkg-config --exists sdl2 || missing+=("the SDL2 headers (package libsdl2-dev)")
     fi
 else
+    need_command curl curl # fetches SDL2 for MinGW
     need_command x86_64-w64-mingw32-gcc gcc-mingw-w64-x86-64
     need_command x86_64-w64-mingw32-windres binutils-mingw-w64-x86-64
     need_command x86_64-w64-mingw32-as binutils-mingw-w64-x86-64

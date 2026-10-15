@@ -174,13 +174,6 @@ jobs:
           cd dist
           sha256sum -- *.tar.gz *.zip | tee SHA256SUMS.txt
 
-      - name: Attest the archives (private repository note at the top)
-        uses: actions/attest-build-provenance@v4
-        with:
-          subject-path: |
-            dist/*.tar.gz
-            dist/*.zip
-
       - name: Upload the archives and the sums
         uses: actions/upload-artifact@v4
         with:
@@ -191,6 +184,16 @@ jobs:
             dist/SHA256SUMS.txt
           if-no-files-found: error
           retention-days: 14
+
+      # After the upload, so that the archives and the sums stay on the run for
+      # the owner's testing even when this step fails (the private-repository
+      # note at the top).
+      - name: Attest the archives (private repository note at the top)
+        uses: actions/attest-build-provenance@v4
+        with:
+          subject-path: |
+            dist/*.tar.gz
+            dist/*.zip
 
   publish:
     name: Publish the GitHub release
