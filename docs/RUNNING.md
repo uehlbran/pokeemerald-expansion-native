@@ -148,8 +148,8 @@ Fast-forward also works from a controller: hold the right trigger, or click
 the right stick to switch it on and off. The hold ends when the trigger is
 let go, when the controller is unplugged and when the window loses focus; the
 switch ends when the window loses focus too (unplugging the controller leaves
-it on). While the
-overlay is shown the controller's fast-forward buttons do nothing either.
+it on). While the overlay is shown the controller's fast-forward buttons do
+nothing either.
 
 ## Fullscreen
 

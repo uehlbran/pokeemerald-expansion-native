@@ -1809,10 +1809,10 @@ key held (SDL 2 also resets its keyboard state on focus loss on most
 backends, but that is SDL's behaviour, not a promise this relies on). The
 toggle flips on each press and on nothing else but one event: not a
 key-up, so it persists across frames until pressed again, Quit or the loss
-of focus (amended 2026-10-15: "The owner's rulings of the morning after the
-night run", item 2; it first survived focus loss). Repeats do
-nothing. While the F1 overlay is shown, presses are the overlay's (as
-KEYINPUT reads no button then), so neither key changes fast-forward from
+of focus (amended 2026-10-15: "Fast-forward focus loss, the 65536 Hz audio
+grid, the macOS signature and the arm64 rewrite", item 2; it first survived
+focus loss). Repeats do nothing. While the F1 overlay is shown, presses are
+the overlay's (as KEYINPUT reads no button then), so neither key changes fast-forward from
 under it; a key-up still ends the hold, because ignoring it would leave the
 game fast-forwarded by a key let go of while reading. A toggle switched on
 stays on under the overlay and the game runs on fast beneath it (the

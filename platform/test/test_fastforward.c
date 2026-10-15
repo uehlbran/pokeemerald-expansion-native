@@ -5,8 +5,9 @@
  * ending on its key-up and on the window losing focus, the toggle ending on
  * the focus loss too and staying on across frames and key-ups until pressed
  * again, the overlay taking the presses but not the release, the multiplier
- * and the sound at each speed; and the indicator's text, place and picture. The expected pictures are
- * drawn with font.h's own calls, which test_font.c checks pixel by pixel.
+ * and the sound at each speed; and the indicator's text, place and picture.
+ * The expected pictures are drawn with font.h's own calls, which test_font.c
+ * checks pixel by pixel.
  */
 #include "fastforward.h"
 #include "overlay.h"
@@ -419,6 +420,26 @@ PTEST(while_the_overlay_is_shown_presses_are_its_own)
     overlay_shutdown();
     fastforward_shutdown();
     PT_ASSERT(after);
+}
+
+/* The focus lost under the overlay ends the toggle too: the overlay takes presses, not the window's events. */
+PTEST(under_the_overlay_the_toggle_still_ends_on_the_focus_loss)
+{
+    start();
+    PT_ASSERT_EQ_INT(overlay_init(no_text), 0);
+    press(SDL_SCANCODE_TAB, KMOD_LSHIFT);
+    press_f1();
+    PT_ASSERT(overlay_shown());
+    const bool on_under_it = fastforward_active();
+    window_event(SDL_WINDOWEVENT_FOCUS_LOST);
+    press_f1();
+    const bool shown_after = overlay_shown();
+    const bool after = fastforward_active();
+    overlay_shutdown();
+    fastforward_shutdown();
+    PT_ASSERT(on_under_it);
+    PT_ASSERT(!shown_after);
+    PT_ASSERT(!after);
 }
 
 /* Held, then the overlay: on until the key comes up, which ends it under the overlay too. */
