@@ -674,9 +674,15 @@ says so); the orchestrator's full gate green on the branch; the replays'
 dumps and screenshots unchanged. The A/B evidence is outside the
 repository (see "Needs the owner"); nobody has listened to it yet.
 
-**In flight.** The full gate on main after the merge, then the push and a
-Windows runner dispatch for the two new Windows-side tests (host_file's
-seek and close; the WAV header rewrite).
+**In flight.** (1) The full gate on main after the audio merge, then the
+push and a Windows runner dispatch for the two new Windows-side tests
+(host_file's seek and close; the WAV header rewrite). (2) The settings
+task (the owner's rulings from the Windows check and the two
+adjustments): branch work/settings, an Opus worker; the per-user data
+directory with portable mode and `--data-dir`, `settings.ini` rebinding
+the keys, the F1 overlay with Quit, `--keys` and `--version`, the gates
+and the players' page updated. Then the console-window removal, then
+macOS.
 (2) Done and merged (5cc507a482): the documentation pass and the release
 pipeline (README and the public docs current, docs/RUNNING.md for players,
 tools/build-native.sh, release.yml; the note above has the first run).
@@ -807,6 +813,7 @@ Nothing yet; nothing exists to be broken.
 | sdlout (video, audio, frame_pacer) | Sonnet | Sonnet |
 | audio-rate (ruling 1: 32768 Hz, FIFO upsampling, --audio-dump) | Opus | Sonnet |
 | release-docs (docs pass, RUNNING.md, release.yml, build script) | Sonnet | Sonnet |
+| settings (data directory, settings.ini, F1 overlay, --keys) | Opus | in flight |
 | interrupt | Opus | Sonnet |
 | psg | Opus | Sonnet |
 | save (flash, save_file) | Opus | Sonnet |
