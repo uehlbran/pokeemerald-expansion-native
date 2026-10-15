@@ -63,7 +63,7 @@ body:
     id: logs
     attributes:
       label: Logs
-      description: The terminal output on Linux, `pokeemerald.log` in the data directory on Windows when the game was started from Explorer, a shortcut or Steam (docs/RUNNING.md says where it is), or on the Steam Deck the output of `./pokeemerald-native.sh` run in Konsole. Paste it here.
+      description: Linux: the terminal output. Windows: `pokeemerald.log` in the data directory (docs/RUNNING.md says where it is). Steam Deck: the output of `./pokeemerald-native` run in Konsole. Paste it here.
       render: text
     validations:
       required: false

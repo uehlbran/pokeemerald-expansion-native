@@ -13,8 +13,10 @@ applies to rh-hideout's repository, not to this one.
 
 The platform layer was written with AI coding agents under human direction.
 It is held to the gates below: the test suite against the GBA baseline, the
-replays, the sanitizers, and independent review with mutation testing. The
-same rules apply to any contribution, however it was written.
+replays and the sanitizers. Independent reviews also read it and applied
+mutations to its tests; the commit messages record what they found, and the
+mutants they applied and killed (search `git log` for "mutant"). The same
+rules apply to any contribution, however it was written.
 
 ## Building
 
@@ -28,7 +30,8 @@ make -C platform test BITS=32
 ## The rules
 
 `docs/C-RULES.md` is the full text and applies to everything we write.
-Rules 1 to 4 are from it; rules 5 and 6 are from the policy at the top of
+Rules 1 to 4 summarize its sections "Style and static analysis", "C safety
+and correctness", "Testing" and "Licensing rule"; rules 5 and 6 are from the policy at the top of
 `docs/UPSTREAM_MODIFICATIONS.md`.
 
 1. Warnings are errors in our files: `-std=gnu17 -Wall -Wextra -Wshadow
@@ -85,50 +88,50 @@ Rules 1 to 4 are from it; rules 5 and 6 are from the policy at the top of
 ## Gates
 
 A change is merged when the gates that apply to it pass. `docs/BUILDING.md`,
-"Gates", lists gates (a) to (h) with the command for each. Documents are part
-of a change: one that alters behaviour updates the documents describing it in
-the same branch (gate (g)). Gate (a), a native build from a clean clone with
-the documented prerequisites, is run before a release or a large change is
-declared done. Gate (h), the cross-width save round trip
-(`tests/smoke/run_cross_width.sh`), is run by a change to the save format,
-`platform/save_*` or `SaveBlock1`.
+"Gates", names them (a) to (h) and "platform", with the command for each; this
+section says when each applies. Documents are part of a change: one that
+alters behaviour updates the documents describing it in the same branch
+(gate (g)).
 
-1. Platform unit tests, both widths: `make -C platform test BITS=32` and
-   `BITS=64`; a change under `platform/` or `tools/patchelf` also passes
-   `make -C platform gate`, whose `tools-test` step runs tools/patchelf on
-   an ELF32 and an ELF64 executable.
-2. The two replays, plain and sanitized: `tests/smoke/run.sh` and
-   `tests/smoke/run_debug_menu.sh` on `build/native32/` and on
-   `build/native32-san/` (with `ASAN_OPTIONS=halt_on_error=0`), and the same on
-   `build/native64/` and `build/native64-san/`. The plain and sanitized runs,
-   and the two widths, must produce the same dumps and screenshots.
-3. Expansion's suite on the native build:
-   `make -f Makefile.native -j32 check BITS=32`, and with `SANITIZE=1`.
-   Per test it must equal the GBA baseline
-   (`docs/research/gba-baseline-1.17.1.md`), except the nine benchmarks,
-   which are assumption failures natively by decision. The same at
-   `BITS=64`, with the same counts (a width-dependent result is a bug in a
-   guard, not a new baseline); a sanitized comparison of widths uses
-   `ASAN_OPTIONS=suppress_equal_pcs=0` (`platform/test_runner/SUITE-LOG.md`).
-4. Gate (c), the GBA target: the ROM is unchanged (`make -j"$(nproc)"`, then
-   `sha1sum pokeemerald.gba` against the value for 1.17.1 in
-   `docs/BUILDING.md`, "GBA target"; a change that moves it changes GBA behaviour and is a
-   bug), and `TEST=1 make -j"$(nproc)" check` equals the baseline.
-5. Format and lint: `make -C platform gate` runs them with the unit tests
-   at both widths (`docs/BUILDING.md`).
-6. Gate 32=: a change to an expansion file under the guard must leave the
-   four 32-bit executables (`native32`, `native32-san`, `native32-test`,
-   `native32-test-san`) byte-identical. They embed the worktree path, so
-   compare like with like: build the base commit and your branch in the same
-   worktree and compare those. A change under `platform/` or to the test
-   runner legitimately changes every executable that links it; then the
-   gate is that the symbol sets (`nm`) differ only by what you added, and
-   gates 1 to 3 are green at both widths.
-7. The 64-bit link's own checks (`check_relocations.py`, `check_data_layout.py`,
-   `check_battle_script_operands.py`) pass: a new assembled table, a new
-   battle script command or a new pointer in a saved struct stops the link
-   until it is classified, widened or given a converter row
-   (`docs/UPGRADING.md`).
+- Gate (a), a native build from a clean clone with the documented
+  prerequisites, is run before a release and after a large change.
+- "platform" (`make -C platform gate`) is run by every change under
+  `platform/` or `tools/patchelf`. It covers format, lint, the unit tests at
+  both widths and the `tools-test` step, which runs `tools/patchelf` on an
+  ELF32 and an ELF64 executable.
+- Gates (d) and (e), the two replays, are run plain and sanitized on
+  `build/native32/`, `build/native32-san/`, `build/native64/` and
+  `build/native64-san/` (with `ASAN_OPTIONS=halt_on_error=0`). The plain and
+  sanitized runs, and the two widths, must produce the same dumps and
+  screenshots.
+- Gate (b), expansion's suite on the native build, must equal the GBA
+  baseline (`docs/research/gba-baseline-1.17.1.md`) per test, except the nine
+  benchmarks, which are assumption failures natively by decision. The counts
+  are the same at `BITS=64`: a width-dependent result is a bug in a guard,
+  not a new baseline. A sanitized comparison of widths uses
+  `ASAN_OPTIONS=suppress_equal_pcs=0` (`platform/test_runner/SUITE-LOG.md`).
+- Gate (c), the GBA target: the ROM is unchanged (`sha1sum pokeemerald.gba`
+  against the value for 1.17.1 in `docs/BUILDING.md`, "GBA target"), and
+  `TEST=1 make -j"$(nproc)" check` equals the baseline. A change that moves
+  the ROM changes GBA behaviour and is a bug.
+- Gate (f), the sanitizers, is the sanitized runs of the unit tests, the
+  replays and the suite. A sanitizer report fails the run.
+- Gate (h), the cross-width save round trip
+  (`tests/smoke/run_cross_width.sh`), is run by a change to the save format,
+  `platform/save_*` or `SaveBlock1`.
+
+Two more checks have no letter in that table. A change to an expansion file
+under the guard must leave the four 32-bit executables (`native32`,
+`native32-san`, `native32-test`, `native32-test-san`) byte-identical. They
+embed the worktree path, so build the base commit and your branch in the same
+worktree and compare those. A change under `platform/` or to the test runner
+legitimately changes every executable that links it; then the symbol sets
+(`nm`) must differ only by what you added, and gates (b), (d), (e) and
+"platform" are green at both widths. The 64-bit link's own checks
+(`check_relocations.py`, `check_data_layout.py`,
+`check_battle_script_operands.py`) must pass: a new assembled table, a new
+battle script command or a new pointer in a saved struct stops the link until
+it is classified, widened or given a converter row (`docs/UPGRADING.md`).
 
 Run by hand, because they need tools most machines lack, and recorded in
 the repository: after a change to the m4a engine, `make -C platform/m4a/difftest run`
