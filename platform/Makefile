@@ -10,6 +10,7 @@
 #   make -C platform test TARGET_OS=windows BITS=64   cross-build the unit tests into
 #                                  build/64-windows/test/*.exe, not run (Windows runs them:
 #                                  test_runner/run_windows_tests.sh)
+#   make -C platform test BITS=64  on a Mac: the same, for macOS (64-bit only; BUILDING.md)
 #   make -C platform format        apply clang-format (../.clang-format) to every file below
 #   make -C platform format-check  fail, naming the files, if any would change
 #   make -C platform lint          clang-tidy (../.clang-tidy) and cppcheck over every .c file;
@@ -102,10 +103,10 @@ WARNINGS := -Wall -Wextra -Wshadow -Wstrict-prototypes -Wconversion -Werror
 # -O2's inlining and reordering would blur, and keeps compile times short.
 OPTIMISATION := -O1 -g
 
-# AddressSanitizer (with LeakSanitizer, on by default on Linux) and
-# UndefinedBehaviorSanitizer on every object, tests and libplatform.a alike,
-# unconditionally (docs/C-RULES.md; "override" ignores command-line attempts
-# to change it); any report aborts the binary.
+# AddressSanitizer (with LeakSanitizer, on by default on Linux; Apple's has
+# none, see SANITIZER_ENV) and UndefinedBehaviorSanitizer on every object,
+# tests and libplatform.a alike, unconditionally (docs/C-RULES.md; "override"
+# ignores command-line attempts to change it); any report aborts the binary.
 override SANITIZERS := -fsanitize=address,undefined -fno-sanitize-recover=all -fno-omit-frame-pointer
 ifeq ($(TSAN),1)
 override SANITIZERS := -fsanitize=thread -fno-omit-frame-pointer
@@ -158,12 +159,26 @@ REGIONS_LD := $(REGIONS_LD_NAME)
 # the test table, the brackets around the game's variables); in a unit test
 # its sections are empty, but its symbols exist, as crt0.c needs.
 GAME_LD := $(GAME_LD_NAME)
-GBA_LDFLAGS := $(GBA_LAYOUT_LDFLAGS) -Wl,-T,$(REGIONS_LD) -Wl,-T,$(GAME_LD)
+# On macOS, whose ld64 has no scripts, the two are lists of names the link
+# gives section bounds, and the regions are assembled objects linked first
+# and last (target.mk; gba_regions.macho.s says why the order matters).
+GBA_LDFLAGS := $(GBA_LAYOUT_LDFLAGS) $(addprefix $(GBA_LINKER_SCRIPT_FLAG),$(REGIONS_LD) $(GAME_LD))
 LDFLAGS_ALL := -m$(BITS) $(SANITIZERS) $(GBA_LDFLAGS) $(CONSOLE_LDFLAGS)
+LAYOUT_FIRST_OBJS := $(GBA_LAYOUT_FIRST:%.s=$(BUILD_DIR)/%.o)
+LAYOUT_LAST_OBJS := $(GBA_LAYOUT_LAST:%.s=$(BUILD_DIR)/%.o)
+LAYOUT_OBJS := $(LAYOUT_FIRST_OBJS) $(LAYOUT_LAST_OBJS)
 
 # The sanitizer options every test runs under, set here so the environment
 # cannot weaken them: leaks detected, no suppressions file, UBSan backtraces.
+# Apple's AddressSanitizer for x86_64 macOS has no LeakSanitizer: with
+# detect_leaks=1 it aborts at start-up ("detect_leaks is not supported on
+# this platform", probe M2, research/probes/README.md), so on macOS the leak
+# check is left out, the one sanitizer difference (docs/DECISIONS.md, "The
+# sanitizers on macOS"); every leak the tests could show is checked on Linux.
 override SANITIZER_ENV := ASAN_OPTIONS=detect_leaks=1 LSAN_OPTIONS= UBSAN_OPTIONS=print_stacktrace=1
+ifeq ($(TARGET_OS),Darwin)
+override SANITIZER_ENV := ASAN_OPTIONS=detect_leaks=0 UBSAN_OPTIONS=print_stacktrace=1
+endif
 ifeq ($(TSAN),1)
 override SANITIZER_ENV := TSAN_OPTIONS=halt_on_error=1:exitcode=66
 endif
@@ -219,6 +234,14 @@ $(LIB): $(MODULE_OBJS)
 $(OBJ_DIR)/%.o: %.c
 	@mkdir -p $(@D)
 	$(CC) $(CFLAGS_ALL) -c $< -o $@
+
+# The macOS regions (target.mk's GBA_LAYOUT_FIRST and _LAST), made with the
+# library so that Makefile.native links the game with the same objects.
+lib: $(LAYOUT_OBJS)
+
+$(BUILD_DIR)/%.macho.o: %.macho.s
+	@mkdir -p $(@D)
+	$(CC) -c -x assembler $< -o $@
 
 # The Windows executable's filler between the GBA regions (gba_regions.pe.ld
 # says why): gba_gaps.pe.s assembled, then every `gap` section made read-only,
@@ -279,9 +302,12 @@ $(GAME_FLAG_OBJS): Makefile game_flags.mk
 SYMBOL_MAP_TESTS := test_symbols
 
 # The Windows tests cannot run here, so each link's layout is checked from the
-# file, as the game's is (Makefile.native).
+# file, as the game's is (Makefile.native); so is each macOS test's, whose
+# layout no linker script asserts.
 ifeq ($(TARGET_OS),windows)
 TEST_LINK_CHECK = python3 -I build_glue/check_pe_layout.py --console $(1) || { rm -f $(1); exit 1; }
+else ifeq ($(TARGET_OS),Darwin)
+TEST_LINK_CHECK = python3 -I build_glue/check_macho_layout.py $(1) || { rm -f $(1); exit 1; }
 endif
 
 # A test's source: test/<name>.c or test/<family>/<name>.c.
@@ -293,9 +319,9 @@ test_inputs = $(wildcard $(1:test_%=%).c) $(call test_deps,$(1))
 
 define TEST_LINK_RULE
 $(foreach dep,$(call test_deps,$(1)),$(if $(wildcard $(dep)),,$(error $(call test_source,$(1)) lists '$(dep)' on its deps line, but platform/$(dep) does not exist)))
-$(TEST_BIN_DIR)/$(1)$(TARGET_EXE_SUFFIX): $(patsubst %.c,$(OBJ_DIR)/%.o,$(call test_source,$(1))) $(patsubst %.c,$(OBJ_DIR)/%.o,$(call test_inputs,$(1))) $(HOST_OBJS) $(TEST_SUPPORT_OBJ) $(GAPS_OBJ) $(call target_resources,$(OBJ_DIR)) $(REGIONS_LD) $(GAME_LD)
+$(TEST_BIN_DIR)/$(1)$(TARGET_EXE_SUFFIX): $(patsubst %.c,$(OBJ_DIR)/%.o,$(call test_source,$(1))) $(patsubst %.c,$(OBJ_DIR)/%.o,$(call test_inputs,$(1))) $(HOST_OBJS) $(TEST_SUPPORT_OBJ) $(GAPS_OBJ) $(LAYOUT_OBJS) $(call target_resources,$(OBJ_DIR)) $(REGIONS_LD) $(GAME_LD)
 	@mkdir -p $$(@D)
-	$$(CC) $$(LDFLAGS_ALL) -o $$@ $$(filter %.o,$$^) $$(SDL_LIBS)
+	$$(CC) $$(LDFLAGS_ALL) -o $$@ $(LAYOUT_FIRST_OBJS) $$(filter-out $(LAYOUT_OBJS),$$(filter %.o,$$^)) $(LAYOUT_LAST_OBJS) $$(SDL_LIBS)
 	$$(if $$(TEST_LINK_CHECK),$$(call TEST_LINK_CHECK,$$@))
 	$$(if $$(filter $$(SYMBOL_MAP_TESTS),$(1)),$$(call write_symbol_map,$$@,$$@.symbols) || { rm -f $$@; exit 1; })
 endef
@@ -431,11 +457,14 @@ lint: lint-tidy lint-cppcheck
 # at the end of a runner's output, and the Windows runner's scripts driven
 # with fake executables, which run here; with TARGET_OS=windows, patchelf on
 # a PE file built with MinGW-w64 instead (the Windows workflow's Linux job
-# runs it: the platform gate runs on Linux alone).
+# runs it: the platform gate runs on Linux alone); on macOS, patchelf on a
+# Mach-O executable (the macOS workflow runs it).
 tools-test:
 	$(MAKE) -C .. -f make_tools.mk check-tools
 ifeq ($(TARGET_OS),windows)
 	test_runner/test_patchelf_pe.sh
+else ifeq ($(TARGET_OS),Darwin)
+	test_runner/test_patchelf_macho.sh
 else
 	test_runner/test_patchelf.sh
 	test_runner/test_hydra_end_of_output.sh

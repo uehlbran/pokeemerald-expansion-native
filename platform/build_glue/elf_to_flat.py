@@ -2,8 +2,11 @@
 
 Stands in for nothing on the GBA: it is build glue. Expansion's data is
 assembler text only GNU as reads, so the ports to macOS and Windows link the
-objects the Linux 64-bit build assembles and checks (docs/DECISIONS.md, "The
-data for Windows and macOS is assembled on Linux and converted"): this
+objects GNU as assembles for the 64-bit build and the Linux build checks
+(docs/DECISIONS.md, "The data for Windows and macOS is assembled on Linux
+and converted", and "The data on a Mac": there the same steps run on the
+Mac), and on macOS also the event scripts of the test objects
+(Makefile.native, OVERWORLD_SCRIPT on macOS): this
 script reads one of them (elf_object.py) and writes a flat listing, sections,
 labels and words with nothing left to evaluate, that clang assembles for the
 target. check_flat.py assembles it and compares the result with the ELF
@@ -51,7 +54,8 @@ object. The rules, each the one place it is decided:
     ld accepts and a Mach-O linker may refuse as duplicates, and no data
     word needs them global, since no 8- or 4-byte word names one (the
     --symbols pass checks that) and the 16-bit words take their values from
-    the table. COFF keeps ELF's binding: the test runner build's objects
+    the table; the test objects' event scripts, which do name them, take
+    their values from a table of them all (below). COFF keeps ELF's binding: the test runner build's objects
     name the global ones from their event scripts (inline assembly,
     include/test/overworld_script.h; ITEM_POTION, SPECIAL_*), which the link
     resolves against the data objects, and GNU ld for PE takes an absolute
@@ -68,16 +72,26 @@ object. The rules, each the one place it is decided:
     local label) names the last label at or before its target instead
     (the first label of the section if none is), with the difference as the
     addend. R_X86_64_16 (8 words: 3 B_MSG_MON_* in battle_anim_scripts.o, 5
-    SPECIAL_* in mystery_gift.o) is given its value, since COFF has no
-    16-bit relocation: the symbol must be an absolute symbol another data
-    object defines (the --symbols table), and value plus addend must fit
-    16 bits (-32768..65535, the range GNU ld checks R_X86_64_16 against).
+    SPECIAL_* in mystery_gift.o) and R_X86_64_8 (none in the data) are given
+    their values, since neither target has a relocation that narrow (COFF
+    none under 32 bits, Mach-O's x86-64 none under 4 bytes): the symbol must
+    be an absolute symbol another object defines (the table), and value
+    plus addend must fit the width (VALUE_RANGES). So is a 4- or 8-byte
+    word that names an undefined symbol the table holds. The data has none
+    (the --symbols pass refuses one), but a test's event scripts name the
+    data's absolute symbols (ITEM_POTION, SPECIAL_*, EQUAL) in words of
+    every width, which GNU ld resolves on Linux and Mach-O's linker cannot,
+    the listings having written them local; for those the table is every
+    global absolute symbol of the data objects (--absolutes).
     Any other relocation is refused.
 
 Usage:
   python3 -I elf_to_flat.py --symbols TABLE OBJECT...
-      the table of the absolute symbols the objects' 16-bit words name, over
-      all of them (rewritten only when it changes)
+      the table of the absolute symbols the objects' 8- and 16-bit words
+      name, over all of them (rewritten only when it changes)
+  python3 -I elf_to_flat.py --absolutes TABLE OBJECT...
+      the table of every global absolute symbol of the objects, for the
+      event scripts (rewritten only when it changes)
   python3 -I elf_to_flat.py --target macho-x86_64|coff-x86_64 --symbols TABLE --output LISTING OBJECT
   python3 -I elf_to_flat.py --self-test
 Exit 0 when the listing (or table) is written; otherwise one line per
@@ -93,8 +107,8 @@ import sys
 import tempfile
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))   # python3 -I leaves the script's directory off
-from check_support import CheckError, parse_options  # noqa: E402
-from elf_object import (ABSOLUTE, R_X86_64_16, R_X86_64_32, R_X86_64_64, SHF_ALLOC, SHF_WRITE,  # noqa: E402
+from check_support import CheckError, gnu_as, parse_options  # noqa: E402
+from elf_object import (ABSOLUTE, R_X86_64_8, R_X86_64_16, R_X86_64_32, R_X86_64_64, SHF_ALLOC, SHF_WRITE,  # noqa: E402
                         SHT_NOBITS, SHT_NULL, SHT_PROGBITS, SHT_RELA, SHT_STRTAB, SHT_SYMTAB, STB_GLOBAL, STB_LOCAL,
                         UNDEFINED, ElfObject, Relocation, Section, Symbol, read_elf64, relocation_name)
 
@@ -129,10 +143,14 @@ TARGETS = {
     }, True),
 }
 
-WORD_WIDTHS = {R_X86_64_64: 8, R_X86_64_32: 4, R_X86_64_16: 2}
-WORD_DIRECTIVES = {8: ".quad", 4: ".long", 2: ".short"}
-VALUE_WIDTH = 2                     # the words given their values: R_X86_64_16
-VALUE_RANGE = (-0x8000, 0xFFFF)     # what GNU ld accepts for R_X86_64_16
+WORD_WIDTHS = {R_X86_64_64: 8, R_X86_64_32: 4, R_X86_64_16: 2, R_X86_64_8: 1}
+WORD_DIRECTIVES = {8: ".quad", 4: ".long", 2: ".short", 1: ".byte"}
+VALUE_WIDTHS = (1, 2)               # the words always given their values: R_X86_64_8 and R_X86_64_16
+# The values a word of each width may be given: a signed or an unsigned field
+# of 8 and 16 bits, unsigned 32 bits (R_X86_64_32 is zero-extended), any 64.
+# GNU ld (2.42, measured) accepts the same, and a little more below zero for
+# the narrow two (down to -256 and -65536).
+VALUE_RANGES = {1: (-0x80, 0xFF), 2: (-0x8000, 0xFFFF), 4: (0, 0xFFFFFFFF), 8: (-(1 << 63), (1 << 64) - 1)}
 BYTES_PER_LINE = 64
 NAME_PATTERN = re.compile(r"[A-Za-z_][A-Za-z0-9_]*\Z")
 FIRST_PRINTABLE, LAST_PRINTABLE = 0x20, 0x7E
@@ -141,6 +159,8 @@ ASCII_ESCAPES = {byte: chr(byte) if FIRST_PRINTABLE <= byte <= LAST_PRINTABLE an
                  else "\\%03o" % byte for byte in range(256)}
 TABLE_HEADER = ("# The absolute symbols the data's 16-bit words name (R_X86_64_16) and their\n"
                 "# values, from the data objects that define them: elf_to_flat.py --symbols.\n")
+ABSOLUTES_HEADER = ("# Every global absolute symbol of the data objects and its value:\n"
+                    "# elf_to_flat.py --absolutes.\n")
 
 
 # --------------------------------------------------------------------------
@@ -152,7 +172,7 @@ def word_name(object_name, obj, key, offset):
 
 
 def build_symbol_table(objects):
-    """({name: value} for every symbol a 16-bit word of the objects
+    """({name: value} for every symbol an 8- or 16-bit word of the objects
     ({object name: ElfObject}) names, problems). Also a problem: an 8- or
     4-byte word naming another object's absolute symbol, which the listings
     write local."""
@@ -161,8 +181,9 @@ def build_symbol_table(objects):
         obj = objects[object_name]
         for key, entries in obj.relocation_entries.items():
             for entry in entries:
-                if entry.type == R_X86_64_16 and entry.name:
-                    wanted.setdefault(entry.name, word_name(object_name, obj, key, entry.offset))
+                width = WORD_WIDTHS.get(entry.type)
+                if width in VALUE_WIDTHS and entry.name:
+                    wanted.setdefault(entry.name, (word_name(object_name, obj, key, entry.offset), 8 * width))
                 elif entry.section == UNDEFINED and entry.name:
                     addressed.setdefault(entry.name, word_name(object_name, obj, key, entry.offset))
     values, definers, problems = {}, {}, []
@@ -181,15 +202,31 @@ def build_symbol_table(objects):
                 values[symbol.name], definers[symbol.name] = symbol.value, object_name
         for symbol in obj.symbols:
             if symbol.binding == STB_GLOBAL and symbol.name in wanted:
-                problems.append("%s (%s): the 16-bit word names a label of %s, not an absolute symbol"
-                                % (wanted[symbol.name], symbol.name, object_name))
+                problems.append("%s (%s): the %d-bit word names a label of %s, not an absolute symbol"
+                                % (wanted[symbol.name][0], symbol.name, wanted[symbol.name][1], object_name))
     for name in sorted(set(wanted) - set(values)):
-        problems.append("%s (%s): no data object defines the symbol as an absolute value" % (wanted[name], name))
+        problems.append("%s (%s): no data object defines the symbol as an absolute value" % (wanted[name][0], name))
     return values, problems
 
 
-def format_symbol_table(values):
-    return TABLE_HEADER + "".join("%s 0x%x\n" % (name, values[name]) for name in sorted(values))
+def build_absolutes_table(objects):
+    """({name: value} for every global absolute symbol of the objects
+    ({object name: ElfObject}), problems: a name given two values)."""
+    values, definers, problems = {}, {}, []
+    for object_name in sorted(objects):
+        for symbol in objects[object_name].absolutes:
+            if symbol.binding != STB_GLOBAL:
+                continue
+            if symbol.name not in values:
+                values[symbol.name], definers[symbol.name] = symbol.value, object_name
+            elif values[symbol.name] != symbol.value:
+                problems.append("%s: %s is 0x%x here and 0x%x in %s" % (object_name, symbol.name, symbol.value,
+                                                                       values[symbol.name], definers[symbol.name]))
+    return values, problems
+
+
+def format_symbol_table(values, header=TABLE_HEADER):
+    return header + "".join("%s 0x%x\n" % (name, values[name]) for name in sorted(values))
 
 
 def read_symbol_table(path):
@@ -274,7 +311,10 @@ class Conversion:
                 self.problems.append("%s: %s is not a relocation the converter writes"
                                      % (where, relocation_name(entry.type)))
                 continue
-            text = self.value_word(where, entry) if width == VALUE_WIDTH else self.address_word(where, entry, width)
+            if width in VALUE_WIDTHS or (entry.section == UNDEFINED and entry.name in self.absolute_values):
+                text = self.value_word(where, entry, width)
+            else:
+                text = self.address_word(where, entry, width)
             if text is not None:
                 words.append((entry.offset, width, text, where))
         words.sort(key=lambda word: word[0])
@@ -287,17 +327,19 @@ class Conversion:
                                      % (where, width))
         return [word[:3] for word in words]
 
-    def value_word(self, where, entry):
-        """The text of a 16-bit word: its value, from the table."""
+    def value_word(self, where, entry, width):
+        """The text of a word given its value: its symbol's, from the table,
+        plus its addend."""
+        bits = 8 * width
         if not entry.name or entry.section not in (UNDEFINED, ABSOLUTE) or entry.name not in self.absolute_values:
-            self.problems.append("%s: the 16-bit word names no absolute symbol of the data objects" % where)
+            self.problems.append("%s: the %d-bit word names no absolute symbol of the data objects" % (where, bits))
             return None
-        value = self.absolute_values[entry.name] + entry.addend
-        if not VALUE_RANGE[0] <= value <= VALUE_RANGE[1]:
-            self.problems.append("%s: the 16-bit word's value %d is out of range" % (where, value))
+        value = signed64(self.absolute_values[entry.name]) + entry.addend
+        if not VALUE_RANGES[width][0] <= value <= VALUE_RANGES[width][1]:
+            self.problems.append("%s: the %d-bit word's value %d is out of range" % (where, bits, value))
             return None
-        return "%s 0x%04x  # %s%s (R_X86_64_16)" % (WORD_DIRECTIVES[VALUE_WIDTH], value & 0xFFFF, entry.name,
-                                                   addend_text(entry.addend))
+        return "%s 0x%0*x  # %s%s (%s)" % (WORD_DIRECTIVES[width], 2 * width, value & ((1 << bits) - 1), entry.name,
+                                          addend_text(entry.addend), relocation_name(entry.type))
 
     def address_word(self, where, entry, width):
         """The text of an address word: a symbol plus an addend."""
@@ -414,7 +456,7 @@ class Conversion:
     def write_absolutes(self):
         limit = 1 << self.target.value_bits
         for symbol in self.obj.absolutes:
-            value = symbol.value - (1 << 64) if symbol.value >= 1 << 63 else symbol.value
+            value = signed64(symbol.value)
             if not -(limit >> 1) <= value < limit:
                 self.problems.append("%s: absolute symbol %s = %d does not fit the target's %d-bit symbol value"
                                      % (self.object_name, symbol.name, value, self.target.value_bits))
@@ -426,6 +468,11 @@ class Conversion:
 
 def addend_text(addend):
     return "%+d" % addend if addend else ""
+
+
+def signed64(value):
+    """An ELF symbol's 64-bit value read as two's complement (CONNECTION_INVALID's -1)."""
+    return value - (1 << 64) if value >= 1 << 63 else value
 
 
 def convert(object_name, obj, target_name, absolute_values):
@@ -485,6 +532,38 @@ SELF_TEST_CONSTANTS = """
 	.global B_CONST
 	.set B_CONST, 5
 	.set B_LOCAL, 7
+	.global NEG_CONST
+	.set NEG_CONST, -1
+"""
+# An object like a test's event scripts (Makefile.native, the macOS test
+# objects): words of every width naming the data objects' absolute symbols,
+# given their values from the --absolutes table, beside address words.
+SELF_TEST_VALUES = """
+	.section .rodata
+	.global script
+script:
+	.byte B_CONST
+	.byte B_CONST - 6
+	.2byte B_CONST + 1
+	.4byte B_CONST + 2
+	.8byte B_CONST
+	.8byte NEG_CONST
+	.4byte script + 1
+	.4byte Function
+"""
+SELF_TEST_VALUES_MACHO = """
+	.section __DATA,__const
+	.p2align 0
+	.globl _script
+_script:
+	.byte 0x05  # B_CONST (R_X86_64_8)
+	.byte 0xff  # B_CONST-6 (R_X86_64_8)
+	.short 0x0006  # B_CONST+1 (R_X86_64_16)
+	.long 0x00000007  # B_CONST+2 (R_X86_64_32)
+	.quad 0x0000000000000005  # B_CONST (R_X86_64_64)
+	.quad 0xffffffffffffffff  # NEG_CONST (R_X86_64_64)
+	.long _script+1
+	.long _Function
 """
 # The expected listing for Mach-O: every line (the first, which names the
 # object, aside), the sections in the object's header order.
@@ -543,7 +622,7 @@ def self_test_coff_listing():
 
 def assemble(directory, name, source):
     path = os.path.join(directory, name)
-    subprocess.run(["as", "--64", "-o", path], input=source, universal_newlines=True, check=True)
+    subprocess.run(gnu_as() + ["--64", "-o", path], input=source, universal_newlines=True, check=True)
     return path
 
 
@@ -565,6 +644,24 @@ def self_test_listings(failures, directory):
             expect(failures, "%s listing" % target_name, rest, wanted.lstrip("\n"))
             expect(failures, "%s first line" % target_name, first,
                    "# a.o, converted by elf_to_flat.py --target %s: generated, do not edit" % target_name)
+
+
+def self_test_values(failures, directory):
+    """The --absolutes table, and an object whose words take their values from it."""
+    objects = self_test_objects(directory)
+    values, problems = build_absolutes_table(objects)
+    expect(failures, "table of the global absolute symbols", (values, problems),
+           ({"B_CONST": 5, "GLOBAL_CONST": (1 << 64) - 1, "NEG_CONST": (1 << 64) - 1}, []))
+    other = read_elf64(assemble(directory, "other.o", ".global B_CONST\n.set B_CONST, 6\n.set NEG_CONST, 1\n"))
+    expect(failures, "table of the global absolute symbols: two values",
+           build_absolutes_table({"constants.o": objects["constants.o"], "other.o": other})[1],
+           ["other.o: B_CONST is 0x6 here and 0x5 in constants.o"])
+    expect(failures, "its file", format_symbol_table({"A": 1}, ABSOLUTES_HEADER), ABSOLUTES_HEADER + "A 0x1\n")
+    text, problems = convert("values.o", read_elf64(assemble(directory, "values.o", SELF_TEST_VALUES)),
+                             "macho-x86_64", values)
+    expect(failures, "value words: problems", problems, [])
+    if text is not None:
+        expect(failures, "value words: listing", text.split("\n", 1)[1], SELF_TEST_VALUES_MACHO.lstrip("\n"))
 
 
 def self_test_table_file(failures, directory):
@@ -639,6 +736,18 @@ CONVERSION_REFUSALS = (
      ["x.o: .rodata+0x0 (B_CONST): the 16-bit word's value 65536 is out of range"]),
     ("a 16-bit value out of range by its addend", ".section .rodata\n.2byte B_CONST - 0x8001\n", "coff-x86_64",
      {"B_CONST": 0}, ["x.o: .rodata+0x0 (B_CONST): the 16-bit word's value -32769 is out of range"]),
+    ("an 8-bit word naming a symbol not in the table", ".section .rodata\n.byte B_CONST\n", "macho-x86_64", {},
+     ["x.o: .rodata+0x0 (B_CONST): the 8-bit word names no absolute symbol of the data objects"]),
+    ("an 8-bit word naming a label", ".section .rodata\nhere:\n.byte here\n", "macho-x86_64", {"here": 0},
+     ["x.o: .rodata+0x0 (a section): the 8-bit word names no absolute symbol of the data objects"]),
+    ("an 8-bit value out of range", ".section .rodata\n.byte B_CONST\n", "macho-x86_64", {"B_CONST": 0x100},
+     ["x.o: .rodata+0x0 (B_CONST): the 8-bit word's value 256 is out of range"]),
+    ("an 8-bit value out of range by its addend", ".section .rodata\n.byte B_CONST - 0x81\n", "macho-x86_64",
+     {"B_CONST": 0}, ["x.o: .rodata+0x0 (B_CONST): the 8-bit word's value -129 is out of range"]),
+    ("a 32-bit word given a value below zero", ".section .rodata\n.4byte B_CONST\n", "macho-x86_64",
+     {"B_CONST": (1 << 64) - 1}, ["x.o: .rodata+0x0 (B_CONST): the 32-bit word's value -1 is out of range"]),
+    ("a 32-bit word given a value past 32 bits", ".section .rodata\n.4byte B_CONST + 1\n", "macho-x86_64",
+     {"B_CONST": 0xFFFFFFFF}, ["x.o: .rodata+0x0 (B_CONST): the 32-bit word's value 4294967296 is out of range"]),
     ("a word naming no symbol (as resolves an absolute symbol of the object)",
      ".global K\n.set K, 3\n.section .rodata\n.reloc 0, R_X86_64_64, K\n.8byte 0\n", "coff-x86_64", {},
      ["x.o: .rodata+0x0 (no symbol): the word names no symbol (the null symbol)"]),
@@ -733,6 +842,7 @@ def self_test():
     failures = []
     with tempfile.TemporaryDirectory() as directory:
         self_test_listings(failures, directory)
+        self_test_values(failures, directory)
         self_test_table_file(failures, directory)
         self_test_table_refusals(failures, directory)
         self_test_conversion_refusals(failures, directory)
@@ -745,6 +855,7 @@ def self_test():
 # --------------------------------------------------------------------------
 
 USAGE = ("usage: elf_to_flat.py --symbols TABLE OBJECT...\n"
+         "       elf_to_flat.py --absolutes TABLE OBJECT...\n"
          "       elf_to_flat.py --target %s --symbols TABLE --output LISTING OBJECT\n"
          "       elf_to_flat.py --self-test\n" % "|".join(sorted(TARGETS)))
 
@@ -753,6 +864,13 @@ def run_table(table_path, object_paths):
     values, problems = build_symbol_table({path: read_elf64(path) for path in object_paths})
     if not problems:
         write_if_changed(table_path, format_symbol_table(values))
+    return problems
+
+
+def run_absolutes(table_path, object_paths):
+    values, problems = build_absolutes_table({path: read_elf64(path) for path in object_paths})
+    if not problems:
+        write_if_changed(table_path, format_symbol_table(values, ABSOLUTES_HEADER))
     return problems
 
 
@@ -767,10 +885,13 @@ def run_conversion(target_name, table_path, output_path, object_path):
 def main(argv):
     if argv[1:] == ["--self-test"]:
         return self_test()
-    options, paths = parse_options(argv[1:], {"--symbols": None, "--target": tuple(TARGETS), "--output": None})
+    options, paths = parse_options(argv[1:], {"--symbols": None, "--absolutes": None, "--target": tuple(TARGETS),
+                                              "--output": None})
     try:
         if set(options) == {"--symbols"} and paths:
             problems = run_table(options["--symbols"], paths)
+        elif set(options) == {"--absolutes"} and paths:
+            problems = run_absolutes(options["--absolutes"], paths)
         elif set(options) == {"--symbols", "--target", "--output"} and len(paths) == 1:
             problems = run_conversion(options["--target"], options["--symbols"], options["--output"], paths[0])
         else:

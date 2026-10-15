@@ -15,6 +15,11 @@ one. This module holds the parts that are the same in all three:
   * matching_rule(): which "object-glob symbol-glob ..." rule applies to a
     symbol, with '{stem}' standing for the object's name without '.o'
     (the lists data_address_words.txt and check_data_layout.RULES).
+  * gnu_as(): the command of the GNU assembler that the self-tests of the
+    object readers, the converter and the checkers assemble their ELF
+    fixtures with: $GNU_AS if it is set, else `as`. On macOS `as` is
+    Apple's, which writes Mach-O and takes no GNU options; platform/target.mk
+    sets GNU_AS to Homebrew's x86_64-elf-as there.
 
 'python3 -I check_support.py --self-test' checks each of them, the refusals
 included, and exits non-zero on a failure.
@@ -22,6 +27,7 @@ included, and exits non-zero on a failure.
 
 import fnmatch
 import os
+import shlex
 import sys
 
 STEM = "{stem}"
@@ -66,6 +72,11 @@ def matching_rule(rules, object_name, symbol_name):
     return None
 
 
+def gnu_as():
+    """The GNU assembler's command as a list: $GNU_AS split as a shell would, else ['as']."""
+    return shlex.split(os.environ.get("GNU_AS") or "as")
+
+
 def self_test():
     failures = []
 
@@ -96,6 +107,17 @@ def self_test():
     expect("rule: first match wins", matching_rule(rules, "a.o", "gOther"), 2)
     expect("rule: the symbol matches but the object does not", matching_rule(rules[:1], "b.o", "gTable"), None)
     expect("rule: none", matching_rule(rules, "b.o", "Other"), None)
+    saved = os.environ.pop("GNU_AS", None)
+    try:
+        expect("gnu_as: as by default", gnu_as(), ["as"])
+        os.environ["GNU_AS"] = ""
+        expect("gnu_as: as when empty", gnu_as(), ["as"])
+        os.environ["GNU_AS"] = "x86_64-elf-as --warn"
+        expect("gnu_as: the variable's words", gnu_as(), ["x86_64-elf-as", "--warn"])
+    finally:
+        os.environ.pop("GNU_AS", None)
+        if saved is not None:
+            os.environ["GNU_AS"] = saved
     for failure in failures:
         sys.stderr.write("check_support self-test: %s\n" % failure)
     return 1 if failures else 0

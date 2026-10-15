@@ -8,11 +8,13 @@
  * has a RIP-relative one; the width section below names those differences.
  *
  * Followed: the Intel SDM, volume 2, for the encoding of DIV and IDIV
- * (opcode F7h /6 and /7; prefixes, REX, ModRM, SIB and displacements in 32-
- * and 64-bit mode) and their #DE cases; signal-safety(7) for the handler.
- * The fault and its saved registers come from host_fault.h: the accumulator
- * holds the dividend's low half, then the quotient; the data register the
- * dividend's high half, then the remainder.
+ * (opcodes F6h and F7h /6 and /7; prefixes, REX, ModRM, SIB and
+ * displacements in 32- and 64-bit mode) and their #DE cases;
+ * signal-safety(7) for the handler. The fault and its saved registers come
+ * from host_fault.h: the accumulator holds the dividend's low half, then the
+ * quotient; the data register the dividend's high half, then the remainder;
+ * at 8 bits AX holds the dividend, then AL the quotient and AH the
+ * remainder.
  */
 #include "arm_division.h"
 
@@ -42,10 +44,24 @@
 #endif
 
 /* Intel SDM vol. 2: DIV r/m32 is F7 /6, IDIV r/m32 is F7 /7 (r/m64 with
- * REX.W). */
+ * REX.W, r/m16 with the operand-size prefix); DIV and IDIV r/m8 are F6 /6
+ * and /7. */
+#define OPCODE_GROUP3_BYTE 0xF6u
 #define OPCODE_GROUP3 0xF7u
 #define MODRM_REG_DIV 6u
 #define MODRM_REG_IDIV 7u
+
+/* The operand widths, in bits. */
+#define WIDTH_8 8u
+#define WIDTH_16 16u
+#define WIDTH_32 32u
+#define WIDTH_64 64u
+
+/* An 8-bit register operand without a REX prefix: rm 4 to 7 are AH, CH, DH
+ * and BH, the second byte of registers 0 to 3 (Intel SDM vol. 2, table
+ * 2-2); with any REX prefix they are SPL, BPL, SIL and DIL. */
+#define HIGH_BYTE_REGISTER_FIRST 4u
+#define BYTE_BITS 8u
 
 /* ModRM and SIB fields (Intel SDM vol. 2, 2.1.5 and table 2-2). */
 #define MODRM_FIELD_MASK 7u
@@ -63,17 +79,19 @@
 #define DISP32_SIZE 4u
 
 /* Segment override prefixes (Intel SDM vol. 2, 2.1.1, group 2) that
- * address the flat user segment on Linux (in 64-bit mode they are null
- * prefixes, Intel SDM vol. 1, 3.3.7.1). FS (64h) and GS (65h) add
- * thread-local bases and are refused, as are the operand-size (66h) and
- * address-size (67h) prefixes (a 16-bit operand, other addressing), LOCK
- * and REP. Repeated segment prefixes are legal (the last one wins);
- * MAX_PREFIXES caps how many the decoder skips, well within the 15-byte
- * instruction limit. */
+ * address the flat user segment on Linux and macOS (in 64-bit mode they are
+ * null prefixes, Intel SDM vol. 1, 3.3.7.1), and the operand-size prefix
+ * (66h, group 3), which makes F7's operand 16-bit: clang divides two values
+ * it knows fit 16 bits with it (arm_division.h). FS (64h) and GS (65h) add
+ * thread-local bases and are refused, as are the address-size prefix (67h,
+ * other addressing), LOCK and REP. Repeated prefixes are legal (the last
+ * segment one wins); MAX_PREFIXES caps how many the decoder skips, well
+ * within the 15-byte instruction limit. */
 #define PREFIX_SEGMENT_ES 0x26u
 #define PREFIX_SEGMENT_CS 0x2Eu
 #define PREFIX_SEGMENT_SS 0x36u
 #define PREFIX_SEGMENT_DS 0x3Eu
+#define PREFIX_OPERAND_SIZE 0x66u
 #define MAX_PREFIXES 4u
 
 /* The REX prefix, 0100WRXB (Intel SDM vol. 2, 2.2.1.2), 64-bit mode only,
@@ -190,93 +208,121 @@ static uintptr_t operand_address(const uint8_t *code, const struct host_fault *f
     return address;
 }
 
-/* A decoded F7 /6 or /7, and its divisor. */
+/* A decoded F6 or F7 /6 or /7, and its divisor. */
 struct division_instruction {
     size_t length;
     bool is_signed;
-    bool is_64_bit;   /* REX.W: RDX:RAX by a 64-bit divisor; else EDX:EAX by a 32-bit one */
-    uint64_t divisor; /* a 32-bit divisor zero-extended */
+    unsigned width;   /* WIDTH_64 (REX.W: RDX:RAX), _32 (EDX:EAX), _16 (DX:AX) or _8 (AX) by a divisor that wide */
+    uint64_t divisor; /* zero-extended from the width */
 };
 
-/* The divisor in memory, 8 bytes with REX.W, else 4. */
-static uint64_t read_operand(uintptr_t address, bool is_64_bit)
+/* The bits below width set: the width's unsigned maximum. */
+static uint64_t width_mask(unsigned width)
 {
-    const void *operand = (const void *)address;
-    if (is_64_bit) {
-        uint64_t value;
-        memcpy(&value, operand, sizeof value);
-        return value;
-    }
-    uint32_t value;
-    memcpy(&value, operand, sizeof value);
+    return width == WIDTH_64 ? UINT64_MAX : ((uint64_t)1 << width) - 1u;
+}
+
+/* The divisor in memory, width / 8 bytes, little-endian as x86 reads it. */
+static uint64_t read_operand(uintptr_t address, unsigned width)
+{
+    uint64_t value = 0;
+    memcpy(&value, (const void *)address, width / BYTE_BITS); /* the low bytes, on a little-endian host */
     return value;
 }
 
+/* A register operand: the register ModRM rm names, at the width; at 8 bits
+ * without REX, rm 4 to 7 are the second bytes of registers 0 to 3. */
+static uint64_t register_operand(const struct host_fault *fault, unsigned rm, uint8_t rex, unsigned width)
+{
+    if (width == WIDTH_8 && rex == 0 && rm >= HIGH_BYTE_REGISTER_FIRST)
+        return (register_value(fault, rm - HIGH_BYTE_REGISTER_FIRST) >> BYTE_BITS) & width_mask(WIDTH_8);
+    return register_value(fault, extended(rm, rex, REX_B)) & width_mask(width);
+}
+
+/* The operand width of F6 or F7 with these prefixes, or 0 for a form no
+ * compiler writes: F6 with the operand-size prefix or REX.W, which the
+ * processor ignores there. REX.W wins over the operand-size prefix. */
+static unsigned operand_width(uint8_t opcode, bool operand_size_prefix, uint8_t rex)
+{
+    if (opcode == OPCODE_GROUP3_BYTE)
+        return operand_size_prefix || (rex & REX_W) != 0 ? 0 : WIDTH_8;
+    if ((rex & REX_W) != 0)
+        return WIDTH_64;
+    return operand_size_prefix ? WIDTH_16 : WIDTH_32;
+}
+
 /* Decodes the instruction at code. The refusals, each a plain false:
- *   - a prefix other than ES/CS/SS/DS (66h, 67h, FS, GS, LOCK, REP, ...)
- *     before the REX prefix and the opcode, a second REX prefix, or a REX
- *     prefix followed by any prefix: the byte where the opcode should be
- *     is not F7h;
- *   - an opcode other than F7h (8-bit DIV/IDIV is F6h and cannot be the
- *     compiler's division of an int or wider);
+ *   - a prefix other than ES/CS/SS/DS and the operand size (67h, FS, GS,
+ *     LOCK, REP, ...) before the REX prefix and the opcode, more than
+ *     MAX_PREFIXES of them, a second REX prefix, or a REX prefix followed by
+ *     any prefix: the byte where the opcode should be is not F6h or F7h;
+ *   - F6h with the operand-size prefix or REX.W;
  *   - ModRM reg other than 6 (DIV) or 7 (IDIV): NOT, NEG, MUL, IMUL, TEST.
  * The operand is readable: the CPU fetched it before raising the divide
  * error. */
 static bool decode(const uint8_t *code, const struct host_fault *fault, struct division_instruction *out)
 {
     size_t i = 0;
-    while (i < MAX_PREFIXES && is_flat_segment_prefix(code[i]))
+    bool operand_size_prefix = false;
+    while (i < MAX_PREFIXES && (is_flat_segment_prefix(code[i]) || code[i] == PREFIX_OPERAND_SIZE)) {
+        operand_size_prefix = operand_size_prefix || code[i] == PREFIX_OPERAND_SIZE;
         i++;
+    }
     uint8_t rex = 0;
     if (is_rex(code[i]))
         rex = code[i++];
-    if (code[i++] != OPCODE_GROUP3)
+    const uint8_t opcode = code[i++];
+    if (opcode != OPCODE_GROUP3 && opcode != OPCODE_GROUP3_BYTE)
         return false;
+    out->width = operand_width(opcode, operand_size_prefix, rex);
     struct modrm_fields modrm = split_modrm(code[i++]);
-    if (modrm.middle != MODRM_REG_DIV && modrm.middle != MODRM_REG_IDIV)
+    if (out->width == 0 || (modrm.middle != MODRM_REG_DIV && modrm.middle != MODRM_REG_IDIV))
         return false;
     out->is_signed = modrm.middle == MODRM_REG_IDIV;
-    out->is_64_bit = (rex & REX_W) != 0;
     if (modrm.high == MODRM_MOD_REGISTER) {
-        const uint64_t value = register_value(fault, extended(modrm.low, rex, REX_B));
-        out->divisor = out->is_64_bit ? value : (uint32_t)value;
+        out->divisor = register_operand(fault, modrm.low, rex, out->width);
     } else {
         size_t used = 0;
-        out->divisor = read_operand(operand_address(&code[i], fault, modrm, rex, &used), out->is_64_bit);
+        out->divisor = read_operand(operand_address(&code[i], fault, modrm, rex, &used), out->width);
         i += used;
     }
     out->length = i;
     return true;
 }
 
-/* libgcc's result for a 32-bit division by zero, or of INT32_MIN by -1
- * (arm_division.h: __udivsi3, __umodsi3, __divsi3, __modsi3), from EDX:EAX
- * and the divisor; false for any other divide error (a quotient too large
- * for 32 bits from a 64-bit dividend, which the GBA's 32-bit routines never
- * see). */
-static bool libgcc_result_32(bool is_signed, uint32_t divisor, uint32_t eax, uint32_t edx, uint32_t *quotient,
-                             uint32_t *remainder)
+/* libgcc's result for a division by zero, or of the most negative value
+ * by -1, at width 8, 16 or 32 (arm_division.h: __udivsi3, __umodsi3,
+ * __divsi3, __modsi3 at 32; the same rule at the narrower width a compiler
+ * divides two narrower values at), from the dividend's low and high halves
+ * (EAX and EDX; AX and DX; AL and AH) and the divisor, each zero-extended
+ * from the width; false for any other divide error (a quotient too wide from
+ * a dividend wider than the width, which the C division never makes). The
+ * results are zero-extended from the width too. */
+static bool libgcc_result_narrow(bool is_signed, unsigned width, uint64_t divisor, uint64_t low, uint64_t high,
+                                 uint64_t *quotient, uint64_t *remainder)
 {
+    const uint64_t all_ones = width_mask(width);
+    const uint64_t sign_bit = (uint64_t)1 << (width - 1u);
     if (!is_signed) {
-        if (divisor != 0 || edx != 0)
+        if (divisor != 0 || high != 0)
             return false;
-        *quotient = *remainder = eax != 0 ? UINT32_MAX : 0;
+        *quotient = *remainder = low != 0 ? all_ones : 0;
         return true;
     }
-    int32_t dividend = (int32_t)eax;
-    if (edx != (dividend < 0 ? UINT32_MAX : 0)) /* not a sign-extended 32-bit dividend */
+    const bool negative = (low & sign_bit) != 0;
+    if (high != (negative ? all_ones : 0)) /* not a sign-extended dividend */
         return false;
     if (divisor == 0) {
-        int32_t result = 0;
-        if (dividend > 0)
-            result = INT32_MAX;
-        else if (dividend < 0)
-            result = INT32_MIN;
-        *quotient = *remainder = (uint32_t)result;
+        uint64_t result = 0;
+        if (negative)
+            result = sign_bit; /* the most negative value */
+        else if (low != 0)
+            result = sign_bit - 1u; /* the most positive */
+        *quotient = *remainder = result;
         return true;
     }
-    if (divisor == UINT32_MAX && dividend == INT32_MIN) {
-        *quotient = (uint32_t)INT32_MIN;
+    if (divisor == all_ones && low == sign_bit) { /* the most negative by -1 */
+        *quotient = sign_bit;
         *remainder = 0;
         return true;
     }
@@ -334,21 +380,39 @@ static bool libgcc_result_64(bool is_signed, uint64_t divisor, uint64_t rax, uin
 }
 
 /* libgcc's results for the decoded division, from the accumulator and the
- * data register (the dividend's low and high halves). A 32-bit result
- * replaces the whole register: writing EAX and EDX zero-extends into RAX
- * and RDX (Intel SDM vol. 1, 3.4.1.1). */
+ * data register: the dividend's low and high halves, or at 8 bits AL and AH,
+ * both in the accumulator. */
 static bool libgcc_result(const struct division_instruction *instruction, uint64_t accumulator, uint64_t data,
                           uint64_t *quotient, uint64_t *remainder)
 {
-    if (instruction->is_64_bit)
+    const unsigned width = instruction->width;
+    if (width == WIDTH_64)
         return libgcc_result_64(instruction->is_signed, instruction->divisor, accumulator, data, quotient, remainder);
-    uint32_t quotient_32, remainder_32;
-    if (!libgcc_result_32(instruction->is_signed, (uint32_t)instruction->divisor, (uint32_t)accumulator, (uint32_t)data,
-                          &quotient_32, &remainder_32))
-        return false;
-    *quotient = quotient_32;
-    *remainder = remainder_32;
-    return true;
+    const uint64_t mask = width_mask(width);
+    const uint64_t high = width == WIDTH_8 ? accumulator >> BYTE_BITS : data;
+    return libgcc_result_narrow(instruction->is_signed, width, instruction->divisor, accumulator & mask, high & mask,
+                                quotient, remainder);
+}
+
+/* Writes the results where the instruction puts them (Intel SDM vol. 2, DIV
+ * and IDIV; vol. 1, 3.4.1.1): at 64 bits RAX and RDX whole, and at 32 bits
+ * too, since writing EAX and EDX zero-extends into RAX and RDX; at 16 bits AX
+ * and DX, at 8 bits AL and AH, the registers' other bits kept. */
+static void write_results(struct host_fault *fault, unsigned width, uint64_t quotient, uint64_t remainder)
+{
+    const uintptr_t accumulator = host_fault_register(fault, HOST_FAULT_ACCUMULATOR);
+    const uintptr_t data = host_fault_register(fault, HOST_FAULT_DATA);
+    const uintptr_t low_16 = (uintptr_t)width_mask(WIDTH_16);
+    if (width == WIDTH_8) {
+        const uintptr_t ax = (uintptr_t)(remainder << BYTE_BITS | quotient);
+        host_fault_set_register(fault, HOST_FAULT_ACCUMULATOR, (accumulator & ~low_16) | ax);
+    } else if (width == WIDTH_16) {
+        host_fault_set_register(fault, HOST_FAULT_ACCUMULATOR, (accumulator & ~low_16) | (uintptr_t)quotient);
+        host_fault_set_register(fault, HOST_FAULT_DATA, (data & ~low_16) | (uintptr_t)remainder);
+    } else {
+        host_fault_set_register(fault, HOST_FAULT_ACCUMULATOR, (uintptr_t)quotient);
+        host_fault_set_register(fault, HOST_FAULT_DATA, (uintptr_t)remainder);
+    }
 }
 
 /* Completes the instruction in the saved context. True if it did. A 64-bit
@@ -362,8 +426,7 @@ static bool complete(struct host_fault *fault)
         || !libgcc_result(&instruction, host_fault_register(fault, HOST_FAULT_ACCUMULATOR),
                           host_fault_register(fault, HOST_FAULT_DATA), &quotient, &remainder))
         return false;
-    host_fault_set_register(fault, HOST_FAULT_ACCUMULATOR, (uintptr_t)quotient);
-    host_fault_set_register(fault, HOST_FAULT_DATA, (uintptr_t)remainder);
+    write_results(fault, instruction.width, quotient, remainder);
     host_fault_set_register(fault, HOST_FAULT_PC, pc + instruction.length);
     return true;
 }

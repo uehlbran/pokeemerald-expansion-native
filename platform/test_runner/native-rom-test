@@ -18,7 +18,9 @@
 # inherited down to here; Linux refuses to exec a file that is open for
 # writing (ETXTBSY), so this process's descriptors on the copy are closed
 # first. (mgba-rom-test only reads the file, so the hydra never needed to.)
-# Bash, not sh: the descriptor's number can be above 9.
+# macOS's execve(2) lists ETXTBSY too, and macOS has no /proc: there /dev/fd
+# lists this shell's descriptors and `test -ef` tells which is open on the
+# copy. Bash, not sh: the descriptor's number can be above 9.
 #
 # On Windows (the hydra built under MSYS2, run_windows_suite.sh) two things
 # differ, and run_on_windows does them instead: the system runs a file only
@@ -38,7 +40,10 @@
 # prints an error for every run and every crash reboot). The executable
 # line-buffers stdout and flushes every debug line itself, so stdbuf's
 # preload and settings are dropped here before the exec; any other preload
-# is kept.
+# is kept. On macOS GNU stdbuf (Homebrew's coreutils) inserts its library
+# with DYLD_INSERT_LIBRARIES and a flat namespace, which macOS already drops
+# when it starts this script's /bin/bash (a protected program); both are
+# dropped here too, for a bash that keeps them.
 set -eu
 
 if [ "$#" -lt 1 ]; then
@@ -112,11 +117,19 @@ esac
 
 chmod u+x "$executable"
 copy=$(readlink -f -- "$executable")
-for entry in /proc/$$/fd/*; do
-    if [ "$(readlink -- "$entry" 2>/dev/null)" = "$copy" ]; then
-        eval "exec ${entry##*/}>&-"
-    fi
-done
+if [ -d /proc/$$/fd ]; then
+    for entry in /proc/$$/fd/*; do
+        if [ "$(readlink -- "$entry" 2>/dev/null)" = "$copy" ]; then
+            eval "exec ${entry##*/}>&-"
+        fi
+    done
+else
+    for entry in /dev/fd/*; do
+        if [ "$entry" -ef "$copy" ]; then
+            eval "exec ${entry##*/}>&-"
+        fi
+    done
+fi
 
 preload=
 for library in $(printf '%s' "${LD_PRELOAD-}" | tr ':' ' '); do
@@ -131,5 +144,8 @@ else
     unset LD_PRELOAD
 fi
 unset _STDBUF_I _STDBUF_O _STDBUF_E
+case "${DYLD_INSERT_LIBRARIES-}" in
+    *libstdbuf*) unset DYLD_INSERT_LIBRARIES DYLD_FORCE_FLAT_NAMESPACE ;;
+esac
 
 exec "$executable" --headless --silent --unthrottled --test-runner

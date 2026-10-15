@@ -21,9 +21,11 @@ ELF object's terms. It fails unless:
     names a section symbol (as does for a local label), the converted word
     must reach the same section and offset, whatever label it names.
     RELOCATION_TYPES maps each format's relocation types to the ELF ones;
-  * each 16-bit word the ELF object relocates (R_X86_64_16) has no
-    relocation and holds the value of its symbol, from the --symbols table,
-    plus its addend;
+  * each word the converter gives a value (every 8- and 16-bit word the ELF
+    object relocates, R_X86_64_8 and R_X86_64_16, and a 4- or 8-byte one
+    naming an undefined symbol the --symbols table holds: elf_to_flat.py
+    says why) has no relocation and holds the value of its symbol, from the
+    table, plus its addend, in its width;
   * the symbols have the same names after the prefix rule, each in the same
     section at the same offset, or absolute with the same value (on COFF,
     modulo 2^32: its symbol values are 32 bits), with the same binding,
@@ -55,9 +57,10 @@ from check_support import CheckError, capped, parse_options, problems_match  # n
 from coff_object import (IMAGE_REL_AMD64_ADDR32, IMAGE_REL_AMD64_ADDR64, IMAGE_SCN_CNT_UNINITIALIZED_DATA,  # noqa: E402
                          IMAGE_SCN_MEM_WRITE, IMAGE_SYM_ABSOLUTE, IMAGE_SYM_CLASS_EXTERNAL, IMAGE_SYM_CLASS_STATIC,
                          IMAGE_SYM_UNDEFINED, read_coff64)
-from elf_object import (ABSOLUTE, R_X86_64_16, R_X86_64_32, R_X86_64_64, SHF_ALLOC, SHF_WRITE, SHT_NOBITS,  # noqa: E402
+from elf_object import (ABSOLUTE, R_X86_64_32, R_X86_64_64, SHF_ALLOC, SHF_WRITE, SHT_NOBITS,  # noqa: E402
                         STB_GLOBAL, UNDEFINED, read_elf64, relocation_name)
-from elf_to_flat import TARGETS, build_symbol_table, convert, read_symbol_table  # noqa: E402
+from elf_to_flat import (SELF_TEST_VALUES, TARGETS, VALUE_WIDTHS, WORD_WIDTHS, assemble as assemble_elf,  # noqa: E402
+                         build_absolutes_table, build_symbol_table, convert, read_symbol_table)
 from elf_to_flat import self_test_objects as converter_test_objects  # noqa: E402
 from macho_object import N_ABS, N_SECT, N_UNDF, S_ZEROFILL, X86_64_RELOC_UNSIGNED, read_macho64  # noqa: E402
 
@@ -78,8 +81,6 @@ RELOCATION_TYPES = {
                     (IMAGE_REL_AMD64_ADDR32, False, 4): R_X86_64_32},
 }
 COFF_WIDTHS = {IMAGE_REL_AMD64_ADDR64: 8, IMAGE_REL_AMD64_ADDR32: 4}
-ELF_WIDTHS = {R_X86_64_64: 8, R_X86_64_32: 4}
-VALUE_WIDTH = 2
 MAX_REPORTS = 20
 DEFAULT_CLANG = "clang"
 
@@ -87,7 +88,7 @@ DEFAULT_CLANG = "clang"
 #   sections {ELF name: ViewSection}, writable None where the format has no say
 #   words    {ELF name: {offset: Word}}: name "" where only the place counts;
 #            place a Place, or None for an undefined symbol
-#   values   {ELF name: {offset: (value, symbol name)}}: the 16-bit words
+#   values   {ELF name: {offset: (width, value, symbol name)}}: the words given values
 #   symbols  {name: ViewSymbol}: where is an ELF section name, ABSOLUTE or UNDEFINED
 View = collections.namedtuple("View", "sections words values symbols")
 ViewSection = collections.namedtuple("ViewSection", "size alignment zerofill writable contents")
@@ -114,14 +115,15 @@ def elf_view(obj, absolute_values, target, problems):
         name = obj.sections[key].name
         words[name], values[name] = {}, {}
         for entry in obj.relocation_entries.get(key, []):
-            if entry.type == R_X86_64_16:
+            width = WORD_WIDTHS.get(entry.type)
+            if width in VALUE_WIDTHS or (width and entry.section == UNDEFINED and entry.name in absolute_values):
                 value = absolute_values.get(entry.name)
                 if value is None:
-                    problems.append("%s: %s+0x%x (%s): no value for the 16-bit word in the table"
-                                    % (obj.path, name, entry.offset, entry.name or "a section"))
+                    problems.append("%s: %s+0x%x (%s): no value for the %d-bit word in the table"
+                                    % (obj.path, name, entry.offset, entry.name or "a section", 8 * width))
                 else:
-                    values[name][entry.offset] = ((value + entry.addend) & 0xFFFF, entry.name)
-            elif entry.type in ELF_WIDTHS:
+                    values[name][entry.offset] = (width, (value + entry.addend) % (1 << (8 * width)), entry.name)
+            elif width:
                 words[name][entry.offset] = elf_word(obj, entry, defined)
                 used.add(entry.name)
             else:
@@ -137,7 +139,7 @@ def elf_view(obj, absolute_values, target, problems):
 
 
 def elf_word(obj, entry, defined):
-    width = ELF_WIDTHS[entry.type]
+    width = WORD_WIDTHS[entry.type]
     if not entry.name:   # a section symbol, or the null symbol, which has no place
         place = Place(obj.sections[entry.section].name, entry.addend) if entry.section in obj.sections else None
         return Word(width, "", entry.addend, place)
@@ -372,14 +374,14 @@ def section_problems(path, name, expected, converted, owners):
             problems.append("%s: a %s the ELF object does not have" % (where, word_text(got_words[offset])))
         else:
             problems.extend(word_problem(where, want_words[offset], got_words[offset]))
-    for offset, (value, symbol) in sorted(values.items()):
-        held = int.from_bytes(got.contents[offset:offset + VALUE_WIDTH], "little")
+    for offset, (width, value, symbol) in sorted(values.items()):
+        held = int.from_bytes(got.contents[offset:offset + width], "little")
         if offset in got_words:
-            problems.append("%s: a relocation where the 16-bit word should hold %s's value" % (owners.where(
-                path, name, offset), symbol))
+            problems.append("%s: a relocation where the %d-bit word should hold %s's value" % (owners.where(
+                path, name, offset), 8 * width, symbol))
         elif held != value:
-            problems.append("%s: the 16-bit word holds 0x%x, %s is 0x%x" % (owners.where(path, name, offset), held,
-                                                                              symbol, value))
+            problems.append("%s: the %d-bit word holds 0x%x, %s is 0x%x" % (owners.where(path, name, offset),
+                                                                             8 * width, held, symbol, value))
     problems.extend(byte_problems(path, name, want, got, [want_words, got_words, values], owners))
     return problems
 
@@ -404,7 +406,7 @@ def byte_problems(path, name, want, got, word_tables, owners):
     mask_want, mask_got = bytearray(want.contents), bytearray(got.contents)
     for table in word_tables:
         for offset, word in table.items():
-            width = word.width if isinstance(word, Word) else VALUE_WIDTH
+            width = word.width if isinstance(word, Word) else word[0]
             mask_want[offset:offset + width] = bytes(width)
             mask_got[offset:offset + width] = bytes(width)
     if mask_want == mask_got:
@@ -558,6 +560,38 @@ def self_test_edits(failures, directory):
             expect_problems(failures, name, found, wanted, directory)
 
 
+# Edits of the Mach-O listing of elf_to_flat.py's value words (SELF_TEST_VALUES).
+VALUE_EDITS = (
+    ("an 8-bit value", ("\t.byte 0x05", "\t.byte 0x06"),
+     ["values.o: .rodata+0x0 (script): the 8-bit word holds 0x6, B_CONST is 0x5"]),
+    ("a 32-bit value left a relocation", ("\t.long 0x00000007", "\t.long _B_CONST+2"),
+     ["values.o: .rodata+0x4 (script): a relocation where the 32-bit word should hold B_CONST's value",
+      "values.o: symbol B_CONST (global undefined) is not in the ELF object"]),
+    ("a 64-bit value", ("\t.quad 0xffffffffffffffff", "\t.quad 0xfffffffffffffffe"),
+     ["values.o: .rodata+0x10 (script): the 64-bit word holds 0xfffffffffffffffe, NEG_CONST is 0xffffffffffffffff"]),
+    ("an address word beside them", ("\t.long _script+1\n", "\t.long _script+2\n"),
+     ["values.o: .rodata+0x18 (script): a 4-byte word to script+2, the ELF word to script+1"]),
+)
+
+
+def self_test_values(failures, directory):
+    """Words of every width given values from the table of every global absolute symbol."""
+    values = build_absolutes_table(converter_test_objects(directory))[0]
+    elf_path = assemble_elf(directory, "values.o", SELF_TEST_VALUES)
+    for target_name in TARGETS:
+        text = convert("values.o", read_elf64(elf_path), target_name, values)[0]
+        expect_problems(failures, "%s: the value words' listing" % target_name,
+                        run_listing(directory, target_name, elf_path, values, text), [], directory)
+        if target_name != "macho-x86_64":
+            continue
+        for name, (old, new), wanted in VALUE_EDITS:
+            if old not in text:
+                failures.append("%s: %r is not in the listing" % (name, old))
+                continue
+            expect_problems(failures, name, run_listing(directory, target_name, elf_path, values,
+                                                        text.replace(old, new)), wanted, directory)
+
+
 def expect_problems(failures, name, found, wanted, directory):
     """wanted names the files without the self-test's directory."""
     shortened = [problem.replace(directory + os.sep, "") for problem in found]
@@ -606,6 +640,7 @@ def self_test():
     failures = []
     with tempfile.TemporaryDirectory() as directory:
         self_test_edits(failures, directory)
+        self_test_values(failures, directory)
         self_test_unassembled(failures, directory)
     self_test_tables(failures)
     self_test_units(failures)

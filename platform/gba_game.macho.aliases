@@ -1,0 +1,24 @@
+# gba_game.macho.aliases: the names gba_game.ld defines from bounds and
+# symbols, for the macOS (Mach-O) link, which hands this file to ld64 with
+# -alias_list (platform/target.mk); gba_game.macho.s defines the absolute ones.
+# Each line is ld64's name, then the C name that becomes its alias, with
+# Mach-O's leading underscore. gba_game.ld says why each exists.
+#
+# The test runner's table, from its section, which the build's C filter gives
+# expansion's tests (build_glue/c_filter_macho.sed) and Makefile.native fills
+# with test/test_test_runner.c's entries first.
+section$start$__DATA$__tests ___start_tests
+section$end$__DATA$__tests ___stop_tests
+# The game's variables for a soft reset (crt0.c): its initialised data, its
+# zero-initialised data, which ends where the objects' own does, and
+# COMMON_DATA after it.
+section$start$__DATA$__game_data _game_data_start
+section$end$__DATA$__game_data _game_data_end
+section$start$__DATA$__game_bss _game_bss_start
+section$end$__DATA$__game_bss _game_bss_objects_end
+section$end$__DATA$__game_common _game_bss_end
+# src/assertf.c's end of the GBA's IWRAM data: the region's end.
+segment$end$__GBA_IWRAM ___iwram_end
+# src/malloc.c's base of allocation-site offsets: the image's first byte, its
+# header at 0x40000000, as __executable_start is on Linux.
+__mh_execute_header _PlatformAllocationSiteBase

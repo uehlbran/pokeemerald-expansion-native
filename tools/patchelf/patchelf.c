@@ -12,6 +12,8 @@
 
 static bool try_patch_value(const char *sym, char *dest, const char *source, size_t size);
 static bool patch_pe(char *f, size_t file_size, int argc, char *argv[]);
+static bool is_macho(const char *f, size_t file_size);
+static bool patch_macho(char *f, size_t file_size, int argc, char *argv[]);
 
 int main(int argc, char *argv[])
 {
@@ -49,6 +51,14 @@ int main(int argc, char *argv[])
     if (st.st_size >= 2 && memcmp(f, "MZ", 2) == 0)
     {
         if (patch_pe(f, st.st_size, argc, argv))
+            exit_code = 0;
+        goto error;
+    }
+
+    // The native build for macOS is a Mach-O file (patch_macho, below).
+    if (is_macho(f, st.st_size))
+    {
+        if (patch_macho(f, st.st_size, argc, argv))
             exit_code = 0;
         goto error;
     }
@@ -372,6 +382,195 @@ static bool patch_pe(char *f, size_t file_size, int argc, char *argv[])
             }
             size_t room = coff_symbol_room(&symbols, section, value, end);
             if (!try_patch_value(argv[j], f + raw_offset + value, argv[j + 1], room))
+                return false;
+        }
+    }
+    return true;
+}
+
+// A macOS executable (or object), as Apple's ld64 writes one for x86_64: a
+// 64-bit little-endian Mach-O file (<mach-o/loader.h>, <mach-o/nlist.h>).
+// The LC_SEGMENT_64 load commands list the sections, each with its address
+// and where its bytes are in the file; LC_SYMTAB gives the symbol table,
+// whose N_SECT symbols name their section, 1-based in the order the segments
+// list them, and their address. A C name has Mach-O's leading underscore, so
+// the symbol "_gTestRunnerN" is the argument "gTestRunnerN". Mach-O records
+// no sizes, so a value may fill its symbol up to the next symbol of the same
+// section, or to the section's end, as on PE. A zero-filled section has no
+// bytes in the file. As on ELF and PE, every symbol of a given name is
+// patched, and a name that is not there is not an error.
+#define MH_MAGIC_64 0xFEEDFACFu
+#define MACH_HEADER_SIZE 32
+#define MACH_COMMAND_COUNT_AT 16
+#define MACH_COMMANDS_SIZE_AT 20
+#define LOAD_COMMAND_SIZE_AT 4
+#define LOAD_COMMAND_MIN_SIZE 8
+#define LC_SYMTAB 0x2u
+#define LC_SEGMENT_64 0x19u
+#define SEGMENT_HEADER_SIZE 72
+#define SEGMENT_SECTION_COUNT_AT 64
+#define MACH_SECTION_SIZE 80
+#define MACH_SECTION_ADDR_AT 32
+#define MACH_SECTION_SIZE_AT 40
+#define MACH_SECTION_OFFSET_AT 48
+#define MACH_SECTION_FLAGS_AT 64
+#define MACH_SECTION_TYPE_MASK 0xFFu
+#define S_ZEROFILL 0x1u
+#define S_GB_ZEROFILL 0xCu
+#define S_THREAD_LOCAL_ZEROFILL 0x12u
+#define SYMTAB_OFFSET_AT 8
+#define SYMTAB_COUNT_AT 12
+#define STRTAB_OFFSET_AT 16
+#define STRTAB_SIZE_AT 20
+#define SYMTAB_COMMAND_SIZE 24
+#define NLIST_SIZE 16
+#define NLIST_TYPE_AT 4
+#define NLIST_SECTION_AT 5
+#define NLIST_VALUE_AT 8
+#define N_STAB 0xE0u
+#define N_TYPE 0x0Eu
+#define N_SECT 0x0Eu
+#define MACH_SECTIONS_MAX 255   // n_sect is one byte; 0 is NO_SECT
+
+struct MachSection
+{
+    uint64_t addr;
+    uint64_t size;
+    uint32_t offset;   // 0: no bytes in the file
+};
+
+static uint64_t read_le64(const char *p)
+{
+    return read_le(p, 4) | (uint64_t)read_le(p + 4, 4) << 32;
+}
+
+static bool is_macho(const char *f, size_t file_size)
+{
+    return file_size >= MACH_HEADER_SIZE && read_le(f, 4) == MH_MAGIC_64;
+}
+
+// The bytes from `value` to the next N_SECT symbol of `section`, or to `end`.
+static uint64_t macho_symbol_room(const char *symbols, uint32_t count, unsigned section, uint64_t value, uint64_t end)
+{
+    uint64_t next = end;
+    for (uint32_t i = 0; i < count; i++)
+    {
+        const char *record = symbols + (size_t)i * NLIST_SIZE;
+        unsigned type = (unsigned char)record[NLIST_TYPE_AT];
+        uint64_t other = read_le64(record + NLIST_VALUE_AT);
+        if (!(type & N_STAB) && (type & N_TYPE) == N_SECT && (unsigned char)record[NLIST_SECTION_AT] == section
+            && other > value && other < next)
+            next = other;
+    }
+    return next - value;
+}
+
+static bool patch_macho(char *f, size_t file_size, int argc, char *argv[])
+{
+    struct MachSection sections[MACH_SECTIONS_MAX];
+    unsigned section_count = 0;
+    const char *symtab = NULL;
+    uint32_t command_count = read_le(f + MACH_COMMAND_COUNT_AT, 4);
+    size_t commands_end = MACH_HEADER_SIZE + (size_t)read_le(f + MACH_COMMANDS_SIZE_AT, 4);
+    if (commands_end > file_size)
+    {
+        fprintf(stderr, "the load commands are outside the file\n");
+        return false;
+    }
+    size_t at = MACH_HEADER_SIZE;
+    for (uint32_t i = 0; i < command_count; i++)
+    {
+        if (at > commands_end - LOAD_COMMAND_MIN_SIZE)
+        {
+            fprintf(stderr, "a load command is outside the load commands\n");
+            return false;
+        }
+        uint32_t command = read_le(f + at, 4);
+        uint32_t command_size = read_le(f + at + LOAD_COMMAND_SIZE_AT, 4);
+        if (command_size < LOAD_COMMAND_MIN_SIZE || command_size > commands_end - at)
+        {
+            fprintf(stderr, "a load command is outside the load commands\n");
+            return false;
+        }
+        if (command == LC_SEGMENT_64)
+        {
+            uint32_t nsects = command_size >= SEGMENT_HEADER_SIZE ? read_le(f + at + SEGMENT_SECTION_COUNT_AT, 4) : 0;
+            if (command_size < SEGMENT_HEADER_SIZE || nsects > (command_size - SEGMENT_HEADER_SIZE) / MACH_SECTION_SIZE)
+            {
+                fprintf(stderr, "a segment's sections are outside its load command\n");
+                return false;
+            }
+            if (nsects > MACH_SECTIONS_MAX - section_count)
+            {
+                fprintf(stderr, "more than %d sections\n", MACH_SECTIONS_MAX);
+                return false;
+            }
+            for (uint32_t j = 0; j < nsects; j++)
+            {
+                const char *header = f + at + SEGMENT_HEADER_SIZE + (size_t)j * MACH_SECTION_SIZE;
+                uint32_t type = read_le(header + MACH_SECTION_FLAGS_AT, 4) & MACH_SECTION_TYPE_MASK;
+                bool zerofill = type == S_ZEROFILL || type == S_GB_ZEROFILL || type == S_THREAD_LOCAL_ZEROFILL;
+                sections[section_count].addr = read_le64(header + MACH_SECTION_ADDR_AT);
+                sections[section_count].size = read_le64(header + MACH_SECTION_SIZE_AT);
+                sections[section_count].offset = zerofill ? 0 : read_le(header + MACH_SECTION_OFFSET_AT, 4);
+                section_count++;
+            }
+        }
+        else if (command == LC_SYMTAB)
+        {
+            if (command_size < SYMTAB_COMMAND_SIZE)
+            {
+                fprintf(stderr, "LC_SYMTAB is too short\n");
+                return false;
+            }
+            symtab = f + at;
+        }
+        at += command_size;
+    }
+    if (symtab == NULL)
+    {
+        fprintf(stderr, "no Mach-O symbol table\n");
+        return false;
+    }
+    size_t symbols_offset = read_le(symtab + SYMTAB_OFFSET_AT, 4);
+    uint32_t symbol_count = read_le(symtab + SYMTAB_COUNT_AT, 4);
+    size_t strings_offset = read_le(symtab + STRTAB_OFFSET_AT, 4);
+    uint32_t strings_size = read_le(symtab + STRTAB_SIZE_AT, 4);
+    if (symbols_offset > file_size || symbol_count > (file_size - symbols_offset) / NLIST_SIZE
+        || strings_offset > file_size || strings_size > file_size - strings_offset)
+    {
+        fprintf(stderr, "the Mach-O symbol table is outside the file\n");
+        return false;
+    }
+    const char *symbols = f + symbols_offset;
+    const char *strings = f + strings_offset;
+
+    for (uint32_t i = 0; i < symbol_count; i++)
+    {
+        const char *record = symbols + (size_t)i * NLIST_SIZE;
+        unsigned type = (unsigned char)record[NLIST_TYPE_AT];
+        unsigned section = (unsigned char)record[NLIST_SECTION_AT];
+        uint32_t name_offset = read_le(record, 4);
+        if ((type & N_STAB) || (type & N_TYPE) != N_SECT || section == 0 || section > section_count
+            || name_offset >= strings_size || strings[name_offset] != '_')
+            continue;
+        const char *name = strings + name_offset + 1;
+        size_t name_room = strings_size - name_offset - 1;
+        for (int j = 2; j < argc; j += 2)
+        {
+            size_t length = strlen(argv[j]);
+            if (length >= name_room || memcmp(name, argv[j], length + 1) != 0)
+                continue;
+            const struct MachSection *where = &sections[section - 1];
+            uint64_t value = read_le64(record + NLIST_VALUE_AT);
+            if (where->offset == 0 || where->size > file_size - where->offset || value < where->addr
+                || value - where->addr >= where->size)
+            {
+                fprintf(stderr, "%s: not stored in the file\n", argv[j]);
+                return false;
+            }
+            uint64_t room = macho_symbol_room(symbols, symbol_count, section, value, where->addr + where->size);
+            if (!try_patch_value(argv[j], f + where->offset + (value - where->addr), argv[j + 1], room))
                 return false;
         }
     }

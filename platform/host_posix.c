@@ -1,16 +1,20 @@
 /*
- * host_posix.c: the host layer where every POSIX system agrees (Linux today,
- * macOS next): the fault handlers' installation (host_fault.h), the restart
- * of the executable and its end (host_process.h), the files (host_file.h)
- * and the deadline thread (host_thread.h). What each system does its own way
- * is in its own source, host_linux.c, reached through host_internal.h.
+ * host_posix.c: the host layer where every POSIX system agrees (Linux and
+ * macOS): the fault handlers' installation (host_fault.h), the restart of
+ * the executable and its end (host_process.h), the files (host_file.h), the
+ * deadline thread (host_thread.h) and the sanitizer's view of a stack switch
+ * (host_internal.h). What each system does its own way is in its own source,
+ * host_linux.c or host_macos.c, reached through host_internal.h: the path
+ * the restart runs, the flush of a file to the disk, and the clock of the
+ * watchdog's wait.
  *
  * Followed: POSIX (sigaction, sigaltstack, pthread_sigmask, execve, _exit,
- * open, write, fsync, rename, mkdir, localtime_r, pthread_create,
- * pthread_condattr_setclock and pthread_cond_timedwait), flock(2) (not
- * POSIX: BSD's, which Linux and macOS share), and signal-safety(7)
- * for what a signal handler may call: everything on the handlers' path here
- * (sigaction, raise, execve, _exit, write) is async-signal-safe.
+ * open, write, rename, mkdir, localtime_r, pthread_create), flock(2) (not
+ * POSIX: BSD's, which Linux and macOS share), AddressSanitizer's
+ * sanitizer/common_interface_defs.h for the fiber annotations, and
+ * signal-safety(7) for what a signal handler may call: everything on the
+ * handlers' path here (sigaction, raise, execve, _exit, write) is
+ * async-signal-safe.
  */
 #define _FILE_OFFSET_BITS 64 /* with _TIME_BITS: a 64-bit time_t on 32-bit builds, */
 #define _TIME_BITS 64        /* so host_file_local_time converts dates past 2038 */
@@ -36,6 +40,17 @@
 #include "host_internal.h"
 #include "host_process.h"
 #include "host_thread.h"
+
+#if defined(__SANITIZE_ADDRESS__) /* GCC */
+#define HOST_HAVE_ASAN 1
+#elif defined(__has_feature) /* clang */
+#if __has_feature(address_sanitizer)
+#define HOST_HAVE_ASAN 1
+#endif
+#endif
+#ifdef HOST_HAVE_ASAN
+#include <sanitizer/common_interface_defs.h>
+#endif
 
 _Static_assert(sizeof(time_t) >= 8, "host_posix.c needs a 64-bit time_t (_TIME_BITS=64)");
 _Static_assert(sizeof(off_t) == sizeof(int64_t), "host_file_seek needs a 64-bit off_t (_FILE_OFFSET_BITS=64)");
@@ -278,7 +293,7 @@ void host_fault_name(const struct host_fault *fault, char name[HOST_FAULT_NAME_S
 
 int host_process_restart(char *const argv[])
 {
-    (void)execve(host_self_executable, argv, environ); /* returns only on failure */
+    (void)execve(host_process_exec_path(), argv, environ); /* returns only on failure */
     return -1;
 }
 
@@ -373,7 +388,7 @@ bool host_file_write_from_handler(host_handler_file file, const void *bytes, siz
 
 int host_file_sync(int descriptor)
 {
-    return fsync(descriptor);
+    return host_file_flush(descriptor);
 }
 
 int host_file_replace(const char *from, const char *path)
@@ -401,7 +416,7 @@ int host_file_sync_directory_of(const char *path)
     const int descriptor = open(directory, O_RDONLY | O_DIRECTORY | O_CLOEXEC);
     if (descriptor < 0)
         return -1;
-    if (fsync(descriptor) != 0) {
+    if (host_file_flush(descriptor) != 0) {
         const int error = errno;
         (void)close(descriptor); /* already failing */
         errno = error;
@@ -448,12 +463,37 @@ bool host_file_path_is_absolute(const char *path)
     return path[0] == '/';
 }
 
+/* --- host_stack: the sanitizer's view of a switch ----------------------------- */
+
+void host_stack_start_switch(void **fake_stack_save, const void *bottom, size_t size)
+{
+#ifdef HOST_HAVE_ASAN
+    __sanitizer_start_switch_fiber(fake_stack_save, bottom, size);
+#else
+    (void)fake_stack_save;
+    (void)bottom;
+    (void)size;
+#endif
+}
+
+// NOLINTNEXTLINE(readability-non-const-parameter): old_size is the ASan call's out-parameter
+void host_stack_finish_switch(void *fake_stack_save, const void **old_bottom, size_t *old_size)
+{
+#ifdef HOST_HAVE_ASAN
+    __sanitizer_finish_switch_fiber(fake_stack_save, old_bottom, old_size);
+#else
+    (void)fake_stack_save;
+    (void)old_bottom;
+    (void)old_size;
+#endif
+}
+
 /* --- host_thread: the deadline thread ---------------------------------------- */
 
-/* The clock every watchdog wait and deadline is measured on. The monotonic
- * clock, because a step of the wall clock (NTP, a suspend, a manual change)
- * would otherwise move the deadline; the condition variable is told to use it
- * with pthread_condattr_setclock. */
+/* The clock every watchdog deadline is measured on. The monotonic clock,
+ * because a step of the wall clock (NTP, a suspend, a manual change) would
+ * otherwise move the deadline; host_condition_wait_until waits against it
+ * (host_internal.h). */
 #define WATCHDOG_CLOCK CLOCK_MONOTONIC
 
 /* The largest deadline host_watchdog_start takes: half of the unsigned range,
@@ -512,21 +552,9 @@ static bool watchdog_deadline_passed(const struct host_watchdog *watchdog)
  * own failure. */
 static int watchdog_init_condition(pthread_cond_t *condition)
 {
-    pthread_condattr_t attributes;
-    int error = pthread_condattr_init(&attributes);
-    if (error != 0) {
-        watchdog_report("pthread_condattr_init", error);
-        return error;
-    }
-    error = pthread_condattr_setclock(&attributes, WATCHDOG_CLOCK);
+    const int error = host_condition_init(condition);
     if (error != 0)
-        watchdog_report("pthread_condattr_setclock", error);
-    else {
-        error = pthread_cond_init(condition, &attributes);
-        if (error != 0)
-            watchdog_report("pthread_cond_init", error);
-    }
-    (void)pthread_condattr_destroy(&attributes); /* cannot fail on POSIX systems; the init has copied what it needs */
+        watchdog_report("initialising the watchdog's condition variable", error);
     return error;
 }
 
@@ -547,9 +575,9 @@ static void *watchdog_thread(void *argument)
             break;
         }
         /* Woken by a change, by the deadline, or for nothing; the loop decides which. */
-        const int waited = pthread_cond_timedwait(&watchdog->changed, &watchdog->lock, &watchdog->deadline);
+        const int waited = host_condition_wait_until(&watchdog->changed, &watchdog->lock, &watchdog->deadline);
         if (waited != 0 && waited != ETIMEDOUT) {
-            watchdog->failed_call = "pthread_cond_timedwait";
+            watchdog->failed_call = "the watchdog's timed wait";
             watchdog->failure = waited;
             break;
         }
@@ -597,7 +625,7 @@ static int watchdog_await_start(struct host_watchdog *watchdog)
     } else {
         give_up.tv_sec += WATCHDOG_START_SECONDS;
         while (!watchdog->waiting && error == 0)
-            error = pthread_cond_timedwait(&watchdog->changed, &watchdog->lock, &give_up);
+            error = host_condition_wait_until(&watchdog->changed, &watchdog->lock, &give_up);
     }
     (void)pthread_mutex_unlock(&watchdog->lock);
     return error;

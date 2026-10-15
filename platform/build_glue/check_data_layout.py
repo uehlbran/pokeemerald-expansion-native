@@ -38,7 +38,7 @@ import sys
 import tempfile
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))   # python3 -I leaves the script's directory off
-from check_support import CheckError, capped, matching_rule, parse_options, problems_match  # noqa: E402
+from check_support import CheckError, capped, gnu_as, matching_rule, parse_options, problems_match  # noqa: E402
 from elf_object import R_X86_64_32, R_X86_64_64, read_elf64  # noqa: E402
 
 ONE, ARRAY, SKIP = "one", "array", "skip"
@@ -461,7 +461,7 @@ def self_test_run(directory, sources, layout_texts=(None, None)):
         for subdirectory, text in (("ref", text32), ("obj", text64)):
             path = os.path.join(directory, subdirectory, name)
             os.makedirs(os.path.dirname(path), exist_ok=True)
-            subprocess.run(["as", "--64", "-o", path], input=text, universal_newlines=True, check=True)
+            subprocess.run(gnu_as() + ["--64", "-o", path], input=text, universal_newlines=True, check=True)
     try:
         return check(*self_test_layouts(*layout_texts), os.path.join(directory, "obj"), os.path.join(directory, "ref"))
     except CheckError as error:

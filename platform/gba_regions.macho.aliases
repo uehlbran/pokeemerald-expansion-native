@@ -1,0 +1,34 @@
+# gba_regions.macho.aliases: the names gba_regions.ld defines, for the macOS
+# (Mach-O) link, which hands this file to ld64 with -alias_list
+# (platform/target.mk). Each line is ld64's name for a bound of a segment or
+# a section that gba_regions.macho.s places, then the C name the platform reads
+# (host_linked.c, crt0.c), with Mach-O's leading underscore: the second becomes
+# an alias of the first, the address the link gave it. Addresses and sizes:
+# GBATEK "GBA Memory Map", in gba_regions.macho.s.
+#
+# EWRAM: the segment's start; its end is the start of the marker that
+# gba_regions_end.macho.s aligns to 256 KiB after EWRAM_INIT and EWRAM_DATA.
+segment$start$__GBA_EWRAM _gba_linked_ewram_start
+section$start$__GBA_EWRAM$__ewram_end _gba_linked_ewram_end
+section$start$__GBA_EWRAM$__ewram_init _gba_linked_ewram_init_start
+section$end$__GBA_EWRAM$__ewram_init _gba_linked_ewram_init_end
+# IWRAM: the segment, which ends at the page after the test runner's
+# persistent state, 0x03008000.
+segment$start$__GBA_IWRAM _gba_linked_iwram_start
+segment$end$__GBA_IWRAM _gba_linked_iwram_end
+# The regions of one section each.
+section$start$__GBA_IO$__io _gba_linked_io_start
+section$end$__GBA_IO$__io _gba_linked_io_end
+section$start$__GBA_DEBUG$__mgba _gba_linked_mgba_debug_start
+section$end$__GBA_DEBUG$__mgba _gba_linked_mgba_debug_end
+section$start$__GBA_PALETTE$__palette _gba_linked_palette_ram_start
+section$end$__GBA_PALETTE$__palette _gba_linked_palette_ram_end
+section$start$__GBA_VRAM$__vram _gba_linked_vram_start
+section$end$__GBA_VRAM$__vram _gba_linked_vram_end
+section$start$__GBA_OAM$__oam _gba_linked_oam_start
+section$end$__GBA_OAM$__oam _gba_linked_oam_end
+section$start$__GBA_SRAM$__sram _gba_linked_sram_start
+section$end$__GBA_SRAM$__sram _gba_linked_sram_end
+# The battle runner's stack.
+section$start$__GBA_CALLSTK$__stack _platform_call_stack_start
+section$end$__GBA_CALLSTK$__stack _platform_call_stack_end

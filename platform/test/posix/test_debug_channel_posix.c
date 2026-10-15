@@ -1,11 +1,11 @@
 /*
  * test_debug_channel_posix.c: the debug channel (debug_channel.h) on a pipe,
- * which the hydra reads while the game runs, and on /dev/full, where every
- * write fails. The rest is in ../test_debug_channel.c; the registers and the
- * messages are ../debug_channel_fixture.h's.
+ * which the hydra reads while the game runs, and on a pipe whose reader has
+ * gone, where every write fails. The rest is in ../test_debug_channel.c; the
+ * registers and the messages are ../debug_channel_fixture.h's.
  */
 // deps: gba_memmap.c debug_channel.c
-#include <errno.h>
+#include <signal.h>
 #include <stdio.h>
 #include <unistd.h>
 
@@ -48,10 +48,15 @@ PTEST(every_line_is_flushed_at_once)
 
 PTEST(a_failed_write_drops_the_message_and_carries_on)
 {
-    /* /dev/full refuses every write with ENOSPC: the reader is gone. */
-    FILE *out = fopen("/dev/full", "w");
-    if (out == NULL && errno == ENOENT)
-        PT_FAIL("/dev/full is missing");
+    /* The hydra has gone: its end of the pipe is closed, and every write
+     * fails with EPIPE, SIGPIPE being ignored for it, as it is for any write
+     * the test makes to a reader that has gone. */
+    int fds[2];
+    PT_ASSERT_EQ_INT(pipe(fds), 0);
+    PT_ASSERT_EQ_INT(close(fds[0]), 0);
+    void (*const previous_sigpipe)(int) = signal(SIGPIPE, SIG_IGN);
+    FILE *out = fdopen(fds[1], "w");
+    PT_ASSERT(previous_sigpipe != SIG_ERR);
     PT_ASSERT(out != NULL);
     clear_registers();
     PT_ASSERT_EQ_INT(gba_memmap_init(), GBA_MEMMAP_OK);
@@ -65,6 +70,7 @@ PTEST(a_failed_write_drops_the_message_and_carries_on)
     debug_channel_shutdown();
     clearerr(out);
     (void)fclose(out);
+    (void)signal(SIGPIPE, previous_sigpipe);
     clear_registers();
     PT_ASSERT(zero);
 }

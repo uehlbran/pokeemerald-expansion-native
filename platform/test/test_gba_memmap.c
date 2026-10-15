@@ -10,6 +10,7 @@
 #include <gba/defines.h>
 #include <gba/io_reg.h>
 
+#include "game_sections.h"
 #include "gba_memmap.h"
 #include "ptest.h"
 
@@ -511,7 +512,7 @@ PTEST(fixed_iwram_addresses_are_in_iwram)
 
 /* EWRAM_DATA is section ".sbss" (include/gba/defines.h); gba_regions.ld puts
  * it in EWRAM, as the native game link will. */
-static uint32_t ewram_data_probe __attribute__((section(".sbss")));
+static TEST_EWRAM_DATA uint32_t ewram_data_probe;
 
 PTEST(ewram_data_lands_in_ewram)
 {

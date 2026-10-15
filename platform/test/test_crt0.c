@@ -10,6 +10,7 @@
 #include <string.h>
 
 #include "crt0.h"
+#include "game_sections.h"
 #include "gba_memmap.h"
 #include "ptest.h"
 
@@ -31,7 +32,7 @@ PTEST(intr_main_is_0x800_bytes_of_data)
  * the bottom of EWRAM with its initial value. A word: a COFF assembler pads
  * each section to its alignment, 4 bytes for data, so a byte's section would
  * be 4 bytes long on Windows and 1 on Linux. */
-static __attribute__((section(".ewram"), used)) volatile uint32_t ewram_init_word = 0x5A;
+static TEST_EWRAM_INIT volatile uint32_t ewram_init_word = 0x5A;
 
 PTEST(ewram_init_data_sits_at_the_bottom_of_ewram)
 {
@@ -60,8 +61,8 @@ PTEST(reinitialize_ewram_restores_the_initial_value)
 /* A COMMON_DATA and an IWRAM_INIT variable (include/gba/defines.h):
  * gba_game.ld puts them in game_bss and game_data whatever object they come
  * from, as it does the game's. */
-static __attribute__((section("common_data"), used)) volatile uint32_t game_bss_word;
-static __attribute__((section(".iwram"), used)) volatile uint32_t game_data_word = UINT32_C(0x1234ABCD);
+static TEST_COMMON_DATA volatile uint32_t game_bss_word;
+static TEST_IWRAM_INIT volatile uint32_t game_data_word = UINT32_C(0x1234ABCD);
 
 extern unsigned char game_data_start[], game_data_end[], game_bss_start[], game_bss_end[];
 

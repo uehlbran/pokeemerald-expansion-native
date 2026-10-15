@@ -4,20 +4,30 @@
 # Makefile.native), after BITS is set.
 #
 # TARGET_OS is where the executable runs: the machine building it (HOST_OS,
-# host.mk) by default, or `windows`, a cross build from Linux with MinGW-w64
-# (docs/BUILDING.md, "Windows (cross-build from Linux)"). Nothing else is
-# accepted. Windows is x86_64 only: an i686 COFF object prefixes every C
-# symbol with an underscore, which would need a second spelling in the two
+# host.mk) by default, Linux or Darwin (macOS, built on a Mac:
+# docs/BUILDING.md, "macOS"), or `windows`, a cross build from Linux with
+# MinGW-w64 (docs/BUILDING.md, "Windows (cross-build from Linux)"). Nothing
+# else is accepted. Windows is x86_64 only: an i686 COFF object prefixes every
+# C symbol with an underscore, which would need a second spelling in the two
 # linker scripts and in every global the assembled data defines or uses, for a
 # target Windows 11 no longer ships (docs/DECISIONS.md, "The ports share a thin
-# host layer"; research/m8-inventory.md 2.3).
+# host layer"; research/m8-inventory.md 2.3). macOS is x86_64 only too:
+# arm64 cannot load the fixed-address image (docs/DECISIONS.md, "macOS ships
+# as x86_64 under Rosetta").
 #
 # What this file defines, for the others to use:
 #   TARGET_EXE_SUFFIX    the executable's suffix
 #   GBA_LAYOUT_LDFLAGS   the link flags that put the image where gba_regions.ld
 #                        and gba_game.ld expect it
 #   REGIONS_LD_NAME, GAME_LD_NAME   the file names of those two linker scripts
-#                        (in platform/)
+#                        (in platform/), and GBA_LINKER_SCRIPT_FLAG, the flag
+#                        that hands the linker each (GNU ld: -T; macOS's ld64,
+#                        which has no scripts: -alias_list, two lists of the
+#                        names the scripts would define)
+#   GBA_LAYOUT_FIRST, GBA_LAYOUT_LAST   assembly sources in platform/ that every
+#                        executable links before and after all its other
+#                        objects (macOS: the regions, gba_regions.macho.s says
+#                        why their place matters; elsewhere none)
 #   SDL_CFLAGS, SDL_LIBS how to compile and link against SDL2
 #   CONSOLE_LDFLAGS, GUI_LDFLAGS   the subsystem of an executable: the unit
 #                        tests are console programs (Windows: -mconsole), the
@@ -36,9 +46,16 @@
 TARGET_MK_DIR := $(dir $(lastword $(MAKEFILE_LIST)))
 
 TARGET_OS ?= $(HOST_OS)
-ifeq (,$(filter Linux windows,$(TARGET_OS)))
-$(error TARGET_OS must be Linux (the default) or windows, not '$(TARGET_OS)')
+ifeq (,$(filter Linux Darwin windows,$(TARGET_OS)))
+$(error TARGET_OS must be Linux or Darwin (the system building, the default) or windows, not '$(TARGET_OS)')
 endif
+ifeq ($(TARGET_OS)/$(HOST_OS),Darwin/Linux)
+$(error TARGET_OS=Darwin builds on a Mac only (HOST_OS Darwin): docs/BUILDING.md, "macOS")
+endif
+
+GBA_LINKER_SCRIPT_FLAG := -Wl,-T,
+GBA_LAYOUT_FIRST :=
+GBA_LAYOUT_LAST :=
 
 ifeq ($(TARGET_OS),Linux)
 
@@ -54,6 +71,63 @@ GUI_LDFLAGS :=
 REGIONS_LD_NAME := gba_regions.ld
 GAME_LD_NAME := gba_game.ld
 target_resources =
+
+else ifeq ($(TARGET_OS),Darwin)
+
+ifneq ($(BITS),64)
+$(error TARGET_OS=Darwin is 64-bit only (BITS=64), not '$(BITS)': macOS runs no 32-bit executable since 10.15)
+endif
+
+# Apple's clang, the Mac's compiler; GNU as for the assembled data, whose text
+# is GNU as's dialect, which clang's assembler refuses: Homebrew's
+# x86_64-elf-binutils assembles it for ELF as on Linux, and
+# build_glue/elf_to_flat.py converts the objects for clang to assemble as
+# Mach-O (docs/DECISIONS.md, "The data for Windows and macOS is assembled on
+# Linux and converted"; on a Mac the same steps run on the Mac).
+TARGET_CC ?= clang
+TARGET_AS ?= x86_64-elf-as
+# The build glue's self-tests assemble their ELF fixtures with this assembler
+# (build_glue/check_support.py, gnu_as): the Mac's own `as` writes Mach-O.
+export GNU_AS := $(TARGET_AS)
+# Upstream's hydra runs `$(OBJCOPY) -O binary` on its copy of the test
+# executable on macOS (tools/mgba-rom-test-hydra/main.c, __APPLE__), which
+# would turn the Mach-O file into a flat one: `true` does nothing instead.
+OBJCOPY ?= true
+
+TARGET_EXE_SUFFIX :=
+TARGET_CFLAGS :=
+SDL_CFLAGS := $(shell pkg-config --cflags sdl2)
+SDL_LIBS   := $(shell pkg-config --libs sdl2)
+CONSOLE_LDFLAGS :=
+GUI_LDFLAGS :=
+target_resources =
+
+# The fixed-address image probe M0 found ld64 builds and the kernel loads
+# with no slide (research/probes/README.md): no PIE, a one-page __PAGEZERO
+# instead of the 4 GiB one (so that the GBA's addresses are free), the image
+# at 0x40000000 as on Linux, and no chained fixups, without which ld64
+# ignores the image base. ld64 warns that -no_pie and a small __PAGEZERO are
+# deprecated for new macOS versions; for x86_64 they still work (probe M0:
+# 100 of 100 starts on macos-15-intel).
+MACHO_IMAGE_LDFLAGS := -Wl,-no_pie -Wl,-pagezero_size,0x1000 -Wl,-image_base,0x40000000 -Wl,-no_fixup_chains
+# Each region's segment at its GBA address (gba_regions.macho.s; GBATEK "GBA
+# Memory Map"), and the battle runner's stack at 0x01800000, as on Linux.
+MACHO_SEGMENT_LDFLAGS := -Wl,-segaddr,__GBA_CALLSTK,0x01800000 -Wl,-segaddr,__GBA_EWRAM,0x02000000 \
+                         -Wl,-segaddr,__GBA_IWRAM,0x03000000 -Wl,-segaddr,__GBA_IO,0x04000000 \
+                         -Wl,-segaddr,__GBA_DEBUG,0x04FFF000 -Wl,-segaddr,__GBA_PALETTE,0x05000000 \
+                         -Wl,-segaddr,__GBA_VRAM,0x06000000 -Wl,-segaddr,__GBA_OAM,0x07000000 \
+                         -Wl,-segaddr,__GBA_SRAM,0x0E000000
+# The weak references that only the game, or only the test runner, defines
+# (platform/crt0.c): a definition elsewhere wins, and without one ld64 would
+# refuse the link where GNU ld leaves them null; -U leaves them null too.
+MACHO_WEAK_LDFLAGS := -Wl,-U,_gba_game_objects_linked -Wl,-U,_gPlatformTestEntrySize \
+                      -Wl,-U,_PlatformTestTableBadEntry
+GBA_LAYOUT_LDFLAGS := $(MACHO_IMAGE_LDFLAGS) $(MACHO_SEGMENT_LDFLAGS) $(MACHO_WEAK_LDFLAGS)
+GBA_LINKER_SCRIPT_FLAG := -Wl,-alias_list,
+REGIONS_LD_NAME := gba_regions.macho.aliases
+GAME_LD_NAME := gba_game.macho.aliases
+GBA_LAYOUT_FIRST := gba_regions.macho.s gba_game.macho.s
+GBA_LAYOUT_LAST := gba_regions_end.macho.s
 
 else ifeq ($(TARGET_OS),windows)
 

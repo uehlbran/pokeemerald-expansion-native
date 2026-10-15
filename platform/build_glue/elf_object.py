@@ -47,7 +47,7 @@ import sys
 import tempfile
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))   # python3 -I leaves the script's directory off
-from check_support import CheckError  # noqa: E402
+from check_support import CheckError, gnu_as  # noqa: E402
 
 ELF_MAGIC = b"\x7fELF"
 ELFCLASS64 = 2
@@ -79,12 +79,14 @@ R_X86_64_PC32 = 2
 R_X86_64_32 = 10
 R_X86_64_32S = 11
 R_X86_64_16 = 12
+R_X86_64_8 = 14
 RELOCATION_NAMES = {
     R_X86_64_64: "R_X86_64_64",
     R_X86_64_PC32: "R_X86_64_PC32",
     R_X86_64_32: "R_X86_64_32",
     R_X86_64_32S: "R_X86_64_32S",
     R_X86_64_16: "R_X86_64_16",
+    R_X86_64_8: "R_X86_64_8",
 }
 
 # Where a relocation's symbol is defined when it is not in a section.
@@ -263,7 +265,8 @@ def expect(failures, name, actual, wanted):
 
 def self_test_parse(failures, directory):
     path = os.path.join(directory, "a.o")
-    subprocess.run(["as", "--64", "-o", path], input=SELF_TEST_SOURCE, universal_newlines=True, check=True)
+    subprocess.run(gnu_as() + ["--64", "-o", path], input=SELF_TEST_SOURCE, universal_newlines=True,
+                   check=True)
     obj = read_elf64(path)
     by_name = {section.name: key for key, section in obj.sections.items()}
     rodata, script, bss = by_name[".rodata"], by_name["script_data"], by_name[".bss"]
@@ -293,7 +296,8 @@ def self_test_parse(failures, directory):
 
 def self_test_kinds(failures, directory):
     path = os.path.join(directory, "kinds.o")
-    subprocess.run(["as", "--64", "-o", path], input=SELF_TEST_KINDS_SOURCE, universal_newlines=True, check=True)
+    subprocess.run(gnu_as() + ["--64", "-o", path], input=SELF_TEST_KINDS_SOURCE, universal_newlines=True,
+                   check=True)
     obj = read_elf64(path)
     by_name = {section.name: key for key, section in obj.sections.items()}
     rodata, script, bss = by_name[".rodata"], by_name["script_data"], by_name[".bss"]

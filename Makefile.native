@@ -238,12 +238,34 @@ CPPFLAGS := $(INCLUDE_CPP_ARGS) -Wno-trigraphs $(GAME_DEFINES) -DTESTING=$(TEST)
 # not change the object directory, so clean when switching them.
 O_LEVEL ?= 2
 
+# The family of TARGET_CC: GCC (Linux, and MinGW-w64 for Windows) or clang
+# (macOS, whose only compiler it is; it builds the Linux game too). A few
+# flags below are spelled for one family only, and each says so.
+TARGET_CC_IS_CLANG := $(if $(findstring clang,$(shell $(TARGET_CC) --version 2>/dev/null)),1,0)
+
 # Expansion's warning set (Makefile, CFLAGS) without -Werror and without the
-# ARM code-generation flags. -fno-pie: the executable is linked non-PIE at a
-# fixed address (docs/ARCHITECTURE.md, "The memory model").
+# ARM code-generation flags; -Wno-attribute-alias is GCC's (clang has no such
+# warning and would warn about the flag). -fno-pie: the executable is linked
+# non-PIE at a fixed address (docs/ARCHITECTURE.md, "The memory model").
 CFLAGS := $(ARCH_FLAGS) -O$(O_LEVEL) -std=gnu17 -fno-pie \
-          -Wall -Wno-strict-aliasing -Wno-attribute-alias -Woverride-init \
+          -Wall -Wno-strict-aliasing -Woverride-init \
           -Wnonnull -Wenum-conversion -Wno-pointer-to-int-cast
+ifeq ($(TARGET_CC_IS_CLANG),0)
+  CFLAGS += -Wno-attribute-alias
+else
+  # Clang makes an incompatible function pointer an error by default since
+  # version 16; GCC 13 warns. Expansion has some (a const-qualified return
+  # type in src/ow_abilities.c's table), so clang keeps them warnings too:
+  # still reported, as GCC reports them, and upstream's to fix.
+  CFLAGS += -Wno-error=incompatible-function-pointer-types
+  # Clang's x86-64 tuning divides two 64-bit values that fit in 32 bits with
+  # a 32-bit DIV ("idivq-to-divl"); by zero, platform/arm_division.c would
+  # then complete libgcc's 32-bit rule where the GBA's code calls the 64-bit
+  # __udivdi3 (docs/DECISIONS.md, "A 64-bit division by zero natively gives
+  # what the GBA's __udivdi3 gives"). The tuning is turned off, so a 64-bit
+  # division is one 64-bit DIV, as GCC compiles it.
+  CFLAGS += -Xclang -target-feature -Xclang -idivq-to-divl
+endif
 ifeq ($(DINFO),1)
   CFLAGS += -g
 endif
@@ -262,9 +284,30 @@ endif
 # (asan-instrumentation-with-call-threshold=0): inline, the TEST=1 build's
 # code is about 40 MB and reaches 0x42000000, which platform/script_tag.h's
 # tag bit forbids (gba_regions.ld's ASSERT on etext); as calls it is about
-# 28 MB (measured 2026-10-08), slower but the same checks.
+# 28 MB (measured 2026-10-08), slower but the same checks. GCC takes the
+# threshold as a --param, clang as an option of its back end.
+#
+# Clang's -fsanitize=undefined checks two things in C that GCC's does not.
+# "function": that a function is called through a pointer of its own type;
+# expansion calls many through pointers of another type, which the GBA's
+# calling convention makes work (DecodeLOtANSLoop in src/decompress.c, the
+# field effects, the debug menu's actions). "pointer-overflow" includes, in
+# C, a zero offset applied to a null pointer, which C2y defines and GCC's
+# check of the same name does not report (src/save.c's UpdateSaveAddresses
+# adds each sector's offset to the save blocks' pointers before they are
+# set). Both are upstream's, and the same objects built by GCC report
+# neither. So that a clang build reports what GCC's reports, both checks are
+# off for expansion's objects, as shift-base is (measured: both replays of
+# the sanitized clang build on Linux reported only those, at 8 sites, and
+# matched otherwise); the GCC build keeps its own pointer-overflow check
+# (docs/DECISIONS.md, "The sanitizers on macOS").
 GAME_SANITIZER_FLAGS := -fsanitize=address,undefined -fno-sanitize=shift-base -fsanitize-recover=address \
-                        -fno-omit-frame-pointer --param=asan-instrumentation-with-call-threshold=0
+                        -fno-omit-frame-pointer
+ifeq ($(TARGET_CC_IS_CLANG),1)
+  GAME_SANITIZER_FLAGS += -fno-sanitize=function,pointer-overflow -mllvm -asan-instrumentation-with-call-threshold=0
+else
+  GAME_SANITIZER_FLAGS += --param=asan-instrumentation-with-call-threshold=0
+endif
 ifeq ($(SANITIZE),1)
   CFLAGS += $(GAME_SANITIZER_FLAGS)
 endif
@@ -274,15 +317,22 @@ endif
 # function's locals stay where they are after it returns, and the runner
 # writes results into them (test/test_runner_battle.c, InvokeTestFunction;
 # platform/game_hooks.h, PlatformCallWithStack). So the test objects are
-# compiled without that detection (GCC's parameter; GCC 13 has no
-# -fsanitize-address-use-after-return); everything else keeps it.
-GAME_TEST_SANITIZER_FLAGS := --param=asan-use-after-return=0
+# compiled without that detection (GCC's parameter, since GCC 13 has no
+# -fsanitize-address-use-after-return; clang's option); everything else
+# keeps it.
+ifeq ($(TARGET_CC_IS_CLANG),1)
+  GAME_TEST_SANITIZER_FLAGS := -fsanitize-address-use-after-return=never
+else
+  GAME_TEST_SANITIZER_FLAGS := --param=asan-use-after-return=0
+endif
 
 # preproc's COMPOUND_STRING output relies on '@' being the ARM assembler's
 # comment character; this rewrites it for x86 (see the script's comment).
 C_FILTER_SCRIPT := platform/build_glue/c_filter.sed
 ifeq ($(TARGET_OS),windows)
   C_FILTER_SCRIPT := platform/build_glue/c_filter_coff.sed
+else ifeq ($(TARGET_OS),Darwin)
+  C_FILTER_SCRIPT := platform/build_glue/c_filter_macho.sed
 endif
 C_FILTER := sed -f $(C_FILTER_SCRIPT)
 
@@ -336,6 +386,13 @@ ifeq ($(DATA_POINTER_SIZE),8)
   ifneq ($(TARGET_OS),windows)
     DATA_LAYOUT_CHECKS := $(OBJ_DIR)/data_relocations.checked $(OBJ_DIR)/data_layout.checked \
                           $(OBJ_DIR)/battle_script_operands.checked
+  endif
+  # macOS runs no 32-bit program, and the struct layout check needs the
+  # layouts data_layout_probe.c prints when built and run at 32 bits as well as
+  # 64: it is left out there (docs/DECISIONS.md, "The data on a Mac"). The
+  # other two need nothing of the host but Python and GNU as.
+  ifeq ($(TARGET_OS),Darwin)
+    DATA_LAYOUT_CHECKS := $(filter-out %/data_layout.checked,$(DATA_LAYOUT_CHECKS))
   endif
 endif
 
@@ -437,6 +494,18 @@ ifeq ($(TARGET_OS),windows)
     OBJS += $(TEST_OBJS)
   endif
 endif
+# The macOS build assembles the data as Linux does, for ELF with GNU as, and
+# links the Mach-O objects clang makes of their converted listings, which
+# check-flat makes beside the listings in flat/macho-x86_64/ and compares with
+# the ELF objects ("The data converted for macOS and Windows", below).
+ifeq ($(TARGET_OS),Darwin)
+  TARGET := macho-x86_64
+  MACHO_DATA_OBJS := $(patsubst $(OBJ_DIR)/%.o,$(OBJ_DIR)/flat/$(TARGET)/%.o,$(DATA_ASM_OBJS) $(MID_OBJS))
+  OBJS := $(C_OBJS) $(MACHO_DATA_OBJS)
+  ifeq ($(TEST),1)
+    OBJS += $(TEST_OBJS)
+  endif
+endif
 
 ifeq ($(SETUP_PREREQS),1)
   $(shell mkdir -p $(sort $(dir $(OBJS))))
@@ -501,10 +570,37 @@ endif
 NATIVE_VERSION = $(or $(shell git describe --always --dirty --match 'v[0-9]*' 2>/dev/null | tr -cd 'A-Za-z0-9._+-'),unknown)
 
 NATIVE_LINKER_SCRIPTS := platform/$(REGIONS_LD_NAME) platform/$(GAME_LD_NAME)
+# What the link defines for the game alone (gba_game.ld says why each):
+# gInitialMainCB2, and gba_game_objects_linked as 1. ld64 has no --defsym:
+# there each is an alias of a symbol that has the value, the first main
+# callback itself and gba_game.macho.s's absolute 1; and src/random.c's weak
+# aliases, which Mach-O cannot have in C (build_glue/c_filter_macho.sed), are
+# aliases the link makes where the test runner, which defines the four
+# itself, is not linked.
+ifeq ($(TARGET_OS),Darwin)
+  NATIVE_DEFINED_SYMBOLS := -Wl,-alias,_$(INITIAL_MAIN_CB2),_gInitialMainCB2 \
+                            -Wl,-alias,_gba_game_objects_linked_in_the_game,_gba_game_objects_linked
+  ifneq ($(TEST),1)
+    NATIVE_DEFINED_SYMBOLS += $(foreach name,RandomUniform RandomUniformExcept RandomWeightedArray RandomElementArray,\
+                                -Wl,-alias,_$(name)Default,_$(name))
+  endif
+else
+  NATIVE_DEFINED_SYMBOLS := -Wl,--defsym,gInitialMainCB2=$(INITIAL_MAIN_CB2) -Wl,--defsym,gba_game_objects_linked=1
+endif
 NATIVE_LDFLAGS := -m$(BITS) $(GBA_LAYOUT_LDFLAGS) $(GUI_LDFLAGS) \
-                  $(NATIVE_LINKER_SCRIPTS:%=-Wl,-T,%) \
-                  -Wl,--defsym,gInitialMainCB2=$(INITIAL_MAIN_CB2) \
-                  -Wl,--defsym,gba_game_objects_linked=1 $(NATIVE_LINK_SANITIZERS)
+                  $(addprefix $(GBA_LINKER_SCRIPT_FLAG),$(NATIVE_LINKER_SCRIPTS)) \
+                  $(NATIVE_DEFINED_SYMBOLS) $(NATIVE_LINK_SANITIZERS)
+# The objects in the order the link takes them. ld64 lays a section's parts
+# out in that order and has no script to say otherwise, so on macOS the
+# regions' objects come first and last (platform/gba_regions.macho.s says
+# why) and test/test_test_runner.c's tests start the test table, as
+# gba_game.ld puts them first on Linux and Windows.
+PLATFORM_LAYOUT_FIRST := $(addprefix $(dir $(PLATFORM_LIB)),$(GBA_LAYOUT_FIRST:.s=.o))
+PLATFORM_LAYOUT_LAST := $(addprefix $(dir $(PLATFORM_LIB)),$(GBA_LAYOUT_LAST:.s=.o))
+NATIVE_LINK_OBJS := $(OBJS)
+ifeq ($(TARGET_OS),Darwin)
+  NATIVE_LINK_OBJS := $(filter %/test_test_runner.o,$(OBJS)) $(filter-out %/test_test_runner.o,$(OBJS))
+endif
 NATIVE_LDLIBS := $(SDL_LIBS) -lm
 # What the executable carries besides code and data (Windows: the UTF-8
 # application manifest, platform/target.mk).
@@ -516,6 +612,10 @@ NATIVE_RUNTIME_FILES :=
 ifeq ($(TARGET_OS),windows)
   NATIVE_EXE_CHECK := $(PYTHON) -I $(GLUE_DIR)/check_pe_layout.py --gui $(NATIVE_EXE)
   NATIVE_RUNTIME_FILES := $(OBJ_DIR)/SDL2.dll
+else ifeq ($(TARGET_OS),Darwin)
+  # What gba_regions.ld's and gba_game.ld's ASSERTs and section order give on
+  # Linux, checked on the linked file (ld64 has neither).
+  NATIVE_EXE_CHECK := $(PYTHON) -I $(GLUE_DIR)/check_macho_layout.py $(NATIVE_EXE)
 endif
 
 # The Windows build runs in two makes (WINDOWS_DATA_CHECKED, "The Windows
@@ -554,16 +654,18 @@ check-palette-padding:
 platform-lib: $(if $(filter windows,$(TARGET_OS)),sdl2-mingw)
 	$(MAKE) -C platform lib $(PLATFORM_LIB_ARGS) PLATFORM_VERSION=$(NATIVE_VERSION)
 
-$(PLATFORM_LIB) $(PLATFORM_GAPS): platform-lib ;
+$(PLATFORM_LIB) $(PLATFORM_GAPS) $(PLATFORM_LAYOUT_FIRST) $(PLATFORM_LAYOUT_LAST): platform-lib ;
 
 # The link also writes the function map platform/symbols.c reads to name the
 # game's callbacks in the replays (symbols.h), beside the executable: one
 # recipe, so that every way of building the executable writes its map, and a
 # map that cannot be written fails the link (.DELETE_ON_ERROR removes the
 # executable).
-$(NATIVE_EXE): $(OBJS) $(PLATFORM_GAPS) $(NATIVE_RESOURCES) $(PLATFORM_LIB) $(NATIVE_LINKER_SCRIPTS) | check-palette-padding $(DATA_LAYOUT_CHECKS)
+$(NATIVE_EXE): $(OBJS) $(PLATFORM_GAPS) $(PLATFORM_LAYOUT_FIRST) $(PLATFORM_LAYOUT_LAST) $(NATIVE_RESOURCES) $(PLATFORM_LIB) \
+               $(NATIVE_LINKER_SCRIPTS) | check-palette-padding $(DATA_LAYOUT_CHECKS)
 	@echo "$(TARGET_CC) <link> -o $@"
-	@$(TARGET_CC) $(NATIVE_LDFLAGS) -o $@ $(OBJS) $(PLATFORM_GAPS) $(NATIVE_RESOURCES) $(PLATFORM_LIB) $(NATIVE_LDLIBS)
+	@$(TARGET_CC) $(NATIVE_LDFLAGS) -o $@ $(PLATFORM_LAYOUT_FIRST) $(NATIVE_LINK_OBJS) $(PLATFORM_GAPS) $(NATIVE_RESOURCES) \
+	    $(PLATFORM_LIB) $(PLATFORM_LAYOUT_LAST) $(NATIVE_LDLIBS)
 	@$(call write_symbol_map,$@,$@.symbols)
 	$(NATIVE_EXE_CHECK)
 
@@ -694,11 +796,20 @@ $(DATA_SRC_SUBDIR)/tutor_moves.h: $(DATA_SRC_SUBDIR)/pokemon/special_movesets.js
 	python3 $(LEARNSET_HELPERS_DIR)/make_teachables.py  --tutors $(LEARNSET_HELPERS_BUILD_DIR)
 
 # Per-file flags, as expansion's Makefile sets them (the host-relevant part).
+# -fno-toplevel-reorder is GCC's: clang has no such option and emits a
+# file's functions and variables in the order it meets them.
+ifeq ($(TARGET_CC_IS_CLANG),0)
 $(C_BUILDDIR)/librfu_intr.o: CFLAGS += -fno-toplevel-reorder
 $(C_BUILDDIR)/agb_flash.o: CFLAGS += -fno-toplevel-reorder
+endif
 $(C_BUILDDIR)/berry_crush.o: CFLAGS += -Wno-address-of-packed-member
 $(C_BUILDDIR)/pokedex_plus_hgss.o: CFLAGS := $(filter-out -Wnonnull -Wenum-conversion,$(CFLAGS))
+# GCC and clang spell the caret's flag differently.
+ifeq ($(TARGET_CC_IS_CLANG),1)
+$(C_BUILDDIR)/data.o: CFLAGS += -fno-show-column -fno-caret-diagnostics
+else
 $(C_BUILDDIR)/data.o: CFLAGS += -fno-show-column -fno-diagnostics-show-caret
+endif
 $(C_BUILDDIR)/graphics.o: CFLAGS += -Wno-missing-braces
 
 $(C_BUILDDIR)/move_relearner.o: $(C_SUBDIR)/move_relearner.c $(DATA_SRC_SUBDIR)/tutor_moves.h
@@ -765,23 +876,46 @@ $(OVERWORLD_SCRIPT_X86_MACROS) $(OVERWORLD_SCRIPT_X86_PURGE): $(OVERWORLD_SCRIPT
 	@test -f $@ || { echo "$@ is missing: delete $(OVERWORLD_SCRIPT_MACROS) and build again" >&2; exit 1; }
 
 $(TEST_OBJS): $(OVERWORLD_SCRIPT_MACROS) $(OVERWORLD_SCRIPT_X86_MACROS) $(OVERWORLD_SCRIPT_X86_PURGE)
+ifneq ($(TARGET_OS),Darwin)
 $(TEST_OBJS): CFLAGS += -Wa,-I,$(TEST_BUILDDIR)
+endif
 # At 64 bits GCC raises the alignment of a global of 32 bytes or more to 32,
 # so the 40-byte struct Test entries of .tests (include/test/test.h) would sit
 # 64 bytes apart while test/test_runner.c walks __start_tests..__stop_tests as
 # an array. -malign-data=abi keeps the ABI's 8-byte alignment (40-byte
 # spacing). Only the objects that put data in .tests need it; crt0_init checks
 # the table (platform/crt0.c). BITS=32 is unchanged: the flag is not passed.
-ifeq ($(BITS),64)
+# Clang aligns a global to its type, as the ABI does, and has no such flag.
+ifeq ($(BITS)/$(TARGET_CC_IS_CLANG),64/0)
 $(TEST_OBJS): CFLAGS += -malign-data=abi
+endif
+# The battle tests' functions run once per phase (GIVEN, WHEN, SCENE, THEN,
+# include/test/battle.h), and a local that one phase gives the runner to
+# write into (HP_BAR's captureDamage) is read by a later call, from the same
+# stack slot (platform/game_hooks.h, PlatformCallWithStack). For the
+# compiler each call's locals are new and uninitialised, and clang's loop
+# optimiser uses that: it keeps a local that a phase's loop (GIVEN's `for`)
+# stores into in a register and stores it once at the loop's exit, which the
+# other phases' calls pass too, so "Beat Up's damage doesn't consider STAB"
+# wrote the GIVEN phase's 0 over the damage the runner had written before the
+# THEN phase read it. GCC leaves the store in the loop. LLVM's
+# -disable-licm-promotion turns that one transformation off for the test
+# objects; -O0 would too, but changes which stale values the tests that read a
+# local no phase set happen to see ("Hidden Power's type is determined by
+# IVs" then read an item that does not exist), where -O2 sees GCC's.
+ifeq ($(TARGET_CC_IS_CLANG),1)
+$(TEST_OBJS): CFLAGS += -mllvm -disable-licm-promotion
 endif
 ifeq ($(SANITIZE),1)
 $(TEST_OBJS): CFLAGS += $(GAME_TEST_SANITIZER_FLAGS)
 endif
 
+ifneq ($(TARGET_OS),Darwin)
 $(TEST_BUILDDIR)/%.o: $(TEST_SUBDIR)/%.c $(C_FILTER_SCRIPT)
 	@echo "$(TARGET_CC) <flags> -o $@ $<"
 	@$(COMPILE_C)
+endif
+# macOS: "The event scripts of the macOS test objects", after the converted data.
 
 $(TEST_BUILDDIR)/%.d: $(TEST_SUBDIR)/%.c
 	$(SCAN_C)
@@ -850,7 +984,7 @@ $(ASM_FILTER_CHECKED): $(ASM_FILTER_SCRIPT) $(ASM_FILTER_MODULES)
 # battle script macros against src/battle_script_commands.c
 # (check_battle_script_operands.py). The checkers and the modules they share
 # run their self-tests first, once per change.
-ifeq ($(DATA_POINTER_SIZE)/$(TARGET_OS),8/Linux)
+ifneq (,$(filter 8/Linux 8/Darwin,$(DATA_POINTER_SIZE)/$(TARGET_OS)))
 CHECK_RELOCATIONS_SCRIPT := $(GLUE_DIR)/check_relocations.py
 CHECK_DATA_LAYOUT_SCRIPT := $(GLUE_DIR)/check_data_layout.py
 CHECK_BATTLE_SCRIPTS_SCRIPT := $(GLUE_DIR)/check_battle_script_operands.py
@@ -956,6 +1090,58 @@ $(FLAT_TARGET_DIR)/%.s: $(OBJ_DIR)/%.o $(FLAT_SYMBOLS) $(FLAT_SELF_TESTS)
 $(FLAT_TARGET_DIR)/%.o: $(FLAT_TARGET_DIR)/%.s $(OBJ_DIR)/%.o $(FLAT_SYMBOLS) $(FLAT_SELF_TESTS)
 	$(PYTHON) -I $(CHECK_FLAT_SCRIPT) --target $(TARGET) --symbols $(FLAT_SYMBOLS) --listing $< --output $@ \
 	    --clang $(FLAT_CLANG) $(OBJ_DIR)/$*.o
+
+# --------------------------------------------------------------------------
+# The event scripts of the macOS test objects (TARGET_OS=Darwin, TEST=1).
+ifeq ($(TARGET_OS)/$(TEST),Darwin/1)
+# On macOS the event scripts leave the C before clang sees it, since clang's
+# assembler refuses GNU as's dialect and the scripts name the data's
+# constants, which the converted data writes local
+# (build_glue/overworld_scripts.py says why and how): each test object is
+# its C, compiled by clang, and the scripts its OVERWORLD_SCRIPT blocks held,
+# assembled by GNU as as the data is (with the same macros, from
+# OVERWORLD_SCRIPT_MACROS), converted and compared as the data's listings are
+# (elf_to_flat.py, check_flat.py), and joined to it by ld -r. Each script's
+# label is named after the object, PlatformOverworldScript_<path>_<n>. The
+# scripts' words that name the data's constants, at every width, take their
+# values from the table of every global absolute symbol of the data objects
+# (SCRIPT_ABSOLUTES), as GNU ld resolves them on Linux. A test object with no
+# script is its C object alone.
+OVERWORLD_SCRIPTS_SCRIPT := $(GLUE_DIR)/overworld_scripts.py
+OVERWORLD_SCRIPTS_CHECKED := $(OBJ_DIR)/overworld_scripts.self-tested
+SCRIPT_ABSOLUTES := $(FLAT_DIR)/global_absolutes.txt
+TEST_SCRIPTS_PREFIX = $(@:.o=.scripts)
+
+$(OVERWORLD_SCRIPTS_CHECKED): $(OVERWORLD_SCRIPTS_SCRIPT)
+	@mkdir -p $(@D)
+	$(PYTHON) -I $< --self-test
+	@touch $@
+
+$(SCRIPT_ABSOLUTES): $(FLAT_SOURCES) $(FLAT_SELF_TESTS) $(DATA_LAYOUT_CHECKS)
+	@echo "$(PYTHON) -I $(ELF_TO_FLAT_SCRIPT) --absolutes $@ <data objects>"
+	@$(PYTHON) -I $(ELF_TO_FLAT_SCRIPT) --absolutes $@ $(FLAT_SOURCES)
+
+$(TEST_OBJS): $(OVERWORLD_SCRIPTS_CHECKED) $(SCRIPT_ABSOLUTES) $(FLAT_SELF_TESTS)
+
+$(TEST_BUILDDIR)/%.o: $(TEST_SUBDIR)/%.c $(C_FILTER_SCRIPT)
+	@echo "$(TARGET_CC) <flags> -o $@ $< (and its event scripts)"
+	@$(CPP) $(CPPFLAGS) $< | $(PREPROC) -i -g $(ASSETS_DIR_NAME) $< charmap.txt | $(C_FILTER) > $(C_PREPROCESSED)
+	@$(PYTHON) -I $(OVERWORLD_SCRIPTS_SCRIPT) --name PlatformOverworldScript_$(subst /,_,$*) $(C_PREPROCESSED) \
+	    $(TEST_SCRIPTS_PREFIX).s
+	@$(TARGET_CC) $(CFLAGS) -c -x c -o $(@:.o=.c.o) $(C_PREPROCESSED)
+	@rm -f $(C_PREPROCESSED)
+	@if [ -s $(TEST_SCRIPTS_PREFIX).s ]; then \
+	    $(TARGET_AS) --64 -I $(TEST_BUILDDIR) -o $(TEST_SCRIPTS_PREFIX).elf.o $(TEST_SCRIPTS_PREFIX).s \
+	    && $(PYTHON) -I $(ELF_TO_FLAT_SCRIPT) --target $(TARGET) --symbols $(SCRIPT_ABSOLUTES) \
+	        --output $(TEST_SCRIPTS_PREFIX).flat.s $(TEST_SCRIPTS_PREFIX).elf.o \
+	    && $(PYTHON) -I $(CHECK_FLAT_SCRIPT) --target $(TARGET) --symbols $(SCRIPT_ABSOLUTES) \
+	        --listing $(TEST_SCRIPTS_PREFIX).flat.s --output $(TEST_SCRIPTS_PREFIX).macho.o --clang $(FLAT_CLANG) \
+	        $(TEST_SCRIPTS_PREFIX).elf.o \
+	    && ld -r -o $@ $(@:.o=.c.o) $(TEST_SCRIPTS_PREFIX).macho.o; \
+	else \
+	    mv $(@:.o=.c.o) $@; \
+	fi
+endif
 
 # --------------------------------------------------------------------------
 # The Windows cross-build (TARGET_OS=windows, docs/BUILDING.md, "Windows

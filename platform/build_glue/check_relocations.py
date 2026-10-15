@@ -55,7 +55,7 @@ import sys
 import tempfile
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))   # python3 -I leaves the script's directory off
-from check_support import CheckError, capped, matching_rule, parse_options, problems_match  # noqa: E402
+from check_support import CheckError, capped, gnu_as, matching_rule, parse_options, problems_match  # noqa: E402
 from elf_object import (ElfObject, R_X86_64_16, R_X86_64_32, R_X86_64_32S, R_X86_64_64, Section, Symbol,  # noqa: E402
                         read_elf64, relocation_name)
 
@@ -382,7 +382,7 @@ def self_test_end_to_end(failures, directory):
     for subdirectory, source in (("obj", END_TO_END_8), ("narrow", END_TO_END_8.replace(".8byte", ".4byte")),
                                  ("ref", END_TO_END_4)):
         os.makedirs(os.path.join(directory, subdirectory))
-        subprocess.run(["as", "--64", "-o", os.path.join(directory, subdirectory, "a.o")], input=source,
+        subprocess.run(gnu_as() + ["--64", "-o", os.path.join(directory, subdirectory, "a.o")], input=source,
                        universal_newlines=True, check=True)
     rules = [Rule("a.o", "gTable", "pointer", 1), Rule("a.o", "Script", "bytecode", 2)]
     reference = read_objects(os.path.join(directory, "ref"), ["a.o"])

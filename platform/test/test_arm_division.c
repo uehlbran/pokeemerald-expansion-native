@@ -14,6 +14,12 @@
  * and RIP-relative operands) is the one tested, and so that
  * UndefinedBehaviorSanitizer does not stop the C division first.
  *
+ * The 8- and 16-bit forms (F6 /6 and /7, and F7 with the operand-size
+ * prefix) are what clang makes of a C division whose operands it knows fit
+ * those widths (a u8 by a u8, a u8 by an s16): the results are libgcc's rule
+ * at the instruction's width (arm_division.h), and the rest of the
+ * accumulator and data registers is kept, as the processor keeps it.
+ *
  * What happens to a divide error the decoder refuses, and to a SIGFPE that is
  * not one, depends on the handler installed before: that needs sigaction, a
  * long jump out of a handler and a forked child, in
@@ -64,6 +70,172 @@ PTEST(four_segment_prefixes_and_rex_before_a_64_bit_division_by_zero_still_compl
     arm_division_shutdown();
     PT_ASSERT(rax == 15);
     PT_ASSERT(rdx == 5);
+}
+#endif
+
+/* ---- the narrow forms: 8- and 16-bit DIV and IDIV, at both widths ---- */
+
+/* What the upper parts of EAX and EDX hold before a narrow division, which it
+ * must leave there: an 8-bit division writes AL and AH only, a 16-bit one AX
+ * and DX only (Intel SDM vol. 2, DIV and IDIV). */
+#define UPPER_PATTERN UINT32_C(0xA5C30000)
+#define EDX_PATTERN UINT32_C(0x5A3C96E1)
+
+struct narrow_result {
+    uint32_t eax;
+    uint32_t edx;
+};
+
+/* divb %cl (F6 F1): AX by CL, AL the quotient, AH the remainder. */
+static struct narrow_result divb_register(uint16_t ax, uint8_t divisor)
+{
+    struct narrow_result r = {UPPER_PATTERN | ax, EDX_PATTERN};
+    __asm__ volatile("divb %%cl" : "+a"(r.eax), "+d"(r.edx) : "c"((uint32_t)divisor));
+    return r;
+}
+
+/* idivb %cl (F6 F9). */
+static struct narrow_result idivb_register(uint16_t ax, uint8_t divisor)
+{
+    struct narrow_result r = {UPPER_PATTERN | ax, EDX_PATTERN};
+    __asm__ volatile("idivb %%cl" : "+a"(r.eax), "+d"(r.edx) : "c"((uint32_t)divisor));
+    return r;
+}
+
+/* divb %ch (F6 F5): without a REX prefix, ModRM rm 5 of an 8-bit operand is
+ * CH, the second byte of ECX (Intel SDM vol. 2, table 2-2), not BPL. CL holds
+ * a non-zero byte, so that reading the wrong byte would divide. */
+static struct narrow_result divb_high_byte(uint16_t ax, uint8_t divisor)
+{
+    struct narrow_result r = {UPPER_PATTERN | ax, EDX_PATTERN};
+    __asm__ volatile("divb %%ch" : "+a"(r.eax), "+d"(r.edx) : "c"((uint32_t)divisor << 8 | 7u));
+    return r;
+}
+
+/* divb with the divisor in memory, the operand form the compiler chooses. */
+static struct narrow_result divb_memory(uint16_t ax, const volatile uint8_t *divisor)
+{
+    struct narrow_result r = {UPPER_PATTERN | ax, EDX_PATTERN};
+    __asm__ volatile("divb %2" : "+a"(r.eax), "+d"(r.edx) : "m"(*divisor));
+    return r;
+}
+
+/* divw %cx (66 F7 F1): DX:AX by CX, AX the quotient, DX the remainder. */
+static struct narrow_result divw_register(uint16_t dx, uint16_t ax, uint16_t divisor)
+{
+    struct narrow_result r = {UPPER_PATTERN | ax, (EDX_PATTERN & ~UINT32_C(0xFFFF)) | dx};
+    __asm__ volatile("divw %%cx" : "+a"(r.eax), "+d"(r.edx) : "c"((uint32_t)divisor));
+    return r;
+}
+
+/* idivw %cx (66 F7 F9). */
+static struct narrow_result idivw_register(uint16_t dx, uint16_t ax, uint16_t divisor)
+{
+    struct narrow_result r = {UPPER_PATTERN | ax, (EDX_PATTERN & ~UINT32_C(0xFFFF)) | dx};
+    __asm__ volatile("idivw %%cx" : "+a"(r.eax), "+d"(r.edx) : "c"((uint32_t)divisor));
+    return r;
+}
+
+/* What clang made of src/battle_anim_electric.c's u8 % s16 in
+ * AnimSparkElectricityFlashing: a zero-extended byte in AX, DX cleared, and
+ * idivw of the s16 in memory. */
+static struct narrow_result clang_byte_mod_short(uint8_t dividend, const volatile int16_t *divisor)
+{
+    struct narrow_result r = {dividend, EDX_PATTERN};
+    __asm__ volatile("xorl %%edx, %%edx\n\tidivw %2" : "+a"(r.eax), "+d"(r.edx) : "m"(*divisor));
+    return r;
+}
+
+static void expect_narrow(struct narrow_result r, uint32_t eax, uint32_t edx)
+{
+    PT_ASSERT_EQ_U32(r.eax, eax);
+    PT_ASSERT_EQ_U32(r.edx, edx);
+}
+
+PTEST(an_8_bit_unsigned_division_by_zero_gives_all_ones_or_zero_at_8_bits)
+{
+    PT_ASSERT_EQ_INT(arm_division_init(), ARM_DIVISION_OK);
+    const struct narrow_result five = divb_register(5, 0);
+    const struct narrow_result zero = divb_register(0, 0);
+    const struct narrow_result high = divb_high_byte(200, 0);
+    static const volatile uint8_t zero_in_memory;
+    const struct narrow_result memory = divb_memory(1, &zero_in_memory);
+    arm_division_shutdown();
+    expect_narrow(five, UPPER_PATTERN | 0xFFFFu, EDX_PATTERN); /* AL 0xFF, AH 0xFF */
+    expect_narrow(zero, UPPER_PATTERN, EDX_PATTERN);
+    expect_narrow(high, UPPER_PATTERN | 0xFFFFu, EDX_PATTERN);
+    expect_narrow(memory, UPPER_PATTERN | 0xFFFFu, EDX_PATTERN);
+}
+
+PTEST(an_8_bit_signed_division_by_zero_saturates_by_the_sign_at_8_bits)
+{
+    PT_ASSERT_EQ_INT(arm_division_init(), ARM_DIVISION_OK);
+    const struct narrow_result positive = idivb_register(5, 0);
+    const struct narrow_result negative = idivb_register(0xFFFBu, 0); /* -5, AH its sign */
+    const struct narrow_result zero = idivb_register(0, 0);
+    arm_division_shutdown();
+    expect_narrow(positive, UPPER_PATTERN | 0x7F7Fu, EDX_PATTERN); /* INT8_MAX both */
+    expect_narrow(negative, UPPER_PATTERN | 0x8080u, EDX_PATTERN); /* INT8_MIN both */
+    expect_narrow(zero, UPPER_PATTERN, EDX_PATTERN);
+}
+
+PTEST(int8_min_by_minus_one_is_int8_min_remainder_zero)
+{
+    PT_ASSERT_EQ_INT(arm_division_init(), ARM_DIVISION_OK);
+    const struct narrow_result r = idivb_register(0xFF80u, 0xFFu); /* -128 / -1 */
+    arm_division_shutdown();
+    expect_narrow(r, UPPER_PATTERN | 0x0080u, EDX_PATTERN);
+}
+
+PTEST(a_16_bit_division_by_zero_gives_libgcc_s_rule_at_16_bits_in_ax_and_dx)
+{
+    PT_ASSERT_EQ_INT(arm_division_init(), ARM_DIVISION_OK);
+    const struct narrow_result unsigned_five = divw_register(0, 5, 0);
+    const struct narrow_result unsigned_zero = divw_register(0, 0, 0);
+    const struct narrow_result positive = idivw_register(0, 5, 0);
+    const struct narrow_result negative = idivw_register(0xFFFFu, 0xFFFBu, 0);      /* -5, DX its sign */
+    const struct narrow_result minimum = idivw_register(0xFFFFu, 0x8000u, 0xFFFFu); /* INT16_MIN / -1 */
+    arm_division_shutdown();
+    const uint32_t edx_upper = EDX_PATTERN & ~UINT32_C(0xFFFF);
+    expect_narrow(unsigned_five, UPPER_PATTERN | 0xFFFFu, edx_upper | 0xFFFFu);
+    expect_narrow(unsigned_zero, UPPER_PATTERN, edx_upper);
+    expect_narrow(positive, UPPER_PATTERN | 0x7FFFu, edx_upper | 0x7FFFu);
+    expect_narrow(negative, UPPER_PATTERN | 0x8000u, edx_upper | 0x8000u);
+    expect_narrow(minimum, UPPER_PATTERN | 0x8000u, edx_upper);
+}
+
+PTEST(clang_s_16_bit_remainder_of_a_byte_by_zero_is_int16_max)
+{
+    static const volatile int16_t zero;
+    PT_ASSERT_EQ_INT(arm_division_init(), ARM_DIVISION_OK);
+    const struct narrow_result r = clang_byte_mod_short(200, &zero);
+    arm_division_shutdown();
+    expect_narrow(r, 0x7FFFu, 0x7FFFu); /* DX was cleared, so EDX's upper half is 0 */
+}
+
+PTEST(ordinary_narrow_division_is_untouched)
+{
+    static const volatile uint8_t seven = 7;
+    PT_ASSERT_EQ_INT(arm_division_init(), ARM_DIVISION_OK);
+    const struct narrow_result byte = divb_memory(100, &seven);
+    const struct narrow_result word = idivw_register(0xFFFFu, 0xFF9Cu, 7); /* -100 / 7 */
+    arm_division_shutdown();
+    expect_narrow(byte, UPPER_PATTERN | 0x020Eu, EDX_PATTERN);                                 /* 14 rem 2 */
+    expect_narrow(word, UPPER_PATTERN | 0xFFF2u, (EDX_PATTERN & ~UINT32_C(0xFFFF)) | 0xFFFEu); /* -14 rem -2 */
+}
+
+#if defined(__x86_64__)
+/* divb %sil (40 F6 F6): with a REX prefix, rm 6 of an 8-bit operand is SIL,
+ * the low byte of RSI, where without one it would be DH. */
+PTEST(an_8_bit_division_by_zero_with_rex_reads_the_low_byte_register)
+{
+    uint32_t eax = UPPER_PATTERN | 5u;
+    uint32_t edx = EDX_PATTERN; /* DH is 0x96: not the divisor */
+    PT_ASSERT_EQ_INT(arm_division_init(), ARM_DIVISION_OK);
+    __asm__ volatile("divb %%sil" : "+a"(eax), "+d"(edx) : "S"((uint64_t)0x1100));
+    arm_division_shutdown();
+    PT_ASSERT_EQ_U32(eax, UPPER_PATTERN | 0xFFFFu);
+    PT_ASSERT_EQ_U32(edx, EDX_PATTERN);
 }
 #endif
 

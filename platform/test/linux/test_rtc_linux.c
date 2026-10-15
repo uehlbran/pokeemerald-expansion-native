@@ -1,10 +1,13 @@
 /*
- * Tests of the RTC's persistence that need a POSIX system: a directory the
- * process may enter and write but not open for reading, where the offset
- * file's replacement succeeds and the directory sync after it fails. A
- * process that skips permission checks (root) gets the same directory through
- * setfsuid(2), which changes who the file system sees without a privilege
- * the test needs to give back. The rest of the RTC's tests are in
+ * test_rtc_linux.c: the RTC's persistence (rtc.h, rtc_offset_store.h) in a
+ * directory the process may enter and write but not open for reading, where
+ * the offset file's replacement succeeds and the directory sync after it
+ * fails. A process that skips permission checks (root) gets the same
+ * directory through setfsuid(2), Linux's, which changes who the file system
+ * sees without a privilege the test needs to give back. And an offset path
+ * padded with repeated slashes to host_file.h's limit, Linux's PATH_MAX, which
+ * is longer than macOS's (1024 bytes: open fails with ENAMETOOLONG past it)
+ * and Windows' MAX_PATH (260 characters). The rest of the RTC's tests are in
  * ../test_rtc.c.
  */
 // deps: rtc.c rtc_offset_store.c rtc_calendar.c
@@ -28,6 +31,10 @@
 #define ENTER_AND_WRITE_ONLY 0333
 #define OWNER_ONLY 0700
 #define OFFSET_TEXT_SIZE 32
+/* As ../test_rtc.c: the offset file's path and the ".tmp" beside it must fit
+ * host_file.h's HOST_FILE_PATH_SIZE. */
+#define TMP_SUFFIX_SIZE sizeof ".tmp"
+#define LONGEST_PATH (HOST_FILE_PATH_SIZE - TMP_SUFFIX_SIZE)
 
 static int64_t fake_source(void)
 {
@@ -53,7 +60,7 @@ static void remove_directory(struct locked_directory *scratch)
 
 static bool make_directory(struct locked_directory *scratch)
 {
-    if (!tsup_make_temp_directory(scratch->dir, sizeof scratch->dir, "ptest_rtc_posix"))
+    if (!tsup_make_temp_directory(scratch->dir, sizeof scratch->dir, "ptest_rtc_linux"))
         return false;
     (void)snprintf(scratch->path, sizeof scratch->path, "%s/offset", scratch->dir);
     return true;
@@ -136,13 +143,6 @@ PTEST(a_first_run_whose_directory_sync_failed_starts_on_the_offset_the_file_has)
     PT_ASSERT(strcmp(text, "0\n") == 0);
 }
 
-/* As ../test_rtc.c: the offset file's path and the ".tmp" beside it must fit
- * host_file.h's HOST_FILE_PATH_SIZE. */
-#define TMP_SUFFIX_SIZE sizeof ".tmp"
-#define LONGEST_PATH (HOST_FILE_PATH_SIZE - TMP_SUFFIX_SIZE)
-
-/* POSIX only: repeated slashes pad a path to the limit and still name the
- * file, which Windows' file calls refuse past MAX_PATH (260 characters). */
 PTEST(an_offset_path_just_under_the_limit_is_saved_and_loaded)
 {
     static char path[HOST_FILE_PATH_SIZE];

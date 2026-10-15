@@ -2,15 +2,17 @@
  * host_linux.c: the host layer where Linux does things its own way: the
  * pages mapped at fixed addresses (host_memory.h), the saved registers of a
  * fault (host_fault.h), the executable's path (host_process.h), the image and
- * stack bounds (host_image.h) and the stack switch (host_stack.h). What every
- * POSIX system shares is in host_posix.c; where the link put the regions, in
- * host_linked.c.
+ * stack bounds (host_image.h), the stack switch (host_stack.h), and, for
+ * host_posix.c (host_internal.h), the flush of a file to the disk and the
+ * monotonic wait of the watchdog thread. What every POSIX system shares is
+ * in host_posix.c; where the link put the regions, in host_linked.c.
  *
  * Followed: the Intel SDM vol. 2 (table 2-2) for the ModRM register order,
  * glibc's <sys/ucontext.h> for where the kernel saves each register (REG_*
  * indices into uc_mcontext.gregs, i386 and x86-64), the ELF specification
  * (elf(5)) for the program headers, proc(5) for /proc/self/exe, mmap(2) for
- * MAP_FIXED_NOREPLACE, and getcontext(3), makecontext(3) for the switch.
+ * MAP_FIXED_NOREPLACE, getcontext(3), makecontext(3) for the switch, fsync(2),
+ * and POSIX's pthread_condattr_setclock and pthread_cond_timedwait.
  */
 #define _GNU_SOURCE /* REG_EAX, REG_RAX and friends; pthread_getattr_np */
 
@@ -24,10 +26,6 @@
 #include <sys/mman.h>
 #include <ucontext.h>
 #include <unistd.h>
-
-#ifdef __SANITIZE_ADDRESS__
-#include <sanitizer/common_interface_defs.h>
-#endif
 
 #include "host_fault.h"
 #include "host_image.h"
@@ -85,13 +83,18 @@ uintptr_t host_fault_general_register(const struct host_fault *fault, unsigned n
 
 /* proc(5): a symbolic link to the running executable, which execve runs
  * even if its path has since been replaced. */
-const char host_self_executable[] = "/proc/self/exe";
+static const char self_executable[] = "/proc/self/exe";
+
+const char *host_process_exec_path(void)
+{
+    return self_executable;
+}
 
 int host_process_executable_path(char *out, size_t size)
 {
-    const ssize_t length = readlink(host_self_executable, out, size);
+    const ssize_t length = readlink(self_executable, out, size);
     if (length < 0) {
-        (void)fprintf(stderr, "host_process: readlink(%s): %s\n", host_self_executable, strerror(errno));
+        (void)fprintf(stderr, "host_process: readlink(%s): %s\n", self_executable, strerror(errno));
         return -1;
     }
     if ((size_t)length >= size) { /* readlink truncates silently */
@@ -215,38 +218,14 @@ static struct {
     size_t caller_stack_size;
 } switched;
 
-/* AddressSanitizer's fiber annotations, or nothing without it. */
-static void fiber_start_switch(void **fake_stack_save, const void *bottom, size_t size)
-{
-#ifdef __SANITIZE_ADDRESS__
-    __sanitizer_start_switch_fiber(fake_stack_save, bottom, size);
-#else
-    (void)fake_stack_save;
-    (void)bottom;
-    (void)size;
-#endif
-}
-
-// NOLINTNEXTLINE(readability-non-const-parameter): old_size is the ASan call's out-parameter
-static void fiber_finish_switch(void *fake_stack_save, const void **old_bottom, size_t *old_size)
-{
-#ifdef __SANITIZE_ADDRESS__
-    __sanitizer_finish_switch_fiber(fake_stack_save, old_bottom, old_size);
-#else
-    (void)fake_stack_save;
-    (void)old_bottom;
-    (void)old_size;
-#endif
-}
-
 /* The first function on the new stack: makecontext passes no pointer
  * arguments portably, so it reads the entry from `switched`. Returning
  * resumes the caller through uc_link. */
 static void run_entry(void)
 {
-    fiber_finish_switch(NULL, &switched.caller_stack_bottom, &switched.caller_stack_size);
+    host_stack_finish_switch(NULL, &switched.caller_stack_bottom, &switched.caller_stack_size);
     switched.entry(switched.context);
-    fiber_start_switch(NULL, switched.caller_stack_bottom, switched.caller_stack_size);
+    host_stack_start_switch(NULL, switched.caller_stack_bottom, switched.caller_stack_size);
 }
 
 int host_stack_run(void *stack, size_t size, void (*entry)(void *context), void *context)
@@ -262,9 +241,9 @@ int host_stack_run(void *stack, size_t size, void (*entry)(void *context), void 
     switched.entry = entry;
     switched.context = context;
 
-    fiber_start_switch(&switched.caller_fake_stack, stack, size);
+    host_stack_start_switch(&switched.caller_fake_stack, stack, size);
     const int swapped = swapcontext(&switched.caller, &switched.callee);
-    fiber_finish_switch(switched.caller_fake_stack, NULL, NULL);
+    host_stack_finish_switch(switched.caller_fake_stack, NULL, NULL);
     if (swapped != 0) {
         perror("host_stack: swapcontext");
         return -1;
@@ -274,7 +253,38 @@ int host_stack_run(void *stack, size_t size, void (*entry)(void *context), void 
 
 void host_stack_leave(void)
 {
-    fiber_start_switch(NULL, switched.caller_stack_bottom, switched.caller_stack_size);
+    host_stack_start_switch(NULL, switched.caller_stack_bottom, switched.caller_stack_size);
     (void)setcontext(&switched.caller); /* returns only on failure */
     (void)fprintf(stderr, "host_stack: setcontext back to the caller's stack failed\n");
+}
+
+/* --- host_file: the flush ------------------------------------------------------ */
+
+/* fsync(2): on Linux it returns once the drive reports the data stored,
+ * flushing a volatile write cache on the way. */
+int host_file_flush(int descriptor)
+{
+    return fsync(descriptor);
+}
+
+/* --- host_thread: the monotonic wait --------------------------------------------- */
+
+int host_condition_init(pthread_cond_t *condition)
+{
+    pthread_condattr_t attributes;
+    int error = pthread_condattr_init(&attributes);
+    if (error != 0)
+        return error;
+    error = pthread_condattr_setclock(&attributes, CLOCK_MONOTONIC);
+    if (error == 0)
+        error = pthread_cond_init(condition, &attributes);
+    (void)pthread_condattr_destroy(&attributes); /* cannot fail on POSIX systems; the init has copied what it needs */
+    return error;
+}
+
+/* The condition variable measures CLOCK_MONOTONIC (host_condition_init), so
+ * the deadline is the absolute time pthread_cond_timedwait takes. */
+int host_condition_wait_until(pthread_cond_t *condition, pthread_mutex_t *lock, const struct timespec *deadline)
+{
+    return pthread_cond_timedwait(condition, lock, deadline);
 }

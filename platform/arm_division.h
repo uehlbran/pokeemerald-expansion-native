@@ -23,12 +23,26 @@
  * AnimSparkElectricityFlashing_Step).
  *
  * x86's div and idiv raise a divide error in both cases, which the host
- * delivers as a fault (Linux: SIGFPE; host_fault.h). arm_division_init
- * installs a divide-error handler. It decodes the faulting DIV or IDIV
- * (F7 /6 or /7, any operand form, flat segment prefixes, REX on x86-64),
- * writes libgcc's quotient and remainder into the accumulator and data
- * registers at the operand's width (32-bit results are zero-extended on
- * x86-64), and resumes after the instruction. Anything it cannot decode (see
+ * delivers as a fault (Linux and macOS: SIGFPE; host_fault.h).
+ * arm_division_init installs a divide-error handler. It decodes the faulting
+ * DIV or IDIV (F7 /6 or /7, any operand form, flat segment prefixes, REX on
+ * x86-64), writes libgcc's quotient and remainder into the accumulator and
+ * data registers at the operand's width (32-bit results are zero-extended on
+ * x86-64), and resumes after the instruction.
+ *
+ * The 8- and 16-bit forms (F6 /6 and /7; F7 with the operand-size prefix)
+ * are what clang makes of a C division whose operands it knows fit that
+ * width (a u8 by a u8, a u8 by an s16; GCC divides at the int's 32 bits).
+ * They get libgcc's rule at the instruction's width: all ones or zero, or
+ * the most positive or negative value by the dividend's sign, or zero (AL and
+ * AH at 8 bits, AX and DX at 16; the registers' other bits as they were). The
+ * GBA's 32-bit result does not fit there, so the narrow one keeps what a
+ * program can ask of it, its sign and whether it is zero, and an unsigned
+ * one's low bits; the signed value itself differs (0x7FFF where the GBA has
+ * INT32_MAX). The one such division by zero a gate reaches tests its
+ * remainder for zero (src/battle_anim_electric.c,
+ * AnimSparkElectricityFlashing; docs/DECISIONS.md, "Clang's narrow
+ * divisions"). Anything it cannot decode (see
  * decode() in arm_division.c) and any other SIGFPE is reported with its
  * program counter on one line of stderr and passed to the handler installed
  * before (the crash reboot in test-runner mode), or kills the process as

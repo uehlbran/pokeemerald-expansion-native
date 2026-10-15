@@ -109,8 +109,19 @@ static void teardown(void)
  * it is upstream's code, so the functions that expand those macros are
  * exempt from that one check; the native game build meets the same report.
  * DMA_CLEAR also ORs that negative int with a u32 size, which
- * -Wsign-conversion reports inside expansion's macro text. */
+ * -Wsign-conversion reports inside expansion's macro text. And each macro
+ * asserts the alignment of its source and destination with _Alignof applied
+ * to them, expressions, a GNU extension of gnu17 that GCC accepts silently and
+ * clang reports where the macro is expanded, here; it is expansion's text
+ * (include/gba/macro.h), which every game object compiles too, so clang's
+ * report of it is left out of these functions as GCC's -Wsign-conversion is
+ * of game_clear. */
 #define EXPANSION_SIGNED_SHIFT __attribute__((no_sanitize("shift")))
+
+#if defined(__clang__)
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wgnu-alignof-expression"
+#endif
 
 EXPANSION_SIGNED_SHIFT static void game_copy16(void)
 {
@@ -142,6 +153,18 @@ EXPANSION_SIGNED_SHIFT static void game_copy16_past_vram(void)
 {
     DmaCopy16(3, ewram(0), vram(GBA_VRAM_SIZE - 2), 8);
 }
+
+/* src/scanline_effect.c: DmaStop(0) then DmaSet(0, ...) into a register,
+ * run between scanlines by the frame loop. */
+static void game_scanline_effect_start(const u16 *table, volatile void *destination)
+{
+    DmaStop(0);
+    DmaSet(0, table, destination, SCANLINE_16BIT);
+}
+
+#if defined(__clang__)
+#pragma clang diagnostic pop
+#endif
 
 PTEST(dma_copy16_copies_and_leaves_the_registers_as_on_the_gba)
 {
@@ -200,8 +223,6 @@ PTEST(dma_clear_zeroes_exactly_the_range)
     teardown();
 }
 
-/* src/scanline_effect.c: DmaStop(0) then DmaSet(0, ...) into a register,
- * run between scanlines by the frame loop. */
 PTEST(dma_set_hblank_then_dma_stop)
 {
     volatile void *destination = &REG_BG0HOFS;
@@ -209,8 +230,7 @@ PTEST(dma_set_hblank_then_dma_stop)
     setup();
     for (u16 line = 0; line < 8; line++)
         table[line] = (u16)(0x100 + line);
-    DmaStop(0);
-    DmaSet(0, table + 1, destination, SCANLINE_16BIT);
+    game_scanline_effect_start(table + 1, destination);
     PT_ASSERT_EQ_INT(REG_BG0HOFS, 0);
     PT_ASSERT_EQ_INT(dma_run_timing(DMA_TIMING_HBLANK), 1);
     PT_ASSERT_EQ_INT(REG_BG0HOFS, 0x101);

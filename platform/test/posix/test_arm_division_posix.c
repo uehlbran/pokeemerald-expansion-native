@@ -1,13 +1,14 @@
 /*
  * test_arm_division_posix.c: where a divide error goes that arm_division.h
  * does not complete (a prefix or operand form the decoder refuses, a SIGFPE
- * that kill or raise sent, a wide dividend, a quotient that does not fit):
+ * that raise sent, a wide dividend, a quotient that does not fit):
  * to the handler installed before arm_division_init, which is restored at
  * shutdown, or, with none, the process ends with SIGFPE after one line on
  * stderr. The handlers are sigaction handlers that long-jump out
- * (siglongjmp is async-signal-safe) and count in a volatile sig_atomic_t; the
- * last test runs in a forked child. What the decoder does complete is
- * tested in ../test_arm_division.c.
+ * (siglongjmp is async-signal-safe) and count in a volatile sig_atomic_t
+ * (arm_division_fixture.h); the last test runs in a forked child. What the
+ * decoder does complete is tested in ../test_arm_division.c; a SIGFPE that
+ * kill sends, whose si_code differs by OS, in ../linux and ../darwin.
  */
 // deps: arm_division.c
 #include <setjmp.h>
@@ -20,70 +21,10 @@
 #include <unistd.h>
 
 #include "arm_division.h"
+#include "arm_division_fixture.h"
 #include "posix_child.h"
 #include "posix_support.h"
 #include "ptest.h"
-
-/* The handler installed before arm_division_init gets what it cannot do. */
-static sigjmp_buf previous_handler_target;
-static volatile sig_atomic_t previous_handler_calls;
-
-static void previous_handler(int signal_number, siginfo_t *info, void *context)
-{
-    (void)signal_number;
-    (void)info;
-    (void)context;
-    previous_handler_calls++;
-    siglongjmp(previous_handler_target, 1);
-}
-
-/* The same, installed without SA_SIGINFO: a plain signal handler. */
-static void previous_plain_handler(int signal_number)
-{
-    (void)signal_number;
-    previous_handler_calls++;
-    siglongjmp(previous_handler_target, 1);
-}
-
-/* How many times division's divide error reached the handler that was
- * installed (mine) before arm_division_init, or a negative number if the
- * harness failed (-1) or the module did not restore mine at shutdown (-2). */
-static int calls_after_with(const struct sigaction *mine, void (*division)(void))
-{
-    struct sigaction saved;
-    if (sigaction(SIGFPE, mine, &saved) != 0)
-        return -1;
-    previous_handler_calls = 0;
-    if (arm_division_init() != ARM_DIVISION_OK)
-        return -1;
-    if (sigsetjmp(previous_handler_target, 1) == 0)
-        division();
-    arm_division_shutdown();
-    struct sigaction now;
-    if (sigaction(SIGFPE, &saved, &now) != 0)
-        return -1;
-    const bool restored = now.sa_sigaction == mine->sa_sigaction;
-    return restored ? (int)previous_handler_calls : -2;
-}
-
-static int calls_after(void (*division)(void))
-{
-    struct sigaction mine;
-    memset(&mine, 0, sizeof mine);
-    mine.sa_sigaction = previous_handler;
-    mine.sa_flags = SA_SIGINFO;
-    sigemptyset(&mine.sa_mask);
-    return calls_after_with(&mine, division);
-}
-
-static int calls_after_plain(void (*division)(void))
-{
-    struct sigaction mine;
-    memset(&mine, 0, sizeof mine);
-    mine.sa_handler = previous_plain_handler;
-    sigemptyset(&mine.sa_mask);
-    return calls_after_with(&mine, division);
-}
 
 PTEST(shutdown_twice_is_safe_and_restores_the_previous_handler)
 {
@@ -105,17 +46,44 @@ PTEST(shutdown_twice_is_safe_and_restores_the_previous_handler)
  * complete, so it must reach the handler installed before (the crash reboot
  * in test-runner mode). The registers are named by their 32-bit names, which
  * GCC accepts as clobbers at both widths. */
-/* divb %cl by zero (F6 F1): 8-bit forms are not the compiler's division of
- * an int or wider. */
+/* divb %cl by zero (F6 F1) of a dividend wider than a byte (AH not 0):
+ * the 8-bit forms are a division of two bytes, whose dividend is zero- or
+ * sign-extended into AX (the 8-bit IDIV's twin is below). */
 static void byte_division_by_zero(void)
 {
-    __asm__ volatile("movw $5, %%ax\n\tmovb $0, %%cl\n\tdivb %%cl" : : : "eax", "ecx");
+    __asm__ volatile("movw $0x105, %%ax\n\tmovb $0, %%cl\n\tdivb %%cl" : : : "eax", "ecx");
+}
+
+/* idivb %cl by zero (F6 F9) with AH not AL's sign: 5 with AH 1. */
+static void unextended_signed_byte_division_by_zero(void)
+{
+    __asm__ volatile("movw $0x105, %%ax\n\tmovb $0, %%cl\n\tidivb %%cl" : : : "eax", "ecx");
+}
+
+/* divw %cx by zero (66 F7 F1) with DX not 0: a 32-bit dividend in DX:AX. */
+static void wide_dividend_by_zero_16(void)
+{
+    __asm__ volatile("movl $1, %%edx\n\tmovl $5, %%eax\n\txorl %%ecx, %%ecx\n\tdivw %%cx" : : : "eax", "ecx", "edx");
+}
+
+/* divb %cl by 1 of AX 0x200: a quotient wider than AL. */
+static void wide_quotient_8(void)
+{
+    __asm__ volatile("movw $0x200, %%ax\n\tmovb $1, %%cl\n\tdivb %%cl" : : : "eax", "ecx");
+}
+
+/* The operand-size prefix before an 8-bit division (66 F6 F1), which the
+ * processor ignores and no compiler writes. */
+static void operand_size_prefixed_byte_division_by_zero(void)
+{
+    __asm__ volatile("movw $5, %%ax\n\tmovb $0, %%cl\n\t.byte 0x66, 0xF6, 0xF1" : : : "eax", "ecx");
 }
 
 /* divl %ecx by zero with a prefix byte in front (prefix F7 F1): the
- * processor ignores or applies the prefix; the decoder refuses it. 66h
- * makes it a 16-bit division (divw %cx); 67h, FS and GS are meaningless with
- * a register operand and REP and REPNE with a non-string instruction.
+ * processor ignores or applies the prefix; the decoder refuses it. 67h, FS
+ * and GS are meaningless with a register operand and REP and REPNE with a
+ * non-string instruction (66h, the operand size, makes a 16-bit division,
+ * which the decoder completes: ../test_arm_division.c).
  * LOCK cannot be tested here: LOCK DIV raises #UD (SIGILL), not a divide
  * error. */
 #define REFUSED_PREFIX_DIVISION(name, prefix)                                                                       \
@@ -126,7 +94,6 @@ static void byte_division_by_zero(void)
                          :                                                                                          \
                          : "eax", "ecx", "edx");                                                                    \
     }
-REFUSED_PREFIX_DIVISION(operand_size_prefixed_division_by_zero, "0x66")
 REFUSED_PREFIX_DIVISION(address_size_prefixed_division_by_zero, "0x67")
 REFUSED_PREFIX_DIVISION(fs_prefixed_division_by_zero, "0x64")
 REFUSED_PREFIX_DIVISION(gs_prefixed_division_by_zero, "0x65")
@@ -160,42 +127,22 @@ static void unextended_signed_dividend_by_zero_32(void)
                      : "eax", "ecx", "edx");
 }
 
-/* Not a divide error at all: SIGFPE sent by raise (si_code SI_TKILL). */
+/* Not a divide error at all: SIGFPE sent by raise. Linux says so in si_code
+ * (SI_TKILL); macOS gives it FPE_INTDIV, as a divide error (probe M2), and the
+ * decoder then finds no division at the program counter, which is in raise's
+ * own code. */
 static void sigfpe_from_raise(void)
 {
     (void)raise(SIGFPE);
 }
 
-/* A SIGFPE that kill sends is not a divide error even if the program counter
- * is at a division by zero when it arrives: the signal is delivered on return
- * from the system call, and the divide that follows it is never reached
- * (si_code is SI_USER, not FPE_INTDIV). The handler must pass it on. */
-static void kill_self_with_sigfpe_before_a_division_by_zero(void)
-{
-    static const uint32_t zero;
-    const long pid = (long)getpid();
-#if defined(__x86_64__)
-    __asm__ volatile("xorl %%edx, %%edx\n\tmovl $62, %%eax\n\tsyscall\n\tdivl (%[divisor])"
-                     :
-                     : "D"(pid), "S"((long)SIGFPE), [divisor] "r"(&zero)
-                     : "rax", "rcx", "rdx", "r11", "memory");
-#else
-    __asm__ volatile("xorl %%edx, %%edx\n\tmovl $37, %%eax\n\tint $0x80\n\tdivl (%[divisor])"
-                     :
-                     : "b"(pid), "c"((long)SIGFPE), [divisor] "r"(&zero)
-                     : "eax", "edx", "memory");
-#endif
-}
-
-PTEST(a_signal_sent_by_kill_is_not_completed_even_where_the_pc_is_at_a_division_by_zero)
-{
-    PT_ASSERT_EQ_INT(calls_after(kill_self_with_sigfpe_before_a_division_by_zero), 1);
-}
-
 PTEST(divide_errors_the_decoder_refuses_go_to_the_previous_handler)
 {
     PT_ASSERT_EQ_INT(calls_after(byte_division_by_zero), 1);
-    PT_ASSERT_EQ_INT(calls_after(operand_size_prefixed_division_by_zero), 1);
+    PT_ASSERT_EQ_INT(calls_after(unextended_signed_byte_division_by_zero), 1);
+    PT_ASSERT_EQ_INT(calls_after(wide_dividend_by_zero_16), 1);
+    PT_ASSERT_EQ_INT(calls_after(wide_quotient_8), 1);
+    PT_ASSERT_EQ_INT(calls_after(operand_size_prefixed_byte_division_by_zero), 1);
     PT_ASSERT_EQ_INT(calls_after(address_size_prefixed_division_by_zero), 1);
     PT_ASSERT_EQ_INT(calls_after(fs_prefixed_division_by_zero), 1);
     PT_ASSERT_EQ_INT(calls_after(gs_prefixed_division_by_zero), 1);

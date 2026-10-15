@@ -1,8 +1,9 @@
 /*
- * test_audio_dump_posix.c: a recording (audio_dump.h) on /dev/full, which
- * refuses every write with ENOSPC, as a full disk does: from the start, and
- * from the middle of a recording (the recording's descriptor moved onto
- * /dev/full with dup2 and back). The rest is in ../test_audio_dump.c.
+ * test_audio_dump_linux.c: a recording (audio_dump.h) on /dev/full, Linux's
+ * device that refuses every write with ENOSPC, as a full disk does (macOS has
+ * none): from the start, and from the middle of a recording (the recording's
+ * descriptor moved onto /dev/full with dup2 and back). The rest is in
+ * ../test_audio_dump.c.
  */
 // deps: audio_dump.c
 #include <errno.h>

@@ -168,7 +168,9 @@ static bool RunCommand(struct SoundInfo *soundInfo, struct MusicPlayerInfo *mpla
     }
     if (cmd >= MPLAY_CMD_TABLE_FIRST) {
         mplayInfo->cmd = (u8)(cmd - MPLAY_CMD_TABLE_FIRST);
-        soundInfo->MPlayJumpTable[cmd - MPLAY_CMD_TABLE_FIRST](mplayInfo, track);
+        /* The table's type, MPlayFunc, has no prototype (its entries take
+         * different arguments); the commands' entries are XcmdFunc's. */
+        ((XcmdFunc)soundInfo->MPlayJumpTable[cmd - MPLAY_CMD_TABLE_FIRST])(mplayInfo, track);
         return track->flags != 0;
     }
     if (cmd < MPLAY_CMD_FIRST) {
