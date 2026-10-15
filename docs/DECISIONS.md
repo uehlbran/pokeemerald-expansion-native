@@ -1991,7 +1991,7 @@ every start and only read by a person), a lock on it would be a second lock
 protocol for a diagnostic file, and the refused instance's own text (the
 reason it stopped) is what the player needs to read.
 
-**Verified on the runner** (run 38685391051, green; the earlier run 38680986214 passed everything but two of this task's own Windows child tests, which it fixed: a stream mended by what it was before the attach, and the descriptors): the start-up smoke, both replays, the
+**Verified on the runner** (run 38693203706 after the review's fixes, green; earlier runs found two of this task's own Windows child tests failing, fixed: a stream is mended by what it was before the attach, and the log cannot count on descriptor 2): the start-up smoke, both replays, the
 cross-OS save and the suite through the hydra pass unchanged on the GUI
 build, so inherited pipes and files work (the smoke also reads the PE
 subsystem and runs `--version`, `--keys` and a bad argument through a pipe);
@@ -2003,7 +2003,7 @@ executable with a pipe, a file, the null device, nothing, with a console and
 without, and checks what `host_console.h` reports, that attaching works when
 the parent has a console and the streams then write on it, that it is refused
 when the parent has none, and that a process with no handles and no console
-logs through `stdout`, `stderr` and stderr's descriptor.
+logs through `stdout`, `stderr` and a raw handler-style write to stderr's handle, all five lines surviving in order, and that a crash report reaches a log opened on stderr alone.
 
 **Only the owner can check by hand**: a double-click on `pokeemerald-native.exe`
 shows no console window and leaves `pokeemerald.log` (in
