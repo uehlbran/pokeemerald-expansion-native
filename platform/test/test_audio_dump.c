@@ -53,13 +53,16 @@ static void remove_scratch(const struct scratch *s)
 PTEST(the_header_of_an_empty_recording)
 {
     static const uint8_t expected[AUDIO_DUMP_HEADER_BYTES] = {
-        'R',  'I',  'F', 'F', 36,   0,    0, 0, 'W', 'A', 'V', 'E', /* RIFF, 36 bytes after the size, WAVE */
-        'f',  'm',  't', ' ', 16,   0,    0, 0, 1,   0,   2,   0,   /* fmt, 16 bytes, PCM, 2 channels */
-        0x43, 0x34, 0,   0,   0x0C, 0xD1, 0, 0, 4,   0,   16,  0, /* 13379 Hz, 53516 bytes a second, block 4, 16 bits */
-        'd',  'a',  't', 'a', 0,    0,    0, 0,                   /* data, 0 bytes */
+        'R',  'I',  'F', 'F', 36,   0,    0, 0,
+        'W',  'A',  'V', 'E', /* RIFF, 36 bytes after the size, WAVE */
+        'f',  'm',  't', ' ', 16,   0,    0, 0,
+        1,    0,    2,   0, /* fmt, 16 bytes, PCM, 2 channels */
+        0x44, 0xAC, 0,   0,   0x10, 0xB1, 2, 0,
+        4,    0,    16,  0,                     /* 44100 Hz, 176400 bytes a second, block 4, 16 bits */
+        'd',  'a',  't', 'a', 0,    0,    0, 0, /* data, 0 bytes */
     };
     uint8_t header[AUDIO_DUMP_HEADER_BYTES];
-    audio_dump_header(header, 13379u, 0);
+    audio_dump_header(header, 44100u, 0); /* any rate: this is not the output's */
     PT_ASSERT_MEM_EQ(header, expected, sizeof expected);
 }
 

@@ -231,9 +231,10 @@ PTEST(a_one_sample_fifo_frame_is_held_the_whole_frame)
 
 PTEST(the_ring_size_frame_is_read_without_overflow)
 {
-    /* The largest FIFO frame m4a_output passes, the whole 1584-byte ring:
-     * cycle 280575 * 1584 needs more than 32 bits' care, and the read stays
-     * inside the frame. */
+    /* The largest FIFO frame m4a_output passes, the whole 1584-byte ring
+     * (the index's product, at most 280895 * 1584, about 4.4e8, still fits
+     * 32 bits): the reads stay inside the frame and reach its last sample
+     * only on a span that ends on the frame's last cycle. */
     for (size_t i = 0; i < LARGEST_FIFO_FRAME; i++)
         ramp[i] = (int8_t)(i == LARGEST_FIFO_FRAME - 1 ? 99 : 0);
     struct sound_grid grid = {0};
