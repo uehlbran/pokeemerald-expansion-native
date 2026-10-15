@@ -84,7 +84,7 @@ loads the executable (`platform/gba_regions.macho.s`, `platform/target.mk`;
 | `__GBA_VRAM` | 0x06000000 | `__vram` |
 | `__GBA_OAM` | 0x07000000 | `__oam` |
 | `__GBA_SRAM` | 0x0E000000 | `__sram` |
-| `__TEXT` | 0x40000000 | the header, the code, read-only data; must end below 0x42000000 |
+| `__TEXT` | 0x40000000 | the header, the code (which must end below 0x42000000, the script tag's bit), then read-only data, which may go past it as `.rodata` does on Linux |
 | `__DATA` | after `__TEXT` | the pointers dyld fills, `__const`, the test table `__tests`, `__data`, the game's `__game_data`, `__game_bss` and `__game_common`, and the program's own zero-filled data |
 | `__LINKEDIT` | last | the symbol tables |
 

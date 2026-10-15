@@ -28,6 +28,21 @@ records which, tries `MAP_FIXED` at 0x02000000 and 0x04000000 with the default a
 page zero, and runs the x86_64 build under Rosetta 2. The `SIGFPE` `si_code` and the
 `mcontext` fields the inventory lists for M0 are not in this probe.
 
+**`macos_link/` (probe M2, the port's tasks M2 and M3).** On `macos-15-intel`, the link
+and toolchain questions the macOS port rests on, which probe M0 did not ask: can ld64's
+`-alias` give a section's or a segment's bounds (`section$start$SEG$SECT`,
+`segment$end$SEG`), an absolute symbol and the image's header the names the linker
+scripts define, and leave a weak reference null with `-U`; in what order does ld64 lay
+out a segment's sections, and does an empty declaration fix a place; does a 1-byte
+section aligned to 256 KiB land on EWRAM's end; do 4- and 8-byte absolute words and
+absolute symbols link in the non-PIE image; what `si_code` a SIGFPE carries for a
+divide error, `INT_MIN / -1`, `raise` and `kill`; whether `<ucontext.h>` compiles under
+the platform's flags; whether AddressSanitizer has LeakSanitizer; whether
+`pthread_cond_timedwait_relative_np` holds a monotonic deadline under ThreadSanitizer;
+what `F_FULLFSYNC` costs on the runner's disk; what `_NSGetExecutablePath` returns for a
+relative path and a symbolic link. `gh workflow run probes.yml --ref work/macos -f
+probe=m2`; `probes.yml`'s `probe` input picks the probe of a run.
+
 ## How to run
 
 Push the branch, then:
@@ -124,3 +139,57 @@ platform", PowerShell; Git Bash's "Exec format error", status 126, in 100 of 100
 3100 KiB against the 604 KiB baseline (the read-only gaps are not charged); `virtualalloc`
 starts 100 of 100 with 49 of 49 checks, commit charge 34072 KiB (the 32 MiB ROM committed).
 Verdict: the model is kept on Windows as one PE image with the gaps filled.
+
+## Run 38702323158 (2026-10-15, probe M2: the macOS link and toolchain)
+
+macos-15-intel: macOS 15.7.9, Apple clang 17.0.0 (clang-1700.0.13.5), ld-1167.5, SDK 15.5,
+`nm` is llvm-nm (Apple LLVM 17), 4 KiB pages, Homebrew 6.0.18 with its taps as of
+2026-08-24; Homebrew's `sdl2` is `sdl2-compat` 2.32.70 (SDL2's interface on SDL3),
+`x86_64-elf-binutils` 2.47 is bottled, `libpng` and `pkgconf` are on the image. 47 s.
+
+**The link.** `-alias` binds `section$start$`, `section$end$`, `segment$start$` and
+`segment$end$`, an absolute `.set` symbol and `__mh_execute_header` to the names the
+platform reads; `-U` leaves an undefined weak object and function null; 4- and 8-byte
+words holding a function, an I/O address and an absolute symbol link and read back. ld64
+lays out a segment's sections in the order it first meets each with something in it, object
+by object; an empty declaration does not count (`__empty_probe`, declared in the first
+object, came after every initialised section that held something), and a segment's
+zero-filled sections follow its initialised ones. With the layout
+object first, IWRAM's 0x7F00 bytes and the persistent section at 0x03007F00 come out
+right and the segment ends at 0x03008000; with it last, the persistent section went first
+(the `alias_layout_last` variant, 4 failures). A 1-byte section aligned to 256 KiB after
+EWRAM's data starts at 0x02040000, but only when the data comes first: declared with
+something in it in the first object, it went before EWRAM_DATA, which then started at
+0x02040010. Hence the port's order: the regions' object first, EWRAM's end in an object
+linked last. The same with `-ld_classic` and under AddressSanitizer. The link warns that
+`-no_pie` and a non-standard `__PAGEZERO` are deprecated. The one failure in each variant
+("gInitialMainCB2 is CB2_Probe", the same address on both sides) was the compiler folding a
+comparison of two distinct symbols' addresses to false; the values are equal. `__DATA,__const`
+stays in `__DATA` with `-no_fixup_chains`. `nm --format=sysv` gives Mach-O symbols a class
+(T, t, S, s, A, b) and no type or size.
+
+**SIGFPE.** `si_code` is `FPE_INTDIV` (7) for a 32- and 64-bit division by zero and for
+`INT_MIN / -1`, and also for `raise(SIGFPE)` and `kill(getpid(), SIGFPE)`: `SI_USER` is
+never seen. `si_addr` is the faulting instruction's address, as `rip` is; the same under
+AddressSanitizer.
+
+**ucontext.** Without `_XOPEN_SOURCE`, `<ucontext.h>` stops with "The deprecated ucontext
+routines require _XOPEN_SOURCE to be defined"; with it, `getcontext`, `makecontext` and
+`swapcontext` are each "deprecated: first deprecated in macOS 10.6", errors under
+`-Werror`; with the warnings allowed the switch runs.
+
+**LeakSanitizer.** `ASAN_OPTIONS=detect_leaks=1` aborts at start-up: "AddressSanitizer:
+detect_leaks is not supported on this platform" (status 134); by default a leak is not
+reported.
+
+**The watchdog's wait.** `pthread_cond_timedwait_relative_np` with what is left of a 300 ms
+deadline on `CLOCK_MONOTONIC` recomputed after each wake-up: expired at 300 ms after 3
+wake-ups, and at 301 ms under ThreadSanitizer, with no report.
+
+**F_FULLFSYNC** on the runner's APFS volume (a SATA virtual disk): the 128 KiB file in
+4.5 to 24 ms (fsync 0.6 to 1 ms), its directory in 3.5 to 4.3 ms (fsync 0.01 ms); both
+succeed.
+
+**`_NSGetExecutablePath`** gives an absolute path for a relative start and for an absolute
+one, and the link's own path for a symbolic link (`realpath` resolves it).
+

@@ -2162,10 +2162,10 @@ ld64 has no linker scripts, and the native memory model needs what
 `gba_regions.ld` and `gba_game.ld` give on Linux: each GBA region at its
 address, mapped by the kernel before any code runs; names for the regions'
 bounds and the soft reset's brackets; the regions' sections in a fixed order;
-an image at 0x40000000 below the script tag's 0x42000000. Probe M0 showed ld64
-builds such an image and macOS loads it unslid (100 of 100 starts), and probe
-M2 answered how the rest can be said (`research/probes/README.md`). The
-choices:
+an image at 0x40000000 whose code ends below the script tag's 0x42000000.
+Probe M0 showed ld64 builds such an image and macOS loads it unslid (100 of
+100 starts), and probe M2 answered how the rest can be said
+(`research/probes/README.md`). The choices:
 
 - **Each region a segment, placed with `-segaddr`**, its section declared
   zero-filled in `platform/gba_regions.macho.s`, in a non-PIE image
@@ -2206,9 +2206,11 @@ choices:
 - **What the scripts' ASSERTs check, a script checks after the link**:
   `platform/build_glue/check_macho_layout.py` reads every macOS executable,
   the unit tests included, and fails the link if the image is PIE, has
-  chained fixups or a large `__PAGEZERO`, if `__TEXT` is not at 0x40000000 or
-  reaches 0x42000000, or if any region is not at its address with its size,
-  its sections in order.
+  chained fixups or a large `__PAGEZERO`, if `__TEXT` is not at 0x40000000, if
+  a section of instructions reaches 0x42000000 (the read-only data after the
+  code in `__TEXT` may, as `.rodata` does on Linux: the sanitized test
+  runner's code is 22 MB and its read-only data 23 MB), or if any region is
+  not at its address with its size, its sections in order.
 
 ## 2026-10-15: The stack switch on macOS is the platform's own assembly, not ucontext
 

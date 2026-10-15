@@ -16,9 +16,12 @@ unless:
     LC_DYLD_CHAINED_FIXUPS), with which ld64 ignores the image base
     (research/probes/README.md, probe M0);
   * __PAGEZERO is one 4 KiB page, so that the GBA's addresses are free, and
-    __TEXT starts at 0x40000000 and ends below 0x42000000, so that bit 25 of
-    every code address is clear for platform/script_tag.h's tag (gba_regions.ld
-    asserts the same of etext);
+    __TEXT starts at 0x40000000; every section that holds instructions
+    (S_ATTR_PURE_INSTRUCTIONS or S_ATTR_SOME_INSTRUCTIONS: __text, __stubs)
+    ends below 0x42000000, so that bit 25 of every code address is clear for
+    platform/script_tag.h's tag (gba_regions.ld asserts the same of etext).
+    The read-only data after the code in __TEXT may reach past it, as
+    .rodata does on Linux;
   * every GBA region, and the battle runner's stack, is a segment at its GBA
     address, readable and writable, of the region's size in whole pages;
     EWRAM's marker section (__ewram_end, gba_regions_end.macho.s) starts at
@@ -56,6 +59,7 @@ PAGE = 0x1000
 PAGEZERO_SIZE = PAGE
 IMAGE_BASE = 0x40000000
 CODE_LIMIT = 0x42000000            # platform/script_tag.h: bit 25 clear in every code address
+S_ATTR_PURE_INSTRUCTIONS, S_ATTR_SOME_INSTRUCTIONS = 0x80000000, 0x400
 MAX_PROBLEMS = 20
 
 # (segment, address, size): GBATEK "GBA Memory Map"; I/O, the mGBA debug page,
@@ -80,7 +84,7 @@ IWRAM_PERSISTENT = "__persistent"
 PERSISTENT_ADDRESS = 0x03007F00
 
 Segment = collections.namedtuple("Segment", "name address size initprot maxprot sections")
-Section = collections.namedtuple("Section", "name address size")
+Section = collections.namedtuple("Section", "name address size flags")
 
 
 def name_of(field):
@@ -114,7 +118,7 @@ def read_segment(data, at):
     sections = []
     for index in range(count):
         fields = struct.unpack_from(SECTION_FIELDS, data, at + SEGMENT_SIZE + index * SECTION_SIZE)
-        sections.append(Section(name_of(fields[0]), fields[2], fields[3]))
+        sections.append(Section(name_of(fields[0]), fields[2], fields[3], fields[8]))
     return Segment(name_of(name), address, size, initprot, maxprot, sections)
 
 
@@ -132,9 +136,12 @@ def check_image(flags, segments, commands):
     text = by_name.get("__TEXT")
     if text is None or text.address != IMAGE_BASE:
         problems.append("__TEXT is not at 0x%08x (-image_base): %s" % (IMAGE_BASE, describe(text)))
-    elif text.address + text.size > CODE_LIMIT:
-        problems.append("__TEXT ends at 0x%x, at or past 0x%08x, where platform/script_tag.h's tag bit would be "
-                        "ambiguous" % (text.address + text.size, CODE_LIMIT))
+    for segment in segments:
+        for section in segment.sections:
+            if section.flags & (S_ATTR_PURE_INSTRUCTIONS | S_ATTR_SOME_INSTRUCTIONS) \
+                    and section.address + section.size > CODE_LIMIT:
+                problems.append("%s,%s ends at 0x%x, past 0x%08x, where platform/script_tag.h's tag bit would be "
+                                "ambiguous" % (segment.name, section.name, section.address + section.size, CODE_LIMIT))
     return problems
 
 
@@ -224,9 +231,11 @@ def check(path, data):
 def pack_segment(name, address, size, sections, initprot=VM_PROT_READ | VM_PROT_WRITE):
     command = struct.pack(SEGMENT_FIELDS, LC_SEGMENT_64, SEGMENT_SIZE + SECTION_SIZE * len(sections),
                           name.encode(), address, size, 0, 0, initprot, initprot, len(sections), 0)
-    for section_name, section_address, section_size in sections:
+    for section in sections:
+        section_name, section_address, section_size = section[:3]
+        flags = section[3] if len(section) > 3 else 0
         command += struct.pack(SECTION_FIELDS, section_name.encode(), name.encode(), section_address, section_size,
-                               0, 0, 0, 0, 0, 0, 0, 0)
+                               0, 0, 0, 0, flags, 0, 0, 0)
     return command
 
 
@@ -240,7 +249,8 @@ def pack_executable(segments, flags=0, extra_commands=()):
 
 def good_segments():
     segments = [("__PAGEZERO", 0, PAGEZERO_SIZE, [], 0),
-                ("__TEXT", IMAGE_BASE, 0x31C000, [("__text", IMAGE_BASE + 0x1000, 0x300000)], VM_PROT_READ),
+                ("__TEXT", IMAGE_BASE, 0x31C000, [("__text", IMAGE_BASE + 0x1000, 0x300000, S_ATTR_PURE_INSTRUCTIONS),
+                                                  ("__const", IMAGE_BASE + 0x301000, 0x1B000, 0)], VM_PROT_READ),
                 ("__DATA", IMAGE_BASE + 0x31C000, 0x40000,
                  [("__data", IMAGE_BASE + 0x31C000, 0x10), ("__game_bss", IMAGE_BASE + 0x31D000, 0x100),
                   ("__game_common", IMAGE_BASE + 0x31D100, 0x40), ("__bss", IMAGE_BASE + 0x31D140, 0x10)])]
@@ -284,7 +294,17 @@ def self_test():
     expect("chained fixups", pack_executable(good, extra_commands=(LC_DYLD_CHAINED_FIXUPS,)), ["chained fixups"])
     expect("a 4 GiB page zero", pack_executable(replaced(good, "__PAGEZERO", size=0x100000000)), ["__PAGEZERO"])
     expect("the image elsewhere", pack_executable(replaced(good, "__TEXT", address=0x100000000)), ["__TEXT is not"])
-    expect("code past the tag bit", pack_executable(replaced(good, "__TEXT", size=0x2000001)), ["tag bit"])
+    code_past = [("__text", IMAGE_BASE + 0x1000, 0x2000000, S_ATTR_PURE_INSTRUCTIONS)]
+    expect("code past the tag bit", pack_executable(replaced(good, "__TEXT", size=0x2002000, sections=code_past)),
+           ["__TEXT,__text ends at 0x42001000, past 0x42000000, where platform/script_tag.h's tag bit"])
+    stubs_past = [("__text", IMAGE_BASE + 0x1000, 0x1000, S_ATTR_PURE_INSTRUCTIONS),
+                  ("__stubs", CODE_LIMIT - 4, 8, S_ATTR_PURE_INSTRUCTIONS | S_ATTR_SOME_INSTRUCTIONS)]
+    expect("stubs past the tag bit", pack_executable(replaced(good, "__TEXT", size=0x2002000, sections=stubs_past)),
+           ["__TEXT,__stubs ends"])
+    data_past = [("__text", IMAGE_BASE + 0x1000, 0x1000000, S_ATTR_PURE_INSTRUCTIONS),
+                 ("__const", IMAGE_BASE + 0x1001000, 0x2000000, 0)]
+    expect("read-only data past it, as .rodata on Linux",
+           pack_executable(replaced(good, "__TEXT", size=0x3001000, sections=data_past)), [])
     expect("a region moved", pack_executable(replaced(good, "__GBA_VRAM", address=0x06100000)), ["__GBA_VRAM is at"])
     expect("a region missing", pack_executable([segment for segment in good if segment[0] != "__GBA_OAM"]),
            ["__GBA_OAM: no such segment"])

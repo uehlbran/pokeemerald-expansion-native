@@ -389,8 +389,10 @@ ifeq ($(DATA_POINTER_SIZE),8)
   endif
   # macOS runs no 32-bit program, and the struct layout check needs the
   # layouts data_layout_probe.c prints when built and run at 32 bits as well as
-  # 64: it is left out there (docs/DECISIONS.md, "The data on a Mac"). The
-  # other two need nothing of the host but Python and GNU as.
+  # 64: it is left out there, and CI compares the Mac's 64-bit layouts with
+  # Linux's instead (docs/DECISIONS.md, "The data on a Mac is assembled there
+  # with GNU as and converted"). The other two need nothing of the host but
+  # Python and GNU as.
   ifeq ($(TARGET_OS),Darwin)
     DATA_LAYOUT_CHECKS := $(filter-out %/data_layout.checked,$(DATA_LAYOUT_CHECKS))
   endif
