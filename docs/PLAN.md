@@ -89,6 +89,14 @@ toolchain exists, all tests pass under sanitizers, no new warnings) and a
 Sonnet first-pass review; the orchestrator reads what is flagged and
 merges.
 
+Documentation gate (the owner's standing order of 2026-10-14, DECISIONS.md
+"Two standing orders"): a branch that changes what a player or builder
+sees (an OS supported, a file location, an option, a key, a window) updates
+README and the public docs (docs/RUNNING.md for players, BUILDING.md for
+builders, and whichever page states the old fact) in the same branch; the
+orchestrator's gate and the reviewer check for stale statements before the
+merge.
+
 ## Standing instruction: the refactoring pass (owner, 2026-10-09)
 
 Before declaring 32-bit done (end of milestone 6) and again before
@@ -223,6 +231,16 @@ Order of work:
    (d) no console window on Windows: link as a GUI program, attach to
    the parent's console when there is one, otherwise log to a file in
    the per-user directory.
+   Two standing orders of 2026-10-14 (DECISIONS.md "Two standing
+   orders"): (e) a documentation pass now and after every task (README
+   and every public doc current; docs/RUNNING.md for players), and
+   (f) a release pipeline without a public release: a workflow_dispatch
+   release.yml building the Linux 64-bit tarball and the Windows 64-bit
+   zip with ccache, SHA-256 sums, artifact attestations, and a GitHub
+   release only with an explicit `publish` input; a one-command build
+   per OS in BUILDING.md with a verified script; no public release, no
+   tag. (e) and (f) run as one Sonnet task (work/release-docs) beside
+   the audio-rate task, since they share no files with it.
 2. An inventory of the Windows (MinGW) and macOS ports, no code (an Opus
    worker, to the session scratchpad and summarised here): what in
    `platform/` and the build glue is Linux-specific (the regions mapped

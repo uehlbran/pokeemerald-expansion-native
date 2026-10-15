@@ -1519,3 +1519,39 @@ still win. The F1 overlay and the `--keys` output show the active paths.
 Both modes are documented in BUILDING.md or a short docs/RUNNING.md. For the
 owner: the saves from the builds of 2026-10-14 live in the launch directory
 and will need moving once, by hand, to the per-user directory.
+
+## 2026-10-14: Two standing orders from the owner: documentation as a gate, and a release pipeline without a public release
+
+**Documentation is gated like code.** After each task lands, README and
+every public document must reflect the current state: Windows supported and
+hand-verified, how to run on each OS, the settings file and portable mode,
+the save and settings locations, the F1 overlay and `--keys`, the Quit path,
+and macOS once it exists; anything stale is removed (README's "Windows ...
+no replay or suite run has happened there yet" and "macOS: not attempted"
+are the first). A short docs/RUNNING.md is for players, as opposed to
+BUILDING.md for builders. A branch is not mergeable with stale public
+documents, and the reviewer checks them (PLAN.md "Worker protocol").
+
+**A release pipeline, not a public release.** A `workflow_dispatch` release
+workflow builds the Linux 64-bit tarball and the Windows 64-bit zip (the
+executable, SDL2.dll, the licence texts, a short README) with ccache,
+generates SHA-256 sums, attaches GitHub artifact attestations
+(actions/attest-build-provenance) so anyone can verify the files came from
+CI and a named commit, and publishes to a GitHub release only when run with
+an explicit `publish` input; without it the artifacts stay on the workflow
+run for the owner's own testing. No public release and no tag is created by
+anyone but the owner.
+
+**Why no public release.** A built executable contains the complete game's
+assets, so a public release is legally the same as distributing a ROM,
+which README says this project does not do and which every decomp project
+avoids. The default plan is source-only distribution with a one-command
+build per OS (BUILDING.md, with a verified script); a public release
+happens only on the owner's explicit instruction after that note (STATUS.md
+carries it).
+
+**Code signing is not done.** It costs money and is needed only for a public
+Windows release (SmartScreen's "Windows protected your PC" on an unsigned,
+reputation-less executable). **VirusTotal** scan links would be added to
+release notes only if a public release ever happens, with the known caveat
+that MinGW-built executables draw false positives from some engines.

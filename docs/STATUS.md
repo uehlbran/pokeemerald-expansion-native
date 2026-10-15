@@ -10,6 +10,17 @@ we believe about it.
 
 Read this first; the sections below are the ledger behind it.
 
+**NOTE ON RELEASES (for the owner, at the owner's request).** A built
+executable contains the complete game's assets, so a public release of it
+is legally the same as distributing a ROM, which README says this project
+does not do and which every decomp project avoids. The default plan is
+source-only distribution with a one-command build per OS (BUILDING.md,
+with a verified script). The release workflow (in flight, work/release-docs)
+builds and attests the archives on a workflow run for the owner's own
+testing and publishes a GitHub release only with an explicit `publish`
+input; a public release happens only on the owner's explicit instruction
+after this note. Nothing public, no release and no tag has been created.
+
 **Finished.** Milestones 1 to 6. **32-bit is done**: the native build
 boots and plays the opening (gate d) and the debug menu (gate e), plain and
 sanitized; expansion's test suite runs natively and matches the GBA
@@ -624,10 +635,14 @@ check"): a settings file for the keys, and no console window; the
 overworld shadows are expansion's default. With that, ruling (1) and
 macOS are unblocked.
 
-**In flight.** The audio-rate task (ruling 1): branch work/audio-rate,
+**In flight.** Two workers. (1) The audio-rate task (ruling 1): branch work/audio-rate,
 an Opus worker; the device and the PSG at 32768 Hz, the FIFO frame
 upsampled on the cycle grid, a `--audio-dump` WAV option, and the A/B
 recordings as evidence (outside the repository, for the owner to hear).
+(2) The documentation pass and the release pipeline (the owner's two
+standing orders): branch work/release-docs, a Sonnet worker; README and
+the public docs current, docs/RUNNING.md for players, release.yml with
+`publish` off by default, a one-command build script in BUILDING.md.
 Then the keys settings file and the console-window removal, then macOS.
 
 ## Verified by a gate
@@ -754,6 +769,7 @@ Nothing yet; nothing exists to be broken.
 | rtc | Sonnet | Sonnet |
 | sdlout (video, audio, frame_pacer) | Sonnet | Sonnet |
 | audio-rate (ruling 1: 32768 Hz, FIFO upsampling, --audio-dump) | Opus | in flight |
+| release-docs (docs pass, RUNNING.md, release.yml, build script) | Sonnet | in flight |
 | interrupt | Opus | Sonnet |
 | psg | Opus | Sonnet |
 | save (flash, save_file) | Opus | Sonnet |
