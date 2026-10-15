@@ -28,123 +28,181 @@ The game is built inside Ubuntu, a Linux system that Windows can run for you
 through WSL (Windows Subsystem for Linux). You then copy the finished game
 back to Windows.
 
-1. Open the Start menu and type `PowerShell`. Right-click "Windows PowerShell"
-   and choose "Run as administrator". Answer "Yes" if Windows asks.
+### Step 1: open PowerShell as administrator
 
-2. Install Ubuntu. Paste this into the PowerShell window and press Enter:
+- Click the Start button.
+- Type `PowerShell`.
+- Right-click "Windows PowerShell" in the results.
+- Click "Run as administrator".
+- Click "Yes" if Windows asks whether to allow the app to make changes.
 
-   ```
-   wsl --install -d Ubuntu-24.04
-   ```
+A window with a text prompt opens. This is PowerShell.
 
-   If WSL is already installed, Ubuntu may start at once inside this same
-   window and ask the questions of step 5 there: answer them there, and skip
-   steps 3 and 4. If the command cannot find the name "Ubuntu-24.04", run
-   `wsl --list --online` to see the names your Windows offers, and use the one
-   for 24.04.
+### Step 2: install Ubuntu
 
-3. If the text ends with a line saying the system must be restarted ("Changes
-   will not be effective until the system is rebooted"), restart the computer
-   yourself: Start menu, the power button, "Restart". The command does not ask.
+- Copy this line:
 
-4. After the restart, a window titled Ubuntu may open by itself and ask for a
-   user name. If no Ubuntu window opens within a minute, open the Start menu,
-   type `Ubuntu` and open the entry whose name starts with Ubuntu. Wait while
-   it sets itself up.
+  ```
+  wsl --install -d Ubuntu-24.04
+  ```
 
-5. It asks for a user name. Type letters only, no spaces (your first name will
-   do) and press Enter. Then it asks for a password: type one and press Enter,
-   then type it again. The password does not show while you type, not even as
-   dots. That is normal. You will need it for `sudo`, a prefix that runs a
-   command with administrator rights.
+- Right-click in the PowerShell window to paste it.
+- Press Enter.
+- Wait until the text stops and the prompt comes back.
 
-6. This window is your terminal. To paste into it, right-click inside it, or
-   press Ctrl+Shift+V. Paste this and press Enter. It updates the list of
-   software Ubuntu can install:
+If the command cannot find the name "Ubuntu-24.04", type `wsl --list --online`,
+press Enter, and use the name listed for 24.04 in its place.
 
-   ```
-   sudo apt update
-   ```
+If WSL was already installed, Ubuntu may start inside this same window and
+ask you to create a user name. If so, go to step 4 and answer there.
 
-   If it asks for your password, type it.
+### Step 3: restart if the text says to
 
-7. Install the tools the build needs. A *package* is a piece of software
-   Ubuntu installs for you. This installs all of them in one go:
+- Read the last lines. If one says "Changes will not be effective until the
+  system is rebooted", restart the computer. The command does not ask you to.
+- To restart: click the Start button, click the power button, click "Restart".
+- If no line says that, go on to step 4.
 
-   ```
-   sudo apt install -y build-essential git python3 pkg-config curl clang gcc-multilib libpng-dev libsdl2-dev gcc-mingw-w64-x86-64 binutils-mingw-w64-x86-64
-   ```
+### Step 4: set up Ubuntu the first time
 
-   A lot of text scrolls past while it downloads and installs, and it can take
-   a while. Do not close the window; wait for the prompt to come back.
+- After the restart, a window titled Ubuntu may open by itself. Use it.
+- If no Ubuntu window opens within a minute, click the Start button, type
+  `Ubuntu`, and press Enter on the entry whose name starts with Ubuntu.
+- Wait while it sets itself up. This can take a while.
+- It asks you to create a user name. Type a short name in lower case, such as
+  `player`, with no spaces. Press Enter.
+- It asks you to create a password, and then to type it again. Type a
+  password and press Enter, then type the same password and press Enter.
+- Nothing shows while you type the password, not even dots. That is normal.
+  Your keys are still being read.
+- Wait until you see a line ending in `$`. That line is the *prompt*: the
+  place where you type. When it comes back after a command, the command has
+  finished.
 
-   Stay in this window, in the folder it opened in. Do not move to a folder
-   whose path starts with `/mnt/c`: that is your Windows drive, and building
-   there is slow and can fail.
+This window is your terminal. Do not close it until the end of step 9.
 
-8. Download the code. A *repository* is a project's folder of code, and
-   `git clone` copies one from the internet. `--depth 1` skips the project's
-   long history, which you do not need:
+### Step 5: learn to paste into the Ubuntu window
 
-   ```
-   git clone --depth 1 https://github.com/uehlbran/pokeemerald-expansion-native.git
-   ```
+- Copy any line from this page.
+- Click inside the Ubuntu window.
+- Right-click once. The line appears. (Ctrl+Shift+V does the same.)
+- Press Enter to run it.
 
-9. Go into the new folder:
+Do the same for every line below.
 
-   ```
-   cd pokeemerald-expansion-native
-   ```
+### Step 6: install the tools the game needs to build
 
-10. Build the Windows game:
+- Copy this line, paste it in the Ubuntu window, and press Enter:
 
-    ```
-    tools/build-native.sh --os windows
-    ```
+  ```
+  sudo apt update && sudo apt install -y build-essential git python3 pkg-config curl clang gcc-multilib libpng-dev libsdl2-dev gcc-mingw-w64-x86-64 binutils-mingw-w64-x86-64
+  ```
 
-    Lots of text scrolls past, and some of it says "warning". That is normal.
-    This is the slow step, and the window can look still for a while. Do not
-    close it; wait for the prompt to come back. Success looks like this, as
-    the last line:
+- If it asks for your password, type the one you made in step 4 and press
+  Enter. Nothing shows as you type; that is normal.
+- A lot of text scrolls past while it downloads and installs, and it can take
+  a while. Do not close the window.
+- Wait until the line ending in `$` comes back.
 
-    ```
-    build-native: done: /home/YOU/pokeemerald-expansion-native/build/native64-windows/pokeemerald-native.exe
-    ```
+Stay in the folder Ubuntu opened in. Do not move to a folder whose path starts
+with `/mnt/c`: that is your Windows drive, and building there is slow and can
+fail.
 
-    where YOU is your user name. If the last lines say "missing
-    prerequisites", step 7 did not finish: run step 7 again (the guide's
-    install command, not the lines the message mentions), then run this step
-    again.
+### Step 7: download the code
 
-11. Open the folder with the finished game in Windows Explorer:
+- Copy this line, paste it in the Ubuntu window, and press Enter. A
+  *repository* is a project's folder of code, and `git clone` copies one from
+  the internet. `--depth 1` skips the project's long history, which you do
+  not need:
 
-    ```
-    explorer.exe build/native64-windows
-    ```
+  ```
+  git clone --depth 1 https://github.com/uehlbran/pokeemerald-expansion-native.git
+  ```
 
-12. In the Explorer window that opens, click `pokeemerald-native.exe`, hold
-    Ctrl and click `SDL2.dll`, then press Ctrl+C. Nothing else in the folder
-    is needed. Minimise the window, right-click an empty part of the Desktop,
-    choose "New", then "Folder", and name it `Pokemon`. Open the new folder
-    and press Ctrl+V. Keep the two files together.
+- Wait until the line ending in `$` comes back. A line like "Cloning into
+  'pokeemerald-expansion-native'" shows first.
 
-13. Double-click `pokeemerald-native.exe` (the game file) in the new folder.
-    The game opens in a window.
+### Step 8: go into the new folder
 
-    The first time, Windows may show a blue box, "Windows protected your PC".
-    It appears because the executable is not signed: signing costs money and
-    the project does not do it. Click "More info", then "Run anyway".
+- Copy this line, paste it, and press Enter:
+
+  ```
+  cd pokeemerald-expansion-native
+  ```
+
+- Nothing else happens, except that the prompt now ends with
+  `pokeemerald-expansion-native` before the `$`.
+
+### Step 9: build the Windows game
+
+- Copy this line, paste it, and press Enter:
+
+  ```
+  tools/build-native.sh --os windows
+  ```
+
+- Lots of text scrolls past, and some of it says "warning". That is normal.
+- This is the slow step, and the window can look still for a while. Do not
+  close it.
+- Wait until the line ending in `$` comes back. The line above it is
+  the last one the build prints, and it says it is done:
+
+  ```
+  build-native: done: /home/YOU/pokeemerald-expansion-native/build/native64-windows/pokeemerald-native.exe
+  ```
+
+  YOU is your user name.
+- If the lines above the prompt say "missing prerequisites", step 6 did not
+  finish. Do step 6 again, then do step 9 again.
+
+### Step 10: open the finished game in Windows Explorer
+
+- Copy this line, paste it, and press Enter:
+
+  ```
+  explorer.exe build/native64-windows
+  ```
+
+- A Windows Explorer window opens. It lists several files and folders.
+
+### Step 11: copy the two files the game needs
+
+- In the Explorer window, click `pokeemerald-native.exe` once.
+- Hold down Ctrl and click `SDL2.dll` once. Both names are now highlighted.
+- Press Ctrl+C. Nothing visible happens.
+- Nothing else in the folder is needed.
+
+### Step 12: put them in a folder on the Desktop
+
+- Minimise the Explorer window.
+- Right-click an empty part of the Desktop.
+- Click "New", then "Folder".
+- Type `Pokemon` and press Enter.
+- Double-click the new folder to open it.
+- Press Ctrl+V. The two files appear. Keep them together.
+
+### Step 13: start the game
+
+- Double-click `pokeemerald-native.exe` (the game file) in that folder.
+- The game opens in a window.
+- The first time, Windows may show a box, "Windows protected your PC". It
+  appears because the game file is not signed: signing costs money and the
+  project does not do it. Click "More info", then click "Run anyway".
 
 Now play. The keys are [below](#keys). To quit, close the window. Save inside
 the game first (Start, then SAVE), as on the original.
 
-Your save is in `C:\Users\YOU\AppData\Roaming\pokeemerald-expansion-native\pokeemerald-native\`.
+Your save is in
+`C:\Users\YOU\AppData\Roaming\pokeemerald-expansion-native\pokeemerald-native\`.
 To open it, press Windows+R, type `%APPDATA%` and press Enter, then open
 `pokeemerald-expansion-native` and `pokeemerald-native`.
 
 ### Updating later
 
-Close the game. Open Ubuntu from the Start menu, then paste these one at a time:
+- Close the game.
+- Open Ubuntu: click the Start button, type `Ubuntu`, press Enter.
+- Copy each line below, paste it, press Enter, and wait for the line ending
+  in `$` before the next:
 
 ```
 cd pokeemerald-expansion-native
@@ -162,8 +220,8 @@ tools/build-native.sh --os windows
 explorer.exe build/native64-windows
 ```
 
-Copy the two files to your Desktop folder again, as in step 12, and replace
-the old ones. Your save stays where it is.
+- Copy the two files to your Desktop folder again, as in steps 11 and 12, and
+  replace the old ones. Your save stays where it is.
 
 ## Linux (Ubuntu 24.04)
 
@@ -171,53 +229,80 @@ For Ubuntu 24.04 and systems based on it. Other distributions: the package
 names differ, and [BUILDING.md](BUILDING.md#prerequisites) lists what the build
 needs.
 
-1. Open a terminal: press Ctrl+Alt+T. To paste into it, press Ctrl+Shift+V.
+### Step 1: open a terminal
 
-2. Update the software list. If it asks for your password, type it (it does
-   not show while you type):
+- Press Ctrl+Alt+T. A window with a text prompt opens: a line ending in `$`.
+  That is the *prompt*, where you type. When it comes back after a command,
+  the command has finished.
+- To paste a line into this window, press Ctrl+Shift+V. Press Enter to run it.
+  Do this for every line below.
 
-   ```
-   sudo apt update
-   ```
+### Step 2: install the tools the game needs to build
 
-3. Install the tools:
+- Copy this line, paste it, and press Enter:
 
-   ```
-   sudo apt install -y build-essential git python3 pkg-config curl clang gcc-multilib libpng-dev libsdl2-dev gcc-mingw-w64-x86-64 binutils-mingw-w64-x86-64
-   ```
+  ```
+  sudo apt update && sudo apt install -y build-essential git python3 pkg-config curl clang gcc-multilib libpng-dev libsdl2-dev gcc-mingw-w64-x86-64 binutils-mingw-w64-x86-64
+  ```
 
-   A lot of text scrolls past, and it can take a while. Wait for the prompt to
-   come back.
+- If it asks for your password, type it and press Enter. Nothing shows as you
+  type; that is normal.
+- A lot of text scrolls past, and it can take a while. Wait until the line
+  ending in `$` comes back.
 
-4. Download the code:
+### Step 3: download the code
 
-   ```
-   git clone --depth 1 https://github.com/uehlbran/pokeemerald-expansion-native.git
-   ```
+- Copy this line, paste it, and press Enter:
 
-5. Go into the folder:
+  ```
+  git clone --depth 1 https://github.com/uehlbran/pokeemerald-expansion-native.git
+  ```
 
-   ```
-   cd pokeemerald-expansion-native
-   ```
+- Wait until the line ending in `$` comes back.
 
-6. Build. This is the slow step; text scrolls past, some of it "warning", and
-   it can look still for a while. Wait for the prompt to come back. The last
-   line should read `build-native: done:` and the path of the game:
+### Step 4: go into the new folder
 
-   ```
-   tools/build-native.sh --os linux
-   ```
+- Copy this line, paste it, and press Enter:
 
-7. Run the game:
+  ```
+  cd pokeemerald-expansion-native
+  ```
 
-   ```
-   ./build/native64/pokeemerald-native
-   ```
+- Nothing else happens, except that the prompt now shows the folder's name.
+
+### Step 5: build the game
+
+- Copy this line, paste it, and press Enter:
+
+  ```
+  tools/build-native.sh --os linux
+  ```
+
+- Lots of text scrolls past, some of it "warning". This is the slow step, and
+  the window can look still for a while. Do not close it.
+- Wait until the line ending in `$` comes back. The line above it starts with
+  `build-native: done:` and gives the path of the game.
+
+### Step 6: start the game
+
+- Copy this line, paste it, and press Enter:
+
+  ```
+  ./build/native64/pokeemerald-native
+  ```
+
+- The game opens in a window. Close the window to quit.
 
 Your save is in `~/.local/share/pokeemerald-expansion-native/pokeemerald-native/`.
 
-To update later, run these in the folder, one at a time:
+### Updating later
+
+- Open a terminal and copy each line below, paste it, press Enter, and wait
+  for the prompt before the next:
+
+```
+cd pokeemerald-expansion-native
+```
 
 ```
 git pull
@@ -233,7 +318,7 @@ tools/build-native.sh --os linux
 
 ## Steam Deck
 
-Build the Linux game on a Windows PC (follow the Windows steps up to step 9,
+Build the Linux game on a Windows PC (follow the Windows steps up to step 8,
 then build with `tools/build-native.sh --os linux`) or on a Linux PC (the
 Linux steps above). The finished game is `build/native64/pokeemerald-native`.
 
@@ -285,7 +370,7 @@ with that name) and that it is not under `/mnt/c`. Then run
 `bash tools/build-native.sh --os windows` instead.
 
 **The build says "missing prerequisites".** It names what is missing. Run the
-install command again (step 7 on Windows, step 3 on Linux), check that it
+install command again (step 6 on Windows, step 2 on Linux), check that it
 ended without an error, then run the build again.
 
 **The build stops with an error.** Copy the last twenty lines of the output
