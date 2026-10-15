@@ -28,6 +28,16 @@ Amended 2026-10-08: the platform layer lives at `platform/`, not
 `src/platform/` ("The platform layer lives at `platform/`, not
 `src/platform/`" below).
 
+Amended 2026-10-15 (the review before the repository went public): the scope
+list in LICENSE named only part of what this project added, so it gained
+`docs/RUNNING.md` (every release archive carries it next to LICENSE),
+`tools/build-native.sh`, the three workflows native.yml, windows.yml and
+release.yml, the actions under `.github/actions/`, the files under
+`.github/release/`, `.clang-format`, `.clang-tidy` and the five files added
+under `test/` (the modified upstream files there are covered by the sentence on
+modifications, through docs/UPSTREAM_MODIFICATIONS.md, which also gained the
+rows for the mdBook stubs under `docs/` that it had missed).
+
 ## 2026-10-08: Memory model mirrors the GBA address space
 
 The platform maps EWRAM, IWRAM, I/O, palette, VRAM, OAM and flash at their
@@ -2552,39 +2562,62 @@ is set before the repository goes public. The Windows job caches no tools
 (they are built in WSL's home each run, about a minute) so that no tool
 built for one environment is restored into the other.
 
-**The check.** `platform/build_glue/check_workflow_uploads.py` reads every
-workflow under `.github/workflows` and every composite action under
-`.github/actions`, and fails on any `upload-artifact` (or
-upload-pages-artifact) path line that is an exclusion (a denylist), has a
-brace or a `${{ }}`, is a directory or has no extension, has a wildcard in
-its extension, or has an extension that is not on the allowed list: text and logs (`.log`,
-`.txt`, `.diff`, `.replay`, `.all`, `.known-patterns`), frame images (`.ppm`,
-which the gates write, and `.png`), and the save gates' `.sav` and `.rtc`.
-Executables, shared libraries, objects, archives and every other binary
-fail, as do directories and names without an extension. The exceptions are exact: release.yml's
-`.tar.gz` and `.zip` in a step or a job whose `if` requires `inputs.publish`
-(the condition is parsed, so `!inputs.publish`, `inputs.publish || ...` and
-`== false` do not count), and upstream's docs.yml upload of `docs/book`.
-`--self-test` runs good and bad workflows: each allowed class (text, log,
-frame image, save, clock) passes, and each rejected class fails (executable,
-shared library, object, archive, other binary, directory, no extension, and
-the pattern rules above), one case per extension. Beyond the path lines it fails any action whose
-name (compared lowercased, so `Actions/Upload-Artifact` is seen) says
-upload, release, publish, deploy, asset or artifact and is not on its short
-list of known ones (checkout, cache, download-artifact,
-attest-build-provenance, configure-pages, deploy-pages, setup-wsl and
-upstream's two label actions); `docker://` steps; external reusable
-workflows (job or step); and, in any `run:` text, `gh release
-upload/edit`, `gh api` writes and uploads, `curl` with an upload flag, `git
-push`, `docker push` and the like. The one command allowed is release.yml's
-`gh release create`, in a step or job whose `if` requires `inputs.publish`.
-A third-party action whose name says none of those words is not caught; the
-list of `uses:` in the tree is short and read at review. `make -C platform
+**The check.** `platform/build_glue/check_workflow_uploads.py` reads the
+structure of every workflow under `.github/workflows` and every composite
+action under `.github/actions`. For every step that uses an upload action
+(`actions/upload-artifact`, `actions/upload-pages-artifact` and the
+release-asset actions `actions/upload-release-asset`,
+`softprops/action-gh-release` and `svenstaro/upload-release-action`, each
+with the input that lists its files) it fails any line of that input that is an
+exclusion (a denylist), has a brace or a `${{ }}`, is a directory or has no
+extension, has a wildcard in its extension, or has an extension that is not on
+the allowed list: text and logs (`.log`, `.txt`, `.diff`, `.replay`, `.all`,
+`.known-patterns`), frame images (`.ppm`, which the gates write, and `.png`),
+and the save gates' `.sav` and `.rtc`. Executables, shared libraries, objects,
+archives and every other binary fail, as do directories and names without an
+extension. The exceptions are exact: release.yml's `.tar.gz` and `.zip` in a
+step or a job whose `if` requires `inputs.publish` (the condition is parsed, so
+`!inputs.publish`, `inputs.publish || ...` and `== false` do not count), and
+upstream's docs.yml upload of `docs/book`. Every other `uses:` must be an
+action on a short allowlist (`ALLOWED_ACTIONS`: cache, checkout,
+download-artifact, attest-build-provenance, configure-pages, deploy-pages,
+setup-wsl and upstream's two label actions), so an uploader that is not named
+above cannot pass unseen, and adding an action is a change to that list, which
+is the review point; `docker://` steps and external reusable workflows fail.
+Every `uses: ./<path>` is resolved against the repository root and the action
+file it names (`action.yml` or `action.yaml`) is checked like the rest, so a
+composite action anywhere in the tree is read, and a reference to a file that is
+not there, or outside the repository, fails. `--self-test` runs good and bad
+workflow fixtures with invented names for each rule, and keeps literal copies
+of `ALLOWED_ACTIONS` and the upload-action table, so a change to either fails
+the self-test until the copy changes too.
+
+What the check does not read is reviewed by a person. It does not read `run:`
+steps: a step that uploads anything from a shell command (`gh`, `curl`, `git
+push`, a script a step calls) is a human-review matter, and it can only arrive
+from a collaborator's push or from a fork pull request whose run was approved
+after reading it, which depends on the repository's setting that holds fork pull
+request runs for approval (a setting, not something the tree enforces). Nor does it read caches: a cache holds compiled
+objects, converted assets and ccache data, never a linked game, test runner or
+archive, and a new cache path is checked for that when it is added. `make -C platform
 glue-test` runs the self-test and then the check on the real tree, so the
-platform gate and the local pre-merge gate fail on a bad upload; it also
-runs as a step of native.yml's per-push
-job, which installs python3-yaml for it. The rule is stated at the top of
-each workflow, pointing here and naming the check.
+platform gate and the local pre-merge gate fail on a bad upload; it also runs
+as a step of native.yml's per-push job, which installs python3-yaml for it. The
+rule is stated at the top of each workflow, pointing here and naming the
+check.
+
+Amended 2026-10-15 (the review before the repository went public): the check
+scanned `run:` commands, which the review kept extending, and had gained a
+cache-path rule in the same review; both were removed, leaving the structure
+above. A scanner for shell text in build glue has
+no finished state: every spelling it catches (quoted, attached, nested in a
+string, named by an expansion, in a script) is followed by another, each fix
+added more code than the rule it served, and it produced false positives on
+ordinary commands. The threat it addressed, a `run:` step that uploads the
+game, is covered by review, because such a step can only enter through a push
+by a collaborator or a fork pull request that is read before its run is
+approved. The structural rules stay because they are exact: a path pattern is
+either on the allowlist or not, and an action is either named or not.
 
 **release.yml.** Without `publish` (the default) a run builds and checks
 each archive in its own job and uploads nothing: the contents listed and

@@ -542,10 +542,13 @@ artifact, no release. With `publish` and a `tag` the archives go to the later
 jobs as one-day artifacts, which a last job deletes; those jobs write
 `SHA256SUMS.txt`, attest both archives (`gh attestation verify <file> --repo
 <owner>/<repo>`; GitHub offers attestations to a user-owned repository only
-once it is public, so while this one is private that step fails) and create
+once it is public, so on a private repository that step fails) and create
 the GitHub release. Each archive holds the executable, `LICENSE`, `RUNNING.md`
 and a short `README.txt`; the Windows zip also holds `SDL2.dll` and SDL2's
 licence. `platform/build_glue/check_workflow_uploads.py` fails the platform
-gate if any workflow's upload could match more than text, frame images, saves and clock files, release.yml's
-archives excepted under `publish`. No public release is made without an
-explicit decision to publish (`docs/DECISIONS.md`, "Why no public release").
+gate if any workflow's upload step could match more than text, frame images,
+saves and clock files (release.yml's archives excepted under `publish`), or if
+a workflow uses an action that is not on its allowlist. It reads the steps'
+structure only: a `run:` command that uploads is for the reviewer. No public
+release is made without an explicit decision to publish (`docs/DECISIONS.md`,
+"Why no public release").
