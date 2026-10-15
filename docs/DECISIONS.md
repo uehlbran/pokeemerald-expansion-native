@@ -2453,11 +2453,13 @@ Asked one at a time on the morning of 2026-10-15, with the night's findings
    at full speed unseen (at `unlimited`, a busy core; on a Deck, the
    battery). The owner's specification of 2026-10-15 named only the hold;
    this extends it.
-3. **macOS after 2027: decided later.** The Linux half of the native
-   Apple-silicon plan (PLAN.md, "Native Apple silicon: what a port would
-   take", P1: the window model on Linux, no runner, no Mac) runs when
-   convenient after work/macos has merged; the arm64 half waits for a
-   decision.
+   Not implemented: the owner stopped all new tasks the same morning; it
+   waits for a later session.
+3. **macOS after 2027: decided later.** No Apple-silicon work (P0, P1 or
+   P2 of PLAN.md, "Native Apple silicon: what a port would take") starts
+   until the owner says so in a later session; the spike report is the end
+   of that thread for now (amended the same morning; it first said the
+   Linux half would run when convenient).
 4. **The Apple-silicon build may rewrite expansion's compiled code at build
    time** (the spike's two IR filters) instead of some 500 guarded source
    edits, with two conditions: the entry below, "The arm64 build rewrites
@@ -2465,7 +2467,8 @@ Asked one at a time on the morning of 2026-10-15, with the night's findings
 5. **The audio grid moves to 65536 Hz**, the rate Emerald itself selects
    (SOUNDBIAS mode 1 in `SoundInit`, the engine's "PWM rate = 65536 Hz"),
    superseding the 32768 Hz of ruling (1) of 2026-10-14, with an A/B
-   recording against the current build as the evidence.
+   recording against the current build as the evidence. Not implemented:
+   stopped with the other new tasks the same morning; a later session.
 6. **The macOS package keeps its ad-hoc signature** (`codesign -s -`, no
    identity, no account): the library path rewrite breaks the bundled
    libraries' signatures and an ad-hoc one keeps them loadable; Gatekeeper
@@ -2517,6 +2520,6 @@ ARCHITECTURE.md for a reader who has never seen LLVM IR; the division
 helper's results are tested against
 platform/arm_division_libgcc/libgcc_division.txt in full, every row.
 
-This starts nothing. The answer to question 1 stands (decided later; the
-Linux half when convenient, after work/macos merges); the ruling fixes only
-how P1 is built when it is scheduled.
+This starts nothing. No Apple-silicon work starts until the owner says so
+in a later session; the ruling fixes only how P1 is built if it is ever
+scheduled.

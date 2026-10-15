@@ -289,9 +289,10 @@ Order of work:
    (clang's aarch64 target, qemu-aarch64); DECISIONS.md "Native Apple
    silicon: the spike's findings" and the section "Native Apple silicon:
    what a port would take" at the end of this file. Four runner probes
-   (A1 to A4) remain. The owner's rulings of 2026-10-15: support after 2027
-   is decided later, the Linux half (P1) runs when convenient after
-   work/macos merges, and the build rewrites expansion's compiled code with
+   (A1 to A4) remain. The owner's rulings of 2026-10-15: no Apple-silicon
+   work (P0, P1 or P2) starts under any circumstances until the owner says
+   so in a later session; the spike report is the end of this thread for
+   now. When it resumes, the build rewrites expansion's compiled code with
    the two IR filters on two conditions (the fixed-address Linux and Windows
    builds unchanged and gated as now; guarded expansion edits only for what
    the filters cannot see, as a P1 gate exposes it): DECISIONS.md, "The

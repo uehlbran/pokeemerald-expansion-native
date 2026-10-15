@@ -135,13 +135,21 @@ gone after the stop (1000 runs per width under load; reviewed with
 mutants). The production code was right.
 
 **The owner's answers, morning of 2026-10-15** (DECISIONS.md, "The
-owner's rulings of the morning after the night run"): CI stays off for
-now (macOS stays unmerged until its runs); the fast-forward toggle ends on
-focus loss (in flight); macOS after 2027 decided later, the Linux half of
-the Apple-silicon plan after work/macos merges, with build-time filters;
-the audio grid to 65536 Hz (in flight); the ad-hoc signature kept; the
-stray per-user directory deleted. Items (0) to (0c) and (3)'s audio
-question and (4) below are answered; the hands-on checks remain.
+owner's rulings of the morning after the night run", and "The arm64
+build rewrites expansion's compiled code, on two conditions"): CI stays off
+for now; the fast-forward toggle is to end on focus loss and the audio grid
+to move to 65536 Hz, both recorded and NOT implemented (the owner stopped
+all new tasks; a later session); the ad-hoc signature kept; the stray
+per-user directory deleted. Apple silicon: no work of any kind (P0, P1 or
+P2) starts until the owner says so in a later session; the spike report on
+main is the end of that thread for now. work/macos: finish only what Linux
+can prove (its full Linux gate, the clang suite count explained test by
+test, the last three final reviewers and their bounded fixes), then park it
+unmerged on origin, up to date with main; merging it is the owner's call
+once CI billing is restored. Then three tasks before the repository goes
+public (source only; the visibility switch is the owner's): CI artifacts
+that never hold the game beyond a run, the internal notes out of the
+tracked tree, and a checklist for after the switch.
 
 **Needs the owner.** (0) FIRST, blocking: GitHub Actions starts no job
 on this account since about 03:40 MDT on 2026-10-15 (09:40 UTC). Every run
@@ -167,18 +175,16 @@ and its bundled SDL2 would then need a newer glibc than SteamOS 3.8's 2.41
 may have. Pinning both to `ubuntu-24.04`, as native.yml already is, is in
 tonight's cleanup branch.
 (0b) The Apple-silicon decisions: answered on 2026-10-15 for questions 1
-and 2 (support after 2027 decided later, the Linux half when convenient
-after work/macos merges; the build rewrites expansion's compiled code with
+and 2 (support after 2027 decided later and no Apple-silicon work until
+the owner says so in a later session; the build rewrites expansion's compiled code with
 the two IR filters, on two conditions: the fixed-address Linux and Windows
 builds stay as they are with their gates, and guarded expansion edits only
 for what the filters cannot see, DECISIONS.md "The arm64 build rewrites
 expansion's compiled code, on two conditions"). Still open, when the arm64
 half is decided: ASLR kept or a launcher without it (after probes A1 and
 A2), and the macos-latest minutes.
-(0c) Fast-forward toggled on stays on when the window loses focus; at
-`unlimited` that keeps a core busy while you are elsewhere. Recommended:
-clear the toggle on focus loss too (the final review's finding; your
-specification named only the hold). Say yes or no.
+(0c) Answered: the fast-forward toggle is to end on focus loss; not
+implemented yet (new tasks stopped); a later session.
 (1) A hands-on check of fast-forward on a real
 keyboard and screen: Tab held and released, Shift+Tab on and off, the
 indicator, the sound at 2x, 3x, 4x and unlimited and with
