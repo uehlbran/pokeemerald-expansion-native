@@ -51,6 +51,7 @@ PTEST(no_arguments_give_the_documented_defaults)
     PT_ASSERT_EQ_STR(o.rtc_offset_path, "pokeemerald.rtc");
     PT_ASSERT_EQ_STR(o.out_dir, ".");
     PT_ASSERT(o.screenshot_path == NULL && o.replay_path == NULL && o.persistent_state == NULL);
+    PT_ASSERT(o.audio_dump_path == NULL);
     PT_ASSERT_EQ_U32(o.resume_after_line, 0);
 }
 
@@ -81,12 +82,25 @@ PTEST(the_options_with_a_value_take_the_next_argument)
     PT_ASSERT_EQ_STR(o.screenshot_path, "s.ppm");
     PT_ASSERT_EQ_STR(o.replay_path, "r.replay");
     PT_ASSERT_EQ_STR(o.out_dir, "dir");
+    PT_ASSERT(o.audio_dump_path == NULL);
+}
+
+PTEST(audio_dump_takes_a_path_with_or_without_a_device)
+{
+    struct options o;
+    PT_ASSERT_EQ_INT(PARSE(&o, "--audio-dump", "out.wav"), OPTIONS_OK);
+    PT_ASSERT_EQ_STR(o.audio_dump_path, "out.wav");
+    PT_ASSERT(!o.silent && !o.headless);
+    PT_ASSERT_EQ_INT(PARSE(&o, "--headless", "--silent", "--audio-dump", "a b.wav"), OPTIONS_OK);
+    PT_ASSERT_EQ_STR(o.audio_dump_path, "a b.wav");
+    PT_ASSERT(o.silent && o.headless);
 }
 
 PTEST(a_string_option_followed_by_another_option_is_refused)
 {
     struct options o;
-    static const char *const with_string[] = {"--save", "--rtc-offset", "--screenshot", "--replay", "--out"};
+    static const char *const with_string[] = {"--save",   "--rtc-offset", "--screenshot",
+                                              "--replay", "--out",        "--audio-dump"};
     for (size_t i = 0; i < sizeof with_string / sizeof with_string[0]; i++)
         PT_ASSERT_EQ_INT(PARSE(&o, with_string[i], "--headless"), OPTIONS_ERR_USAGE);
     PT_ASSERT_EQ_INT(PARSE(&o, "--test-runner", "--persistent-state", "--headless"), OPTIONS_ERR_USAGE);
@@ -100,7 +114,7 @@ PTEST(an_option_with_a_value_as_the_last_argument_is_refused)
     struct options o;
     static const char *const with_value[] = {
         "--save",  "--rtc-offset", "--screenshot", "--replay",    "--out",
-        "--scale", "--frames",     "--resume-at",  "--rtc-fixed",
+        "--scale", "--frames",     "--resume-at",  "--rtc-fixed", "--audio-dump",
     };
     for (size_t i = 0; i < sizeof with_value / sizeof with_value[0]; i++)
         PT_ASSERT_EQ_INT(PARSE(&o, with_value[i]), OPTIONS_ERR_USAGE);
@@ -222,9 +236,10 @@ PTEST(the_usage_text_names_every_option_and_the_defaults)
     PT_ASSERT(rewound);
     PT_ASSERT(length > 0 && length < sizeof text - 1u);
     static const char *const expected[] = {
-        "--headless",  "--silent",     "--save",        "--rtc-offset",       "--scale",         "--unthrottled",
-        "--frames",    "--screenshot", "--test-runner", "--persistent-state", "--replay",        "--out",
-        "--rtc-fixed", "--resume-at",  "--help",        "pokeemerald.sav",    "pokeemerald.rtc", "1 to 16 (default 3)",
+        "--headless",   "--silent",     "--save",        "--rtc-offset",       "--scale",         "--unthrottled",
+        "--frames",     "--screenshot", "--test-runner", "--persistent-state", "--replay",        "--out",
+        "--rtc-fixed",  "--resume-at",  "--help",        "pokeemerald.sav",    "pokeemerald.rtc", "1 to 16 (default 3)",
+        "--audio-dump",
     };
     bool all_present = true;
     for (size_t i = 0; i < sizeof expected / sizeof expected[0]; i++)

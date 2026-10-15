@@ -28,8 +28,8 @@
  *     so SetGpuReg writes through (lcd_status.h).
  *  5. Sound: the frame of the m4a engine's ring the FIFO DMAs play
  *     (m4a_output; silent if the engine runs at another rate) and as many
- *     PSG samples (psg_generate), mixed (sound_mix) and queued
- *     (audio_queue).
+ *     PSG samples (psg_generate), mixed (sound_mix), queued
+ *     (audio_queue) and, with --audio-dump, recorded (audio_dump).
  *  6. The panel shows the frame (video_present); SDL's events are polled
  *     (video_poll_events, each passed to input_handle_event; a quit ends the
  *     loop after this frame); the step hook, if one is set, runs (below);

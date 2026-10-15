@@ -48,6 +48,8 @@ void options_print_usage(FILE *out)
         "  --rtc-fixed EPOCH  the clock starts at EPOCH (Unix seconds) and advances with the frame count,\n"
         "                     so a replay sees the same time every run\n"
         "  --resume-at LINE   (a restart adds it) continue the replay after script line LINE\n"
+        "  --audio-dump PATH  also write the sound output to PATH as a WAV file (16-bit stereo at the\n"
+        "                     output's rate), headless and --silent too; a replay's restart ends it\n"
         "  --help             this text\n",
         OPTIONS_DEFAULT_SAVE_PATH, OPTIONS_DEFAULT_RTC_OFFSET_PATH, OPTIONS_MAX_SCALE, OPTIONS_DEFAULT_SCALE,
         OPTIONS_DEFAULT_OUT_DIR);
@@ -117,6 +119,8 @@ static bool parse_string_option(const char *arg, const char *value, struct optio
         out->replay_path = value;
     else if (strcmp(arg, "--out") == 0)
         out->out_dir = value;
+    else if (strcmp(arg, OPTIONS_AUDIO_DUMP) == 0)
+        out->audio_dump_path = value;
     else
         return false;
     return true;

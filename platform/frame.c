@@ -14,6 +14,7 @@
 #include <stdio.h>
 
 #include "audio.h"
+#include "audio_dump.h"
 #include "dma.h"
 #include "flash.h"
 #include "frame_pacer.h"
@@ -202,6 +203,10 @@ static void mix_sound(void)
     if (audio_queue(mixed_samples, FRAME_AUDIO_SAMPLES_PER_FRAME) != 0) {
         (void)fprintf(stderr, "frame: audio_queue failed\n");
         fail();
+        return;
+    }
+    if (audio_dump_append(mixed_samples, FRAME_AUDIO_SAMPLES_PER_FRAME) != 0) {
+        fail(); /* reported; the recording asked for cannot be made */
         return;
     }
     if (++frame.audio_frames_queued == FRAME_AUDIO_PREROLL_FRAMES && audio_set_paused(false) != 0) {

@@ -12,7 +12,7 @@
  * installed in a table laid out like expansion's gIntrTable record what
  * VCOUNT and DISPSTAT read when the interrupt controller calls them.
  */
-// deps: lcd_status.c gba_memmap.c interrupt.c timer.c dma.c transfer_bounds.c ppu.c ppu_bg.c ppu_obj.c ppu_window.c ppu_blend.c psg.c psg_channel.c psg_square.c psg_wave.c psg_noise.c audio.c video.c input.c flash.c save_file.c frame_pacer.c game_hooks.c debug_channel.c m4a_output.c sound_mix.c
+// deps: lcd_status.c gba_memmap.c interrupt.c timer.c dma.c transfer_bounds.c ppu.c ppu_bg.c ppu_obj.c ppu_window.c ppu_blend.c psg.c psg_channel.c psg_square.c psg_wave.c psg_noise.c audio.c video.c input.c flash.c save_file.c frame_pacer.c game_hooks.c debug_channel.c m4a_output.c sound_mix.c audio_dump.c
 #include <setjmp.h>
 #include <stdbool.h>
 #include <stdint.h>
@@ -25,6 +25,7 @@
 #include <gba/m4a_internal.h>
 
 #include "audio.h"
+#include "audio_dump.h"
 #include "dma.h"
 #include "test_support.h"
 #include "flash.h"
@@ -827,6 +828,26 @@ PTEST(an_engine_at_another_rate_is_left_out)
     PT_ASSERT_EQ_INT(frame_exit_status(), 0);
     SOUND_INFO_PTR = NULL;
     stop();
+}
+
+PTEST(the_audio_dump_records_every_frame_queued)
+{
+    char directory[TSUP_PATH_SIZE], path[TSUP_PATH_SIZE];
+    PT_ASSERT(tsup_make_temp_directory(directory, sizeof directory, "test_frame"));
+    PT_ASSERT(snprintf(path, sizeof path, "%s/sound.wav", directory) < (int)sizeof path);
+    PT_ASSERT(start(0, NULL, NULL));
+    PT_ASSERT_EQ_INT(audio_dump_start(path, FRAME_AUDIO_SAMPLE_RATE_HZ), 0);
+    install_engine(FRAME_AUDIO_SAMPLES_PER_FRAME);
+    PT_ASSERT_EQ_INT(frame_run(), FRAME_CONTINUE);
+    PT_ASSERT_EQ_INT(frame_run(), FRAME_CONTINUE);
+    const uint64_t queued = audio_total_frames();
+    PT_ASSERT_EQ_INT(audio_dump_finish(), 0);
+    const intmax_t size = tsup_file_size(path);
+    (void)tsup_remove_tree(directory);
+    SOUND_INFO_PTR = NULL;
+    stop();
+    PT_ASSERT(queued > 0);
+    PT_ASSERT(size == (intmax_t)(AUDIO_DUMP_HEADER_BYTES + queued * AUDIO_DUMP_BYTES_PER_FRAME));
 }
 
 PTEST(no_engine_is_not_a_rate_mismatch)

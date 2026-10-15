@@ -430,14 +430,17 @@ make -f Makefile.native -j$(nproc) native TEST=1        # build/native32-test/po
 make -f Makefile.native -j$(nproc) native SANITIZE=1    # build/native32-san/, ASan and UBSan throughout
 ./build/native32/pokeemerald-native [--headless] [--silent] [--save PATH] [--rtc-offset PATH]
         [--scale N] [--unthrottled] [--frames N] [--screenshot PATH]
-        [--replay SCRIPT [--out DIR]] [--rtc-fixed EPOCH] [--test-runner] [--help]
+        [--replay SCRIPT [--out DIR]] [--rtc-fixed EPOCH] [--audio-dump PATH] [--test-runner] [--help]
 make -f Makefile.native -j32 check [SANITIZE=1] [TESTS=filter]   # expansion's suite, below
 ```
 
 The defaults are `pokeemerald.sav` and `pokeemerald.rtc` in the current
 directory, scale 3, paced to 59.7275 Hz, no frame limit. `--frames N` ends
 the game after N frames with status 0 (the gates use it with `--headless
---silent --unthrottled`); `--screenshot` writes the last frame as a PPM.
+--silent --unthrottled`); `--screenshot` writes the last frame as a PPM;
+`--audio-dump` writes every frame of sound the loop mixes to a WAV file
+(`audio_dump`), with or without a device, until the game ends or a replay's
+`restart`.
 Headless, the keypad reads no keys. A save file this build cannot use
 (corrupt, or written with another struct layout) stops `main` before the
 game starts, so it is never overwritten.

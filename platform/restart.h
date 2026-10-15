@@ -36,7 +36,9 @@ struct restart_args {
 
 /* The arguments of the restarted process: argv without any earlier
  * `--resume-at N`, with `--resume-at resume_line` appended, and, if argv has
- * `--rtc-fixed E`, that E replaced by new_epoch. The original strings are
+ * `--rtc-fixed E`, that E replaced by new_epoch. `--audio-dump PATH` is left
+ * out: the recording is this process's, finished at its shutdown, and the
+ * new process would start the file afresh over it. The original strings are
  * not copied: argv must outlive `out`. Returns 0, or -1 (reported) if there
  * are too many arguments or a value is missing. */
 int restart_build_args(int argc, char *const *argv, uint32_t resume_line, int64_t new_epoch, struct restart_args *out);

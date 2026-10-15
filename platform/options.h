@@ -21,6 +21,10 @@
 #define OPTIONS_DEFAULT_FRAME_LIMIT 0u /* none */
 #define OPTIONS_DEFAULT_OUT_DIR "."
 
+/* The option that records the sound output; a restart leaves it out
+ * (restart.h). */
+#define OPTIONS_AUDIO_DUMP "--audio-dump"
+
 /* The largest --scale, the window's whole multiple of the GBA's 240x160:
  * 16 gives 3840x2560, beyond any display. video.h takes it as its own
  * bound. */
@@ -42,7 +46,8 @@ struct options {
     const char *screenshot_path;
     const char *replay_path; /* NULL: play normally */
     const char *out_dir;
-    uint32_t resume_after_line; /* --resume-at, set by a restart */
+    const char *audio_dump_path; /* NULL: the sound output is not recorded */
+    uint32_t resume_after_line;  /* --resume-at, set by a restart */
     bool rtc_fixed;
     int64_t rtc_fixed_epoch;
 };
