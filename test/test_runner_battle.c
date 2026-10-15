@@ -185,7 +185,10 @@ static void InvokeOneVsTwoTestFunctionWithStack(void *results, u32 i, struct Bat
 // gParties' HP gives the HP the battle left; GIVEN's PLAYER_PARTY is
 // unchanged), and a variable only GIVEN's or WHEN's body sets keeps the value
 // THEN's call gives it. A SCENE should hold queue calls and read nothing the
-// battle changes (platform/test_runner/SUITE-LOG.md, class 11).
+// battle changes (platform/test_runner/SUITE-LOG.md, class 11). An
+// EXPECT_FAIL in SCENE runs again too and leaves the state the battle left
+// as it was (Test_ExpectFail changes neither a SCENE_OPEN, TURN_OPEN nor
+// SUCCESS state, and a CLOSED one closes again at the same line).
 enum CaptureWidth
 {
     CAPTURE_U16,
@@ -201,7 +204,6 @@ static struct
     u32 capturedMask; // Bit i set: capturedValues[i] holds queued event i's value.
     u32 capturedValues[MAX_QUEUED_EVENTS];
     bool8 replaying; // THEN's call is to run SCENE again.
-    enum ExpectFailState expectedFailState; // Before SCENE ran again.
     u8 queuedEventsCount;
     struct QueuedEvent queuedEvents[MAX_QUEUED_EVENTS]; // As SCENE's first run queued them.
 } sCaptures;
@@ -268,10 +270,11 @@ static void Capture(s32 i, uintptr_t address, enum CaptureWidth width, u32 value
 }
 
 // A trial (or the re-run of a failed one) starts with nothing captured.
+// (`replaying` needs no reset here: PrepareSceneReplay sets it before every
+// THEN's call, and IsReplayingScene reads it only in one.)
 static void ForgetCaptures(void)
 {
     sCaptures.capturedMask = 0;
-    sCaptures.replaying = FALSE;
 }
 
 // Called before THEN's call: SCENE runs again in it if SCENE queued a
@@ -336,13 +339,6 @@ static bool32 IsSameEvent(u32 i)
     return TRUE;
 }
 
-void OpenScene(void)
-{
-    // SCENE's second run must not open an EXPECT_FAIL's scene a second time.
-    if (IsReplayingScene())
-        sCaptures.expectedFailState = gTestRunnerState.expectedFailState;
-}
-
 void CloseScene(u32 sourceLine)
 {
     u32 i;
@@ -353,7 +349,6 @@ void CloseScene(u32 sourceLine)
     if (!IsReplayingScene())
         return;
     sCaptures.replaying = FALSE;
-    gTestRunnerState.expectedFailState = sCaptures.expectedFailState;
 
     if (DATA.queuedEventsCount != sCaptures.queuedEventsCount)
         Test_ExitWithResult(TEST_RESULT_ERROR, sourceLine, "%s:%d: SCENE queued %d events when it ran again in THEN's call, %d the first time", gTestRunnerState.test->filename, sourceLine, DATA.queuedEventsCount, sCaptures.queuedEventsCount);

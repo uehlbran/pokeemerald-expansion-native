@@ -2518,20 +2518,20 @@ in this order:
      screenshots", the same sanitized with no sanitizer report; gate h's
      load stage PASS on the Linux save;
    - **suite**: the test runner's own tests (two crash on purpose and are
-     restarted), then 5,884 results (5,419 PASS, 2 CRASH, 3 ERROR (expected:
+     restarted), then 5,888 results (5,420 PASS, 2 CRASH, 6 ERROR (expected:
      `test/capture_replay.c`), 7 EXPECTED_FAIL, 23 KNOWN_FAILING, 9
      ASSUMPTION_FAIL, 421 TO_DO), plain and sanitized (the harness's
-     summary counts the 3 expected ERRORs with the known failures: 26).
+     summary counts the 6 expected ERRORs with the known failures: 29).
      Against `main`'s Linux suite (5,875 results, 5,418 PASS, 18
      KNOWN_FAILING) the difference is the branch's, the same with GCC on
-     Linux: the capture replay's 9 self-tests (6 PASS, 3 ERROR) and 5 tests
+     Linux: the capture replay's 13 self-tests (7 PASS, 6 ERROR) and 5 tests
      that pass on `main` only because their captured values never reach
      THEN, now KNOWN_FAILING natively (`platform/test_runner/SUITE-LOG.md`,
      class 11); every other test's result is `main`'s. Also
      no UndefinedBehaviorSanitizer `function` or `pointer-overflow`
      report (`platform/test_runner/SUITE-LOG.md` has the sites, and the three
      objects built without the `function` check);
-   - **compare**: "PASS: the same 5884 tests with the same results" for the
+   - **compare**: "PASS: the same 5888 tests with the same results" for the
      plain and for the sanitized suite against Linux 64-bit's; gate h's back
      stage PASS; the two 64-bit struct layouts identical.
    - **no upload of the game**: the run's artifacts are `linux-save`

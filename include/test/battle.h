@@ -1230,9 +1230,8 @@ void GivePlayerItem(u32 sourceLine, enum Item, u32 quantity);
 // OPPONENT_PARTY are unchanged), and a variable only GIVEN's or WHEN's body
 // sets has the value THEN's call gives it. So a SCENE should hold queue
 // calls, and read nothing the battle changes.
-void OpenScene(void);
 void CloseScene(u32 sourceLine);
-#define SCENE for (OpenScene(); gBattleTestRunnerState->runScene; CloseScene(__LINE__))
+#define SCENE for (; gBattleTestRunnerState->runScene; CloseScene(__LINE__))
 #else
 #line 1222
 #define SCENE for (; gBattleTestRunnerState->runScene; gBattleTestRunnerState->runScene = FALSE)

@@ -329,6 +329,7 @@ run compared with it test by test.
 | SANITIZE=1 | 5862 | 5405 | 18 | 9 | 421 | 0 | 0 | eight battle-animation palettes padded; per test the GBA baseline but for the 9 benchmarks; 76 s |
 | M8, the capture replay, 64 bits (GCC, and clang plain and sanitized: the same, test by test) | 5884 | 5417 | 28 (25 KNOWN_FAILING, 3 expected ERROR) | 9 | 421 | 0 | 0 | the capture replay (class 11): 7 tests KNOWN_FAILING natively; 9 native tests of the replay (`test/capture_replay.c`), 3 of which expect ERROR and are counted with the known failures; the 13 native-only tests of earlier milestones; 9 assumption failures (class 8) |
 | M8, two cost tests corrected, 64 and 32 bits, and 64 sanitized (GCC; clang the same) | 5884 | 5419 | 26 (23 KNOWN_FAILING, 3 expected ERROR) | 9 | 421 | 0 | 0 | class 11: Substitute's and Shed Tail's cost tests corrected natively and passing, the 5 others KNOWN_FAILING; against main's 5875 (5418 PASS, 18 known failing) only the 9 replay self-tests and those 5 differ; three sanitized result lines cut by sanitizer reports, each PASS on the next line |
+| M8, the capture replay's own tests completed, 64 and 32 bits, and 64 sanitized (GCC) | 5888 | 5420 | 29 (23 KNOWN_FAILING, 6 expected ERROR) | 9 | 421 | 0 | 0 | `test/capture_replay.c` has 13 tests: a SCENE that queues fewer events, or groups them otherwise, on its second run ends with ERROR (3 more), and a test with 50 trials checks that each trial's battle matches the first run's events (1 more, PASS); the exp and catch-chance captures are compared in full |
 
 ## Notes from review
 
