@@ -67,9 +67,12 @@ R and D-pad. The controller's buttons cannot be changed.
 
 ## The help overlay: F1, and quitting
 
-F1 shows the help overlay over the game: the version, the keys in force, the
-controller's buttons, the data directory and the paths of the save, the
-clock's file and the settings file, under the line `Q: quit  F1: close`.
+F1 shows the help overlay over the game: the version, the data directory and
+the paths of the save, the clock's file and the settings file, the keys in
+force and the controller's buttons, under the line `Q: quit  F1: close`.
+The overlay shows those lines from the top as far as the window has room: in
+a small window (`--scale 1` or 2) the last ones may not fit, and
+`pokeemerald-native --keys` prints them all.
 F1 again closes it. While it is shown the game keeps running but receives no
 key, so nothing you press reaches the game.
 
@@ -105,7 +108,8 @@ scale = 3
 ```
 
 The settings are the ten GBA buttons (`a`, `b`, `select`, `start`, `up`,
-`down`, `left`, `right`, `l`, `r`) and `scale`. Names and keys can be
+`down`, `left`, `right`, `l`, `r`) and `scale`. A comment is a whole line:
+`a = z  # my key` reads the key name `z  # my key`, which is not one. Names and keys can be
 written in any case, with or without spaces around the `=`; a setting you
 leave out keeps its default, and if a setting appears twice the later line
 wins. Two buttons may share a key. F1 cannot be a button's key: it opens the
@@ -145,8 +149,8 @@ beside the executable, for a game on a USB stick or in a folder of its own.
 The folder must be one you can write to (not under `Program Files`).
 
 **Choosing it yourself.** `--data-dir DIR` makes `DIR` the data directory
-(the game creates it if it is missing; its parent must exist), whatever the
-two rules above say. `--save PATH` and `--rtc-offset PATH` choose one file
+(the game creates it if it is missing; its parent must exist; a file of that
+name is refused), whatever the two rules above say. `--save PATH` and `--rtc-offset PATH` choose one file
 each and win over the data directory for that file; a relative path is taken
 from the folder you start the game in.
 
@@ -202,6 +206,10 @@ comparing builds). `--keys` prints this, and the game then exits:
 
 ```
 pokeemerald-native a554c4080f
+Data directory (per-user): /home/you/.local/share/pokeemerald-expansion-native/pokeemerald-native/
+Save: /home/you/.local/share/pokeemerald-expansion-native/pokeemerald-native/pokeemerald.sav
+Clock: /home/you/.local/share/pokeemerald-expansion-native/pokeemerald-native/pokeemerald.rtc
+Settings: /home/you/.local/share/pokeemerald-expansion-native/pokeemerald-native/settings.ini (not there: the defaults)
 Keyboard:
   A       Z
   B       X
@@ -214,15 +222,12 @@ Keyboard:
   R       S
   L       A
 Controller: A, B, Back (Select), Start, the shoulders (L, R), the D-pad or the left stick
-Data directory (per-user): /home/you/.local/share/pokeemerald-expansion-native/pokeemerald-native/
-Save: /home/you/.local/share/pokeemerald-expansion-native/pokeemerald-native/pokeemerald.sav
-Clock: /home/you/.local/share/pokeemerald-expansion-native/pokeemerald-native/pokeemerald.rtc
-Settings: /home/you/.local/share/pokeemerald-expansion-native/pokeemerald-native/settings.ini (not there: the defaults)
 ```
 
 The mode in brackets is `per-user`, `portable` or `--data-dir`. The version
-(also `--version`'s) is the commit the game was built from, `-dirty` if the
-build had changes not committed, or `unknown` for a build made without git.
+is the commit the game was built from, `-dirty` if the build had changes not
+committed, or `unknown` for a build made without git; `--version` prints it
+alone (`a554c4080f`).
 
 ## The files the game writes
 
@@ -253,7 +258,8 @@ says otherwise:
   cartridge save and leaves the file untouched. Importing those saves is not
   supported; this game's saves are not GBA `.sav` files either.
 - A settings file it cannot read (no permission to, or larger than 16 KiB),
-  or a data directory it cannot make: it says which and does not start.
+  or a data directory it cannot make or that is a file: it says which and
+  does not start.
 
 ## Planned, not built
 

@@ -438,8 +438,9 @@ platform/test_runner/compare_suite_results.sh suite-linux64.log suite-windows.lo
   at the save path without the save header must be refused by its name and
   left as it was, and with a non-ASCII `--data-dir`, which must be made and
   hold the clock's file and the lock. Then `--keys` with `--data-dir` must
-  print the four paths in it and the default keys, and, with a `settings.ini`
-  there, its key and its bad line's number; `--version` the version alone;
+  print the version first and the four paths in it and the default keys, and,
+  with a `settings.ini` there, its key and its bad line's number; `--version`
+  the version alone, the one `--keys` printed;
   and a copy of the executable beside a `settings.ini` (portable mode) must
   name the copy's directory and the files in it. No run uses the per-user
   directory, so the machine's `%APPDATA%` is never written. The script runs

@@ -1611,7 +1611,9 @@ editor (Notepad, by default, on Windows), which is what a file the player
 writes by hand needs.
 
 **The rule** (`data_dir_resolve`): `--data-dir DIR`, made if missing with
-`host_file_make_directory` (its parent must exist); else the executable's
+`host_file_make_directory` (its parent must exist), refused if what is there
+is not a directory (`host_file_is_directory`), and made and checked whenever
+it is given, even when every file has its own path; else the executable's
 directory (`SDL_GetBasePath`) if `settings.ini` is there, "there" meaning it
 opens or exists without read permission (`EACCES`, then reported when read);
 else the per-user directory. `--save` and `--rtc-offset` win for their file,
@@ -1649,8 +1651,10 @@ keymap and stay pure.
 hides it; Q, while it is shown, quits (`SDLK_q`, the key that types q, so
 that the hint `Q: quit  F1: close` names the key on the keyboard). It shows
 `--keys`'s lines (`help_text_write`, one function for both): the version, the
-keys in force, the controller line, the data directory and its mode, and the
-three paths. Quit is the window-close path: the frame loop ends, `main`
+data directory and its mode, the three paths, then the keys in force and the
+controller line, files first because a small window's overlay shows the
+lines from the top until it is full (at `--scale 1` some 14 lines of 38
+characters; `--keys` prints everything). Quit is the window-close path: the frame loop ends, `main`
 stores the save only if the game wrote one and it is pending, as at any exit,
 stops the modules and releases the lock; the platform writes nothing of its
 own. The game's Start menu is not touched. While the overlay is shown the
@@ -1677,6 +1681,17 @@ lines past the bottom are left out. Characters outside ASCII (a path with an
 accent) show as one `?` each. Tested on buffers: the glyphs against
 pictures written in the tests, the drawing pixel by pixel at scales 1 and 2,
 clipping, the layout at scales 1, 3 and 4, the wrapping and the cut.
+
+**Where it lives in the code.** `platform/player.c` holds what a run knows
+of its player (the paths, the settings, the help text, the window's scale)
+and the one decision of who gets the overlay (`player_wants_overlay`: not
+headless, not test-runner mode, not a replay), all unit-tested; `main.c`
+calls it. The settings file and the clock's offset are read through
+`host_file_read` (read(2) retried on `EINTR`; Windows: `ReadFile` on the
+descriptor's handle, as `host_file_write_all` writes), so that the OS calls
+stay behind `host_file.h`. A bad line is reported with its printable ASCII
+only, other bytes as `?`, so that a settings file cannot write control
+sequences to the terminal.
 
 **The version.** `git describe --always --dirty --match 'v[0-9]*'`, from
 `Makefile.native`, kept to the characters a tag or a hash has; `unknown`
