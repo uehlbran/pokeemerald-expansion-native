@@ -7,15 +7,7 @@ why. Newest at the bottom. Dates are when the decision was made.
 
 Clone of rh-hideout/pokeemerald-expansion at tag `expansion/1.17.1`,
 branch `main` from it, upstream kept as remote `rhh`. No `origin` exists
-yet; `STATUS.md` says what to add. Never force-push.
-
-## 2026-10-08: Coding workers are Sonnet, not DeepSeek
-
-The brief asks for DeepSeek 4.1 Flash workers. The agent runtime in this
-session offers Sonnet, Opus, Haiku and Fable only, so the brief's
-fallback applies: coding workers run on Sonnet, complex modules on Opus,
-and the orchestrator checks at each milestone whether a DeepSeek option
-has appeared. Recorded in `STATUS.md`.
+yet; add it when the repository is published. Never force-push.
 
 ## 2026-10-08: License
 
@@ -41,10 +33,10 @@ headers. Chosen because it leaves `include/gba/io_reg.h`,
 `include/gba/defines.h` and `include/gba/flash_internal.h` unmodified,
 keeps `EWRAM_START` and the test runner's fixed addresses meaningful,
 and was verified to work under both bit widths with the sanitizers
-(`research/memory-map-experiment.md`). Cost: a native linker script,
+(`docs/research/memory-map-experiment.md`). Cost: a native linker script,
 `MAP_FIXED_NOREPLACE` on Linux, and later an equivalent on Windows and
 macOS (both have fixed-address reservation; macOS needs the page-zero
-size reduced for the low addresses). Flagged for the 64-bit milestone:
+size reduced for the low addresses). Flagged for the 64-bit work:
 nothing here depends on pointer size.
 
 ## 2026-10-08: Single thread; VBlankIntrWait is the frame boundary
@@ -62,7 +54,7 @@ BIOS, renderer, PSG, DMA, timers, RTC, interrupt controller and save
 container are written from GBATEK with tests written first. The m4a
 mixer is a C translation of expansion's `src/m4a_1.s` rather than the
 ports' C engine of undocumented provenance. Reason: licensing (above) and
-the brief's rule that tests precede adaptation. The ports are consulted
+the rule that tests precede adaptation. The ports are consulted
 for structure and pitfalls.
 
 ## 2026-10-08: Frame rate is the GBA's
@@ -74,8 +66,8 @@ matching the hardware removes a class of divergence from the GBA
 reference. Vsync is not used for pacing.
 
 Amendment 2026-10-14: audio no longer runs at the engine's rate but at the
-GBA's 32768 Hz PWM grid, the engine's frame read on it (the owner's ruling
-(1); the amendment to "PSG trigger, wave-bank and output-scale rules").
+GBA's 32768 Hz PWM grid, the engine's frame read on it (decision (1) in
+"Decisions on an independent review's open questions"; the amendment to "PSG trigger, wave-bank and output-scale rules").
 
 ## 2026-10-08: One guard macro, PLATFORM_NATIVE
 
@@ -121,7 +113,7 @@ each GBA region a NOLOAD section at its GBA address, so the kernel maps it
 zero-filled and writable when it loads the executable; `gba_memmap_init`
 only checks the link and `gba_memmap_shutdown` has nothing to release.
 Alternative: `mmap` with `MAP_FIXED_NOREPLACE` at init, as in
-`research/memory-map-experiment.md`. Both were tried with 32-bit and 64-bit
+`docs/research/memory-map-experiment.md`. Both were tried with 32-bit and 64-bit
 binaries under ASan and UBSan, and both map every region. The linker script
 was chosen because EWRAM also has to hold expansion's `EWRAM_DATA` (section
 `.sbss`), which the linker places: with mmap the loader has already mapped
@@ -157,8 +149,8 @@ incomplete because nested structs keep their native stride), or a
 conversion layer between native and GBA layouts (what native-vanilla did
 for 64-bit). Decision: the native build uses the host ABI as its own
 format, its save file is the native layout, and interchange with GBA
-`.sav` files is listed in `STATUS.md` as not supported until a
-conversion layer exists. Consequence for the platform layer: `CpuSet`,
+`.sav` files is not supported until a
+conversion layer exists (README.md lists it). Consequence for the platform layer: `CpuSet`,
 `CpuFastSet` and DMA must accept 2-byte-aligned addresses (the game
 passes them legitimately now) and must copy with `memcpy` rather than
 reject or mask them; the `CpuFastSet` alignment static assert in
@@ -223,20 +215,18 @@ than 250 ms instead of running frames back to back.
 
 ## 2026-10-08: The native save file is versioned, and 32-bit saves must load in the 64-bit build
 
-Requested by the project owner after the host-ABI decision. The native
+Required after the host-ABI decision. The native
 save file carries a small header (magic, format version, a layout tag
 naming the pointer width and struct-layout identifier the image was
 written with, image size, CRC32) ahead of the 128 KiB flash image. A
 bare 131072-byte file is accepted as legacy with an unknown layout and
-is rewritten with a header on the next store. Gate (h), run in milestone
-7: a save written by the 32-bit native build loads correctly in the
+is rewritten with a header on the next store. Gate (h), run with the 64-bit work: a save written by the 32-bit native build loads correctly in the
 64-bit build, which will need a layout conversion keyed on the tag. The
 header makes any future layout change detectable instead of silent.
 
 Amendment, 2026-10-14: the bare-file clause no longer holds. A file without
-the header is refused, never accepted as legacy and never rewritten (the
-owner's ruling 2 in "The owner's five rulings on the independent review's
-open questions").
+the header is refused, never accepted as legacy and never rewritten (decision 2 in
+"Decisions on an independent review's open questions").
 
 ## 2026-10-08: PSG trigger, wave-bank and output-scale rules
 
@@ -257,14 +247,14 @@ must remove DC after summing, as the GBA's output capacitor did. The PSG
 is generated at the output rate with point sampling and an exact cycle
 remainder, never at m4a's 13379 Hz mixer rate, which would alias badly.
 
-Amendment 2026-10-14: until the owner's ruling (1) of the same day the
+Amendment 2026-10-14: until decision (1) of the same day ("Decisions on an independent review's open questions") the
 shipped build ran the PSG at m4a's 13379 Hz (`FRAME_AUDIO_SAMPLE_RATE_HZ`),
 so that the 224-sample FIFO frame mixed sample for sample with the PSG
 output. The corrected reasoning: at 13379 Hz the square and noise channels
 alias into the audible band. A square wave's odd harmonics fall off only as
 1/k and the noise channel clocks at up to 524288 Hz, so every component
 above 6689.5 Hz folds back below it as a tone the GBA never plays.
-What ships now, by the ruling: the device and the PSG run at 32768 Hz, the
+What ships now, by that decision: the device and the PSG run at 32768 Hz, the
 grid GBATEK's PWM stage samples on by default (SOUNDBIAS, "Resampling to
 32.768kHz"), one sample every 512 cycles. One accountant counts each frame's
 samples on that grid, 548 or 549 with the remaining cycles carried
@@ -281,13 +271,13 @@ output sample's span, which is what the FIFO's DAC and the PWM stage do. So
 the engine's other rates (SampleFreqSet's table) play too, where the old
 path left them silent. The DC filter's pole moves with the rate (32701/32768,
 the same 11 Hz corner). The A/B recordings of the opening replay, the old
-path against this one, are the ruling's evidence; they hold the game's music
+path against this one, are that decision's evidence; they hold the game's music
 and are kept outside the repository. Not followed: Emerald itself selects
 the next SOUNDBIAS mode, 8 bits at 65536 Hz (`src/m4a.c`: m4aSoundInit asks
 for SOUND_MODE_DA_BIT_8 and SoundInit writes SOUNDBIAS_H bits 6-7 = 1), so
 the console this game runs on samples every 256 cycles; the grid is one
-constant (`SOUND_GRID_RATE_HZ`), and moving it to 65536 Hz is the owner's
-call.
+constant (`SOUND_GRID_RATE_HZ`), and moving it to 65536 Hz is a later decision
+("Fast-forward focus loss, the 65536 Hz audio grid, the macOS signature and the arm64 rewrite").
 
 ## 2026-10-08: UBSan shift-base is disabled for expansion's objects only
 
@@ -336,7 +326,7 @@ before a newly enabled BG appears.
 The ARM sound engine (`SoundMain`, `MPlayMain`, the `ply_*` commands) is
 translated to C under `platform/m4a/`, with every struct offset the
 assembly hard-codes asserted against `include/gba/m4a_internal.h` and
-the pointer-dependent ones flagged for the 64-bit milestone. Where the
+the pointer-dependent ones flagged for the 64-bit work. Where the
 assembly would read outside its data for state the game never produces
 (compressed samples past either end, a data byte before any running
 status, more than 12 channels, PSG voice types 5 to 7, a ring frame out
@@ -368,7 +358,7 @@ only. CpuSet, CpuFastSet and the Vram writers do not enforce alignment
 
 Expansion tags script-command, special and `callnative` pointers with
 `ROM_SIZE` (0x02000000) to mark "effect-instrumented" entries; on the
-GBA the tagged address is a valid ROM mirror. The test-runner worker
+GBA the tagged address is a valid ROM mirror. The test-runner work
 tried linking the executable at 0x08000000 and mapping its read-only
 segments again at +0x02000000 (`platform/rom_mirror`), which also makes
 `ROM_START..ROM_END` checks and the 28-bit location encodings work
@@ -436,7 +426,7 @@ installs a SIGFPE handler that decodes the faulting `div`/`idiv`, writes
 libgcc's results into the registers and resumes after the instruction,
 reporting each one with its program counter. 32-bit only: the decoder
 refuses 66h/67h-prefixed forms and 64-bit is a hard stop until it is
-redone (milestone 7). Rejected: guarding every division site in
+redone (for 64-bit). Rejected: guarding every division site in
 expansion (nine today, unknown tomorrow) and `-fsanitize=integer-divide-
 by-zero` recovery (which gives x86's result, not ARM's).
 
@@ -504,7 +494,7 @@ timeout was exercised end to end with a throwaway probe (SUITE-LOG.md,
 loads most of them as whole 32-byte banks (`LoadSpritePalette`,
 `LoadPalette(..., PLTT_SIZE_4BPP)`): on the GBA the copy reads the bytes
 after the palette in ROM into colours the sprite never uses; natively it
-reads past the object and the sanitized gate stops. Milestones 3 and 4
+reads past the object and the sanitized gate stops. The early platform work
 padded ten of them by hand with `[16]` declarations and rows; the debug
 menu reached the species palettes (about 80 files, declared in generated
 headers), where rows do not scale. Chosen: Makefile.native converts
@@ -581,40 +571,22 @@ expectations (the gate would fail on every relink). `trainer_pools.c`'s
 data and is left alone. The glyph was first suspected to be an
 uninitialised read; the proof that it was not (a Python reimplementation
 of CRC32 and SFC32 predicting all six observed outcomes from the party
-address alone) is in the worker's report, summarised in the row.
+address alone) is in the review of that change, summarised in the row.
 
-## 2026-10-09: The refactoring pass is seven reviewed module groups
+## 2026-10-09: The 64-bit work starts from a measured inventory, not from the flags
 
-The owner's standing instruction (PLAN.md) asked for a dedicated
-refactoring pass over everything this project wrote before 32-bit is
-declared done, as module-sized worker tasks reviewed as usual. Chosen:
-seven groups on disjoint files (core, video, audio, bios and debug,
-replay and inspection, storage and build glue, and an audit of the
-modifications to expansion's files), each with the C-RULES checklist, a
-cppcheck baseline, its own worktree and a mutation-testing review before
-merge; behaviour is frozen by the existing tests, the replays and the
-suite, which every branch runs before and the orchestrator runs again at
-merge. Formatting (clang-format) and clang-tidy come after the pass, so
-that the one-time reformat does not conflict with seven branches and the
-refactors stay readable in the history. Follow-ups the reviews found
-outside their groups are collected in STATUS.md for the end-to-end read.
-
-## 2026-10-09: Milestone 7 starts from a measured inventory, not from the flags
-
-An Opus worker measured the 64-bit build before any code was written
-(the inventory is summarised in PLAN.md "Milestone 7 plan"; the full
-document lived in the session's scratchpad and its findings are carried
-into the task briefs). What it found that a read of the "flagged 64-bit"
+The 64-bit build was measured before any code was written. What the
+measurement found that a read of the "flagged 64-bit"
 comments would not have: the link fails on exactly two static assertions,
 one of which (RecordedBattleSave) has no pointer in it at all (a u64 that
 x86-64 aligns to 8); the 8-byte INTR_VECTOR store runs off the end of
 IWRAM; the assembled data holds 61,154 address words of which 17,033 must
-widen and 44,121 must not (bytecode) (the count at the inventory; after the
+widen and 44,121 must not (bytecode) (the count of the first measurement; after the
 battle scripts were found to be read through packed structs with pointer
 members it is 19,208 widened and 41,946 left); GCC's x86-64 data alignment spaces
 the test runner's `.tests` entries 64 bytes apart; tools/patchelf is
 ELF32-only; and in the save only SaveBlock1 changes layout (two members).
-Each milestone 7 task is one section of that design, gated on the 32-bit
+Each step of the 64-bit work is one section of that design, gated on the 32-bit
 executables staying byte-identical ("gate 32=": sha256 of the four 32-bit
 executables recorded on main at 174d3f5d9c) and on the GBA ROM's sha1.
 
@@ -671,7 +643,7 @@ change would touch upstream for something the native build can do alone.
 ## 2026-10-09: Gate "32=" compares like with like, and platform code may change the executables
 
 The 32-bit executables embed the worktree path, so a sha256 recorded on
-main cannot be compared with a build in a worker's worktree; the gate is
+main cannot be compared with a build in another worktree; the gate is
 a build of the base commit and of the branch in the same worktree. A
 change to an expansion file under the guard must leave the four 32-bit
 executables byte-identical to that base, which also means keeping the
@@ -751,8 +723,7 @@ would hide the corruption from it. The cross-width script's fourth step
 Amendment, 2026-10-14: the first half of this entry is withdrawn. A bare
 image is no longer read as the 32-bit layout or any other: a file without
 the header is refused as an emulator or cartridge save and the converter
-never runs on it (the owner's ruling 2 in "The owner's five rulings on the
-independent review's open questions"). SAVE_FILE_LEGACY,
+never runs on it (decision 2 in "Decisions on an independent review's open questions"). SAVE_FILE_LEGACY,
 SAVE_CONVERT_BARE_IMAGE_POINTER_BITS and main's legacy branch are gone.
 The two-way converter and the slot rule stand. The refusal is
 SAVE_FILE_REFUSED: save_file_load prints one message and leaves the file
@@ -801,8 +772,7 @@ The x86-64 part of arm_division (REX.W, the 64-bit registers, the
 __udivdi3 rule) is compiled into the 32-bit build too, where it cannot
 run, rather than guarded out: one decoder with one set of tests at both
 widths, and the 32-bit executables stay byte-identical because the code
-is placed after the existing text (the reviewer and author kept the
-32-bit line numbers for the sanitized build). The duplicated plumbing
+is placed after the existing text (the 32-bit line numbers for the sanitized build were kept). The duplicated plumbing
 that placement first required was merged in the review round (c10ba57e0a,
 one decoder) before the branch merged.
 
@@ -834,13 +804,13 @@ indices (336 and on, -64) have no evidence gathered and stay as upstream
 wrote them. The constants live in trig.h so the psychic step and Cos
 share one definition.
 
-## 2026-10-09: The milestone 7 refactoring pass keeps expansion's tools in their smallest form
+## 2026-10-09: The 64-bit refactoring pass keeps expansion's tools in their smallest form
 
-The pass over the build glue had rewritten the milestone 7 changes to
+The refactoring pass over the build glue, before the 64-bit work was declared done, had rewritten the 64-bit changes to
 tools/patchelf and the hydra (ELF32 or ELF64 chosen by class at every
 use) into a helper layer of structs and three readers, about 75 more
 lines of difference from upstream per tool for the same behaviour. The
-reviewer recommended reverting it and the orchestrator agreed: expansion's
+review recommended reverting it, and it was reverted: expansion's
 files, the tools included, take the smallest clear change
 (UPSTREAM_MODIFICATIONS.md's policy), because every line of difference is
 a line to carry across an upstream upgrade (UPGRADING.md), and the
@@ -858,7 +828,7 @@ next 64-bit build rather than the gate.
 
 ## 2026-10-09: CI starts on Linux only, in this project's own workflow, on pushes to main
 
-Milestone 8 asks for CI for both targets and for Windows and macOS.
+The port needs CI for both targets and for Windows and macOS.
 Upstream's workflows push-trigger on branches this repository does not
 have (`master`, `upcoming`), so no push has run them here; they were left
 as they were rather than edited. (Amended 2026-10-14: `build.yml` and
@@ -866,22 +836,20 @@ as they were rather than edited. (Amended 2026-10-14: `build.yml` and
 upstream's ROM jobs on the first one. They now filter pull requests to the
 same two branches, a row in UPSTREAM_MODIFICATIONS.md; deleting them was
 rejected because every upgrade would conflict on the deletion.) This project's workflow,
-`.github/workflows/native.yml`, runs the gate STATUS.md records, on
+`.github/workflows/native.yml`, runs the gate (BUILDING.md lists it), on
 `ubuntu-latest`, on pushes to `main` and by hand only: a run is about
 an hour of a 4-core runner (the suite alone is four runs of 5862 tests)
-and the private repository's Actions minutes are the owner's budget, so
-a run per branch push would spend them on work the orchestrator's local
+and the repository's Actions minutes are a budget, so
+a run per branch push would spend them on work the local
 gates already do. Windows and macOS get no CI job before the port
 exists: a `macos-latest` minute counts ten times, and a job that fails
-to build teaches nothing the inventory does not. The orchestrator
-proceeds with the Linux workflow without waiting (the standing orders:
-nothing short of an irreversible choice waits for the owner; a workflow
-file is reverted by deleting it, and the owner can disable Actions in
-the repository settings at any time).
+to build teaches nothing that reading the build does not. The Linux workflow
+goes ahead at once: a workflow file is reverted by deleting it, and
+Actions can be disabled in the repository settings at any time.
 
 ## 2026-10-09: The ports share a thin host layer; Windows is x86_64 only; macOS arm64 waits for a decision
 
-The milestone 8 inventory (`research/m8-inventory.md`) measured that 13
+An inventory of the Windows and macOS ports measured that 13
 of the 59 platform modules touch the OS, in six concerns. The port is
 built as one `host` layer with a header per concern and a source per
 OS, not as `#ifdef` blocks: three OS branches in 13 modules and their
@@ -891,14 +859,12 @@ a pure refactor under every Linux gate, so its correctness is proven
 before a second OS exists. Windows is built for x86_64 only: i686 would
 rename every C symbol (the underscore prefix) through the linker scripts
 and the data, for a target Windows 11 no longer ships. macOS arm64 is
-not attempted until the owner decides on a rebased memory model: the
+not attempted until a rebased memory model is decided on: the
 measured facts (every arm64 executable slid at load; 41,946 4-byte
 absolute address words in the data; the bit-25 script tag; no divide
 trap) mean the fixed-address model cannot hold there, and a rebased
-model is a milestone of its own that could reasonably be declined
-(x86_64 builds run on Apple silicon through Rosetta). Probes on the
-runners (W1, M0) settle the loader questions before any port code is
-written, because those facts cannot be measured here.
+model is a project of its own that could reasonably be declined
+(x86_64 builds run on Apple silicon through Rosetta). Loader probes (W1 on a Windows runner, M0 on a macOS runner) were run once, before any port code was written, because those facts cannot be measured on a Linux build machine; their results are recorded in this file where they matter.
 
 ## 2026-10-09: The data for Windows and macOS is assembled on Linux and converted, not re-assembled
 
@@ -906,8 +872,7 @@ Expansion's data is assembler text in GNU as's dialect (macros, `.if`
 over symbols, `::` labels with `.size` from preproc) that only GNU as
 accepts: clang's assembler, the only one on macOS, gives 20,134 errors
 on event_scripts.s alone and COFF has no 16-bit relocation for the 8
-words that need one (`research/m8-inventory.md` 1.3). The inventory's
-two routes were per-format rules in asm_filter.py for Windows (MinGW's
+words that need one. Two routes were considered: per-format rules in asm_filter.py for Windows (MinGW's
 as is GNU as) plus a converter for macOS, or one converter for both.
 Decision: one converter for both, `platform/build_glue/`, reading the
 ELF objects the Linux 64-bit build already assembles and checks (the
@@ -924,20 +889,20 @@ targets, on Linux (clang 18 here cross-assembles both).
 
 ## 2026-10-14: macOS ships as x86_64 under Rosetta; arm64 is not started; Rosetta's wind-down is a known revisit
 
-The owner decided on the milestone 8 question STATUS.md had raised: the
+Decision on the open macOS question: the
 macOS build is x86_64 only, run on Apple silicon through Rosetta 2, and
 no arm64 build is started. The reason is the memory model: the loader
-probes (`research/probes/README.md`) and the linker itself ("-no_pie
+probes (run on a macOS runner) and the linker itself ("-no_pie
 ignored for arm64") show that an arm64 executable is always slid at
 load, so the fixed-address model (the GBA regions and the image below
 4 GiB, the 41,946 four-byte absolute address words in the data, the
 bit-25 script tag, the division trap the arm64 ISA lacks) cannot hold
-there; an arm64 build needs a rebased model, a milestone of its own.
+there; an arm64 build needs a rebased model, a project of its own.
 Known future revisit: Apple announced (WWDC 2025) that Rosetta 2 stays
 available through macOS 27 and is then kept only for a subset of older
 software, so an x86_64-only macOS build has a horizon. When that horizon
 matters, the rebased memory model is the work to plan, with this entry
-and the inventory's section 2.5 as the starting point; nothing else in
+and "Native Apple silicon: the spike's findings" as the starting point; nothing else in
 the port depends on the choice.
 
 Not yet shown (2026-10-15, the final review of the port): the x86_64 game on
@@ -953,7 +918,7 @@ program counter, which `test_arm_division*` and `test_host_fault*` check).
 
 ## 2026-10-14: CI runs in two tiers; the local pre-merge gate stays the full check
 
-The owner ruled that an hour of runner time on every push to main,
+An hour of runner time on every push to main,
 docs-only pushes included, is not acceptable. The workflow is split:
 a per-push tier (the platform gate, the 64-bit build, both 64-bit
 replays, the plain 64-bit suite; docs-only pushes do not trigger it; a
@@ -962,55 +927,17 @@ runs; the target is under 15 minutes warm) and a nightly tier
 (`schedule` plus `workflow_dispatch`: the GBA ROM and its sha1, the
 32-bit build and replays, both sanitized builds with their replays, all
 four suite runs, the cross-width save gate, as parallel jobs). The
-reasoning: the orchestrator's local gate before every merge is the full
+reasoning: the local gate before every merge is the full
 check at both widths, plain and sanitized, and runs in about 20
 minutes on 32 cores; CI is the backstop that proves a clean clone on a
 documented image builds and passes, and a backstop that costs an hour a
-push is paid for in minutes the owner budgets. The measured runtimes of
-each tier are recorded in STATUS.md when the first runs complete.
-
-## 2026-10-14: The coding-worker default is checked again: no DeepSeek model is offered, so Sonnet stays
-
-The owner asked for DeepSeek 4.1 Flash as the default coding worker, as
-the original brief did, with Sonnet for anything needing screenshots or
-visual judgment and Opus for hard pieces only. The check the milestone 1
-decision prescribed ("the orchestrator checks at each milestone whether
-a DeepSeek option has appeared") was made on 2026-10-14: the Agent tool
-of this session offers Sonnet, Opus, Haiku and Fable and no other
-provider, so the brief's fallback applies as before: plain code, build
-glue, tests and docs drafts go to Sonnet, hard pieces to Opus, with the
-owner's escalation rule kept (a worker that fails the gate twice on the
-same task is escalated to Opus or the orchestrator). The model used for
-each branch stays recorded in STATUS.md's table so the split is
-visible, and this check is repeated at the next milestone.
-
-## 2026-10-14: The owner's standing rules on concurrency and public-repository quality are in C-RULES.md
-
-The owner added two sections to docs/C-RULES.md, applying to all
-current and future work: concurrency (the platform stays
-single-threaded; a new thread needs an entry here with the reason a
-single-threaded design cannot work and a written ownership model;
-signal and exception handlers follow signal-safety(7) and share state
-only through `volatile sig_atomic_t` or lock-free atomics; `volatile`
-is not synchronization; threads share state through C11 atomics with
-justified memory orders or an SDL mutex with a documented lock order;
-the SIGALRM replacement in the test harness must not let a second
-thread touch game state; a thread brings a ThreadSanitizer build into
-the gate; save writes are temporary file, flush, rename; reviewers
-check races, signal safety, lock order, fork/exec with threads and
-file races explicitly) and code quality for a public repository
-(names without the spec, comments that say why, no filler, small
-cohesive modules, no speculative abstraction, everything we own left
-better on every touched call chain, expansion's files untouched but
-for hardware assumptions). Every coding worker receives the file
-verbatim in its task and the first-pass reviewer checks each diff
-against it line by line. The task W3 in flight (the test timeout) was
-re-briefed under these rules before it chose a design.
+push is paid for in runner minutes, which are budgeted. The measured
+runtimes of each tier are in the entry below.
 
 ## 2026-10-14: The per-push CI tier runs no suite; the plain 64-bit suite is nightly
 
 Measured on the runner (`.github/workflows/native.yml`, runs 38563489510
-cold and 38567630409 warm): the per-push tier as the owner specified it
+cold and 38567630409 warm): the per-push tier as first specified
 (the platform gate, the 64-bit build, both 64-bit replays, the plain
 64-bit suite) takes 31 minutes cold and 20 warm, against the 15-minute
 target; the suite alone is 887 s cold and 595 s warm, and the compiler
@@ -1020,13 +947,12 @@ library's 321 calls hit). The two parts of the specification cannot both
 hold, so the suite moves to the nightly tier as its own job and the
 per-push tier keeps the platform gate, the build and the replays (about
 10 minutes warm). The reasoning is the one already recorded: the
-orchestrator's local gate runs the suite at both widths before every
+local gate runs the suite at both widths before every
 merge, so the per-push backstop loses nothing the project relies on, and
-the nightly still runs every suite. Two follow-ups are recorded in
-PLAN.md: compiling the game's C through a file so ccache can cache it
+the nightly still runs every suite. Two follow-ups are open: compiling the game's C through a file so ccache can cache it
 (the 64-bit build is 328 s warm), after which the suite could return to
-the per-push tier if the owner wants it there; and caching the converted
-assets. The owner can flip the suite back with one line in the workflow.
+the per-push tier if it is wanted there; and caching the converted
+assets. The suite can be flipped back with one line in the workflow.
 ## 2026-10-14: The test time limit is kept by a flag-setting thread; the per-OS tests live in one directory per OS family
 
 `ptest.h` kept each test's limit with `alarm(2)` and SIGALRM, which Windows
@@ -1150,7 +1076,7 @@ without `O_CLOEXEC`: a file the C runtime had open (its handles are
 inheritable and do not share deletion) would otherwise stay open in the
 child and refuse the child's own replacement of that file.
 
-The crash reboot does not start a process. The owner ruled that no exception
+The crash reboot does not start a process. The decision is that no exception
 handler creates a process, with no exception to docs/C-RULES.md's handler
 rule: the heap may be corrupt at crash time, and `CreateProcessW` allocates
 from it (Crashpad and Breakpad work out of process for the same reason). Two
@@ -1160,7 +1086,7 @@ writes the report, which ends with `--persistent-state <512 hex digits>`, to
 stderr with `WriteFile`, and ends the process with `TerminateProcess` and
 exit code 75 (`CRASH_REBOOT_EXIT_CODE`, sysexits' `EX_TEMPFAIL`, which
 nothing else here exits with); the program that started the process (the
-Windows test driver, task W8) starts it again on that code with the same
+Windows test driver) starts it again on that code with the same
 arguments plus the state. (b) A helper restarts: at install time the program
 creates a copy of itself, suspended, in the job; the filter writes the state
 through a handle opened then and resumes the helper, which becomes the
@@ -1211,7 +1137,7 @@ The platform's paths and arguments are `char` strings, UTF-8 as on Linux. On
 Windows the C runtime (msvcrt) builds `main`'s arguments from `GetCommandLineA`
 and opens files by narrow paths through the system's "A" functions, both in
 the process's code page, by default the ANSI code page of the system's
-language. The owner ruled that out: the save path sits under the user's
+language. That is ruled out: the save path sits under the user's
 profile, and a user name that code page cannot write (a Japanese name on a
 Western system, an accented one on a Japanese system) would break it.
 
@@ -1236,7 +1162,7 @@ the Ubuntu MinGW-w64 GCC links by default, hands `main` the UTF-8 bytes of a
 non-ASCII argument unchanged under the manifest follows from the
 documentation (it parses `GetCommandLineA`'s string, which the code page makes
 UTF-8) but is not something the build can show. The claim is verified only
-once the Windows runner (tasks W8 and W9) has run
+once the Windows runner has run
 `platform/test/windows/test_utf8_windows.c` (the process's code page is UTF-8;
 a non-ASCII argument passed to `CreateProcessW` in UTF-16 arrives in `argv` as
 its UTF-8 bytes; a save stored through a non-ASCII directory the host layer
@@ -1277,35 +1203,20 @@ What cannot be checked here: that the dispatch and the switch behave as
 reasoned; `test_host_stack`, `test_game_hooks` and the suite's battle tests
 on the Windows runner are the evidence.
 
-## 2026-10-14: macOS waits for the owner's own Windows verification
+## 2026-10-14: Decisions on an independent review's open questions
 
-The owner's ruling: no macOS work (tasks M2 to M5) starts until Windows is
-fully done (the executable, the unit tests, the replays and the suite on
-the Windows runner) and the owner has verified it by hand on a Windows
-machine. The macOS decision of earlier today (x86_64 under Rosetta, arm64
-not started) stands; only its start moves.
-
-Lifted 2026-10-14 (evening): the owner verified Windows by hand (see "The
-owner's rulings from the Windows hands-on check"). macOS may start; the
-order is the audio-rate task, the two tasks from the hands-on check, then
-macOS.
-
-## 2026-10-14: The owner's five rulings on the independent review's open questions
-
-(1) The audio rate. The PSG decision of milestone 3 said never to
+(1) The audio rate. The earlier PSG decision ("PSG trigger, wave-bank and output-scale rules") said never to
 point-sample the PSG at m4a's 13379 Hz, and that is the rate the build
 runs at (`FRAME_AUDIO_SAMPLE_RATE_HZ`, so the FIFO frame mixes sample for
 sample): the corrected reasoning is that at 13379 Hz the square and noise
-channels alias into the audible band (psg.c, "RESAMPLING"). The owner
-rules: run the device at the GBA's 32768 Hz with the FIFO frame
-upsampled, as its own task after the owner has verified Windows by hand,
-with an A/B recording against the current path as its evidence.
+channels alias into the audible band (psg.c, "RESAMPLING"). Decision: run the device at the GBA's 32768 Hz with the FIFO frame
+upsampled, with an A/B recording against the current path as its evidence.
 
 (2) Headerless save files. A file without this project's header was
 loaded as a bare 32-bit native image and could be handed to the
 converter. The game's sector checksum is a sum over raw bytes, so no
 checksum or signature can tell a GBA-layout image from a native one: a
-probe is impossible, and the owner rules the legacy path out. A file
+probe is impossible, so the legacy path is ruled out. A file
 without the header is refused with a message that it looks like an
 emulator or cartridge save, that importing those is not supported yet,
 and that the file is left untouched; the converter never runs on a
@@ -1314,7 +1225,7 @@ this project's own early test saves, which have no users. Done now, as
 a data-integrity bug, with tests for an emulator save, a truncated file
 and a valid native save at each width.
 
-(3) Two instances on one save. The owner does not accept "unsupported":
+(3) Two instances on one save. "Unsupported" is not acceptable:
 with a fixed temporary name, two instances saving at once can tear the
 save, and launching the game twice is an easy way to do it. Because the
 save is atomically replaced, a lock on the save's own inode is lost at
@@ -1325,30 +1236,21 @@ nothing, only the held lock does, and the OS releases it on any exit
 including a crash. A second instance refuses to start with a message
 naming the save; test-runner mode, which writes no save, is unaffected.
 Tests: a second instance is refused, the lock survives a save, and it is
-released after the process is killed. Done as its own task after the
-Windows-runner branch merges (it owns host_file.h and host_windows.c).
+released after the process is killed. Built after the
+Windows runner work merged (it owns host_file.h and host_windows.c).
 
 (4) `src/siirtc.c`. Filtered out of the native build, the SiiRtc API
 provided from the platform layer, its guards removed and
-UPSTREAM_MODIFICATIONS.md updated: its own task after the Windows-runner
-branch merges (it owns Makefile.native).
+UPSTREAM_MODIFICATIONS.md updated: built after the Windows runner work
+merged (it owns Makefile.native).
 
-(5) The project logs. Not a `docs/log/` directory: STATUS.md, PLAN.md,
-the milestone inventory, the build-glue logs and the process-only
-DECISIONS entries move to a gitignored folder the orchestration keeps
-using, and nothing public mentions orchestrators, workers or models;
-after milestone 8 and before the repository goes public. Noted for the
-owner: earlier commits still contain these files, so a public history
-would need rewriting or a fresh start.
 
-macOS stays on hold until the owner has verified Windows by hand.
 
 ## 2026-10-14: The suite on Windows runs under MSYS2
 
 Gate (b) on Windows is expansion's own suite, through expansion's own hydra
 (`tools/mgba-rom-test-hydra`), on the Windows test runner build, with the
-per-test results equal to the Linux 64-bit build's of the same commit. The
-inventory offered three routes (`research/m8-inventory.md` 5.2, W8): (i) the
+per-test results equal to the Linux 64-bit build's of the same commit. Three routes were considered: (i) the
 hydra built under MSYS2 on the Windows runner, (ii) the Linux hydra driving
 the Windows executable through Wine on a Linux runner, (iii) a Windows-native
 driver of our own. (i) is taken.
@@ -1421,11 +1323,11 @@ What it means beyond the tests: the game too costs 1 GiB of commit while it is
 installed and has been run once, on top of what it uses. That is a property of
 the memory model on Windows (one image holding the GBA regions at their
 addresses, the code at 0x40001000; DECISIONS.md, "The ports share a thin host
-layer"), recorded here for the owner; nothing in this task changes the model.
+layer"), recorded here; the model is unchanged.
 
-## 2026-10-14: Amendment to ruling (3): the save's lock across a restart and a crash
+## 2026-10-14: The save's lock across a restart and a crash
 
-Ruling (3) as built (`platform/save_lock.h`), and the choice it left open.
+Decision (3) of "Decisions on an independent review's open questions" as built (`platform/save_lock.h`), and the choice it left open.
 
 The lock is `host_file.h`'s: `flock(LOCK_EX | LOCK_NB)` on POSIX,
 `LockFileEx(LOCKFILE_EXCLUSIVE_LOCK | LOCKFILE_FAIL_IMMEDIATELY)` over every
@@ -1502,18 +1404,17 @@ is the last thing before the process ends, so only an instance started during
 that final store could see the order; `main.c` and the POSIX test's header say
 so.
 
-## 2026-10-14: The owner's rulings from the Windows hands-on check
+## 2026-10-14: A hands-on check of the Windows build: a settings file and no console window
 
-The owner ran the Windows build from run 38648131073 by hand (boot, the
-opening, the first Pokémon, the first battle; audio and saving fine) and
-ruled on two things seen while doing it. Both are tasks after the
-audio-rate task (ruling 1 of the independent review), before macOS.
+The Windows build from run 38648131073 was run by hand (boot, the
+opening, the first Pokémon, the first battle; audio and saving fine), and
+two things seen while doing it were decided.
 
 **A settings file for the keys.** The keyboard map is a fixed table
 (`platform/input.c`: A=Z, B=X, Start=Return, Select=Backspace, L=A, R=S,
-the arrows; VisualBoyAdvance's defaults). The owner: a settings file
-beside the executable rebinds the keys. Design when the task starts; the
-owner also liked an on-screen help overlay (a key such as F1 showing the
+the arrows; VisualBoyAdvance's defaults). Decision: a settings file
+beside the executable rebinds the keys (the design came with the work);
+an on-screen help overlay is wanted too (a key such as F1 showing the
 map, the save path and the version) and a `--keys` option printing the
 map; a native menu bar was declined for now, because SDL2 has none and it
 would be three implementations (Win32, GTK, Cocoa).
@@ -1521,8 +1422,7 @@ would be three implementations (Win32, GTK, Cocoa).
 **No console window on Windows.** The executable is linked as a console
 program (`-mconsole`, `platform/target.mk`) because it prints: the test
 runner's results for the hydra, the replays' output, the refusals. Started
-from Explorer, Windows opens a console beside the game window. The owner:
-"people wont like that"; remove it. The design to try: link as a GUI
+from Explorer, Windows opens a console beside the game window. Decision: the console window goes (players would not like it). The design to try: link as a GUI
 program (`-mwindows`); attach to the parent's console when there is one
 (`AttachConsole(ATTACH_PARENT_PROCESS)` at startup, so a command prompt
 still sees the messages); otherwise write the messages to a log file
@@ -1531,15 +1431,15 @@ inherited handles and keep working. Verify each of those three on the
 runner. (Built, with changes, as recorded in "2026-10-15: No console window
 on Windows", below.)
 
-Also confirmed for the owner: the translucent oval under every overworld
+Also confirmed: the translucent oval under every overworld
 character is expansion's own default (`OW_OBJECT_VANILLA_SHADOWS FALSE`,
 `OW_SHADOW_INTENSITY 4` of 16 in `include/config/overworld.h`); the Linux
 replay screenshot shows the same.
 
-## 2026-10-14: Two adjustments from the owner to the tasks from the Windows check
+## 2026-10-14: Quit lives in the F1 overlay; the default file locations are the per-user directory
 
-Quit and the file locations, ruled by the owner after the hands-on check;
-they refine "The owner's rulings from the Windows hands-on check" above.
+Quit and the file locations, decided after the hands-on check;
+they refine "A hands-on check of the Windows build: a settings file and no console window" above.
 
 **Quit lives in the platform's F1 overlay, not in the game's Start menu.**
 Adding it to the Start menu would be another patch to expansion's code,
@@ -1551,26 +1451,17 @@ defaults to the bare relative path `pokeemerald.sav` (`OPTIONS_DEFAULT_SAVE_PATH
 so it depends on the working directory: a shortcut or a different launch
 folder silently starts a fresh game; and a folder beside the executable may
 not be writable (Program Files; a 64-bit process gets no write
-virtualization). The owner rules: the save, the RTC offset file and the new
+virtualization). Decision: the save, the RTC offset file and the new
 settings file default to the per-user directory SDL_GetPrefPath gives; the
 executable's directory is used instead only when a settings file already
 exists there (portable mode); explicit `--save` and `--rtc-offset` paths
 still win. The F1 overlay and the `--keys` output show the active paths.
-Both modes are documented in BUILDING.md or a short docs/RUNNING.md. For the
-owner: the saves from the builds of 2026-10-14 live in the launch directory
+Both modes are documented in BUILDING.md or a short docs/RUNNING.md. Note: the saves from the builds of 2026-10-14 live in the launch directory
 and will need moving once, by hand, to the per-user directory.
 
-## 2026-10-14: Two standing orders from the owner: documentation as a gate, and a release pipeline without a public release
+## 2026-10-14: A release pipeline without a public release
 
-**Documentation is gated like code.** After each task lands, README and
-every public document must reflect the current state: Windows supported and
-hand-verified, how to run on each OS, the settings file and portable mode,
-the save and settings locations, the F1 overlay and `--keys`, the Quit path,
-and macOS once it exists; anything stale is removed (README's "Windows ...
-no replay or suite run has happened there yet" and "macOS: not attempted"
-are the first). A short docs/RUNNING.md is for players, as opposed to
-BUILDING.md for builders. A branch is not mergeable with stale public
-documents, and the reviewer checks them (PLAN.md "Worker protocol").
+
 
 **A release pipeline, not a public release.** A `workflow_dispatch` release
 workflow builds the Linux 64-bit tarball and the Windows 64-bit zip (the
@@ -1579,8 +1470,8 @@ generates SHA-256 sums, attaches GitHub artifact attestations
 (actions/attest-build-provenance) so anyone can verify the files came from
 CI and a named commit, and publishes to a GitHub release only when run with
 an explicit `publish` input; without it the artifacts stay on the workflow
-run for the owner's own testing. No public release and no tag is created by
-anyone but the owner. Built and dispatched once on 2026-10-15 (run
+run for testing. No public release and no tag is created without an explicit
+decision to publish. Built and dispatched once on 2026-10-15 (run
 38660260570, publish off): the archives and sums are right; the attestation
 step fails on a user-owned private repository ("Feature not available ...
 please make this repository public") and needs no change once it is public.
@@ -1590,8 +1481,7 @@ assets, so a public release is legally the same as distributing a ROM,
 which README says this project does not do and which every decomp project
 avoids. The default plan is source-only distribution with a one-command
 build per OS (BUILDING.md, with a verified script); a public release
-happens only on the owner's explicit instruction after that note (STATUS.md
-carries it).
+happens only on an explicit decision to publish.
 
 **Code signing is not done.** It costs money and is needed only for a public
 Windows release (SmartScreen's "Windows protected your PC" on an unsigned,
@@ -1601,7 +1491,7 @@ that MinGW-built executables draw false positives from some engines.
 
 ## 2026-10-14: The settings file, the data directory and the F1 overlay
 
-The owner's rulings from the Windows hands-on check (a settings file for the
+The result of the Windows hands-on check (a settings file for the
 keys, an overlay with the map, the save path and the version, `--keys`) with
 the two adjustments (the files in the per-user directory with a portable
 mode; Quit in the platform's overlay), as built. The player's account is
@@ -1612,7 +1502,7 @@ mode; Quit in the platform's overlay), as built. The player's account is
 "pokeemerald-native")`: `~/.local/share/pokeemerald-expansion-native/pokeemerald-native/`
 on Linux (or under `$XDG_DATA_HOME`), `%APPDATA%\pokeemerald-expansion-native\pokeemerald-native\`
 on Windows, `~/Library/Application Support/pokeemerald-expansion-native/pokeemerald-native/`
-on macOS. The application is the executable's name, as ruled. SDL asks for an
+on macOS. The application is the executable's name, as decided. SDL asks for an
 organisation too, and its header documents no empty one (the behaviour of
 `""` on Windows and macOS is not written anywhere SDL 2 promises), so it gets
 a name: the project's own, which claims nothing on behalf of pret or
@@ -1670,7 +1560,7 @@ characters; `--keys` prints everything). Quit is the window-close path: the fram
 stores the save only if the game wrote one and it is pending, as at any exit,
 stops the modules and releases the lock; the platform writes nothing of its
 own. The game's Start menu is not touched. While the overlay is shown the
-game keeps running, as ruled, and KEYINPUT reads every button released,
+game keeps running, as decided, and KEYINPUT reads every button released,
 from the keyboard, a controller or a script alike: the keys are the overlay's
 then, so F1, Q (which may be a button's key) or anything pressed while
 reading never reaches the game, and nothing is half-pressed when it closes.
@@ -1710,7 +1600,7 @@ sequences to the terminal.
 without git. The match is needed because the history carries expansion's
 tags (`expansion/1.10.0`, `1.11.0`), after which plain `git describe` would
 name the build (`expansion/1.10.0-5060-g...`, read as expansion 1.10.0); it
-takes a release tag of this project's own if the owner makes one named
+takes a release tag of this project's own if one is made, named
 `v...`, else the abbreviated commit. It is defined for `version.c` alone and
 rebuilt only when it changes (`platform/Makefile`, `version.txt`), so that
 ccache still serves every other object after a commit.
@@ -1744,45 +1634,9 @@ unit-tested); SDL's per-user directory on Windows, which a gate may not
 create; and the portable smoke's run on Windows, which the Windows runner
 does next.
 
-## 2026-10-15: Fast-forward, Steam Deck and native Apple silicon (the owner's additions)
-
-The owner added three items to the plan on 2026-10-15 (PLAN.md "Milestone
-8 plan", items (g), (h) and (i) have the full text).
-
-**Fast-forward** joins the settings-and-overlay work as the next task: a
-hold key (Tab) and a toggle key (Shift+Tab), both rebindable; the speed a
-setting (2x default; 2, 3, 4, unlimited); the frame pacer alone implements
-it, so the game's logic, the replays, saving and the test runner do not
-change and the RTC keeps following host time; audio plays sped up as mGBA
-and VisualBoyAdvance do, with a setting to mute instead; an indicator with
-the multiplier; the overlay, `--keys` and RUNNING list it; tests for the
-pacer at each multiplier, release on key-up and focus loss, the toggle's
-persistence, and the audio queue's bound.
-
-**Steam Deck**, after macOS x86_64, is the Linux 64-bit build with the
-handheld experience on top (controller bindings for everything, fullscreen
-by default on a Deck, a self-contained package for a non-Steam game in the
-home directory), with a hand-verification checklist for the owner since
-no CI runs on Deck hardware.
-
-**Native Apple silicon: a spike, not a port.** Why: the inventory
-(research/m8-inventory.md) found that arm64 macOS cannot keep the fixed
-GBA address layout the Linux, Windows and x86_64 macOS builds rely on (the
-image is always slid, __PAGEZERO covers the low addresses, and arm64's
-division by zero does not fault, which the divide-error trap depends on),
-so the real port is a different design whose size is unknown. The owner's
-rule: do not start the port; after the x86_64 macOS build is done, run a
-time-boxed feasibility spike on a GitHub arm64 macOS runner that answers
-three questions with measured probes (the regions at fixed addresses at
-runtime; the code reaching those addresses from a slid image; the
-replacement for the divide-error trap), each with a size estimate and a
-recommendation, in a document rather than code to keep, and then stop and
-put it in front of the owner. macOS x86_64 under Rosetta remains the
-shipped macOS build (the earlier macOS decision).
-
 ## 2026-10-15: Fast-forward in the frame pacer: the keys, the speed, the sound and the indicator
 
-The owner's item (g) (PLAN.md "Milestone 8 plan"), as built. The player's
+The fast-forward feature, as built. The player's
 account is `docs/RUNNING.md` "Fast-forward"; the modules are
 `platform/fastforward.h`, `frame_pacer.h` and `sound_speedup.h`.
 
@@ -1915,9 +1769,8 @@ depth is measured on SDL's dummy audio device.
 
 ## 2026-10-15: No console window on Windows: the game is a GUI program and prints to what it was given, to the parent's console, or to a log
 
-The owner's ruling "people wont like that" (the console beside the game
-when started from Explorer) is built as the design recorded in "The
-owner's rulings from the Windows hands-on check", with the details below.
+The decision that the console beside the game when started from Explorer
+goes is built as the design recorded in "A hands-on check of the Windows build: a settings file and no console window", with the details below.
 
 **As built.** The game and the test-runner build link with `-mwindows`
 (`GUI_LDFLAGS` in `platform/target.mk`; subsystem "Windows GUI", PE
@@ -1941,11 +1794,11 @@ inherited console handle that is not attached are "none"), and
 | both none | no | LOG | `pokeemerald.log` in the data directory |
 
 Every other OS reports both streams as given, so nothing changes there. The
-case of one stream given and one none is not in the brief: a prompt running
+case of one stream given and one none was not specified: a prompt running
 `game.exe > out.txt` passes the file for stdout and perhaps nothing for
 stderr, and the refusals are on stderr, so the missing stream is mended on
 the console rather than lost, and without a console it goes to the log (the
-first version left it unwritten, which the review of this task found could
+first version left it unwritten, which a review found could
 hide a refusal with a non-zero exit and no trace). No message box in that
 row: a stream is given, so someone reads it.
 
@@ -2016,7 +1869,7 @@ the parent has a console and the streams then write on it, that it is refused
 when the parent has none, and that a process with no handles and no console
 logs through `stdout`, `stderr` and a raw handler-style write to stderr's handle, all five lines surviving in order, and that a crash report reaches a log opened on stderr alone.
 
-**Only the owner can check by hand**: a double-click on `pokeemerald-native.exe`
+**Only a person at a Windows desktop can check**: a double-click on `pokeemerald-native.exe`
 shows no console window and leaves `pokeemerald.log` (in
 `%APPDATA%\pokeemerald-expansion-native\pokeemerald-native\`); `cmd.exe` and
 PowerShell print `--keys` and `--version` on their own console (the prompt
@@ -2028,7 +1881,7 @@ harness with pipes, never in LOG mode.
 
 ## 2026-10-15: macOS CI runs on macos-15-intel only, and GitHub's x86_64 macOS runners end in fall 2027
 
-The owner's facts for the macOS work (the night brief of 2026-10-15): GitHub
+The facts for the macOS work: GitHub
 retired the `macos-13` image in December 2025; `macos-14` is in brownouts in
 October 2026 and retires on November 2, 2026; `macos-15-intel` is the last
 x86_64 macOS image, and GitHub ends x86_64 macOS runners altogether when the
@@ -2041,7 +1894,7 @@ Rosetta 2 on an arm64 runner (probe M0 measured the x86_64 layout under
 Rosetta: 61 of 61 checks, 100 of 100 starts), but only as long as Rosetta
 itself is there, and Apple keeps Rosetta generally available only through
 macOS 27 ("macOS ships as x86_64 under Rosetta" above). Both horizons fall
-around 2027, so the native Apple-silicon question (PLAN.md item (i), the
+around 2027, so the native Apple-silicon question (the
 spike) is no longer about speed on newer Macs: it decides whether macOS stays
 supported and tested after 2027 at all. The spike's report weighs it so.
 
@@ -2059,7 +1912,7 @@ Apple-silicon decision ("macOS ships as x86_64 under Rosetta").
 
 ## 2026-10-15: Steam Deck: controller functions, fullscreen and the package
 
-The owner's item (h) (PLAN.md "Milestone 8 plan"), as built. The Deck is the
+The Steam Deck work, as built. The Deck is the
 Linux 64-bit build, so this is the handheld experience on top of it. The
 player's account is `docs/RUNNING.md` "Steam Deck", "Fullscreen" and the
 controller table under "Keys".
@@ -2074,8 +1927,8 @@ what the GBA layout leaves free:
 
 | Function | Default | Why |
 |---|---|---|
-| fast-forward hold | right trigger | the owner's suggestion; a held function suits a trigger, pulled past about half travel |
-| fast-forward toggle | right stick click | the owner's suggestion; a click is a deliberate switch |
+| fast-forward hold | right trigger | a held function suits a trigger, pulled past about half travel |
+| fast-forward toggle | right stick click | a click is a deliberate switch |
 | help overlay | Y | the one face button the GBA layout does not use |
 | overlay close | B | B is "back"; closing is backing out |
 | overlay quit | X | the other free face button; shown only in the overlay, so no accident in play |
@@ -2115,15 +1968,14 @@ never exists in replays).
 not); a Deck starts in desktop fullscreen (`SDL_WINDOW_FULLSCREEN_DESKTOP`:
 the screen's own resolution, no mode change) under the existing logical size,
 integer scale and letterbox. F11 (rebindable, `fullscreen_toggle`) and the
-left trigger toggle it for everyone. I **added** `fullscreen = auto|yes|no`
-(auto, the default, is the Deck rule), because without it a Deck player who
-prefers a window would have to toggle on every launch, and the brief allowed
-the setting for that reason; it also lets a desktop player start fullscreen.
+left trigger toggle it for everyone. The setting `fullscreen = auto|yes|no`
+(auto, the default, is the Deck rule) was added because without it a Deck player who
+prefers a window would have to toggle on every launch; it also lets a desktop player start fullscreen.
 Fullscreen and the controller start only for runs with a player at the
 keyboard (`player_at_keyboard`), so `SteamDeck=1` changes nothing in a
 replay, a gate or the test runner (checked below).
 
-**The package.** The owner's item (h) asks for a self-contained package
+**The package.** The Deck work calls for a self-contained package
 (binary, SDL2, licences, launcher script), so the Linux tarball now holds the
 executable, `pokeemerald-native.sh`, `libSDL2-2.0.so.0` (the file the release
 job's executable resolves, copied under its soname with `cp --dereference`,
@@ -2143,14 +1995,13 @@ libXfixes, libXrandr, libXss, libdrm, libgbm, libwayland-egl,
 libwayland-client, libwayland-cursor, libxkbcommon, libdecor). The floor
 rises from 2.34 to 2.38 by bundling; a SteamOS 3.8 Deck reports glibc 2.41
 (https://forum.godotengine.org/t/steam-deck-cant-launch-linux-build-due-to-outdated-glibc-version-build-targeting-newer-glibc-version/143218),
-which meets it; I found no source for older SteamOS releases or for the
+which meets it; no source was found for older SteamOS releases or for the
 system libraries on a Deck, which the checklist covers. The CI image is
 unchanged: the requirement is met on the current Deck.
 
-**Tests, and the order.** The code was written before its tests, against the
-night's test-first rule; to show the tests are not decoration, every new test
+**Tests, and the order.** The code was written before its tests, against the test-first rule; to show the tests are not decoration, every new test
 was run against a mutant of the code and failed there. 54 mutants, and every
-new test failed against at least one of them: the five the brief names (hold
+new test failed against at least one of them: the five named in the specification (hold
 not released on removal: `removing_a_controller_releases_what_it_held`,
 `a_controller_removed_while_the_hold_is_down_ends_the_hold` and the frame
 test `the_right_trigger_fast_forwards_while_squeezed_and_the_pull_of_the_cable_ends_it`;
@@ -2168,10 +2019,9 @@ test that fails first: the latch (`the_b_that_closes_the_overlay_in_the_same_pol
 fails against the first version, and the loop-order frame test
 `the_b_that_closes_the_overlay_is_not_read_by_the_game_until_it_is_let_go`) and
 the fullscreen button firing on release too
-(`letting_go_of_the_fullscreen_button_does_not_toggle_again`). The harness is the scratchpad's `mutate.py`.
+(`letting_go_of_the_fullscreen_button_does_not_toggle_again`). The harness was a small mutation script, not kept.
 
-**Only the owner can check, on a Deck** (the list is in docs/STATUS.md, "Needs
-the owner" (2b); RUNNING.md "Steam Deck" is the procedure): that the launcher starts the
+**Only a person with a Deck can check** (RUNNING.md "Steam Deck" is the procedure): that the launcher starts the
 game with the bundled SDL2 (`LD_DEBUG=libs` shows it) and the system libraries
 the SDL2 needs are there; that the game starts fullscreen in Game Mode at 1280x800 with the
 picture at 5x, black bars; that the right trigger, the stick click, Y, B, X and
@@ -2608,7 +2458,7 @@ fixed image; and `ld -r` joining a test object's C and its converted scripts.
 ## 2026-10-15: Native Apple silicon: the spike's findings
 
 **The answer.** A sliding build for arm64 macOS is feasible without editing any
-of expansion's headers (or any other expansion file beyond what work/macos
+of expansion's headers (or any other expansion file beyond what the macOS x86_64 port
 already carries), but not by redefining addresses in headers: the regions can
 never be at the GBA addresses on arm64, so the build treats every 32-bit
 address in the game as an offset in one window at 4 GiB or above that holds
@@ -2616,22 +2466,20 @@ the regions and the image at their Linux addresses, rewrites expansion's
 compiled code at build time with two LLVM IR filters (integer/pointer
 conversions; division), both prototyped and measured here, and links the
 window as one image, which three runner probes must confirm; it costs about 7
-to 9 worker tasks (about 1,500 new lines on top of work/macos), and I recommend
-the Linux half now, as a bounded experiment with a stop gate, and the arm64
+to 9 tasks (about 1,500 new lines on top of the macOS x86_64 work), and the recommendation is
+the Linux half first, as a bounded experiment with a stop gate, and the arm64
 half only if macOS is to stay supported after 2027. The mechanism is proven
 here on expansion's own headers and idioms and on the compiled IR of every
 src/*.c, not yet on the whole running game, which is the first step of the
 plan.
 
 Everything below was measured on this machine on 2026-10-15 unless it names a
-run. The probes are on branch work/spike (unmerged, kept on origin;
-commits 7a968e0964, 4e4399105a and b55d33ef3b), in `research/probes/arm64_spike/`, with their
-outputs in `results/`; nothing there is meant to merge. Runners: none
-(GitHub Actions refuses every job on this account since about 03:40 local), so
+run. The probes are in commits 7a968e0964, 4e4399105a and b55d33ef3b on the branch work/spike (not merged), in a directory `arm64_spike/` with their
+outputs in `results/`; they are not part of this tree. No runner was available, so
 the arm64 macOS facts come from probe M0's runs and from XNU's source.
 
 To reproduce, from the repository root after `make -f Makefile.native -j16
-native BITS=64`, with `P=research/probes/arm64_spike` and S a scratch directory:
+native BITS=64`, with `P` the probes' directory `arm64_spike/` and S a scratch directory:
 
     $P/build_div.sh && python3 -I $P/compare_div.py            # question 3
     $P/divfilter/run_test.sh                                    # division filter test
@@ -2673,8 +2521,7 @@ runner.** XNU's source (apple-oss-distributions/xnu, main at f6217f891a,
   0x02000000 and 0x04000000 fails with ENOMEM under the default page zero
   (A:302-306). A binary linked with `-pagezero_size 0x1000` (rounded up to
   0x4000, A:308) is killed at start, status 137, in 100 of 100 runs (A:412).
-  In the second iteration (runs 37923542701 and 37925659422,
-  research/probes/README.md) every arm64 fixed-address layout link was
+  In the second iteration (runs 37923542701 and 37925659422 of the loader probes) every arm64 fixed-address layout link was
   refused ("-no_pie ignored for arm64"; the debug page's 0x04FFF000 is not on a
   16 KiB page), and `mapfixed` succeeded in 0 of 100 runs.
 - What the same source allows: the same layout 4 GiB higher. That is the
@@ -2730,7 +2577,7 @@ dies calling the function (SIGSEGV, status 139).
 
 Over every src/*.c (`rebase/all_rebase.sh`), the filtered IR compiles at -O2
 for x86_64 and for aarch64 in 765 of 767 cases. Both failures are libisagbprn.c's
-inline `.hword 0xEFFF`, which work/macos's `c_filter_macho.sed` already
+inline `.hword 0xEFFF`, which the macOS x86_64 port's `c_filter_macho.sed` already
 rewrites. clang makes no aarch64 IR for `src/script.c`: `__builtin_setjmp` (633,
 677, 714) is unsupported on AArch64. That needs a C-filter rule to `setjmp` with
 a `jmp_buf` (the buffer is `intptr_t breakTo[5]`, `script.c:611`), not a header.
@@ -2817,19 +2664,19 @@ divisor in C (1 call in src, `librfu_rfu.c:470`).
 
 **Cost.**
 
-- P0: four runner probes, one probes.yml job, under a minute each on
-  macos-latest (billed at 10x).
+- P0: four runner probes, one workflow job, under a minute each on
+  macos-latest.
 - P1 (Linux, no runner), 3 to 4 tasks: the window model on Linux x86_64 with
   B = 2^32, the twin of the arm64 layout. It covers the filters as build glue,
   expansion's C through clang, the words as offsets, the linker scripts 2^32
   higher and the platform's boundary, with every Linux gate run in that mode.
 - P2 (arm64 macOS), 3 to 4 tasks: the Mach-O arm64 link, the arm64 host
   pieces (fault context for crash_reboot, an AArch64 stack switch in place of
-  work/macos's 154-line x86_64 `host_macos_stack.c`), SDL2, a macos-latest CI
+  the macOS x86_64 port's 154-line `host_macos_stack.c`), SDL2, a macos-latest CI
   job, packaging.
-- Total: 7 to 9 tasks, about 1,500 new lines on top of work/macos (work/macos at
+- Total: 7 to 9 tasks, about 1,500 new lines on top of the macOS x86_64 port (which at
   c8cd418835 is itself 5,813 added lines in 72 files, `git diff --shortstat
-  main...work/macos`). No expansion file changes; the two clang cases above are
+  main...work/macos` at the time). No expansion file changes; the two clang cases above are
   C-filter rules.
 - What could raise it:
   - A pointer moved through memory as a 32-bit integer (a type pun) is
@@ -2860,24 +2707,24 @@ If A1 and A2 both fail, the regions can still be reserved at run time (mmap is
 free above 4 GiB), but nothing puts the image at B + 0x40000000. Code and data
 addresses would then not be window offsets, and the port stops there.
 
-**Recommendation.** P1 first, once work/macos has merged and well before the
+**Recommendation.** P1 first, well before the
 2027 horizons ("macOS CI runs on macos-15-intel only" above). It needs no
 runner and no Apple hardware, and it decides the expansion side: if the replays
-and the suite pass with B = 2^32 on Linux, the code side is done. P0 when Actions
-is back (minutes). P2 only if macOS is to stay supported and tested after 2027.
+and the suite pass with B = 2^32 on Linux, the code side is done. P0 when a macOS runner
+is available (minutes). P2 only if macOS is to stay supported and tested after 2027.
 Otherwise stop here, and ship x86_64 under Rosetta until macOS 27.
 
-**What the owner must decide.**
+**Open questions.**
 
 1. Whether macOS should stay supported after 2027. If not, nothing more is done.
 2. Whether the arm64 build may rewrite expansion's compiled code instead of
-   editing it. No expansion file changes, but at build time the meaning of
+   editing it (decided: it may, "The arm64 build rewrites expansion's compiled code, on two conditions"). No expansion file changes, but at build time the meaning of
    about 2,300 integer/pointer conversions and 424 divisions changes. The
    alternative is about 500 guarded source edits, against the modification
    policy's preference.
 3. W-a (keeps ASLR) or W-b (the game re-spawned without ASLR), once A1 and A2
    have run.
-4. The macos-latest minutes, billed at 10x, once Actions is paid again.
+
 
 **Not settled in the time.** The whole game in the window model (P1). The
 filters' cost in frame time. Everything that needs ld64 or the arm64 loader
@@ -2887,49 +2734,35 @@ they do not recognise, so a mismatch is a build failure and not a wrong game.
 The platform layer and SDL2 built for arm64 (there is no aarch64 sysroot
 here).
 
-## 2026-10-15: The owner's rulings of the morning after the night run
+## 2026-10-15: Fast-forward focus loss, the 65536 Hz audio grid, the macOS signature and the arm64 rewrite
 
-Asked one at a time on the morning of 2026-10-15, with the night's findings
-(STATUS.md, "Needs the owner"):
+Four decisions of 2026-10-15.
 
-1. **CI stays off for now.** GitHub Actions refuses every job since 03:40
-   (billing); the owner leaves it so. The local gate before every merge
-   stays the full check. The macOS x86_64 branch (work/macos) stays unmerged
-   until its first runs on `macos-15-intel` are green, which needs Actions
-   back; nothing depends on it in the meantime.
-2. **Fast-forward's toggle ends on focus loss**, as the hold does: a game
+1. **Fast-forward's toggle ends on focus loss**, as the hold does: a game
    toggled to fast-forward and left in the background would otherwise run
    at full speed unseen (at `unlimited`, a busy core; on a Deck, the
-   battery). The owner's specification of 2026-10-15 named only the hold;
-   this extends it.
-   Not implemented: the owner stopped all new tasks the same morning; it
-   waits for a later session.
-3. **macOS after 2027: decided later.** No Apple-silicon work (P0, P1 or
-   P2 of PLAN.md, "Native Apple silicon: what a port would take") starts
-   until the owner says so in a later session; the spike report is the end
-   of that thread for now (amended the same morning; it first said the
-   Linux half would run when convenient).
-4. **The Apple-silicon build may rewrite expansion's compiled code at build
-   time** (the spike's two IR filters) instead of some 500 guarded source
-   edits, with two conditions: the entry below, "The arm64 build rewrites
-   expansion's compiled code, on two conditions", is the ruling in full.
-5. **The audio grid moves to 65536 Hz**, the rate Emerald itself selects
+   battery). The first specification named only the hold; this extends it.
+   Not implemented yet.
+2. **The audio grid moves to 65536 Hz**, the rate Emerald itself selects
    (SOUNDBIAS mode 1 in `SoundInit`, the engine's "PWM rate = 65536 Hz"),
-   superseding the 32768 Hz of ruling (1) of 2026-10-14, with an A/B
-   recording against the current build as the evidence. Not implemented:
-   stopped with the other new tasks the same morning; a later session.
-6. **The macOS package keeps its ad-hoc signature** (`codesign -s -`, no
+   superseding the 32768 Hz of decision (1) of "Decisions on an independent
+   review's open questions", with an A/B recording against the current
+   build as the evidence. Not implemented yet.
+3. **The macOS package keeps its ad-hoc signature** (`codesign -s -`, no
    identity, no account): the library path rewrite breaks the bundled
    libraries' signatures and an ad-hoc one keeps them loadable; Gatekeeper
    treats the archive as unsigned all the same, and no Developer ID or
    notarization is used.
-7. The stray per-user directory a review mutant created on the build
-   machine was deleted with the owner's approval.
+4. **The Apple-silicon build may rewrite expansion's compiled code at build
+   time** (the spike's two IR filters) instead of some 500 guarded source
+   edits, with two conditions: the entry below, "The arm64 build rewrites
+   expansion's compiled code, on two conditions", is the decision in full.
+   No Apple-silicon work is scheduled.
 
 ## 2026-10-15: The arm64 build rewrites expansion's compiled code, on two conditions
 
-The owner's ruling on question 2 of the Apple-silicon spike ("Native Apple
-silicon: the spike's findings", "What the owner must decide"): the arm64
+The decision on question 2 of the Apple-silicon spike ("Native Apple
+silicon: the spike's findings", "Open questions"): the arm64
 build may rewrite expansion's compiled code at build time with the two IR
 filters the spike prototyped, the conversion filter (an integer made into
 a pointer gets the window base added, a pointer made into an integer
@@ -2943,11 +2776,11 @@ recognise, so a compiler change is a build failure and never a wrong game;
 and the division results must be rewritten regardless, since arm64 has no
 divide trap and its results for a zero divisor differ from libgcc's.
 
-Two conditions are part of the ruling.
+Two conditions are part of the decision.
 
 First, the shipping Linux and Windows builds stay on the fixed-address
 memory model exactly as they are. The window-mode build on Linux with the
-base at 2^32 (PLAN.md, P1) is a gate for the arm64 work and a twin of the
+base at 2^32 (P1 of the spike's recommendation) is a gate for the arm64 work and a twin of the
 arm64 layout, never a replacement for the build players run or for the
 per-push and nightly gates that exist. No fixed-address code path is
 removed or made conditional in service of the window model; code the two
@@ -2969,8 +2802,7 @@ ARCHITECTURE.md for a reader who has never seen LLVM IR; the division
 helper's results are tested against
 platform/arm_division_libgcc/libgcc_division.txt in full, every row.
 
-This starts nothing. No Apple-silicon work starts until the owner says so
-in a later session; the ruling fixes only how P1 is built if it is ever
+This starts nothing. No Apple-silicon work is scheduled; the decision fixes only how P1 is built if it is ever
 scheduled.
 
 ## 2026-10-15: No workflow uploads the game
@@ -2979,12 +2811,12 @@ The repository goes public soon, as source only. On a public repository
 every workflow artifact is downloadable by any logged-in GitHub user, and a
 built executable (the game, the test runner, any archive of either)
 contains the complete game's assets, which this project never distributes
-(README; "Why no public release" above). The owner's rule: **no workflow
+(README; "Why no public release" above). The rule: **no workflow
 uploads the game or any part of it, at any retention, for any length of
 time.** Game-bearing: the game, the test runner, any archive of either, any
 save, data file or output directory containing expansion's assets or a
 binary (an executable). Not game-bearing: logs, suite results, text
-outputs, probe output with no game content, and (owner's adjustment, the
+outputs, probe output with no game content, and (an adjustment the
 same day) the frame images and the save and clock files of the replay,
 smoke and save gates: a frame image and a save are not a playable build, and
 they are how a red replay or save gate is diagnosed. (The first design of this rule,
@@ -3023,7 +2855,7 @@ never an executable, shared library, object, archive or any other binary.
 | windows.yml `cross-os-save-outputs`, `compare-outputs`, `windows-logs-before-the-suite` | `out/` by extension | no | removed with their jobs; the Windows job's own `windows-logs` (failure only) covers them |
 | windows.yml `windows-logs` (failure only) | the unit tests' `*.log` and `out/**/*.EXT` | no | the same patterns as native.yml's, one per line |
 | release.yml `linux-archive`, `windows-archive`, `release-files` | the tarball, the zip, the sums | yes | uploaded only with `publish` (the explicit input; a run without it uploads nothing, checked below), one day, deleted by `cleanup`, which now runs only with `publish`; the release is the publication |
-| probes.yml `probe-*-layout` | `research/probes/*/out/*.txt` | no | unchanged: reports and run logs are text; the probes' executables in the same `out/` do not match |
+| the loader-probe workflow (removed from the tree afterwards) | its `out/*.txt` | no | unchanged: reports and run logs are text; the probes' executables in the same `out/` do not match |
 
 **The Windows job builds its own game.** windows.yml is now three jobs:
 `linux-suite` (unchanged; its log is uploaded), `windows` and `compare`
@@ -3051,14 +2883,14 @@ a WSL distribution on the Windows runner. The choice, and why:
   Its README says WSL 1 has been enabled on the Windows images since
   windows-2019 and WSL 2 is also available since windows-2022 (its default is
   2).
-- **WSL 2, explicitly, and no fallback (owner's ruling).** The job sets
+- **WSL 2, explicitly, and no fallback.** The job sets
   `wsl-version: 2` and a step fails the job unless the kernel is WSL 2's
   (`microsoft-standard-WSL2` in `/proc/sys/kernel/osrelease`). It never
   falls back to WSL 1: the fixed-address Linux game (regions mapped with
   `MAP_FIXED` below 4 GiB, a restart through `/proc/self/exe`) must not be
   judged under WSL 1's syscall translation layer, which would say nothing
   about Linux. If a runner has no WSL 2 the job is red and says so.
-- **The Linux file system only (owner's ruling).** The checkout itself
+- **The Linux file system only.** The checkout itself
   happens in WSL: `git init`, then a fetch of exactly `${{ github.sha }}`
   (depth 1) into `~/work` with the job's token (`contents: read`, passed
   through `WSLENV` and sent as an HTTP header for that one command with
@@ -3080,8 +2912,8 @@ a WSL distribution on the Windows runner. The choice, and why:
   TARGET_OS=windows TEST=1`. The tree is the fetch above. The `.exe`s and
   `SDL2.dll` are copied to the Windows file system of the same job, where
   the Windows steps (Git Bash, pwsh, MSYS2) run unchanged.
-- **Time.** The owner expects the Windows run to grow from about 12 to about
-  30 minutes, and accepts it: the three Linux builds (the Linux game, the
+- **Time.** The Windows run is expected to grow from about 12 to about
+  30 minutes, which is accepted: the three Linux builds (the Linux game, the
   Windows game, the Windows test runner; 7, 8 and 8.5 minutes warm on
   Linux runners) now run one after another in the Windows job, with the WSL
   install (about 1 to 2 minutes with the action's cache) and the apt
@@ -3101,7 +2933,7 @@ a WSL distribution on the Windows runner. The choice, and why:
   `.sav` and `.rtc`, named one by one, with text) between jobs, which this
   rule allows and this design does not need.
 
-**Caches (the owner's ruling).** Caches may hold compiled objects, converted
+**Caches.** Caches may hold compiled objects, converted
 assets and ccache data in every workflow, the Windows one included, and
 never a linked game, a test runner, or an archive of either. native.yml's
 caches stay as they are (the tools, ccache, the converted assets); the
@@ -3111,8 +2943,8 @@ The reason: a cache is not downloadable by the public; the converted assets
 derive from source files that are public in the repository anyway; and the
 legal line is a playable build, not its intermediate pieces. The one path to
 a cache is a pull-request workflow run from a fork, which the repository's
-setting "Require approval for all external contributors" closes; the owner
-sets it before the repository goes public. The Windows job caches no tools
+setting "Require approval for all external contributors" closes; it
+is set before the repository goes public. The Windows job caches no tools
 (they are built in WSL's home each run, about a minute) so that no tool
 built for one environment is restored into the other.
 
@@ -3161,10 +2993,9 @@ attestations, `publish` creates the release, and `cleanup` deletes the
 artifacts. `cleanup` and `.github/actions/delete-run-artifacts` stay for
 this path only (the upload that remains is the one that is the
 publication's means); windows.yml's cleanup job is gone, since it has
-nothing to delete. native.yml and probes.yml never had one.
+nothing to delete. native.yml never had one.
 
-**Not run.** Actions refuses every job for billing, so none of this could be
-run on a runner when it was written; it was checked by running the make
+**Not run.** None of this had run on a runner when it was written; it was checked by running the make
 commands the Windows job runs (the Linux cross-build, the unit tests, the
 TEST=1 build), the new check and its self-test, the platform gate, by
 parsing each workflow as YAML, and by reading. The first runs must show, in

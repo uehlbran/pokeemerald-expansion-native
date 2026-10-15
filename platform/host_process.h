@@ -11,7 +11,7 @@
  * host_posix.c), and _exit. On Windows (host_windows.c), which has no exec:
  * GetModuleFileNameW for the path, and for the restart CreateProcessW of the
  * same file as a child, a wait for it, and TerminateProcess with its status
- * (research/m8-inventory.md, 1.2 rows 9, 10 and 20); TerminateProcess to end.
+ * (the Windows counterparts of fork, exec and _exit); TerminateProcess to end.
  */
 #ifndef PLATFORM_HOST_PROCESS_H
 #define PLATFORM_HOST_PROCESS_H

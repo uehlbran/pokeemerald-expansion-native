@@ -213,6 +213,25 @@ is 64 for them. A conversion and check of everything takes about 6 s per target 
 `-j32`. Their self-tests, in `make -C platform glue-test` and so in the gate, assemble
 small objects with GNU as and with clang, so the gate needs both.
 
+What the conversion was measured to do at expansion 1.17.1. All 544 objects
+convert, and the object clang writes from each listing equals the ELF one,
+for both targets. The listings hold 298,550 symbols against the ELF objects'
+298,581: 25 undefined symbols that no relocation names (C enum constants the
+preprocessor leaves as names) and 6 that only the 8 sixteen-bit words named
+are left out. Of the 257,908 absolute symbols (mostly local constants) all
+are written local, because 7,930 global ones are defined in more than one
+object and a Mach-O linker may refuse that; no 8- or 4-byte word names one.
+25,753 of the 61,154 address words name a section symbol in the ELF object,
+which the listing names as the label at or before the target plus an addend.
+One label lies inside a relocated word (`keysplit_piano`), written as
+`.set _keysplit_piano, . - 4`, which clang makes an `N_ALT_ENTRY` symbol on
+Mach-O. No COFF section comes near the 65,535-relocation limit (the most is
+18,123, in `event_scripts.o`'s `script_data`). Why a converter at all: the
+filtered text carries 28,982 `.size` lines, which clang rejects, and clang's
+assembler gives 18,634 errors (COFF) and 20,134 (Mach-O) on `event_scripts.s`
+alone.
+
+
 ```
 make -f Makefile.native -j32 data-flat TARGET=macho-x86_64    # or TARGET=coff-x86_64
 make -f Makefile.native -j32 check-flat TARGET=macho-x86_64
@@ -271,14 +290,14 @@ replay's outputs; the sanitized replays are run with
 
 | Gate | What it checks | Command |
 |---|---|---|
-| (a) | the native build from a clean clone with the prerequisites above (before a milestone is declared done) | `make -f Makefile.native -j"$(nproc)" native BITS=32`, then `BITS=64` |
+| (a) | the native build from a clean clone with the prerequisites above (before a release or a large change is declared done) | `make -f Makefile.native -j"$(nproc)" native BITS=32`, then `BITS=64` |
 | platform | style, lint, the sanitized unit tests at both widths, ThreadSanitizer, the tools and glue self-tests | `make -C platform gate` |
 | (b) | expansion's test suite on the native build equals the GBA baseline, per test, but for the nine benchmarks (assumption failures by decision); the same at both widths | `make -f Makefile.native -j32 check BITS=32`, `BITS=64`, and each with `SANITIZE=1` |
 | (c) | the GBA target builds, its ROM is unchanged (sha1 `e2d4600d4e7b1269ac50c28bc96ece2b758ded9e` for 1.17.1) and its suite equals the baseline | `make -j"$(nproc)"`, `sha1sum pokeemerald.gba`, then `make -j"$(nproc)" check`, whose totals must be 5862 total, 5414 passed, 18 known failing, 9 expected failing, 421 to-do, rc 0 (`docs/research/gba-baseline-1.17.1.md`); the nightly's `gba` job runs all three. Building the ROM alone does not compile `test/`, so it cannot pass this gate |
 | (d) | the opening, replayed: dumps and screenshots match, at both widths, plain and sanitized | `tests/smoke/run.sh build/native32/pokeemerald-native out/`, likewise `native32-san`, `native64`, `native64-san` |
 | (e) | expansion's debug menu driven natively, the same four builds | `tests/smoke/run_debug_menu.sh build/native32/pokeemerald-native out/`, likewise the other three |
 | (f) | the unit tests, both replays and the suite are clean under AddressSanitizer and UndefinedBehaviorSanitizer at both widths | (platform) `make -C platform test BITS=32`, `BITS=64`; the sanitized runs of (b), (d) and (e) |
-| (g) | the status record, `docs/STATUS.md`, is current | none |
+| (g) | the documents that quote results (README, BUILDING, ARCHITECTURE, `platform/test_runner/SUITE-LOG.md`) match what the gates produce | none |
 | (h) | a save written by one width loads in the other, both directions | `tests/smoke/run_cross_width.sh build/native32/pokeemerald-native build/native64/pokeemerald-native out/`, and the two builds swapped |
 
 `tests/smoke/README.md` has the replays' and the cross-width gate's details,
@@ -289,11 +308,11 @@ which gates a given change must pass.
 
 The Windows executable is x86-64 only and is built on Linux with MinGW-w64
 (`TARGET_OS=windows`, `platform/target.mk`); the build machine needs nothing
-Windows. i686 is not attempted (`research/m8-inventory.md` 2.3). Nothing built
+Windows. i686 is not attempted (it would prefix every C symbol with an underscore; `DECISIONS.md`, "The ports share a thin host layer"). Nothing built
 this way can be run on the build machine without Wine, which is not part of
 the project: what is checked here is the link and the file it writes. The unit
 tests, a start-up smoke, both replays, expansion's suite and the cross-OS save
-gate run on a Windows runner (below), and the owner verified the build by
+gate run on a Windows runner (below), and the build was run by
 hand on 2026-10-14: boot, the opening, the first battle, a save and its
 reload.
 
@@ -695,5 +714,5 @@ The job then runs the unpacked archive with `DYLD_PRINT_LIBRARIES` and fails
 if a library loads from Homebrew. None of the macOS job has run on a Mac.
 `platform/build_glue/check_workflow_uploads.py` fails the platform
 gate if any workflow's upload could match more than text, frame images, saves and clock files, release.yml's
-archives excepted under `publish`. No public release is made without the
-owner's explicit instruction (`docs/DECISIONS.md`, "Why no public release").
+archives excepted under `publish`. No public release is made without an
+explicit decision to publish (`docs/DECISIONS.md`, "Why no public release").

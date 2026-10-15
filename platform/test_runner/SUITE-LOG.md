@@ -79,7 +79,7 @@ at 32 MiB (the plain build already used 28 MiB of it, TEST=1 26 MiB, and the
 sanitized build only fit with outline AddressSanitizer checks and its
 read-only data moved out of the window), and a 64-bit build cannot run code
 from a mirror. The executable is linked at 0x40000000 again. The fix is
-work/replay's untagging (src/script.c, src/scrcmd.c, include/script.h,
+the script-tag untagging (src/script.c, src/scrcmd.c, include/script.h,
 platform/script_tag.h), which works on both widths; until main has it,
 this class stays open here (run 10: 95 tests, all `RUN_OVERWORLD_SCRIPT`
 and script tests).
@@ -302,8 +302,8 @@ run compared with it test by test.
 | 7 | 5862 | 5405 | 18 | 9 | 421 | 0 | 0 | 9 assumption failures (class 8); one garbled test name (class 7) |
 | 8 | 5862 | 5405 | 18 | 9 | 421 | 0 | 0 | 9 assumption failures; per test equal to the GBA baseline but for those 9 |
 | 9 | 5862 | 5405 | 18 | 9 | 421 | 0 | 0 | as run 8, after the GLYPH_COPY and mega-indicator palette fixes |
-| 10 | 5862 | 5310 | 18 | 9 | 421 | 95 | 1 | linked at 0x40000000 again, without the ROM mirror: class 4 reopened until work/replay's untagging is merged |
-| 11 | 5862 | 5405 | 18 | 9 | 421 | 0 | 0 | after merging main (work/replay's script-tag untagging): class 4 closed; per test equal to the GBA baseline but for the 9 benchmarks; 44 s |
+| 10 | 5862 | 5310 | 18 | 9 | 421 | 95 | 1 | linked at 0x40000000 again, without the ROM mirror: class 4 reopened until the script-tag untagging is merged |
+| 11 | 5862 | 5405 | 18 | 9 | 421 | 0 | 0 | after merging main (the script-tag untagging): class 4 closed; per test equal to the GBA baseline but for the 9 benchmarks; 44 s |
 | SANITIZE=1 | 5862 | 5402 | 18 | 9 | 421 | 3 | 1 | the sanitized run below, before the palettes were padded: 3 CRASH (fatal AddressSanitizer reports), 9 assumption failures; 78 s |
 | SANITIZE=1 | 5862 | 5405 | 18 | 9 | 421 | 0 | 0 | eight battle-animation palettes padded; per test the GBA baseline but for the 9 benchmarks; 76 s |
 | M8 review, 64 bits (GCC, and clang plain and sanitized: the same, test by test) | 5884 | 5417 | 28 (25 KNOWN_FAILING, 3 expected ERROR) | 9 | 421 | 0 | 0 | the capture replay (class 11): 7 tests KNOWN_FAILING natively; 9 native tests of the replay (`test/capture_replay.c`), 3 of which expect ERROR and are counted with the known failures; the 13 native-only tests of earlier milestones; 9 assumption failures (class 8) |
@@ -330,7 +330,7 @@ run compared with it test by test.
   leaves IE alone (commented at the jump site and in game_hooks.h).
 - `arm_division` reports every divide error it passes on (one line with
   the program counter) and refuses 66h/67h-prefixed forms. Since
-  milestone 7 it decodes x86-64 too (arm_division.h).
+  the 64-bit work it decodes x86-64 too (arm_division.h).
 
 ## The timeout, end to end
 
@@ -460,8 +460,8 @@ Compare widths that way.
 | `src/sprite.c:1076` `JumpToTopOfAnimLoop` | 2-byte read of `[-1]` of `gEclipsingOrbAnimCmds`, `gKinesisZapEnergyAnimCmds` | "Move Animations work 1", "2", "3" | same report, hidden by the suppression | upstream, both widths: the affine row's bug in the non-affine twin (reads `[animCmdIndex - 1]` before testing `animCmdIndex == 0`; both tables end with `ANIMCMD_LOOP(1)` and have no start). Either way `animCmdIndex` becomes 255 and `ContinueAnim` restarts at command 0, so the value (on the GBA 0xCDA0 and 0xC45C, the low half of the animation table's pointer) does not matter. Not fixed |
 | `src/pokemon.c:2901` `SetBoxMonData` (OT name), from `test/test_runner_battle.c:2725` `OTName_` | stack-buffer-overflow, 32 bits only | "Large exp gains are supported" | 32 bits only | the 32-bit row: `MON_DATA_OT_NAME` copies 7 bytes from `&otName`, a 4-byte pointer at 32 bits and an 8-byte one at 64, so at 64 bits the read stays inside it. The OT name is the pointer's bytes at both widths; the test only needs it to differ |
 
-No report involves a host stack address cut to 32 bits (inventory risk
-R1). The same run with ASLR off (`setarch x86_64 -R`) and
+No report involves a host stack address cut to 32 bits (the first risk
+listed before the 64-bit work). The same run with ASLR off (`setarch x86_64 -R`) and
 `ASAN_OPTIONS=detect_stack_use_after_return=1`, which moves the game's
 address-taken locals into fake frames above 4 GiB (UBSan's
 `CanPledgeComboAttackHappen` reports show them at 0x7ffff3e1df28 and

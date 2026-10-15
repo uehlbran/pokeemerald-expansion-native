@@ -5,7 +5,7 @@
 # loader refuses an image whose sections are not adjacent, and a writable gap
 # would be charged to the process's commit charge (about 1 GiB), a read-only
 # uninitialised one costs neither file space nor commit charge
-# (research/probes/README.md, probe W1, "filled_gaps"; its gaps.s is the model).
+# (loader probe W1, variant "filled_gaps", run on a Windows runner; its gap file was the model).
 #
 # The assembler cannot say "uninitialised and read-only": the Makefiles make the
 # sections read-only with objcopy --set-section-flags NAME=alloc,readonly for

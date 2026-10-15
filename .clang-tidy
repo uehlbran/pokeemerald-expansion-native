@@ -3,7 +3,7 @@
 # findings to our files, and the build includes expansion's headers with
 # -idirafter, as system headers.
 #
-# Checks: the families the owner named, minus the ones that fight this
+# Checks: the families chosen for this project, minus the ones that fight this
 # project's style or its design. Each exclusion and why:
 #   readability-braces-around-statements   the existing style writes one-statement ifs, loops
 #                                          and early returns without braces

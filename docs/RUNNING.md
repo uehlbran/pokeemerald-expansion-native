@@ -17,9 +17,9 @@ tools/build-native.sh --os macos      # build/native64/pokeemerald-native, built
 ```
 
 The Windows executable is cross-built on Linux (WSL2 is fine); the macOS one
-is built on a Mac. The owner can also get archives for testing from a run of
-the repository's "release" workflow, which publishes nothing unless told to;
-their README.txt and this page are inside.
+is built on a Mac. Archives for testing can also be had from a run of the
+repository's "release" workflow, which publishes nothing unless told to; their
+README.txt and this page are inside.
 
 ## Linux
 
@@ -261,7 +261,7 @@ libX11, libXext, libXcursor, libXi, libXfixes, libXrandr, libXss, libdrm,
 libgbm, libwayland-egl, libwayland-client, libwayland-cursor, libxkbcommon and
 libdecor. A SteamOS 3.8 Deck reports glibc 2.41
 ([report](https://forum.godotengine.org/t/steam-deck-cant-launch-linux-build-due-to-outdated-glibc-version-build-targeting-newer-glibc-version/143218)),
-so the floor is met; I found no source for the glibc or the libraries of older
+so the floor is met; no source was found for the glibc or the libraries of older
 SteamOS releases, and none of this has been tried on a Deck. If the game does
 not start from Steam, run `./pokeemerald-native.sh` in Konsole to see the
 loader's message.

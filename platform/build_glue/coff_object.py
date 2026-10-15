@@ -19,7 +19,10 @@ A CoffObject holds
             relocations [CoffRelocation(offset, symbol, type)] with symbol a
             symbol-table index. A section with more than 65,535 relocations
             (IMAGE_SCN_LNK_NRELOC_OVFL) is read as the format says: the
-            count is in the first relocation, which is not one.
+            count is in the first relocation, which is not one. (At expansion 1.17.1
+            no section needs it: the most relocations in one is 18,123, in
+            event_scripts.o's script_data, against the 65,535 a section
+            header counts; the self-test makes one.)
   symbols   {index: CoffSymbol(name, value, section, storage_class, aux)}
             for every symbol-table entry that is not an auxiliary record:
             section is the section number (IMAGE_SYM_UNDEFINED 0,

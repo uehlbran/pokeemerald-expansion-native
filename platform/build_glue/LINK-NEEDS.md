@@ -61,7 +61,7 @@ says what provides the symbol on the GBA. "Platform" means a module under
 
 ## Link command
 
-From the foundation worker (`platform/gba_regions.ld`):
+From the foundation work (`platform/gba_regions.ld`):
 
 ```
 -no-pie -Wl,-Ttext-segment=0x40000000 -Wl,-T,platform/gba_regions.ld

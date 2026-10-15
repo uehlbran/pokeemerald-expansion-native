@@ -11,9 +11,9 @@
 # C symbol with an underscore, which would need a second spelling in the two
 # linker scripts and in every global the assembled data defines or uses, for a
 # target Windows 11 no longer ships (docs/DECISIONS.md, "The ports share a thin
-# host layer"; research/m8-inventory.md 2.3). macOS is x86_64 only too:
-# arm64 cannot load the fixed-address image (docs/DECISIONS.md, "macOS ships
-# as x86_64 under Rosetta").
+# host layer"). macOS is x86_64 only too: arm64 cannot load the
+# fixed-address image (docs/DECISIONS.md, "macOS ships as x86_64 under
+# Rosetta").
 #
 # What this file defines, for the others to use:
 #   TARGET_EXE_SUFFIX    the executable's suffix
@@ -142,7 +142,7 @@ GBA_LAYOUT_LAST := gba_regions_end.macho.s
 else ifeq ($(TARGET_OS),windows)
 
 ifneq ($(BITS),64)
-$(error TARGET_OS=windows is 64-bit only (BITS=64), not '$(BITS)': an i686 COFF object prefixes every C symbol with an underscore, which the linker scripts and the assembled data would need a second spelling for (research/m8-inventory.md 2.3))
+$(error TARGET_OS=windows is 64-bit only (BITS=64), not '$(BITS)': an i686 COFF object prefixes every C symbol with an underscore, which the linker scripts and the assembled data would need a second spelling)
 endif
 
 CROSS_PREFIX := x86_64-w64-mingw32-
@@ -186,7 +186,7 @@ SDL2_MINGW_DIR := $(abspath $(TARGET_MK_DIR)../build/sdl2-mingw)/x86_64-w64-ming
 SDL_CFLAGS := -isystem $(SDL2_MINGW_DIR)/include/SDL2 -DSDL_MAIN_HANDLED
 SDL_LIBS   := -L$(SDL2_MINGW_DIR)/lib -lSDL2
 
-# The layout the Windows loader accepted (research/probes/README.md, probe W1):
+# The layout the Windows loader accepted (loader probe W1):
 # the image at 0x01800000, below the lowest region; no address randomisation
 # and no base relocations, so that the loader maps the image at its base or
 # refuses it; .text at 0x40001000, where the Linux build's code is (the

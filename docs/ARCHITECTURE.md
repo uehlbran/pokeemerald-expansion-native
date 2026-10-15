@@ -82,7 +82,7 @@ it (`platform/gba_regions.pe.ld`, `platform/gba_game.pe.ld`,
 - `platform/build_glue/check_pe_layout.py` checks every link's result, because
   the executable cannot be run where it is built. That the loader accepts the
   layout, and refuses one with holes, was measured on a Windows runner
-  (`research/probes/README.md`).
+  (the loader probes of the Windows port).
 
 On macOS (built on a Mac, x86_64 only) the image is at 0x40000000 as on
 Linux, and each region is a zero-filled segment of its own that the link
@@ -266,8 +266,7 @@ beyond the C library and SDL, and each need is one of seven concerns. Each
 concern is one header, `platform/host_<concern>.h`, which says what it stands in for and which OS
 facility it wraps; the modules call it and contain no OS call of their own
 (no `sigaction`, `ucontext`, `/proc`, `getauxval`, `pthread`, `fsync`).
-`research/m8-inventory.md`, sections 1.2, 3 and 5.1, has the counterparts on
-Windows and macOS; `DECISIONS.md`, "The ports share a thin host layer", why
+The counterparts on Windows and macOS are the same concerns with that OS's calls; `DECISIONS.md`, "The ports share a thin host layer", says why
 it is one layer and not `#ifdef`s in the modules. `host_thread.h` serves only
 the unit tests' time limit.
 
@@ -326,8 +325,7 @@ and replaced with `MoveFileExW` and write-through, with no directory sync. The
 save's lock is `LockFileEx` over the whole lock file, released with
 `UnlockFileEx` before its handle closes; since the restarted run is a child
 the restarting process waits for, `main` releases the lock before the
-restart, and the child takes it as any start does (`DECISIONS.md`, the
-amendment to the owner's ruling (3)).
+restart, and the child takes it as any start does (`DECISIONS.md`, "The save's lock across a restart and a crash").
 
 macOS (`host_macos.c`, `host_macos_stack.c`) shares Linux's signals,
 `execve`, files and lock, and differs where the system does (the table's last

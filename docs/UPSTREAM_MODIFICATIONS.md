@@ -8,7 +8,7 @@ another macro; where upstream's own condition or the pointer-width test
 `__SIZEOF_POINTER__` is also needed it is nested inside the guard, or follows
 it as `#elif`), is as small as it can
 be, and has a row in the table below with the file, the reason, a summary
-of the diff, and which milestone added it. The GBA build must produce
+of the diff, and the stage that added it (the "Since" column: M1 research, M2 the 32-bit boot, M3 the replay and the save, M4 the test runner, M5 the debug-menu gate, M7 the 64-bit build). The GBA build must produce
 the same ROM before and after (check with `make compare` where
 applicable, and `make check` always). A modification that changes GBA
 behaviour is a bug.
@@ -19,7 +19,7 @@ and the modification still compiles on both targets. Rows that become
 unnecessary are removed, not left behind.
 
 Flag for 64-bit: a row marked "64-bit" needs attention in the 64-bit
-milestone, for example because it fixes a pointer width or an address
+work, for example because it fixes a pointer width or an address
 range.
 
 Assembly. In the assembled data the guard is `.ifdef NATIVE_POINTER_SIZE_8`,

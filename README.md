@@ -15,8 +15,8 @@ suite expansion runs on the GBA.
 
 ## Status
 
-Verified by an automated gate (the gates and their commands are in
-[docs/BUILDING.md](docs/BUILDING.md#gates)):
+What is verified, by automated gates unless the item says otherwise (the
+gates and their commands are in [docs/BUILDING.md](docs/BUILDING.md#gates)):
 
 - The 32-bit build boots through the intro to the title screen, and
   plays the opening from New Game through the first battle and a save, a
@@ -35,7 +35,7 @@ Verified by an automated gate (the gates and their commands are in
 - Windows (x86-64 only, cross-built from Linux) runs the platform's unit
   tests, a start-up smoke, both replays, expansion's suite (equal to
   Linux 64-bit, test by test) and the cross-OS save gate on a Windows
-  runner, and the owner verified the build by hand on 2026-10-14: boot,
+  runner, and the build was run by hand on 2026-10-14: boot,
   the opening, the first battle, a save and its reload
   (docs/BUILDING.md, "Windows").
 - The player's files: the save, the clock's offset and a settings file
@@ -51,7 +51,7 @@ Verified by an automated gate (the gates and their commands are in
   fullscreen by default on a Deck (`SteamDeck=1`), F11 for everyone, and a
   tarball that runs as a non-Steam game from the home directory
   ([docs/RUNNING.md](docs/RUNNING.md), "Steam Deck"). Unit-tested, not tried
-  on a Deck: the owner's hand-check list is in docs/STATUS.md, "Needs the owner" (2b).
+  on a Deck: the hand-check list is in docs/DECISIONS.md, "Steam Deck: controller functions, fullscreen and the package".
 - Fast-forward: Tab held, or Shift+Tab to switch it on and off, at 2x (3x,
   4x or unlimited in the settings file), with the sound sped up or muted
   and an indicator in the corner; the frame pacer alone changes, so the
@@ -65,11 +65,11 @@ Not working or not verified:
   script exist, equally unrun): the port is written, with its own layout, host
   layer, clang build and CI workflow (docs/BUILDING.md, "macOS"), and its
   clang build passes both replays and the suite on Linux, plain and
-  sanitized, but nothing of it has run on a Mac beyond two probes: the macOS
-  workflow's first runs were refused before any job started (the account's
-  billing). The branch (`work/macos`) is parked, unmerged, until a run of
-  the full macOS gate on `macos-15-intel` is green; merging it is the
-  owner's call once GitHub Actions' billing is restored.
+  sanitized, but none of it has run on a Mac beyond two early link and loader
+  checks: the macOS workflow's first runs were refused before any job started
+  (the account's billing). This branch (`work/macos`) waits, unmerged, for a
+  run of the full macOS gate on `macos-15-intel`; merging it is a decision for
+  the project's maintainer once that run is green.
 - GBA save interchange: native saves use the host's struct layout and are
   not GBA `.sav` files.
 - Nothing past Birch's lab in play, the windowed path with a real display
@@ -119,7 +119,6 @@ regression reference.
   and the gates.
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): the platform layer, its
   boundary with expansion, the memory model and the frame.
-- [docs/STATUS.md](docs/STATUS.md): what is verified, by which gate.
 - [docs/DECISIONS.md](docs/DECISIONS.md): decisions with their alternatives.
 - [docs/UPSTREAM_MODIFICATIONS.md](docs/UPSTREAM_MODIFICATIONS.md): every
   change to an expansion file.
