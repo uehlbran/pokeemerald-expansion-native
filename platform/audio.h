@@ -46,6 +46,9 @@ int audio_queue(const int16_t *stereo, size_t frames);
 /* Pause or resume playback. No-op in silent mode. Returns 0 on success. */
 int audio_set_paused(bool paused);
 
+/* What audio_set_paused set last; true after init and when not initialised. */
+bool audio_paused(void);
+
 /* Discards everything queued and not yet played. No-op in silent mode. */
 void audio_clear(void);
 

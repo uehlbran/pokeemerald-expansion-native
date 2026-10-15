@@ -117,6 +117,23 @@ PTEST(underrun_counts_when_unpaused_and_queue_is_empty)
     PT_ASSERT(after == 1u);
 }
 
+/* The device starts paused (audio.h); paused reads back what was set last. */
+PTEST(paused_reads_what_was_set_last)
+{
+    use_dummy_driver();
+    PT_ASSERT_EQ_INT(audio_init(TEST_RATE_HZ, AUDIO_DEVICE), 0);
+    const bool at_start = audio_paused();
+    PT_ASSERT_EQ_INT(audio_set_paused(false), 0);
+    const bool running = audio_paused();
+    PT_ASSERT_EQ_INT(audio_set_paused(true), 0);
+    const bool paused_again = audio_paused();
+    audio_shutdown();
+    PT_ASSERT(at_start);
+    PT_ASSERT(!running);
+    PT_ASSERT(paused_again);
+    PT_ASSERT(audio_paused());
+}
+
 PTEST(silent_mode_counts_frames_without_a_device)
 {
     /* No driver set and no SDL audio call allowed to be needed. */

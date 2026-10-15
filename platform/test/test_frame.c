@@ -11,10 +11,12 @@
  * The frame runs with the real modules, headless and silent: handlers
  * installed in a table laid out like expansion's gIntrTable record what
  * VCOUNT and DISPSTAT read when the interrupt controller calls them. The
- * help overlay's Q runs with a window instead, on SDL's dummy driver, so
- * that the key events the test pushes reach the frame loop's poll.
+ * help overlay's Q and fast-forward's keys run with a window instead, on
+ * SDL's dummy driver, so that the key events the test pushes reach the frame
+ * loop's poll; fast-forward's sound runs on SDL's dummy audio device too,
+ * which plays its queue at the device's rate, and the pacer in real time.
  */
-// deps: lcd_status.c gba_memmap.c interrupt.c timer.c dma.c transfer_bounds.c ppu.c ppu_bg.c ppu_obj.c ppu_window.c ppu_blend.c psg.c psg_channel.c psg_square.c psg_wave.c psg_noise.c audio.c video.c input.c overlay.c font.c flash.c save_file.c frame_pacer.c game_hooks.c debug_channel.c m4a_output.c sound_mix.c audio_dump.c sound_grid.c
+// deps: lcd_status.c gba_memmap.c interrupt.c timer.c dma.c transfer_bounds.c ppu.c ppu_bg.c ppu_obj.c ppu_window.c ppu_blend.c psg.c psg_channel.c psg_square.c psg_wave.c psg_noise.c audio.c video.c input.c overlay.c font.c flash.c save_file.c frame_pacer.c game_hooks.c debug_channel.c m4a_output.c sound_mix.c audio_dump.c sound_grid.c fastforward.c sound_speedup.c
 #include <setjmp.h>
 #include <stdbool.h>
 #include <stdint.h>
@@ -31,6 +33,7 @@
 #include "audio.h"
 #include "audio_dump.h"
 #include "dma.h"
+#include "fastforward.h"
 #include "test_support.h"
 #include "flash.h"
 #include "frame.h"
@@ -192,6 +195,7 @@ static bool start(uint32_t frame_limit, const char *screenshot_path, const char 
 
 static void stop(void)
 {
+    fastforward_shutdown();
     overlay_shutdown();
     frame_shutdown();
     frame_pacer_shutdown();
@@ -1024,6 +1028,243 @@ PTEST(no_engine_plays_the_psg_alone)
     PT_ASSERT(audio_total_frames() == FIRST_FRAME_SAMPLES);
     PT_ASSERT_EQ_INT(frame_exit_status(), 0);
     stop();
+}
+
+/* --- fast-forward -------------------------------------------------------- */
+
+/* The grid's samples in ten frames: 10 * 280896 / 512 = 5486.25. */
+#define TEN_FRAMES_SAMPLES ((uint32_t)(10u * GBA_CYCLES_PER_FRAME / SOUND_GRID_CYCLES_PER_SAMPLE))
+
+/* The queue's bound in bytes: audio_max_queued_frames of 16-bit stereo. */
+#define QUEUE_BOUND_BYTES (audio_max_queued_frames(FRAME_AUDIO_SAMPLE_RATE_HZ) * FRAME_AUDIO_CHANNELS * sizeof(int16_t))
+
+/* A window, the overlay and fast-forward at speed with audio, as main starts them for a player;
+ * the sound silent and the pacer unthrottled. */
+static bool start_fast_forward(uint32_t speed, enum fastforward_audio audio)
+{
+    struct fastforward_settings settings = fastforward_defaults();
+    settings.speed = speed;
+    settings.audio = audio;
+    return fastforward_init(&settings) == 0 && start_windowed();
+}
+
+/* The same, with SDL's dummy audio device, which plays its queue in real time, and the pacer
+ * holding the frame rate: the sound as a player hears it. */
+static bool start_fast_forward_playing(uint32_t speed, enum fastforward_audio audio)
+{
+    if (!start_fast_forward(speed, audio))
+        return false;
+    audio_shutdown();
+    frame_pacer_shutdown();
+    return tsup_set_environment("SDL_AUDIODRIVER", "dummy") && audio_init(FRAME_AUDIO_SAMPLE_RATE_HZ, AUDIO_DEVICE) == 0
+           && frame_pacer_init(FRAME_PACER_REALTIME) == 0;
+}
+
+static bool push_key_event(Uint32 type, SDL_Scancode scancode, Uint16 modifiers)
+{
+    SDL_Event event;
+    SDL_zero(event);
+    event.type = type;
+    event.key.keysym.scancode = scancode;
+    event.key.keysym.mod = modifiers;
+    return SDL_PushEvent(&event) == 1;
+}
+
+static bool push_toggle(void)
+{
+    return push_key_event(SDL_KEYDOWN, SDL_SCANCODE_TAB, KMOD_LSHIFT);
+}
+
+static bool push_focus_lost(void)
+{
+    SDL_Event event;
+    SDL_zero(event);
+    event.type = SDL_WINDOWEVENT;
+    event.window.event = SDL_WINDOWEVENT_FOCUS_LOST;
+    return SDL_PushEvent(&event) == 1;
+}
+
+/* Runs count frames; true if the game went on through all of them. */
+static bool run_frames(unsigned count)
+{
+    bool ran = true;
+    for (unsigned i = 0; i < count; i++)
+        ran = frame_run() == FRAME_CONTINUE && ran;
+    return ran;
+}
+
+/* The pacer's period is divided and nothing else: each frame_run is one GBA frame (one V-Blank,
+ * one count), n of them in a period; the sound of n frames is made one. The key is polled in the
+ * first frame, which mixed its sound before it: that frame's sound is at the normal speed, the
+ * nine after it at 3x. */
+PTEST(fast_forward_runs_the_same_frames_at_n_times_the_pace_with_their_sound_sped_up)
+{
+    PT_ASSERT(start_fast_forward(3u, FASTFORWARD_AUDIO_PLAY));
+    *io(GBA_IE_OFFSET) = IE_VBLANK;
+    const bool pushed = push_key_event(SDL_KEYDOWN, SDL_SCANCODE_TAB, KMOD_NONE);
+    const bool ran = run_frames(10);
+    const uint32_t frames = frame_count();
+    const int vblanks = count_events(EVENT_VBLANK);
+    const uint32_t multiplier = frame_pacer_multiplier();
+    const uint64_t sound = audio_total_frames();
+    stop();
+    PT_ASSERT(pushed && ran);
+    PT_ASSERT_EQ_U32(frames, 10u);
+    PT_ASSERT_EQ_INT(vblanks, 10);
+    PT_ASSERT_EQ_U32(multiplier, 3u);
+    PT_ASSERT(sound == FIRST_FRAME_SAMPLES + (TEN_FRAMES_SAMPLES - FIRST_FRAME_SAMPLES) / 3u);
+}
+
+/* Unlimited has no n to divide the sound by: each frame's sound is queued as it is (here silent,
+ * where every block is counted; with a device, the queue's bound drops what does not fit, the
+ * test below). */
+PTEST(unlimited_queues_each_frames_sound_as_it_is)
+{
+    PT_ASSERT(start_fast_forward(FASTFORWARD_UNLIMITED, FASTFORWARD_AUDIO_PLAY));
+    const bool pushed = push_key_event(SDL_KEYDOWN, SDL_SCANCODE_TAB, KMOD_NONE);
+    const bool ran = run_frames(10);
+    const uint32_t frames = frame_count();
+    const uint32_t multiplier = frame_pacer_multiplier();
+    const uint64_t sound = audio_total_frames();
+    stop();
+    PT_ASSERT(pushed && ran);
+    PT_ASSERT_EQ_U32(frames, 10u);
+    PT_ASSERT_EQ_U32(multiplier, FRAME_PACER_UNLIMITED);
+    PT_ASSERT(sound == TEN_FRAMES_SAMPLES);
+}
+
+PTEST(without_fast_forward_started_its_keys_do_nothing)
+{
+    PT_ASSERT(start_windowed());
+    const bool pushed = push_key_event(SDL_KEYDOWN, SDL_SCANCODE_TAB, KMOD_NONE) && push_toggle();
+    const bool ran = run_frames(10);
+    const uint32_t multiplier = frame_pacer_multiplier();
+    const uint64_t sound = audio_total_frames();
+    stop();
+    PT_ASSERT(pushed && ran);
+    PT_ASSERT_EQ_U32(multiplier, FRAME_PACER_NORMAL_SPEED);
+    PT_ASSERT(sound == TEN_FRAMES_SAMPLES);
+}
+
+/* Tab down, then the focus lost and no key-up: the next frame is at the normal pace. */
+PTEST(the_hold_ends_when_the_window_loses_the_focus_without_a_key_up)
+{
+    PT_ASSERT(start_fast_forward(2u, FASTFORWARD_AUDIO_PLAY));
+    const bool pressed = push_key_event(SDL_KEYDOWN, SDL_SCANCODE_TAB, KMOD_NONE);
+    const bool ran = run_frames(1);
+    const uint32_t held = frame_pacer_multiplier();
+    const bool lost = push_focus_lost();
+    const bool ran_again = run_frames(1);
+    const uint32_t after = frame_pacer_multiplier();
+    const bool active = fastforward_active();
+    stop();
+    PT_ASSERT(pressed && lost && ran && ran_again);
+    PT_ASSERT_EQ_U32(held, 2u);
+    PT_ASSERT_EQ_U32(after, FRAME_PACER_NORMAL_SPEED);
+    PT_ASSERT(!active);
+}
+
+/* Toggled on, a hundred frames and a key-up later still on; toggled again, off. */
+PTEST(the_toggle_persists_across_frames_until_pressed_again)
+{
+    PT_ASSERT(start_fast_forward(2u, FASTFORWARD_AUDIO_PLAY));
+    const bool toggled = push_toggle();
+    bool fast_throughout = run_frames(1);
+    for (unsigned i = 0; i < 100; i++)
+        fast_throughout = run_frames(1) && frame_pacer_multiplier() == 2u && fast_throughout;
+    const bool released = push_key_event(SDL_KEYUP, SDL_SCANCODE_TAB, KMOD_LSHIFT);
+    const bool ran = run_frames(1);
+    const uint32_t after_key_up = frame_pacer_multiplier();
+    const bool toggled_off = push_toggle();
+    const bool ran_again = run_frames(1);
+    const uint32_t after_toggle = frame_pacer_multiplier();
+    stop();
+    PT_ASSERT(toggled && released && toggled_off && ran && ran_again);
+    PT_ASSERT(fast_throughout);
+    PT_ASSERT_EQ_U32(after_key_up, 2u);
+    PT_ASSERT_EQ_U32(after_toggle, FRAME_PACER_NORMAL_SPEED);
+}
+
+struct bounded_run {
+    bool ran;
+    uint32_t most_queued;  /* bytes, after any frame */
+    bool paused_after;     /* the frame fast-forward ended in */
+    uint32_t queued_after; /* bytes, after that frame */
+    bool playing_after_preroll;
+};
+
+/* 300 frames toggled on at speed, toggled off, and FRAME_AUDIO_PREROLL_FRAMES more. */
+static struct bounded_run run_toggled_with_sound(void)
+{
+    struct bounded_run run = {.ran = push_toggle()};
+    for (unsigned f = 0; f < 300; f++) {
+        run.ran = run_frames(1) && run.ran;
+        const uint32_t queued = audio_queued_bytes();
+        run.most_queued = queued > run.most_queued ? queued : run.most_queued;
+    }
+    run.ran = push_toggle() && run_frames(1) && run.ran;
+    run.paused_after = audio_paused();
+    run.queued_after = audio_queued_bytes();
+    run.ran = run_frames(FRAME_AUDIO_PREROLL_FRAMES) && run.ran;
+    run.playing_after_preroll = !audio_paused();
+    return run;
+}
+
+/* 300 frames at each speed, the device playing in real time: the queue never holds more than its
+ * bound (audio.h); unlimited, the bound drops what does not fit, and when it ends the queue
+ * starts again empty, paused, and plays after the preroll. */
+PTEST(the_queue_stays_within_its_bound_at_every_speed)
+{
+    static const uint32_t speeds[] = {2u, 3u, 4u, FASTFORWARD_UNLIMITED};
+    for (size_t i = 0; i < sizeof speeds / sizeof speeds[0]; i++) {
+        PT_ASSERT(start_fast_forward_playing(speeds[i], FASTFORWARD_AUDIO_PLAY));
+        const struct bounded_run run = run_toggled_with_sound();
+        stop();
+        PT_ASSERT(run.ran);
+        PT_ASSERT(run.most_queued <= QUEUE_BOUND_BYTES);
+        PT_ASSERT(run.most_queued > 0u);
+        PT_ASSERT(run.playing_after_preroll);
+        if (speeds[i] == FASTFORWARD_UNLIMITED) {
+            PT_ASSERT(run.paused_after);
+            PT_ASSERT_EQ_U32(run.queued_after, 0u);
+        } else {
+            PT_ASSERT(!run.paused_after); /* sped up, the queue was never stale */
+        }
+    }
+}
+
+/* Muted: the device is paused while fast-forward is on and nothing is queued; after it, the queue
+ * is emptied of what waited from before, and the device plays again after the preroll. */
+PTEST(mute_pauses_the_device_and_resumes_it_with_the_queue_emptied)
+{
+    PT_ASSERT(start_fast_forward_playing(2u, FASTFORWARD_AUDIO_MUTE));
+    bool ran = run_frames(FRAME_AUDIO_PREROLL_FRAMES);
+    const bool playing_before = !audio_paused();
+    const bool on = push_toggle();
+    ran = run_frames(1) && ran;
+    const bool paused = audio_paused();
+    const uint64_t queued_when_muted = audio_total_frames();
+    ran = run_frames(20) && ran;
+    const bool still_paused = audio_paused();
+    const uint64_t queued_while_muted = audio_total_frames() - queued_when_muted;
+    const bool off = push_toggle();
+    ran = run_frames(1) && ran;
+    const bool paused_after = audio_paused();
+    const uint32_t stale = audio_queued_bytes();
+    ran = run_frames(1) && ran;
+    const bool paused_during_preroll = audio_paused();
+    ran = run_frames(1) && ran;
+    const bool resumed = !audio_paused();
+    stop();
+    PT_ASSERT(on && off && ran);
+    PT_ASSERT(playing_before);
+    PT_ASSERT(paused);
+    PT_ASSERT(still_paused);
+    PT_ASSERT(queued_while_muted == 0u);
+    PT_ASSERT(paused_after);
+    PT_ASSERT_EQ_U32(stale, 0u);
+    PT_ASSERT(paused_during_preroll);
+    PT_ASSERT(resumed);
 }
 
 PTEST_MAIN()
