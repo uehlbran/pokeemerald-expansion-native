@@ -1,0 +1,372 @@
+# The macOS port's gates (milestone 8, tasks M2 to M5; docs/BUILDING.md,
+# "macOS"). The build runs on a Mac from a fresh clone with Homebrew's tools
+# (.github/actions/macos-setup), on macos-15-intel only: the executable is
+# x86_64 (docs/DECISIONS.md, "macOS ships as x86_64 under Rosetta", and
+# "macOS CI runs on macos-15-intel only"). Linux jobs make what the macOS
+# results must equal:
+#
+#   unit             macOS: the platform's unit tests under AddressSanitizer
+#                    and UndefinedBehaviorSanitizer and under
+#                    ThreadSanitizer, clang-tidy on the macOS sources,
+#                    patchelf on a Mach-O executable
+#   linux            the Linux 64-bit game and the save it writes (gate h's
+#                    first stage, tests/smoke/run_cross_os.sh), and its
+#                    structs' 64-bit layout
+#   game             macOS: the game, plain and sanitized; its layout and what
+#                    it loads (otool); the replays (gates d and e) of both;
+#                    gate h's second stage on the Linux save; the structs'
+#                    64-bit layout as clang lays them out on the Mac
+#   suite            macOS: expansion's suite through its hydra (gate b),
+#                    plain and sanitized
+#   linux-suite      the suite on Linux 64-bit, plain and sanitized, the
+#                    results the macOS ones must equal
+#   compare          the macOS suites against Linux's, test by test; gate h's
+#                    last stage (the Linux build on the save the Mac wrote);
+#                    the two struct layouts
+#
+# Artifacts carry the builds and the stages' directories between the jobs.
+# macOS minutes count ten times. Nightly at 06:17 UTC, an hour after
+# windows.yml's nightly, and by hand.
+name: macos
+
+on:
+  push:
+    branches:
+      - work/macos
+    paths-ignore:
+      - 'docs/**'
+      - '**.md'
+  schedule:
+    - cron: '17 6 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# A newer push or run by hand replaces an older one on the same branch, to
+# save the macOS minutes; the nightly is in a group of its own, so it never
+# cancels one and is never cancelled.
+concurrency:
+  group: macos-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name != 'schedule' }}
+
+env:
+  # The replays and the suite run headless.
+  SDL_VIDEODRIVER: dummy
+  SDL_AUDIODRIVER: dummy
+  # Homebrew's update and cleanup cost a minute per job and change nothing
+  # the build reads.
+  HOMEBREW_NO_AUTO_UPDATE: 1
+  HOMEBREW_NO_INSTALL_CLEANUP: 1
+  HOMEBREW_NO_INSTALLED_DEPENDENTS_CHECK: 1
+  HOMEBREW_NO_ANALYTICS: 1
+
+jobs:
+  unit:
+    name: macOS unit tests (ASan and UBSan, TSan), clang-tidy, patchelf
+    runs-on: macos-15-intel
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/macos-setup
+        with:
+          ccache-name: unit
+
+      # No LeakSanitizer: AddressSanitizer on macOS has none (platform/Makefile,
+      # SANITIZER_ENV).
+      - name: The unit tests, 64-bit, under AddressSanitizer and UndefinedBehaviorSanitizer
+        run: make -C platform -j"$(nproc)" test BITS=64
+
+      - name: The unit tests under ThreadSanitizer
+        if: always()
+        run: make -C platform -j"$(nproc)" tsan
+
+      # The Linux gate lints the files Linux builds; the macOS ones need the
+      # Mac's headers. clang-tidy is Homebrew's LLVM, on the image.
+      - name: clang-tidy on the macOS sources and tests
+        if: always()
+        run: |
+          export PATH="$(brew --prefix llvm@18)/bin:$PATH"
+          make -C platform lint-tidy BITS=64 \
+            LINT_SRCS="host_posix.c host_macos.c host_macos_stack.c host_linked.c $(cd platform && echo test/darwin/*.c test/posix/*.c)"
+
+      - name: patchelf on a Mach-O executable
+        if: always()
+        run: make -C platform tools-test BITS=64
+
+      - name: ccache statistics
+        if: always()
+        run: ccache -s
+
+  linux:
+    name: Linux 64-bit game, its save (gate h's first stage), its struct layout
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/native-setup
+        with:
+          ccache-name: macos-linux
+
+      - name: The Linux 64-bit game
+        run: make -f Makefile.native -j"$(nproc)" native BITS=64
+
+      - name: Gate h across operating systems, the first stage (the Linux save)
+        run: tests/smoke/run_cross_os.sh save build/native64/pokeemerald-native out/cross-os/save
+
+      - name: Upload the Linux game, its save and its struct layout
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-build
+          if-no-files-found: error
+          path: |
+            build/native64/pokeemerald-native
+            build/native64/pokeemerald-native.symbols
+            build/native64/data_layout64.txt
+            out/cross-os/save/work/from/
+
+      - name: Keep the outputs of a failed stage
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-outputs
+          path: out/
+          if-no-files-found: ignore
+
+  game:
+    name: macOS game, plain and sanitized (layout, replays, the Linux save)
+    needs: [unit, linux]
+    runs-on: macos-15-intel
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/macos-setup
+        with:
+          ccache-name: game
+
+      - name: The 64-bit game (the data checks; the Mach-O layout check)
+        run: make -f Makefile.native -j"$(nproc)" native BITS=64
+
+      # docs/ARCHITECTURE.md quotes this: where each segment is, and the
+      # libraries the executable loads and from where.
+      - name: The executable's segments and libraries
+        run: |
+          mkdir -p out
+          otool -l build/native64/pokeemerald-native > out/otool-l.txt
+          otool -L build/native64/pokeemerald-native | tee out/otool-L.txt
+          awk '/^ *segname /{name=$2} /^ *vmaddr /{addr=$2} /^ *vmsize /{print name, addr, $2}' out/otool-l.txt \
+            | uniq | tee out/segments.txt
+          codesign -dv build/native64/pokeemerald-native 2>&1 | tee out/codesign.txt || true
+
+      # Its half of the struct layout check (Makefile.native leaves the check
+      # out on a Mac, which runs no 32-bit program): compare holds it against
+      # the Linux build's.
+      - name: The structs' 64-bit layout as clang lays them out here
+        run: make -f Makefile.native build/native64/data_layout64.txt BITS=64
+
+      - name: Gates d and e, the replays
+        run: |
+          status=0
+          tests/smoke/run.sh build/native64/pokeemerald-native out/open64 || status=1
+          tests/smoke/run_debug_menu.sh build/native64/pokeemerald-native out/dbg64 || status=1
+          exit $status
+
+      - name: Download the Linux save
+        if: always()
+        uses: actions/download-artifact@v4
+        with:
+          name: linux-build
+          path: linux-build
+
+      - name: Gate h across operating systems, the second stage (the macOS build on the Linux save)
+        if: always()
+        run: tests/smoke/run_cross_os.sh load build/native64/pokeemerald-native linux-build/out/cross-os/save/work/from out/cross-os/load
+
+      - name: Upload the layout and gate h's second stage
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-game
+          path: |
+            out/otool-l.txt
+            out/otool-L.txt
+            out/segments.txt
+            out/codesign.txt
+            build/native64/data_layout64.txt
+            out/cross-os/load/work/again/
+          if-no-files-found: ignore
+
+      - name: The 64-bit game, sanitized
+        if: always()
+        run: make -f Makefile.native -j"$(nproc)" native BITS=64 SANITIZE=1
+
+      - name: Gates d and e sanitized
+        if: always()
+        env:
+          ASAN_OPTIONS: halt_on_error=0
+          UBSAN_OPTIONS: print_stacktrace=1
+        run: |
+          status=0
+          tests/smoke/run.sh build/native64-san/pokeemerald-native out/open64s || status=1
+          tests/smoke/run_debug_menu.sh build/native64-san/pokeemerald-native out/dbg64s || status=1
+          exit $status
+
+      - name: ccache statistics
+        if: always()
+        run: ccache -s
+
+      - name: Keep the outputs of a failed run
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-game-outputs
+          path: out/
+          if-no-files-found: ignore
+
+  suite:
+    name: macOS suite, plain and sanitized (gate b)
+    needs: [unit]
+    runs-on: macos-15-intel
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/macos-setup
+        with:
+          ccache-name: suite
+
+      # The test runner's own tests first, two of which crash on purpose: a
+      # minute that shows the hydra, the crash reboot and patchelf work here
+      # before the whole suite is built and run.
+      - name: The test runner's own tests (its crashes included)
+        shell: bash -e -o pipefail {0}
+        run: make -f Makefile.native -j"$(nproc)" check BITS=64 TESTS=test/test_test_runner.c | tee suite-macos-runner.log
+
+      - name: Gate b, the suite
+        shell: bash -e -o pipefail {0}
+        run: make -f Makefile.native -j"$(nproc)" check BITS=64 | tee suite-macos.log
+
+      - name: Gate b sanitized
+        if: always()
+        shell: bash -e -o pipefail {0}
+        run: make -f Makefile.native -j"$(nproc)" check BITS=64 SANITIZE=1 | tee suite-macos-san.log
+
+      - name: ccache statistics
+        if: always()
+        run: ccache -s
+
+      - name: Upload the results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: suite-macos
+          path: |
+            suite-macos-runner.log
+            suite-macos.log
+            suite-macos-san.log
+          if-no-files-found: ignore
+
+  linux-suite:
+    name: The suite on Linux 64-bit, plain and sanitized (the results to equal)
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/native-setup
+        with:
+          ccache-name: macos-linux-suite
+
+      - name: Gate b, the suite at 64 bits
+        shell: bash -e -o pipefail {0}
+        run: make -f Makefile.native -j"$(nproc)" check BITS=64 | tee suite-linux64.log
+
+      - name: Gate b sanitized, 64 bits
+        if: always()
+        shell: bash -e -o pipefail {0}
+        run: make -f Makefile.native -j"$(nproc)" check BITS=64 SANITIZE=1 | tee suite-linux64-san.log
+
+      - name: ccache statistics
+        if: always()
+        run: ccache -s
+
+      - name: Upload the results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: suite-linux64
+          path: |
+            suite-linux64.log
+            suite-linux64-san.log
+          if-no-files-found: ignore
+
+  compare:
+    name: Compare the suites and the struct layouts; gate h's last stage on Linux
+    needs: [linux, game, suite, linux-suite]
+    if: always() && needs.linux.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Prerequisites (the Linux game's libraries)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libsdl2-2.0-0
+
+      - name: Download the Linux game and its save
+        uses: actions/download-artifact@v4
+        with:
+          name: linux-build
+          path: linux-build
+
+      - name: Download the macOS game's results
+        uses: actions/download-artifact@v4
+        with:
+          name: macos-game
+          path: macos-game
+
+      - name: Download the macOS suites
+        if: always()
+        uses: actions/download-artifact@v4
+        with:
+          name: suite-macos
+          path: suite-macos
+
+      - name: Download the Linux suites
+        if: always()
+        uses: actions/download-artifact@v4
+        with:
+          name: suite-linux64
+          path: suite-linux64
+
+      - name: Gate b on macOS, test by test against Linux 64-bit
+        if: always()
+        run: platform/test_runner/compare_suite_results.sh suite-linux64/suite-linux64.log suite-macos/suite-macos.log
+
+      - name: Gate b sanitized on macOS, test by test against Linux 64-bit sanitized
+        if: always()
+        run: platform/test_runner/compare_suite_results.sh suite-linux64/suite-linux64-san.log suite-macos/suite-macos-san.log
+
+      - name: Gate h across operating systems, the last stage (the Linux build on the macOS save)
+        if: always()
+        run: |
+          chmod +x linux-build/build/native64/pokeemerald-native
+          tests/smoke/run_cross_os.sh back linux-build/build/native64/pokeemerald-native linux-build/out/cross-os/save/work/from macos-game/out/cross-os/load/work/again out/cross-os/back
+
+      # The data's structs are laid out alike on both (Makefile.native's
+      # check, which needs the 32-bit layout too, runs on Linux).
+      - name: The structs' 64-bit layout, the Mac's against Linux's
+        if: always()
+        run: diff linux-build/build/native64/data_layout64.txt macos-game/build/native64/data_layout64.txt && echo "the 64-bit layouts are the same"
+
+      - name: Keep the outputs of a failed stage
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: compare-outputs
+          path: out/
+          if-no-files-found: ignore

@@ -1,0 +1,81 @@
+# The setup every macOS job in macos.yml shares, after the checkout: the
+# Homebrew packages docs/BUILDING.md's macOS line names, GNU make's and
+# coreutils' unprefixed names first on PATH (the build and its scripts are
+# written for GNU make, GNU sed, readlink -f, stdbuf, sha256sum and touch -d),
+# ccache's compiler links before them, and the caches of the build tools, of
+# the compiler and of the converted graphics. One copy, as native-setup is for
+# the Linux jobs.
+name: macOS setup
+description: Install the macOS build's prerequisites with Homebrew and restore its caches.
+
+inputs:
+  ccache-name:
+    description: Names the job's compiler cache, so that jobs building different things do not evict each other's.
+    required: true
+
+runs:
+  using: composite
+  steps:
+    # macos.yml's env turns off Homebrew's update and its cleanup, which cost
+    # a minute and change nothing the build reads. libpng and pkgconf are on
+    # the image already; brew says so and goes on.
+    - name: Prerequisites (docs/BUILDING.md, the macOS line)
+      shell: bash
+      run: |
+        brew install make coreutils sdl2 libpng pkg-config x86_64-elf-binutils ccache
+        prefix=$(brew --prefix)
+        echo "$prefix/opt/coreutils/libexec/gnubin" >> "$GITHUB_PATH"
+        echo "$prefix/opt/make/libexec/gnubin" >> "$GITHUB_PATH"
+        echo "$prefix/opt/ccache/libexec" >> "$GITHUB_PATH"
+        echo "CCACHE_DIR=$HOME/.cache/ccache" >> "$GITHUB_ENV"
+
+    - name: The toolchain
+      shell: bash
+      run: |
+        sw_vers
+        clang --version | head -1
+        ld -v 2>&1 | head -1
+        x86_64-elf-as --version | head -1
+        make --version | head -1
+        pkg-config --modversion sdl2
+        python3 --version
+        command -v make sed readlink stdbuf nproc clang
+
+    - name: Cache the build tools
+      uses: actions/cache@v4
+      with:
+        path: |
+          tools/bin2c/bin2c
+          tools/gbafix/gbafix
+          tools/gbagfx/gbagfx
+          tools/jsonproc/jsonproc
+          tools/mapjson/mapjson
+          tools/mid2agb/mid2agb
+          tools/preproc/preproc
+          tools/ramscrgen/ramscrgen
+          tools/rsfont/rsfont
+          tools/scaninc/scaninc
+          tools/trainerproc/trainerproc
+          tools/compresSmol/compresSmol
+          tools/compresSmol/compresSmolTilemap
+          tools/wav2agb/wav2agb
+          tools/patchelf/patchelf
+          tools/mgba-rom-test-hydra/mgba-rom-test-hydra
+        key: tools-native-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('tools/*/Makefile', 'tools/**/*.c', 'tools/**/*.cpp', 'tools/**/*.h', 'make_tools.mk') }}
+
+    - name: Cache the compiler cache
+      uses: actions/cache@v4
+      with:
+        path: ~/.cache/ccache
+        key: ccache-macos-${{ inputs.ccache-name }}-${{ github.sha }}
+        restore-keys: |
+          ccache-macos-${{ inputs.ccache-name }}-
+
+    - name: Use ccache
+      shell: bash
+      run: ccache --max-size=2G --zero-stats
+
+    # The converted graphics (native.yml's header says why; the action, what
+    # keys them). Its key and its touch -d need coreutils, on PATH from here.
+    - name: Cache the converted assets
+      uses: ./.github/actions/native-assets
