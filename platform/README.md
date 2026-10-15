@@ -551,6 +551,19 @@ F1 overlay", "Fast-forward in the frame pacer") the reasons.
   the frame loop's side in `test/test_frame.c` (the pace, the hold released
   on focus loss, the toggle across frames, the sound's queue within its
   bound at each speed on SDL's dummy device, mute).
+- `controller` is what a game controller does besides the GBA buttons
+  (`input.c` keeps those): six functions (fast-forward hold and toggle, the
+  overlay, its close and quit, fullscreen), each bound to a button or a
+  trigger, tracked per controller from SDL's events alone (`frame.c` passes
+  every event; the answer is the press or release of a function). A
+  controller's removal and the window losing focus release what it held, so
+  fast-forward cannot stay on. The overlay, `fastforward` and `frame.c` act
+  on the edges. `test/test_controller.c`.
+- `fullscreen` holds the decisions: `fullscreen_on_steam_deck` (the
+  environment's `SteamDeck` is exactly `1`), `fullscreen_at_start` (the
+  `fullscreen` setting, else the Deck rule) and the toggle key; `video.c` owns
+  the window (`video_set_fullscreen`, desktop fullscreen with the same logical
+  size, integer scale and letterbox). `test/test_fullscreen.c`.
 - `font` is a bitmap font of printable ASCII, glyphs 5 pixels wide and 8
   high (capitals 7, and a row for descenders) in cells 6 wide, lines 10 rows
   apart (`font_glyphs.h`, drawn for this project) and draws text into a 32-bit

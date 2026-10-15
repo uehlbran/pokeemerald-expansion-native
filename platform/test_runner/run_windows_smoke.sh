@@ -182,6 +182,10 @@ has_line "Save: keys/pokeemerald.sav" || fail "--keys does not name the save in 
 has_line "Clock: keys/pokeemerald.rtc" || fail "--keys does not name the clock's file in the data directory"
 has_line "Settings: keys/settings.ini (not there: the defaults)" || fail "--keys does not say the settings file is not there"
 has_line "  A       Z" || fail "--keys does not show A on Z, the default"
+has_line "  Fullscreen F11" || fail "--keys does not show fullscreen on F11, the default"
+has_line "  Fast-forward hold    Right trigger" || fail "--keys does not show the controller's fast-forward hold"
+has_line "  Help overlay         Y" || fail "--keys does not show the controller's help overlay button"
+has_line "  Overlay quit         X" || fail "--keys does not show the controller's quit button"
 keys_version=$(head -n 1 "$scratch/stdout" | tr -d '\r')
 [[ $keys_version =~ ^pokeemerald-native\ [A-Za-z0-9._+-]+$ ]] || fail "--keys does not start with the version"
 [ "$(sed -n 2p "$scratch/stdout" | tr -d '\r')" = "Data directory (--data-dir): keys" ] \

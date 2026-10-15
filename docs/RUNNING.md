@@ -57,6 +57,7 @@ There is no 32-bit Windows build and no sanitizer build for Windows.
 | A | L |
 | S | R |
 | F1 | the help overlay (not a GBA button) |
+| F11 | fullscreen on and off ([below](#fullscreen)) |
 | Tab, held | fast-forward while held ([below](#fast-forward)) |
 | Shift+Tab | fast-forward on, and off again |
 
@@ -64,23 +65,47 @@ Those are the defaults; the settings file ([below](#the-settings-file))
 moves any GBA button, and either fast-forward key, to another key. The keys are physical positions: on a
 keyboard that is not QWERTY, "Z" is the key where QWERTY has its Z.
 
-A game controller that SDL2 recognises works as well: its A, B, Start, Back,
-shoulder buttons, D-pad and left stick are the GBA's A, B, Start, Select, L,
-R and D-pad. The controller's buttons cannot be changed.
+A game controller that SDL2 recognises works as well, and does everything the
+keyboard does:
+
+| Controller | Does |
+|---|---|
+| A, B | the GBA's A and B |
+| Start, Back | the GBA's Start and Select |
+| Left and right shoulder | the GBA's L and R |
+| D-pad, left stick | the GBA's D-pad |
+| Right trigger, held | fast-forward while held |
+| Right stick, clicked | fast-forward on, and off again |
+| Y | the help overlay, shown and hidden |
+| B, while the overlay is shown | closes it (the game does not see that B) |
+| X, while the overlay is shown | quits |
+| Left trigger | fullscreen on and off |
+
+On a Steam Deck these are the Deck's own buttons, as Steam Input presents
+them to the game ([Steam Deck](#steam-deck)). The GBA buttons are fixed (Steam
+Input can remap them); the last six rows are settings that move to other
+buttons ([below](#the-settings-file)). A trigger counts as pressed past about
+half its travel. A button given to one of those functions still does its GBA
+job too, so give them buttons the GBA layout leaves free (X, Y, the stick
+clicks, the triggers, the guide button).
 
 ## The help overlay: F1, and quitting
 
 F1 shows the help overlay over the game: the version, the data directory and
 the paths of the save, the clock's file and the settings file, the keys in
 force, the controller's buttons and fast-forward's keys, speed and sound,
-under the line `Q: quit  F1: close`.
+under the line `Q: quit  F1: close`; once the last thing you pressed was a
+controller button, the line names the controller's instead (`X: quit  B: close`).
 The overlay shows those lines from the top as far as the window has room: in
 a small window (`--scale 1` or 2) the last ones may not fit, and
 `pokeemerald-native --keys` prints them all.
-F1 again closes it. While it is shown the game keeps running but receives no
-key, so nothing you press reaches the game.
+F1 again closes it (the controller's Y shows and hides it, B closes it). While
+it is shown the game keeps running but receives no key and no controller
+button, so nothing you press reaches the game; a button still down when it
+closes stays released until you let go of it.
 
-Q, while the overlay is shown, quits the game, as closing the window does.
+Q, or the controller's X, while the overlay is shown, quits the game, as
+closing the window does.
 Quitting does not save your game: save in the game first (Start, then SAVE),
 as on the GBA. The game's Start menu has no quit; its EXIT closes the menu,
 as in the original.
@@ -118,6 +143,63 @@ the window (`FF 3x`, `FF 4x` or `FF max` at the other speeds).
 - A replay, a game started with `--headless`, and the test runner never
   fast-forward.
 
+Fast-forward also works from a controller: hold the right trigger, or click
+the right stick to switch it on and off. It ends when the trigger is let go,
+when the controller is unplugged, and when the window loses focus. While the
+overlay is shown the controller's fast-forward buttons do nothing either.
+
+## Fullscreen
+
+F11, or the controller's left trigger, switches the window between a window and
+fullscreen. Fullscreen takes the whole screen at its own resolution and keeps
+the picture's shape: the game is drawn as large as a whole multiple of 240x160
+allows, centred, with black bars (a 1280x800 screen shows it five times as
+large, 1200x800). On a Steam Deck the game starts fullscreen, because
+SteamOS sets `SteamDeck=1` for what it runs; elsewhere it starts in a window.
+`fullscreen = yes` or `no` in the settings file decides for yourself, on any
+machine (`auto`, the default, is the Deck rule). A replay and a
+`--headless` run are never fullscreen.
+
+## Steam Deck
+
+The Linux 64-bit build is the Deck's build: SteamOS is a Linux x86-64 system.
+Nothing needs installing, and the system partition stays untouched.
+
+1. In Desktop Mode, copy the release folder (`pokeemerald-native-...-linux-x86_64`)
+   into your home directory, for example `/home/deck/Games/pokeemerald-native/`,
+   and unpack it there if it is a tarball (`tar xzf`).
+2. Open Steam in Desktop Mode, Games > Add a Non-Steam Game to My Library >
+   Browse, set the file filter to All files, and pick `pokeemerald-native.sh`
+   from that folder (the script starts the game from its own folder). Add it.
+3. Optionally rename it in its Properties. No launch options are needed.
+   Return to Game Mode: it is in the library under Non-Steam.
+
+The game starts fullscreen. The Steam button and the quick-access button
+belong to Steam and the game never sees them; the controller table
+[above](#keys) lists the rest: A, B, Start, Back, the shoulders and the D-pad
+play, the right trigger and a right-stick click fast-forward, Y opens the
+overlay (B closes it, X quits), the left trigger toggles fullscreen. If Steam
+Input's default layout for non-Steam games maps those buttons differently,
+choose "Gamepad" in the controller settings for the game.
+
+Your save is in the per-user data directory like anywhere on Linux:
+`/home/deck/.local/share/pokeemerald-expansion-native/pokeemerald-native/`.
+Put a `settings.ini` beside the executable instead if you want the folder to
+carry everything ([portable mode](#where-the-files-live)).
+
+The package is the executable, the launcher script, the licence and these
+pages. It does not carry SDL2: SteamOS is Arch-based and is expected to
+have `libSDL2-2.0.so.0` in its image (not checked on a Deck yet), and the
+executable needs glibc 2.34 at most
+(the highest `GLIBC_` version in `objdump -T`; the release job builds on
+Ubuntu 24.04, the same toolchain as this measurement). The Deck is on a far
+newer glibc: a SteamOS 3.8 Deck reports 2.41
+([report](https://forum.godotengine.org/t/steam-deck-cant-launch-linux-build-due-to-outdated-glibc-version-build-targeting-newer-glibc-version/143218)).
+If the game does not start from Steam, run `./pokeemerald-native.sh` in
+Konsole to see the message; "libSDL2-2.0.so.0: cannot open shared object file"
+means installing SDL2 (`sudo pacman -S sdl2` after `sudo steamos-readonly
+disable`).
+
 ## The settings file
 
 `settings.ini` in the data directory ([below](#where-the-files-live)). The
@@ -150,17 +232,35 @@ fast_forward_toggle = shift+tab
 fast_forward_speed = 2
 # While fast-forward is on, the sound: play (sped up) or mute.
 fast_forward_audio = play
+# Fullscreen: yes, no, or auto (fullscreen on a Steam Deck only), and its key.
+fullscreen = auto
+fullscreen_toggle = f11
+# The controller's functions (SDL's button names, or lefttrigger and
+# righttrigger); the GBA buttons on a controller are fixed.
+pad_fast_forward = righttrigger
+pad_fast_forward_toggle = rightstick
+pad_overlay = y
+pad_overlay_close = b
+pad_quit = x
+pad_fullscreen = lefttrigger
 ```
 
 The settings are the ten GBA buttons (`a`, `b`, `select`, `start`, `up`,
 `down`, `left`, `right`, `l`, `r`), `scale`, and fast-forward's four
 (`fast_forward`, `fast_forward_toggle`, `fast_forward_speed`,
-`fast_forward_audio`; [above](#fast-forward)). A comment is a whole line:
+`fast_forward_audio`; [above](#fast-forward)), `fullscreen` and
+`fullscreen_toggle` ([above](#fullscreen)), and the controller's six
+(`pad_fast_forward`, `pad_fast_forward_toggle`, `pad_overlay`,
+`pad_overlay_close`, `pad_quit`, `pad_fullscreen`), each a button as SDL names
+it (`a`, `b`, `x`, `y`, `back`, `start`, `guide`, `leftstick`, `rightstick`,
+`leftshoulder`, `rightshoulder`, `dpup`, `dpdown`, `dpleft`, `dpright`, ...) or
+`lefttrigger` or `righttrigger`. One button serves one controller function: if
+two lines name the same button, the later is reported and keeps its default. A comment is a whole line:
 `a = z  # my key` reads the key name `z  # my key`, which is not one. Names and keys can be
 written in any case, with or without spaces around the `=`; a setting you
 leave out keeps its default, and if a setting appears twice the later line
-wins. Two buttons may share a key. F1 cannot be a button's or a
-fast-forward key: it opens the overlay. The two fast-forward keys must
+wins. Two buttons may share a key. F1 cannot be a button's, a
+fast-forward or the fullscreen key: it opens the overlay. The two fast-forward keys must
 differ: if the file makes them one key, the later of the two lines is
 reported and that key keeps its default (to swap them, write both lines).
 `pokeemerald-native --keys` prints the keys in force with SDL's spelling of
@@ -168,11 +268,11 @@ each name, so it also shows how to write one.
 
 A line the game cannot use (a misspelt setting, a key name SDL does not know,
 a scale outside 1 to 16, a fast-forward speed other than 2, 3, 4 or
-`unlimited`, a line without `=`) is reported with its line number
+`unlimited`, a controller button name SDL does not know, a `fullscreen` other than yes, no or auto, a line without `=`) is reported with its line number
 on standard error (on Windows, [see below](#no-console-window-on-windows)), for example
 
 ```
-settings: /home/you/.local/share/pokeemerald-expansion-native/pokeemerald-native/settings.ini:4: 'jump' is not a setting (a, b, select, start, right, left, up, down, r, l, scale, fast_forward, fast_forward_toggle, fast_forward_speed, fast_forward_audio); the line is ignored
+settings: /home/you/.local/share/pokeemerald-expansion-native/pokeemerald-native/settings.ini:4: 'jump' is not a setting (a, b, select, start, right, left, up, down, r, l, scale, fast_forward, fast_forward_toggle, fast_forward_speed, fast_forward_audio, fullscreen, fullscreen_toggle, pad_fast_forward, pad_fast_forward_toggle, pad_overlay, pad_overlay_close, pad_quit, pad_fullscreen); the line is ignored
 ```
 
 and the game starts with the rest of the file. `--scale` on the command

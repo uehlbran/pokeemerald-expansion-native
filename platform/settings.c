@@ -503,7 +503,9 @@ static void print_problem(const struct settings_problem *problem, const char *pa
                       problem->text);
         break;
     case SETTINGS_SAME_CONTROL:
-        (void)fprintf(out, "'%s' is another function's controller button too: one button serves one function, and this one keeps its default",
+        (void)fprintf(out,
+                      "'%s' is another function's controller button too: one button serves one function, and this one "
+                      "keeps its default",
                       problem->text);
         break;
     case SETTINGS_BAD_FULLSCREEN:

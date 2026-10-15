@@ -1403,7 +1403,8 @@ PTEST(f11_and_the_left_trigger_toggle_fullscreen_once_per_press)
     bool pushed = push_key_event(SDL_KEYDOWN, SDL_SCANCODE_F11, KMOD_NONE);
     bool ran = run_frames(1);
     const bool by_key = video_is_fullscreen();
-    pushed = push_pad_trigger(SDL_CONTROLLER_AXIS_TRIGGERLEFT, 20000) && push_pad_trigger(SDL_CONTROLLER_AXIS_TRIGGERLEFT, 32767)
+    pushed = push_pad_trigger(SDL_CONTROLLER_AXIS_TRIGGERLEFT, 20000)
+             && push_pad_trigger(SDL_CONTROLLER_AXIS_TRIGGERLEFT, 32767)
              && push_pad_trigger(SDL_CONTROLLER_AXIS_TRIGGERLEFT, 30000) && pushed;
     ran = run_frames(3) && ran;
     const bool by_pad = !video_is_fullscreen(); /* one press: back to the window, and it stays */

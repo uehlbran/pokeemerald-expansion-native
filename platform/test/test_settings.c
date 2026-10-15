@@ -610,7 +610,8 @@ PTEST(a_bad_controller_name_is_a_problem_and_the_default_stays)
     PT_ASSERT_EQ_STR(s.problems[0].text, "banana");
     PT_ASSERT_EQ_INT(s.problems[1].kind, SETTINGS_UNKNOWN_CONTROL);
     PT_ASSERT_EQ_INT(s.problems[2].kind, SETTINGS_NOT_A_SETTING_LINE);
-    PT_ASSERT(strstr(report_of(&s, said, sizeof said), "settings: f.ini:1: 'banana' is not a controller button name SDL knows")
+    PT_ASSERT(strstr(report_of(&s, said, sizeof said),
+                     "settings: f.ini:1: 'banana' is not a controller button name SDL knows")
               != NULL);
 }
 
@@ -630,8 +631,9 @@ PTEST(the_same_button_for_two_functions_sends_the_later_line_back_to_its_default
     PT_ASSERT_EQ_U32(s.problems[0].line, 2u);
     PT_ASSERT_EQ_U32(s.problems[1].line, 1u);
     PT_ASSERT(pad_is_default(&s.pad));
-    PT_ASSERT(strstr(report_of(&s, said, sizeof said), "settings: f.ini:2: 'x' is another function's controller button too")
-              != NULL);
+    PT_ASSERT(
+        strstr(report_of(&s, said, sizeof said), "settings: f.ini:2: 'x' is another function's controller button too")
+        != NULL);
 }
 
 PTEST(a_rotation_of_the_default_buttons_is_no_problem)

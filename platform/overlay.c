@@ -68,9 +68,8 @@ static void note_input_device(const SDL_Event *event)
 {
     if (event->type == SDL_KEYDOWN)
         overlay.hint_for_pad = false;
-    else if (event->type == SDL_CONTROLLERBUTTONDOWN)
-        overlay.hint_for_pad = true;
-    else if (event->type == SDL_CONTROLLERAXISMOTION && abs(event->caxis.value) > CONTROLLER_TRIGGER_PRESS)
+    else if (event->type == SDL_CONTROLLERBUTTONDOWN
+             || (event->type == SDL_CONTROLLERAXISMOTION && abs(event->caxis.value) > CONTROLLER_TRIGGER_PRESS))
         overlay.hint_for_pad = true;
 }
 

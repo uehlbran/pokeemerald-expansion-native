@@ -81,13 +81,13 @@
 #define SETTINGS_PROBLEM_TEXT_SIZE 48u
 
 enum settings_problem_kind {
-    SETTINGS_NOT_A_SETTING_LINE,   /* no '=', or nothing on one side of it */
-    SETTINGS_UNKNOWN_SETTING,      /* text: the setting's name */
-    SETTINGS_UNKNOWN_KEY,          /* text: the value, which SDL names no key */
-    SETTINGS_RESERVED_KEY,         /* text: the value, the help overlay's key */
-    SETTINGS_BAD_SCALE,            /* text: the value, not 1 to OPTIONS_MAX_SCALE */
-    SETTINGS_BAD_SPEED,            /* text: the value, not 2, 3, 4 or unlimited */
-    SETTINGS_BAD_AUDIO,            /* text: the value, not play or mute */
+    SETTINGS_NOT_A_SETTING_LINE,    /* no '=', or nothing on one side of it */
+    SETTINGS_UNKNOWN_SETTING,       /* text: the setting's name */
+    SETTINGS_UNKNOWN_KEY,           /* text: the value, which SDL names no key */
+    SETTINGS_RESERVED_KEY,          /* text: the value, the help overlay's key */
+    SETTINGS_BAD_SCALE,             /* text: the value, not 1 to OPTIONS_MAX_SCALE */
+    SETTINGS_BAD_SPEED,             /* text: the value, not 2, 3, 4 or unlimited */
+    SETTINGS_BAD_AUDIO,             /* text: the value, not play or mute */
     SETTINGS_SAME_FAST_FORWARD_KEY, /* text: the value, the other fast-forward key's too */
     SETTINGS_UNKNOWN_CONTROL,       /* text: the value, which names no controller button */
     SETTINGS_SAME_CONTROL,          /* text: the value, another function's button too */
@@ -106,7 +106,7 @@ struct settings {
     struct fastforward_settings fast_forward;
     struct controller_bindings pad;
     enum fullscreen_setting fullscreen;
-    int fullscreen_key; /* an SDL_Scancode, never INPUT_NO_SCANCODE */
+    int fullscreen_key;   /* an SDL_Scancode, never INPUT_NO_SCANCODE */
     bool found;           /* settings_load: the file was there */
     size_t problem_count; /* every problem, those beyond SETTINGS_MAX_PROBLEMS too */
     struct settings_problem problems[SETTINGS_MAX_PROBLEMS];

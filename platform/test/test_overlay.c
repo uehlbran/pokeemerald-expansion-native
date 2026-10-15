@@ -357,7 +357,7 @@ PTEST(a_button_held_when_the_overlay_hides_stays_released_until_let_go)
     (void)overlay_handle_controller(&y);
     PT_ASSERT_EQ_U32(overlay_game_keys(0x0002u), 0u); /* B down while shown */
     (void)overlay_handle_controller(&close);
-    PT_ASSERT_EQ_U32(overlay_game_keys(0x0002u), 0u); /* still down: still released */
+    PT_ASSERT_EQ_U32(overlay_game_keys(0x0002u), 0u);                /* still down: still released */
     PT_ASSERT_EQ_U32(overlay_game_keys(0x0002u | 0x0010u), 0x0010u); /* a new button passes */
     PT_ASSERT_EQ_U32(overlay_game_keys(0x0010u), 0x0010u);
     PT_ASSERT_EQ_U32(overlay_game_keys(0x0002u | 0x0010u), 0x0002u | 0x0010u); /* let go, pressed anew */
