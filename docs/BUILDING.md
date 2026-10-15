@@ -651,13 +651,14 @@ compared test by test with the Linux 64-bit suite of the same commit
 layouts against Linux's. Its header lists the jobs. macOS minutes count ten
 times a Linux minute, so the jobs are ordered for an early failure to stop the
 rest: the game and the suite start only after the unit tests pass. At the
-jobs' time limits a night costs up to 2,330 billed minutes on a private
+jobs' time limits a night costs up to 2,340 billed minutes on a private
 repository and nothing on a public one; the schedule fires only on the
 default branch, and whether it stays nightly is the owner's call when the
-branch merges. The Linux game it carries between jobs (`linux-build`) is kept
-one day and deleted by its last job, `cleanup`, with every other artifact
-not on that job's list of artifacts without the game (`docs/DECISIONS.md`,
-"CI artifacts never hold the game beyond a run").
+branch merges. It uploads no game, ever (`docs/DECISIONS.md`, "CI artifacts
+never hold the game beyond a run"): each job builds what it runs (`compare`
+builds the Linux game again for the cross-OS gate's last stage), and only
+text and the cross-OS stages' `pokeemerald.sav` and `pokeemerald.rtc` pass
+between jobs.
 
 ## The release workflow
 

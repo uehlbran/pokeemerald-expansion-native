@@ -2514,8 +2514,8 @@ account's billing is restored and run 1 has shown everything listed under
 it. The merge also decides the nightly: `macos.yml`'s schedule is left as
 it is (a schedule fires only on the default branch, so it starts the night
 the file reaches `main`), and at its jobs' time limits a night costs up to
-2,330 billed minutes on a private repository (the three macOS jobs' 220
-minutes at ten times, the Linux jobs' 130; 2,950 for the macOS jobs alone
+2,340 billed minutes on a private repository (the three macOS jobs' 220
+minutes at ten times, the Linux jobs' 140; 2,950 for the macOS jobs alone
 while the `rosetta` job was in it), and nothing on a public one. The runs,
 in this order:
 
@@ -2524,7 +2524,7 @@ in this order:
    file is on the default branch, so `macos.yml` must reach `main` first,
    alone or with a push trigger restored on the branch for the one run).
    Its jobs (`unit`, `game` and `suite` on `macos-15-intel`; `linux`,
-   `linux-suite`, `compare` and `cleanup` on `ubuntu-24.04`) must show:
+   `linux-suite` and `compare` on `ubuntu-24.04`) must show:
    - **unit**: 99 unit test binaries (80 portable, 14 `posix/`, 5 `darwin/`)
      each "N passed, 0 failed" under ASan and UBSan, and 98 under TSan
      (`test_crt0` is not run under it); clang-tidy clean on the macOS
@@ -2559,10 +2559,13 @@ in this order:
    - **compare**: "PASS: the same 5884 tests with the same results" for the
      plain and for the sanitized suite against Linux 64-bit's; gate h's back
      stage PASS; the two 64-bit struct layouts identical.
-   - **cleanup**: every artifact of the run deleted but the six without the
-     game (`macos-game`, `suite-macos`, `suite-linux64` and the three
-     failure-only ones), `linux-build` first ("CI artifacts never hold the
-     game beyond a run").
+   - **no upload of the game**: the run's artifacts are `linux-save`
+     (gate h's first stage: `pokeemerald.sav`, `pokeemerald.rtc` and text),
+     `macos-game` (text, and the second stage's save and clock),
+     `suite-macos`, `suite-linux64`, and on a failure the text-only
+     `*-outputs`; no executable, test runner, archive, converted data,
+     screenshot or output directory among them (no workflow uploads the
+     game, ever: "CI artifacts never hold the game beyond a run").
 2. The same workflow on `main` after the merge, and its nightly from then on.
 3. The owner's own Mac, Intel or Apple silicon under Rosetta: the build from a
    fresh clone with the Homebrew line of `docs/BUILDING.md`, the game in a

@@ -10,8 +10,7 @@
 #                    ThreadSanitizer, clang-tidy on the macOS sources,
 #                    patchelf on a Mach-O executable
 #   linux            the Linux 64-bit game and the save it writes (gate h's
-#                    first stage, tests/smoke/run_cross_os.sh), and its
-#                    structs' 64-bit layout
+#                    first stage, tests/smoke/run_cross_os.sh)
 #   game             macOS: the game, plain and sanitized; its layout and what
 #                    it loads (otool); the replays (gates d and e) of both;
 #                    gate h's second stage on the Linux save; the structs'
@@ -20,29 +19,30 @@
 #                    plain and sanitized
 #   linux-suite      the suite on Linux 64-bit, plain and sanitized, the
 #                    results the macOS ones must equal
-#   compare          the macOS suites against Linux's, test by test; gate h's
-#                    last stage (the Linux build on the save the Mac wrote);
-#                    the two struct layouts
-#   cleanup          always, last: deletes the run's artifacts but those on
-#                    its list of artifacts without the game
+#   compare          the Linux 64-bit game built again; the macOS suites
+#                    against Linux's, test by test; gate h's last stage (the
+#                    Linux build on the save the Mac wrote); the two struct
+#                    layouts
 #
-# Artifacts carry the builds and the stages' directories between the jobs.
-# The Linux build holds the complete game, so it is not for keeping
-# (docs/DECISIONS.md, "CI artifacts never hold the game beyond a run"): no
-# artifact may hold the game or any part of it beyond the run. The build
-# (linux-build) is kept one day, and the last job, `cleanup`, deletes every
-# artifact of the run that is not on its explicit list of artifacts without
-# the game (the layout's text, logs, suite results, replay dumps and the
-# saves of the replays). The failure-only uploads and the game job's gate h
-# directory name their files by extension. Once the run has finished its
-# build is gone, so a single failed job cannot be re-run: use "re-run all
-# jobs".
+# NO WORKFLOW UPLOADS THE GAME, EVER (docs/DECISIONS.md, "CI artifacts never
+# hold the game beyond a run", as the owner tightened it): a built
+# executable holds the complete game's assets, and a public repository's
+# artifacts are public. So no game, test runner, archive, converted data or
+# output directory is uploaded, at any retention: each job that needs a
+# build makes it (the macOS jobs on the Mac; `compare` builds the Linux game
+# again for gate h's last stage). Between jobs pass only a stage's save and
+# clock (`pokeemerald.sav`, `pokeemerald.rtc`, named one by one) and text
+# (the suites' logs, the layout's and otool's text, the replays' text
+# dumps, logs and input files). The failure-only uploads keep text alone,
+# one pattern a line: no screenshot, no save, no binary. The caches hold
+# compiled objects, the converted graphics, the build tools and ccache's
+# data, never a linked game, test runner or archive.
 # macOS minutes count ten times. Nightly at 06:17 UTC, an hour after
 # windows.yml's nightly, and by hand (gh workflow run macos.yml). A schedule
 # fires only on the default branch, so the nightly starts when this file
-# reaches main; at the time limits a night costs up to 2,330 billed minutes
+# reaches main; at the time limits a night costs up to 2,340 billed minutes
 # on a private repository (the three macOS jobs' 220 minutes at ten times,
-# the Linux jobs' 130), and nothing on a public one; whether it stays
+# the Linux jobs' 140), and nothing on a public one; whether it stays
 # nightly is the owner's call at the merge (docs/DECISIONS.md, "The macOS
 # port waits for its first runs on a Mac"). The time limits are estimates
 # from the Linux and Windows jobs: no run has measured this workflow yet
@@ -130,35 +130,30 @@ jobs:
       - name: Gate h across operating systems, the first stage (the Linux save)
         run: tests/smoke/run_cross_os.sh save build/native64/pokeemerald-native out/cross-os/save
 
-      # Holds the game: one day, and deleted by `cleanup` at the end of the run.
-      - name: Upload the Linux game, its save and its struct layout
+      # The save stage's save and clock, named one by one, and its text (the
+      # dumps, logs and the replay the next stages read); not the game.
+      - name: Upload the Linux save (gate h's first stage)
         uses: actions/upload-artifact@v4
         with:
-          name: linux-build
-          retention-days: 1
+          name: linux-save
           if-no-files-found: error
           path: |
-            build/native64/pokeemerald-native
-            build/native64/pokeemerald-native.symbols
-            build/native64/data_layout64.txt
-            out/cross-os/save/work/from/
+            out/cross-os/save/work/from/pokeemerald.sav
+            out/cross-os/save/work/from/pokeemerald.rtc
+            out/cross-os/save/work/from/*.txt
+            out/cross-os/save/work/from/*.log
+            out/cross-os/save/work/from/*.replay
 
       - name: Keep the outputs of a failed stage
         if: failure()
         uses: actions/upload-artifact@v4
         with:
           name: linux-outputs
-          # No braces in these patterns: @actions/glob sets nobrace, so {a,b} matches nothing.
+          # Text alone, one pattern a line (no braces: @actions/glob sets nobrace).
           path: |
             out/**/*.txt
             out/**/*.log
-            out/**/*.ppm
-            out/**/*.sav
-            out/**/*.rtc
             out/**/*.diff
-            out/**/*.replay
-            out/**/*.all
-            out/**/*.known-patterns
           if-no-files-found: ignore
 
   game:
@@ -213,13 +208,14 @@ jobs:
         if: always()
         uses: actions/download-artifact@v4
         with:
-          name: linux-build
-          path: linux-build
+          name: linux-save
+          path: linux-save
 
       - name: Gate h across operating systems, the second stage (the macOS build on the Linux save)
         if: always()
-        run: tests/smoke/run_cross_os.sh load build/native64/pokeemerald-native linux-build/out/cross-os/save/work/from out/cross-os/load
+        run: tests/smoke/run_cross_os.sh load build/native64/pokeemerald-native linux-save out/cross-os/load
 
+      # Text, and gate h's save and clock named one by one; not the game.
       - name: Upload the layout and gate h's second stage
         if: always()
         uses: actions/upload-artifact@v4
@@ -232,10 +228,9 @@ jobs:
             out/codesign.txt
             out/keys.txt
             build/native64/data_layout64.txt
+            out/cross-os/load/work/again/pokeemerald.sav
+            out/cross-os/load/work/again/pokeemerald.rtc
             out/cross-os/load/work/again/*.txt
-            out/cross-os/load/work/again/*.ppm
-            out/cross-os/load/work/again/*.sav
-            out/cross-os/load/work/again/*.rtc
             out/cross-os/load/work/again/*.log
           if-no-files-found: ignore
 
@@ -263,17 +258,11 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: macos-game-outputs
-          # No braces in these patterns: @actions/glob sets nobrace, so {a,b} matches nothing.
+          # Text alone, one pattern a line (no braces: @actions/glob sets nobrace).
           path: |
             out/**/*.txt
             out/**/*.log
-            out/**/*.ppm
-            out/**/*.sav
-            out/**/*.rtc
             out/**/*.diff
-            out/**/*.replay
-            out/**/*.all
-            out/**/*.known-patterns
           if-no-files-found: ignore
 
   suite:
@@ -358,20 +347,25 @@ jobs:
     needs: [linux, game, suite, linux-suite]
     if: always() && needs.linux.result == 'success'
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
 
-      - name: Prerequisites (the Linux game's libraries)
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends libsdl2-2.0-0
+      - uses: ./.github/actions/native-setup
+        with:
+          ccache-name: macos-linux
 
-      - name: Download the Linux game and its save
+      # No artifact carries the game: the Linux game of gate h's last stage
+      # and its struct layout are built here again (the linux job's build, the
+      # same commit and ccache).
+      - name: The Linux 64-bit game
+        run: make -f Makefile.native -j"$(nproc)" native BITS=64
+
+      - name: Download the Linux save
         uses: actions/download-artifact@v4
         with:
-          name: linux-build
-          path: linux-build
+          name: linux-save
+          path: linux-save
 
       - name: Download the macOS game's results
         uses: actions/download-artifact@v4
@@ -403,61 +397,22 @@ jobs:
 
       - name: Gate h across operating systems, the last stage (the Linux build on the macOS save)
         if: always()
-        run: |
-          chmod +x linux-build/build/native64/pokeemerald-native
-          tests/smoke/run_cross_os.sh back linux-build/build/native64/pokeemerald-native linux-build/out/cross-os/save/work/from macos-game/out/cross-os/load/work/again out/cross-os/back
+        run: tests/smoke/run_cross_os.sh back build/native64/pokeemerald-native linux-save macos-game/out/cross-os/load/work/again out/cross-os/back
 
       # The data's structs are laid out alike on both (Makefile.native's
       # check, which needs the 32-bit layout too, runs on Linux).
       - name: The structs' 64-bit layout, the Mac's against Linux's
         if: always()
-        run: diff linux-build/build/native64/data_layout64.txt macos-game/build/native64/data_layout64.txt && echo "the 64-bit layouts are the same"
+        run: diff build/native64/data_layout64.txt macos-game/build/native64/data_layout64.txt && echo "the 64-bit layouts are the same"
 
       - name: Keep the outputs of a failed stage
         if: failure()
         uses: actions/upload-artifact@v4
         with:
           name: compare-outputs
-          # No braces in these patterns: @actions/glob sets nobrace, so {a,b} matches nothing.
+          # Text alone, one pattern a line (no braces: @actions/glob sets nobrace).
           path: |
             out/**/*.txt
             out/**/*.log
-            out/**/*.ppm
-            out/**/*.sav
-            out/**/*.rtc
             out/**/*.diff
-            out/**/*.replay
-            out/**/*.all
-            out/**/*.known-patterns
           if-no-files-found: ignore
-
-  # The last job: deletes every artifact of this run that is not on the
-  # list below, the game-bearing linux-build first, whatever the other jobs
-  # did. It fails if one cannot be deleted or one is left.
-  cleanup:
-    name: Delete the build from the run
-    needs: [unit, linux, game, suite, linux-suite, compare]
-    if: always()
-    runs-on: ubuntu-24.04
-    timeout-minutes: 5
-    permissions:
-      actions: write
-      contents: read
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          sparse-checkout: .github/actions
-          persist-credentials: false
-
-      - uses: ./.github/actions/delete-run-artifacts
-        with:
-          # Without the game: the layout's text, logs, the suites' results,
-          # the replays' dumps, screenshots and saves. (suite-linux64 is also
-          # windows.yml's name; artifacts are per run, so they never meet.)
-          keep: |
-            macos-game
-            suite-macos
-            suite-linux64
-            linux-outputs
-            macos-game-outputs
-            compare-outputs
