@@ -27,8 +27,8 @@
 set -u
 
 # Two minutes an executable, where all 70 take 40 seconds together (run
-# 38629824732): a hang costs the Windows job little of its 15 minutes, and
-# the suite and the uploads after it still run (.github/workflows/windows.yml).
+# 38629824732): a hang costs the Windows job little of its 60 minutes, and
+# the suite and the steps after it still run (.github/workflows/windows.yml).
 TEST_SECONDS=120
 KILL_SECONDS=10
 # timeout's status when the limit ended the test, and when the test had to

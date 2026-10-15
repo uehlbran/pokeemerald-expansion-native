@@ -1,42 +1,57 @@
+# NO WORKFLOW UPLOADS THE GAME, EVER (docs/DECISIONS.md, "No workflow uploads
+# the game"): no artifact, at any retention, holds the game, the test runner,
+# an archive of either, or a data file or output directory with expansion's
+# assets or a binary in it. A public repository's artifacts are downloadable
+# by any logged-in GitHub user. This file uploads the Linux suite's log, the
+# Windows suite's log, and on a failed job the gates' outputs: text and logs,
+# frame images (.ppm, .png) and the save and clock files (.sav, .rtc) of the
+# save gates, chosen by an explicit list of file patterns (a frame image and a
+# save are not a playable build). platform/build_glue/
+# check_workflow_uploads.py fails the gate if an upload could match anything
+# else. Caches may hold compiled objects, converted assets and ccache data,
+# never a linked game or test runner (same entry).
+#
 # The Windows runner (milestone 8, tasks W8 and W9; docs/PLAN.md "Milestone 8
 # plan"; docs/BUILDING.md, "Running it on Windows"). Nothing built for Windows
-# runs on the Linux build machine, so Linux jobs cross-build with MinGW-w64
-# (docs/BUILDING.md, "Windows (cross-build from Linux)") and one Windows job
-# runs what they built:
+# runs on the Linux build machine, so the Windows job cross-builds with
+# MinGW-w64 (docs/BUILDING.md, "Windows (cross-build from Linux)") and runs
+# what it built, in one job, so that no build is carried between jobs. The
+# cross-build's data path needs GNU as for ELF and the converter, which
+# Windows does not have, so the job installs a WSL distribution (Ubuntu 24.04,
+# Vampire/setup-wsl, WSL 2) and runs the same make commands there. Two jobs
+# on Linux run beside it:
 #
-#   cross-build        the game for Windows and the unit tests; patchelf on a
-#                      PE file; the Linux 64-bit game and the save it writes
-#                      (gate h's first stage, tests/smoke/run_cross_os.sh)
-#   cross-build-suite  the Windows test runner build (TEST=1)
-#   linux-suite        expansion's suite on the Linux 64-bit build, the
-#                      results the Windows ones must equal (gate b)
-#   windows            the unit tests, the start-up smoke, the start with no
-#                      console (the GUI program's log), the replays (gates
-#                      d and e), gate h's second stage on the Linux save, and
-#                      the suite through expansion's hydra under MSYS2
-#                      (docs/DECISIONS.md, "The suite on Windows runs under
-#                      MSYS2")
-#   compare            the Windows suite's results against Linux's, test by
-#                      test, and gate h's last stage: the Linux build on the
-#                      save the Windows build wrote
+#   linux-suite   expansion's suite on the Linux 64-bit build, the results
+#                 the Windows ones must equal (gate b); uploads its log
+#   windows       in WSL: the Linux 64-bit game, gate h's first stage (the
+#                 Linux save), the game and the unit tests and the test runner
+#                 (TEST=1) for Windows; on Windows: the unit tests, the
+#                 start-up smoke, the start with no console (the GUI program's
+#                 log), the replays (gates d and e), gate h's second stage on
+#                 the Linux save, and the suite through expansion's hydra under
+#                 MSYS2 (docs/DECISIONS.md, "The suite on Windows runs under
+#                 MSYS2"); in WSL again: gate h's last stage, the Linux build
+#                 on the save the Windows build wrote. The saves stay in the
+#                 job (the workspace and WSL's home): nothing is passed
+#   compare       the Windows suite's log against Linux's, test by test
 #
-# Artifacts carry the builds and the stages' directories between the jobs.
-# The builds hold the complete game, so they are not for keeping
-# (docs/DECISIONS.md, "CI artifacts never hold the game beyond a run"): no
-# artifact may hold the game or any part of it beyond the run. The builds
-# (windows-build, windows-suite-build, linux-build) are kept one day, and the
-# last job, `cleanup`, deletes every artifact of the run that is not on its
-# explicit list of artifacts without the game (logs, suite results, replay
-# dumps and the saves of the replays). The failure-only uploads name their
-# files by extension. Once the run has finished its builds are gone, so a
-# single failed job cannot be re-run: use "re-run all jobs".
+# WSL 2 and the Linux file system, on purpose. The job asks for WSL 2
+# explicitly and FAILS if it does not get it (a step checks the kernel); it
+# never falls back to WSL 1, because the Linux game maps fixed addresses and
+# restarts through /proc/self/exe, and a verdict on it under WSL 1's syscall
+# translation layer would say nothing about Linux. The tree is fetched inside
+# WSL into ~/work (exactly ${{ github.sha }}, with the job's token) and built
+# and run there, never under /mnt (9p, slow for 28,000 files, and not Linux
+# file semantics); the Windows checkout serves the Windows steps only, and the
+# Windows executables are copied out to it to be run. The caches of the converted
+# assets, the compiler and SDL2 live in the workspace, where actions/cache
+# reaches them, and are copied into WSL before the builds and back after.
+# "Re-run failed jobs" works: no job needs a build from another.
+#
 # Windows minutes count double. Nightly at 05:17 UTC, an hour after
-# native.yml's nightly tier, and by hand. The time limits keep a whole run
-# within 40 minutes: the longest chain is a cross-build (20), the Windows job
-# (15) and the comparison (5), or the Linux suite (35) and the comparison;
-# measured warm (run 38629824732): 7, 8 and 8.5 minutes for the Linux jobs, 8
-# for the Windows job (the suite 5 of them), under a minute for the
-# comparison, 17 for the run.
+# native.yml's nightly tier, and by hand. The windows job's limit is 60
+# minutes; the owner expects about 30 (the Linux builds in WSL, the three
+# cross-builds, then the Windows steps, which took 8 minutes before).
 name: windows
 
 on:
@@ -60,212 +75,6 @@ env:
   SDL_AUDIODRIVER: dummy
 
 jobs:
-  cross-build:
-    name: Cross-build the game and the unit tests; the Linux save
-    runs-on: ubuntu-24.04
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@v4
-
-      # The Windows build starts from the Linux 64-bit data, whose layout
-      # checks compile a probe at both widths, so the 32-bit headers are needed
-      # here too.
-      - name: Prerequisites (docs/BUILDING.md, the native and the Windows lines)
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends build-essential gcc-multilib libc6-dev-i386 pkg-config git python3 libpng-dev libsdl2-dev clang ccache gcc-mingw-w64-x86-64 binutils-mingw-w64-x86-64 mingw-w64-tools
-
-      # The same tools cache as native.yml, so the Linux data build does not
-      # rebuild them.
-      - name: Cache the build tools
-        uses: actions/cache@v4
-        with:
-          path: |
-            tools/bin2c/bin2c
-            tools/gbafix/gbafix
-            tools/gbagfx/gbagfx
-            tools/jsonproc/jsonproc
-            tools/mapjson/mapjson
-            tools/mid2agb/mid2agb
-            tools/preproc/preproc
-            tools/ramscrgen/ramscrgen
-            tools/rsfont/rsfont
-            tools/scaninc/scaninc
-            tools/trainerproc/trainerproc
-            tools/compresSmol/compresSmol
-            tools/compresSmol/compresSmolTilemap
-            tools/wav2agb/wav2agb
-            tools/patchelf/patchelf
-            tools/mgba-rom-test-hydra/mgba-rom-test-hydra
-          key: tools-native-${{ runner.os }}-${{ hashFiles('tools/*/Makefile', 'tools/**/*.c', 'tools/**/*.cpp', 'tools/**/*.h', 'make_tools.mk') }}
-
-      - name: Cache the converted assets
-        uses: ./.github/actions/native-assets
-
-      # The game's C reaches the compiler as a file (Makefile.native,
-      # COMPILE_C), which ccache can cache: the compiles are most of this job
-      # without it. Linked as the MinGW compiler's name, first on PATH, so that
-      # ccache finds the real one after it.
-      - name: Cache the compiler cache
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/ccache
-          key: ccache-windows-game-${{ runner.os }}-${{ github.sha }}
-          restore-keys: |
-            ccache-windows-game-${{ runner.os }}-
-
-      - name: Use ccache
-        run: |
-          mkdir -p ~/.local/ccache-bin
-          ln -sf /usr/bin/ccache ~/.local/ccache-bin/x86_64-w64-mingw32-gcc
-          echo ~/.local/ccache-bin >> "$GITHUB_PATH"
-          echo /usr/lib/ccache >> "$GITHUB_PATH"
-          ccache --max-size=2G --zero-stats
-
-      - name: Cache SDL2 for MinGW (pinned in Makefile.native by sha256)
-        uses: actions/cache@v4
-        with:
-          path: build/sdl2-mingw
-          key: sdl2-mingw-${{ hashFiles('Makefile.native') }}
-
-      - name: The Linux 64-bit game (gate h's first stage plays it)
-        run: make -f Makefile.native -j"$(nproc)" native BITS=64
-
-      - name: Gate h across operating systems, the first stage (the Linux save)
-        run: tests/smoke/run_cross_os.sh save build/native64/pokeemerald-native out/cross-os/save
-
-      - name: Cross-build the game (the Linux data, converted; the PE layout check)
-        run: make -f Makefile.native -j"$(nproc)" native BITS=64 TARGET_OS=windows
-
-      - name: Cross-build the unit tests
-        run: make -C platform -j"$(nproc)" test TARGET_OS=windows BITS=64
-
-      - name: patchelf on a PE file
-        run: make -C platform tools-test TARGET_OS=windows BITS=64
-
-      - name: ccache statistics
-        if: always()
-        run: ccache -s
-
-      - name: Upload the Windows build and the Linux save
-        uses: actions/upload-artifact@v4
-        with:
-          name: windows-build
-          if-no-files-found: error
-          retention-days: 1
-          path: |
-            build/native64-windows/pokeemerald-native.exe
-            build/native64-windows/pokeemerald-native.exe.symbols
-            build/native64-windows/SDL2.dll
-            platform/build/64-windows/test/*.exe
-            platform/build/64-windows/test/*.symbols
-            platform/build/64-windows/test/SDL2.dll
-            out/cross-os/save/work/from/
-
-      - name: Upload the Linux game (gate h's last stage plays it)
-        uses: actions/upload-artifact@v4
-        with:
-          name: linux-build
-          if-no-files-found: error
-          retention-days: 1
-          path: |
-            build/native64/pokeemerald-native
-            build/native64/pokeemerald-native.symbols
-
-      - name: Keep the outputs of a failed stage
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: cross-os-save-outputs
-          # No braces in these patterns: @actions/glob sets nobrace, so {a,b} matches nothing.
-          path: |
-            out/**/*.txt
-            out/**/*.log
-            out/**/*.ppm
-            out/**/*.sav
-            out/**/*.rtc
-            out/**/*.diff
-            out/**/*.replay
-            out/**/*.all
-            out/**/*.known-patterns
-          if-no-files-found: ignore
-
-  cross-build-suite:
-    name: Cross-build the test runner (TEST=1)
-    runs-on: ubuntu-24.04
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Prerequisites (docs/BUILDING.md, the native and the Windows lines)
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends build-essential gcc-multilib libc6-dev-i386 pkg-config git python3 libpng-dev libsdl2-dev clang ccache gcc-mingw-w64-x86-64 binutils-mingw-w64-x86-64 mingw-w64-tools
-
-      - name: Cache the build tools
-        uses: actions/cache@v4
-        with:
-          path: |
-            tools/bin2c/bin2c
-            tools/gbafix/gbafix
-            tools/gbagfx/gbagfx
-            tools/jsonproc/jsonproc
-            tools/mapjson/mapjson
-            tools/mid2agb/mid2agb
-            tools/preproc/preproc
-            tools/ramscrgen/ramscrgen
-            tools/rsfont/rsfont
-            tools/scaninc/scaninc
-            tools/trainerproc/trainerproc
-            tools/compresSmol/compresSmol
-            tools/compresSmol/compresSmolTilemap
-            tools/wav2agb/wav2agb
-            tools/patchelf/patchelf
-            tools/mgba-rom-test-hydra/mgba-rom-test-hydra
-          key: tools-native-${{ runner.os }}-${{ hashFiles('tools/*/Makefile', 'tools/**/*.c', 'tools/**/*.cpp', 'tools/**/*.h', 'make_tools.mk') }}
-
-      - name: Cache the converted assets
-        uses: ./.github/actions/native-assets
-
-      - name: Cache the compiler cache
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/ccache
-          key: ccache-windows-suite-${{ runner.os }}-${{ github.sha }}
-          restore-keys: |
-            ccache-windows-suite-${{ runner.os }}-
-
-      - name: Use ccache
-        run: |
-          mkdir -p ~/.local/ccache-bin
-          ln -sf /usr/bin/ccache ~/.local/ccache-bin/x86_64-w64-mingw32-gcc
-          echo ~/.local/ccache-bin >> "$GITHUB_PATH"
-          echo /usr/lib/ccache >> "$GITHUB_PATH"
-          ccache --max-size=2G --zero-stats
-
-      - name: Cache SDL2 for MinGW (pinned in Makefile.native by sha256)
-        uses: actions/cache@v4
-        with:
-          path: build/sdl2-mingw
-          key: sdl2-mingw-${{ hashFiles('Makefile.native') }}
-
-      - name: Cross-build the test runner (the Linux TEST=1 data, converted)
-        run: make -f Makefile.native -j"$(nproc)" native BITS=64 TARGET_OS=windows TEST=1
-
-      - name: ccache statistics
-        if: always()
-        run: ccache -s
-
-      - name: Upload the test runner
-        uses: actions/upload-artifact@v4
-        with:
-          name: windows-suite-build
-          if-no-files-found: error
-          retention-days: 1
-          path: |
-            build/native64-test-windows/pokeemerald-native-test.exe
-            build/native64-test-windows/SDL2.dll
-
   linux-suite:
     name: The suite on Linux, 64-bit (the results to equal)
     runs-on: ubuntu-24.04
@@ -324,6 +133,7 @@ jobs:
         if: always()
         run: ccache -s
 
+      # Text: the suite's per-test results, which the comparison needs.
       - name: Upload the results
         if: always()
         uses: actions/upload-artifact@v4
@@ -332,13 +142,15 @@ jobs:
           path: suite-linux64.log
 
   windows:
-    name: Run on Windows (unit tests, smoke, no console, replays, save, suite)
-    needs: [cross-build, cross-build-suite]
+    name: Build in WSL, run on Windows (unit tests, smoke, no console, replays, saves, suite)
     runs-on: windows-latest
-    timeout-minutes: 15
+    timeout-minutes: 60
     defaults:
       run:
         shell: bash
+    env:
+      # The workspace's path, translated for WSL (/p), for the wsl-bash steps.
+      WSLENV: GITHUB_WORKSPACE/p
     steps:
       # The scripts and the replays' expected outputs are committed with LF
       # line endings and compared byte for byte.
@@ -346,25 +158,163 @@ jobs:
         run: git config --global core.autocrlf false
       - uses: actions/checkout@v4
 
-      - name: Download the build
-        uses: actions/download-artifact@v4
+      # WSL 2, explicitly (its README lists it as available on the Windows
+      # images); the next step fails the job if it is not WSL 2. No fallback
+      # to WSL 1 (see the header). The action is pinned to the commit of v7.2.0 (node24); its default distribution changed in
+      # v7, so the distribution is named.
+      - name: WSL (Ubuntu 24.04)
+        uses: Vampire/setup-wsl@4c48163d9f981914dd8caa0fc335fe19cca5bff4
         with:
-          name: windows-build
+          distribution: Ubuntu-24.04
+          wsl-version: 2
 
-      - name: Download the test runner
-        uses: actions/download-artifact@v4
+      # The caches, in the workspace where actions/cache reaches them. The
+      # converted assets (shared with native.yml's way of keying them), the
+      # compiler cache and SDL2 for MinGW. Objects, converted assets and
+      # compiler output only: never a linked game or test runner.
+      - name: Cache the converted assets
+        uses: ./.github/actions/native-assets
+
+      - name: Cache the compiler cache
+        uses: actions/cache@v4
         with:
-          name: windows-suite-build
-          path: build/native64-test-windows
+          path: wsl-cache/ccache
+          key: ccache-windows-wsl-${{ runner.os }}-${{ github.sha }}
+          restore-keys: |
+            ccache-windows-wsl-${{ runner.os }}-
+
+      - name: Cache SDL2 for MinGW (pinned in Makefile.native by sha256)
+        uses: actions/cache@v4
+        with:
+          path: wsl-cache/sdl2-mingw
+          key: sdl2-mingw-wsl-${{ hashFiles('Makefile.native') }}
+
+      - name: WSL 2 or fail
+        shell: wsl-bash {0}
+        run: |
+          uname -r
+          if ! grep -q 'microsoft-standard-WSL2' /proc/sys/kernel/osrelease; then
+            echo "::error::this is not WSL 2 ($(cat /proc/sys/kernel/osrelease)); the Linux game is not judged under WSL 1"
+            exit 1
+          fi
+
+      # The packages of the Windows cross-build (docs/BUILDING.md, the native
+      # and the Windows lines; the 32-bit headers are for the layout checks,
+      # which compile a probe at both widths), as the Linux jobs installed them.
+      # The shell runs as root.
+      - name: WSL, prerequisites (docs/BUILDING.md, the native and the Windows lines)
+        shell: wsl-bash {0}
+        run: |
+          export DEBIAN_FRONTEND=noninteractive
+          apt-get update
+          apt-get install -y --no-install-recommends build-essential gcc-multilib libc6-dev-i386 pkg-config git python3 libpng-dev libsdl2-dev clang ccache gcc-mingw-w64-x86-64 binutils-mingw-w64-x86-64 mingw-w64-tools curl ca-certificates
+          # What every later WSL step sources: Windows' PATH is not WSL's
+          # (the image has its own make, git and compilers); ccache's links
+          # first, the MinGW compiler's under its own name; headless SDL.
+          mkdir -p "$HOME/.local/ccache-bin"
+          ln -sf /usr/bin/ccache "$HOME/.local/ccache-bin/x86_64-w64-mingw32-gcc"
+          cat > "$HOME/wsl-env.sh" <<'ENV'
+          export PATH="$HOME/.local/ccache-bin:/usr/lib/ccache:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+          export SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy
+          export CCACHE_DIR="$HOME/.cache/ccache" CCACHE_MAXSIZE=2G
+          ENV
+
+      # The tree, fetched in WSL into its own file system: exactly this run's
+      # commit, with the job's token (read-only, contents: read). Then the
+      # caches are copied in from the workspace; converted assets are made
+      # newer than the sources.
+      - name: WSL, the tree (fetched here) and the caches
+        shell: wsl-bash {0}
+        env:
+          WSLENV: GITHUB_WORKSPACE/p:GIT_TOKEN:REPO_URL:COMMIT
+          GIT_TOKEN: ${{ github.token }}
+          REPO_URL: ${{ github.server_url }}/${{ github.repository }}
+          COMMIT: ${{ github.sha }}
+        run: |
+          . "$HOME/wsl-env.sh"
+          ws="$GITHUB_WORKSPACE"
+          rm -rf "$HOME/work"
+          mkdir -p "$HOME/work" "$CCACHE_DIR"
+          cd "$HOME/work"
+          git init -q .
+          git remote add origin "$REPO_URL"
+          auth=$(printf 'x-access-token:%s' "$GIT_TOKEN" | base64 -w0)
+          # The token goes with this one command (-c), never into .git/config.
+          git -c http.extraHeader="Authorization: Basic $auth" fetch -q --depth 1 origin "$COMMIT"
+          git checkout -q FETCH_HEAD
+          test "$(git rev-parse HEAD)" = "$COMMIT"
+          git describe --always --dirty --match 'v[0-9]*'
+          mkdir -p build
+          if [ -d "$ws/wsl-cache/ccache" ]; then cp -dR --preserve=timestamps "$ws/wsl-cache/ccache/." "$CCACHE_DIR/"; fi
+          if [ -d "$ws/wsl-cache/sdl2-mingw" ]; then cp -dR --preserve=timestamps "$ws/wsl-cache/sdl2-mingw" build/sdl2-mingw; fi
+          if [ -d "$ws/build/assets-native" ]; then
+            cp -dR --preserve=timestamps "$ws/build/assets-native" build/assets-native
+            find build/assets-native -exec touch -d "@$(date +%s)" {} +
+          fi
+          ccache --zero-stats
+          nproc
+
+      - name: WSL, the Linux 64-bit game and gate h's first stage (the Linux save)
+        shell: wsl-bash {0}
+        run: |
+          . "$HOME/wsl-env.sh"
+          cd "$HOME/work"
+          make -f Makefile.native -j"$(nproc)" native BITS=64
+          tests/smoke/run_cross_os.sh save build/native64/pokeemerald-native out/cross-os/save
+
+      - name: WSL, cross-build the game (the Linux data, converted; the PE layout check)
+        shell: wsl-bash {0}
+        run: |
+          . "$HOME/wsl-env.sh"
+          cd "$HOME/work"
+          make -f Makefile.native -j"$(nproc)" native BITS=64 TARGET_OS=windows
+
+      - name: WSL, cross-build the unit tests; patchelf on a PE file
+        shell: wsl-bash {0}
+        run: |
+          . "$HOME/wsl-env.sh"
+          cd "$HOME/work"
+          make -C platform -j"$(nproc)" test TARGET_OS=windows BITS=64
+          make -C platform tools-test TARGET_OS=windows BITS=64
+
+      - name: WSL, cross-build the test runner (the Linux TEST=1 data, converted)
+        shell: wsl-bash {0}
+        run: |
+          . "$HOME/wsl-env.sh"
+          cd "$HOME/work"
+          make -f Makefile.native -j"$(nproc)" native BITS=64 TARGET_OS=windows TEST=1
+
+      # What the Windows steps run, and the Linux save, onto the Windows file
+      # system of the same job; the caches back to where actions/cache saves
+      # them. Nothing here leaves the job.
+      - name: WSL, hand the builds and the Linux save to the Windows steps; the caches back
+        id: built
+        shell: wsl-bash {0}
+        run: |
+          . "$HOME/wsl-env.sh"
+          ws="$GITHUB_WORKSPACE"
+          cd "$HOME/work"
+          ccache -s
+          mkdir -p "$ws/build/native64-windows" "$ws/build/native64-test-windows" "$ws/platform/build/64-windows/test" "$ws/out/cross-os"
+          cp build/native64-windows/pokeemerald-native.exe build/native64-windows/pokeemerald-native.exe.symbols build/native64-windows/SDL2.dll "$ws/build/native64-windows/"
+          cp platform/build/64-windows/test/*.exe platform/build/64-windows/test/*.symbols platform/build/64-windows/test/SDL2.dll "$ws/platform/build/64-windows/test/"
+          cp build/native64-test-windows/pokeemerald-native-test.exe build/native64-test-windows/SDL2.dll "$ws/build/native64-test-windows/"
+          rm -rf "$ws/out/cross-os/save"
+          cp -dR --preserve=timestamps out/cross-os/save "$ws/out/cross-os/save"
+          rm -rf "$ws/wsl-cache/ccache" "$ws/wsl-cache/sdl2-mingw"
+          mkdir -p "$ws/wsl-cache"
+          cp -dR --preserve=timestamps "$CCACHE_DIR" "$ws/wsl-cache/ccache"
+          cp -dR --preserve=timestamps build/sdl2-mingw "$ws/wsl-cache/sdl2-mingw"
+          if [ ! -d "$ws/build/assets-native" ]; then cp -dR --preserve=timestamps build/assets-native "$ws/build/assets-native"; fi
 
       # Each executable has 2 minutes (run_windows_tests.sh's TEST_SECONDS; all
-      # 70 take 40 seconds), so a hung one costs the job little of its 15
-      # minutes: the suite's steps (2 and 10) and the uploads still run.
+      # 70 take 40 seconds), so a hung one costs the job little: the suite's
+      # steps (2 and 10) and the uploads still run.
       - name: The unit tests
         run: platform/test_runner/run_windows_tests.sh platform/build/64-windows/test
 
       - name: The start-up smoke
-        if: always()
+        if: ${{ !cancelled() && steps.built.outcome == 'success' }}
         run: platform/test_runner/run_windows_smoke.sh build/native64-windows/pokeemerald-native.exe
 
       # The game is a GUI program: started with no handles and no console, as
@@ -373,12 +323,12 @@ jobs:
       # through a pipe; the replays and the suite below read the game's output
       # through pipes and files).
       - name: No console window (the log of a start with no handles and no console)
-        if: always()
+        if: ${{ !cancelled() && steps.built.outcome == 'success' }}
         shell: pwsh
         run: platform/test_runner/run_windows_no_console.ps1 build/native64-windows/pokeemerald-native.exe
 
       - name: Gates d and e, the replays
-        if: always()
+        if: ${{ !cancelled() && steps.built.outcome == 'success' }}
         run: |
           status=0
           tests/smoke/run.sh build/native64-windows/pokeemerald-native.exe out/open64 || status=1
@@ -386,35 +336,15 @@ jobs:
           exit $status
 
       - name: Gate h across operating systems, the second stage (the Windows build on the Linux save)
-        if: always()
+        if: ${{ !cancelled() && steps.built.outcome == 'success' }}
         run: tests/smoke/run_cross_os.sh load build/native64-windows/pokeemerald-native.exe out/cross-os/save/work/from out/cross-os/load
-
-      # Before the suite too, so that a suite that runs out of time cannot
-      # take these with it.
-      - name: Keep the logs and the outputs of a failed step so far
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: windows-logs-before-the-suite
-          # No braces in these patterns: @actions/glob sets nobrace, so {a,b} matches nothing.
-          path: |
-            platform/build/64-windows/test/*.log
-            out/**/*.txt
-            out/**/*.log
-            out/**/*.ppm
-            out/**/*.sav
-            out/**/*.rtc
-            out/**/*.diff
-            out/**/*.replay
-            out/**/*.all
-            out/**/*.known-patterns
-          if-no-files-found: ignore
 
       # Expansion's hydra needs fork, poll and stdbuf: MSYS2's, which the
       # image has at C:\msys64, with its gcc (docs/DECISIONS.md, "The suite
-      # on Windows runs under MSYS2").
+      # on Windows runs under MSYS2"). The workspace holds no tools built in
+      # WSL (those are in WSL's home), so these are built here.
       - name: MSYS2's gcc, and the hydra and patchelf built with it
-        if: always()
+        if: ${{ !cancelled() && steps.built.outcome == 'success' }}
         shell: C:\msys64\usr\bin\bash.exe -l -e -o pipefail {0}
         env:
           MSYSTEM: MSYS
@@ -429,7 +359,7 @@ jobs:
       # protocol work before the whole suite is run.
       - name: The test runner's own tests through the hydra (its crashes included)
         id: suite_check
-        if: always()
+        if: ${{ !cancelled() && steps.built.outcome == 'success' }}
         timeout-minutes: 2
         shell: C:\msys64\usr\bin\bash.exe -l -e -o pipefail {0}
         env:
@@ -440,7 +370,7 @@ jobs:
           MAKEFLAGS=-j"$(nproc)" TESTS=test/test_test_runner.c platform/test_runner/run_windows_suite.sh build/native64-test-windows/pokeemerald-native-test.exe | tee out/suite-windows-runner.log
 
       - name: Gate b, the suite through the hydra
-        if: always() && steps.suite_check.outcome == 'success'
+        if: ${{ !cancelled() && steps.suite_check.outcome == 'success' }}
         timeout-minutes: 10
         shell: C:\msys64\usr\bin\bash.exe -l -e -o pipefail {0}
         env:
@@ -449,22 +379,46 @@ jobs:
         run: |
           MAKEFLAGS=-j"$(nproc)" platform/test_runner/run_windows_suite.sh build/native64-test-windows/pokeemerald-native-test.exe | tee out/suite-windows.log
 
-      - name: Upload the suite's results and gate h's second stage
-        if: always()
+      # The Linux game, still in WSL's home, plays the save the Windows build
+      # wrote (the stage's `again` directory, copied over from the
+      # workspace); the Linux save it started from is the one WSL made.
+      - name: WSL, gate h across operating systems, the last stage (the Linux build on the Windows save)
+        if: ${{ !cancelled() && steps.built.outcome == 'success' }}
+        shell: wsl-bash {0}
+        run: |
+          . "$HOME/wsl-env.sh"
+          ws="$GITHUB_WORKSPACE"
+          cd "$HOME/work"
+          test -f "$ws/out/cross-os/load/work/again/pokeemerald.sav"
+          rm -rf out/cross-os/load
+          mkdir -p out/cross-os/load/work
+          cp -dR --preserve=timestamps "$ws/out/cross-os/load/work/again" out/cross-os/load/work/again
+          tests/smoke/run_cross_os.sh back build/native64/pokeemerald-native out/cross-os/save/work/from out/cross-os/load/work/again out/cross-os/back
+
+      # The WSL steps' text outputs, beside the Windows steps' in out/ (the
+      # patterns of the failure upload below take text, frame images, saves and
+      # clock files).
+      - name: WSL, copy the text outputs to the workspace
+        if: ${{ !cancelled() && steps.built.outcome == 'success' }}
+        shell: wsl-bash {0}
+        run: |
+          ws="$GITHUB_WORKSPACE"
+          cd "$HOME/work"
+          mkdir -p "$ws/out/wsl"
+          if [ -d out ]; then
+            find out -type f \( -name '*.txt' -o -name '*.log' -o -name '*.ppm' -o -name '*.png' -o -name '*.sav' -o -name '*.rtc' -o -name '*.diff' -o -name '*.replay' -o -name '*.all' -o -name '*.known-patterns' \) -print0 | tar --null -T - -cf - | tar --no-same-owner --no-same-permissions -x -C "$ws/out/wsl"
+          fi
+
+      # The Windows suite's log: the one result the comparison needs.
+      - name: Upload the Windows suite's log
+        if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v4
         with:
           name: windows-results
-          # No braces in these patterns: @actions/glob sets nobrace, so {a,b} matches nothing.
-          path: |
-            out/suite-windows.log
-            out/cross-os/load/work/again/*.txt
-            out/cross-os/load/work/again/*.ppm
-            out/cross-os/load/work/again/*.sav
-            out/cross-os/load/work/again/*.rtc
-            out/cross-os/load/work/again/*.log
+          path: out/suite-windows.log
           if-no-files-found: ignore
 
-      - name: Keep the logs and the outputs of a failed run
+      - name: Keep the logs and the text outputs of a failed run
         if: failure()
         uses: actions/upload-artifact@v4
         with:
@@ -475,6 +429,7 @@ jobs:
             out/**/*.txt
             out/**/*.log
             out/**/*.ppm
+            out/**/*.png
             out/**/*.sav
             out/**/*.rtc
             out/**/*.diff
@@ -484,30 +439,13 @@ jobs:
           if-no-files-found: ignore
 
   compare:
-    name: Compare the suites; gate h's last stage on Linux
-    needs: [cross-build, linux-suite, windows]
-    if: always() && needs.cross-build.result == 'success'
+    name: Compare the suites' results
+    needs: [linux-suite, windows]
+    if: ${{ !cancelled() && needs.linux-suite.result == 'success' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
-
-      - name: Prerequisites (the Linux game's libraries)
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends libsdl2-2.0-0
-
-      - name: Download the Linux game
-        uses: actions/download-artifact@v4
-        with:
-          name: linux-build
-          path: build/native64
-
-      - name: Download the Linux save
-        uses: actions/download-artifact@v4
-        with:
-          name: windows-build
-          path: windows-build
 
       - name: Download the Windows results
         uses: actions/download-artifact@v4
@@ -522,59 +460,3 @@ jobs:
 
       - name: Gate b on Windows, test by test against Linux 64-bit
         run: platform/test_runner/compare_suite_results.sh suite-linux64.log out/suite-windows.log
-
-      - name: Gate h across operating systems, the last stage (the Linux build on the Windows save)
-        if: always()
-        run: |
-          chmod +x build/native64/pokeemerald-native
-          tests/smoke/run_cross_os.sh back build/native64/pokeemerald-native windows-build/out/cross-os/save/work/from out/cross-os/load/work/again out/cross-os/back
-
-      - name: Keep the outputs of a failed stage
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: compare-outputs
-          # No braces in these patterns: @actions/glob sets nobrace, so {a,b} matches nothing.
-          path: |
-            out/**/*.txt
-            out/**/*.log
-            out/**/*.ppm
-            out/**/*.sav
-            out/**/*.rtc
-            out/**/*.diff
-            out/**/*.replay
-            out/**/*.all
-            out/**/*.known-patterns
-          if-no-files-found: ignore
-
-  # The last job: after every job that uses an artifact, deletes this run's
-  # artifacts except the ones on the list, which hold no game. A new artifact
-  # that is not on the list is deleted, so the game cannot be kept by
-  # forgetting; the job fails if one cannot be deleted. The Actions API is
-  # the only way to delete before the retention ends.
-  cleanup:
-    name: Delete the builds from the run
-    needs: [cross-build, cross-build-suite, linux-suite, windows, compare]
-    if: always()
-    runs-on: ubuntu-24.04
-    timeout-minutes: 5
-    permissions:
-      actions: write
-      contents: read
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          sparse-checkout: .github/actions
-          persist-credentials: false
-
-      - uses: ./.github/actions/delete-run-artifacts
-        with:
-          # Without the game: logs, the suites' results, the replays' dumps,
-          # screenshots and saves.
-          keep: |
-            suite-linux64
-            windows-results
-            windows-logs-before-the-suite
-            windows-logs
-            cross-os-save-outputs
-            compare-outputs

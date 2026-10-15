@@ -3,7 +3,7 @@
 # 64-bit build to the Windows one and back. The two lay the save out alike (the same widths;
 # MinGW's bit-fields as GCC's on Linux, -mno-ms-bitfields, platform/target.mk), so nothing is
 # converted. Three stages on two machines, each with the directories of the stage before it
-# (.github/workflows/windows.yml carries them as artifacts):
+# (.github/workflows/windows.yml runs all three in one job, the Linux ones in WSL, so nothing is carried between jobs):
 #
 #   run_cross_os.sh save LINUX_BINARY OUTDIR
 #       on Linux: run_cross_width.sh's step 1 in OUTDIR/work/from: opening.replay up to and

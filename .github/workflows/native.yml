@@ -1,7 +1,15 @@
-# Artifacts (docs/DECISIONS.md, "CI artifacts never hold the game beyond a run"):
-# no artifact may hold the game or any part of it beyond the run, because a
-# public repository's artifacts are public. This file uploads logs, replay dumps, screenshots and
-# saves of failed runs only, by explicit globs; no build is uploaded.
+# NO WORKFLOW UPLOADS THE GAME, EVER (docs/DECISIONS.md, "No workflow uploads
+# the game"): no artifact, at any retention, holds the game, the test runner,
+# an archive of either, or a save, data file or output directory with
+# expansion's assets or a binary in it; a public repository's artifacts are
+# downloadable by any logged-in GitHub user. This file uploads, from a failed
+# job only, the gates' outputs: text and logs, frame images (.ppm, .png) and
+# the save and clock files (.sav, .rtc) of the save gates, by an explicit list
+# of file patterns, one per line (a frame image and a save are not a playable
+# build). platform/build_glue/check_workflow_uploads.py fails the gate
+# (the per-push job below runs it) if an upload could match anything else.
+# Caches hold compiled objects, converted assets and ccache data, never a
+# linked game (same entry).
 #
 # The native build's gate on a Linux runner, in two tiers (docs/DECISIONS.md,
 # "CI runs in two tiers"; the local pre-merge gate stays the full check at
@@ -85,6 +93,9 @@ jobs:
         run: |
           make -C platform gate
 
+      - name: No upload can hold the game (docs/DECISIONS.md, "No workflow uploads the game")
+        run: python3 -I platform/build_glue/check_workflow_uploads.py
+
       - name: Gates d and e, 64-bit
         run: |
           tests/smoke/run.sh build/native64/pokeemerald-native out/open64
@@ -105,6 +116,7 @@ jobs:
             out/**/*.txt
             out/**/*.log
             out/**/*.ppm
+            out/**/*.png
             out/**/*.sav
             out/**/*.rtc
             out/**/*.diff
@@ -210,6 +222,7 @@ jobs:
             out/**/*.txt
             out/**/*.log
             out/**/*.ppm
+            out/**/*.png
             out/**/*.sav
             out/**/*.rtc
             out/**/*.diff
@@ -253,6 +266,7 @@ jobs:
             out/**/*.txt
             out/**/*.log
             out/**/*.ppm
+            out/**/*.png
             out/**/*.sav
             out/**/*.rtc
             out/**/*.diff
@@ -306,6 +320,7 @@ jobs:
             out/**/*.txt
             out/**/*.log
             out/**/*.ppm
+            out/**/*.png
             out/**/*.sav
             out/**/*.rtc
             out/**/*.diff
@@ -357,6 +372,7 @@ jobs:
             out/**/*.txt
             out/**/*.log
             out/**/*.ppm
+            out/**/*.png
             out/**/*.sav
             out/**/*.rtc
             out/**/*.diff
@@ -416,6 +432,7 @@ jobs:
             out/**/*.txt
             out/**/*.log
             out/**/*.ppm
+            out/**/*.png
             out/**/*.sav
             out/**/*.rtc
             out/**/*.diff
