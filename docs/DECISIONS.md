@@ -1246,6 +1246,11 @@ the Windows runner) and the owner has verified it by hand on a Windows
 machine. The macOS decision of earlier today (x86_64 under Rosetta, arm64
 not started) stands; only its start moves.
 
+Lifted 2026-10-14 (evening): the owner verified Windows by hand (see "The
+owner's rulings from the Windows hands-on check"). macOS may start; the
+order is the audio-rate task, the two tasks from the hands-on check, then
+macOS.
+
 ## 2026-10-14: The owner's five rulings on the independent review's open questions
 
 (1) The audio rate. The PSG decision of milestone 3 said never to

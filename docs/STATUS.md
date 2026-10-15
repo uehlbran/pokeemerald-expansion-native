@@ -612,9 +612,19 @@ the review: none for the code; for the owner, rulings (1) and (5) wait
 for their moment (after the Windows verification; before the
 repository goes public).
 
-**In flight.** Nothing. Next is the owner's hands-on Windows check from
-run 38648131073's `windows-build` artifact (the checklist below), then
-the audio-rate task and macOS.
+**Finished, Windows verified by hand.** The owner ran the Windows build
+from run 38648131073 (2026-10-14): boot, the opening, the first Pokémon,
+the first battle, a save and its reload; audio fine. Two things noted
+and ruled on (DECISIONS.md "The owner's rulings from the Windows hands-on
+check"): a settings file for the keys, and no console window; the
+overworld shadows are expansion's default. With that, ruling (1) and
+macOS are unblocked.
+
+**In flight.** The audio-rate task (ruling 1): branch work/audio-rate,
+an Opus worker; the device and the PSG at 32768 Hz, the FIFO frame
+upsampled on the cycle grid, a `--audio-dump` WAV option, and the A/B
+recordings as evidence (outside the repository, for the owner to hear).
+Then the keys settings file and the console-window removal, then macOS.
 
 ## Verified by a gate
 
@@ -739,6 +749,7 @@ Nothing yet; nothing exists to be broken.
 | input | Sonnet | Sonnet |
 | rtc | Sonnet | Sonnet |
 | sdlout (video, audio, frame_pacer) | Sonnet | Sonnet |
+| audio-rate (ruling 1: 32768 Hz, FIFO upsampling, --audio-dump) | Opus | in flight |
 | interrupt | Opus | Sonnet |
 | psg | Opus | Sonnet |
 | save (flash, save_file) | Opus | Sonnet |
