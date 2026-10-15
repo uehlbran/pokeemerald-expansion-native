@@ -372,7 +372,9 @@ static bool complete(struct host_fault *fault)
 #define HEX_DIGIT_MASK 0xFu
 #define PC_HEX_DIGITS (sizeof(uintptr_t) * 2u)
 
-/* stderr as the handler writes to it, resolved by arm_division_init. */
+/* stderr as the handler writes to it, resolved by arm_division_init: the descriptor the
+ * C runtime's stderr has, which is not 2 for a program that had no stderr and
+ * opened its log on it (console.h). */
 static host_handler_file report_file = HOST_HANDLER_FILE_NONE;
 
 /* "arm_division: undecodable divide error at pc 0x12345678, passed on
@@ -409,7 +411,7 @@ static bool on_divide_error(struct host_fault *fault)
 
 int arm_division_init(void)
 {
-    report_file = host_file_for_handler(STDERR_FILENO);
+    report_file = host_file_for_handler(fileno(stderr));
     if (host_fault_install_divide_error(on_divide_error) != 0)
         return ARM_DIVISION_ERR_SIGNAL;
     return ARM_DIVISION_OK;

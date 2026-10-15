@@ -193,6 +193,7 @@ host layer", has the design and the users). The sources are chosen by
 `m4a/Makefile` and `Makefile.native`). Linux: `host_posix.c`, what Linux and
 macOS share, and `host_linux.c`, the rest; `host_internal.h` is what they
 share. Windows: `host_windows.c` (memory, image, files, process),
+`host_windows_console.c` (the streams and the parent's console),
 `host_windows_fault.c`, `host_windows_stack.c` and `host_windows_thread.c`.
 Both: `host_linked.c`, where the linker scripts put the regions. Each header
 says what it stands in for and what it wraps, and has its test; the Windows
@@ -207,6 +208,7 @@ BITS=64`) and run on Windows (`test_runner/run_windows_tests.sh`).
 | `host_process.h` | `host_process_executable_path`; `host_process_restart`: this executable again with the same standard handles, and whether a crash handler may call it; `host_process_end`: the process ended at once with a status | `readlink` of `/proc/self/exe` (`host_linux.c`), `execve`, async-signal-safe, so a handler may; `_exit` (`host_posix.c`) | `GetModuleFileNameW` converted to UTF-8; `CreateProcessW` of a child, a wait, `TerminateProcess` with its status, which no handler may call (it allocates); `TerminateProcess` | `test_host_process.c`, `posix/`, `windows/test_host_process_windows.c` |
 | `host_image.h` | the executable's image and its writable part, whether an address is in a read-only segment, the main thread's whole stack | `__executable_start`, `__data_start`, `_end`, `getauxval(AT_PHDR)`, `pthread_getattr_np` (`host_linux.c`) | `__text_start__`, `__data_start__`, `__bss_end__` (the writable sections linked last, `gba_game.pe.ld`), `VirtualQuery`, `GetCurrentThreadStackLimits` (2 MiB) | `test_host_image.c`, `linux/` |
 | `host_stack.h` | `host_stack_run`: a function on a given stack, at the same depth each call; `host_stack_leave`: back to the caller early | `ucontext`, AddressSanitizer's fiber annotations (`host_linux.c`) | a Win64 switch in assembly with unwind information, the `NT_TIB` stack limits widened over both stacks (`host_windows_stack.c`) | `test_host_stack.c`, `windows/test_host_stack_windows.c` |
+| `host_console.h` | `host_console_stream_kind`: what standard output or error is (none, a pipe, a file, a console this process writes to); `host_console_attach_parent`: join the parent's console and reopen the missing streams on it; `host_console_discard_stream`: a stream to the null device; `host_console_share_stream`: one stream a duplicate of another (one file, one offset) | every stream is reported as a console and nothing is attached (`host_posix.c`) | `GetStdHandle`, `GetFileType`, `GetConsoleMode` (the null device is a character device but not a console); `AttachConsole(ATTACH_PARENT_PROCESS)`, `freopen("CONOUT$")`, `FreeConsole` on failure (`host_windows_console.c`) | `test_console.c` (the decision, through a fake), `windows/test_host_console_windows.c` (children with pipes, files, the null device, no handles, with and without a console) |
 | `host_file.h` | `host_file_open` (not inherited; binary on Windows), `host_file_read` (up to a count, 0 at the end), `host_file_write_all` (every byte) and `host_file_for_handler` (resolves a descriptor at install time) and `host_file_write_from_handler` (the same for a fault handler, errno left alone, nothing of the C runtime on Windows), `host_file_sync`, `host_file_replace` (atomic; on Windows, on NTFS), `host_file_sync_directory_of`, `host_file_make_directory`, `host_file_is_directory`, `host_file_local_time`; failures are -1 with `errno`, reported by the caller | `open` with `O_CLOEXEC`, `read` (retried on `EINTR`), `write`, `fsync`, `rename`, `open` of the directory and `fsync`, `mkdir(path, 0777)`, `stat`, `localtime_r` with a 64-bit `time_t` (`host_posix.c`) | `_open` with `_O_NOINHERIT` and `_O_BINARY`, `ReadFile`, `WriteFile` and `FlushFileBuffers` on the descriptor's handle, `MoveFileExW` with `MOVEFILE_REPLACE_EXISTING` and `MOVEFILE_WRITE_THROUGH`, no directory sync (the length only), `CreateDirectoryW`, `GetFileAttributesW`, `_localtime64_s` | `test_host_file.c`, `posix/`, `windows/test_host_file_windows.c` |
 | `host_thread.h` | the test time limit's watchdog: a thread that stores `true` in an atomic flag once its deadline passes | a `pthread` on a condition variable (`host_posix.c`) | a thread on an event with a timeout, joined by a wait on its handle (`host_windows_thread.c`) | `test_host_thread.c`, `posix/`, `linux/` |
 
@@ -500,6 +502,20 @@ F1 overlay", "Fast-forward in the frame pacer") the reasons.
   whether the run gets the overlay and fast-forward at all
   (`player_at_keyboard`: a window played from the keyboard, never headless,
   the test runner or a replay). `test/test_player.c`.
+- `console` decides where the messages go when a Windows GUI program may have
+  no console (`console_choose`, a pure function of what `host_console.h`
+  reports: the parent's streams, else its console, else `pokeemerald.log` in
+  the data directory), opens that log (`console_open_log`, truncating it,
+  placing it with `data_dir_find`, the rule the save follows) and shows the
+  start-up failure in a message box in that last case only
+  (`console_report_start_failure`). `main` calls it before anything else.
+  Nothing is written to a stream with no handle: the streams the log will
+  take are pointed at the null device, the log's directory comes from the
+  command line without a report (`options_data_dir_given`), and the arguments
+  are parsed once the log is open. The two streams are one open file
+  (`host_console_share_stream`), so a fault handler's raw write to stderr's
+  handle continues them. `test/test_console.c`. Elsewhere it changes nothing: every stream is
+  given.
 - `data_dir` finds the data directory and the paths in it: `--data-dir`, else the executable's
   directory if `settings.ini` is there (portable), else SDL's per-user
   directory (`SDL_GetPrefPath("pokeemerald-expansion-native",

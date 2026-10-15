@@ -1517,7 +1517,8 @@ program (`-mwindows`); attach to the parent's console when there is one
 still sees the messages); otherwise write the messages to a log file
 beside the executable; pipes (the hydra, the replays' harness) are
 inherited handles and keep working. Verify each of those three on the
-runner.
+runner. (Built, with changes, as recorded in "2026-10-15: No console window
+on Windows", below.)
 
 Also confirmed for the owner: the translucent oval under every overworld
 character is expansion's own default (`OW_OBJECT_VANILLA_SHADOWS FALSE`,
@@ -1900,3 +1901,116 @@ screen, the sped-up sound by ear, and the keys on a real keyboard (Tab and
 Shift+Tab through a real window's focus changes; SDL's dummy driver
 delivers pushed events only). Their logic is unit-tested and the queue's
 depth is measured on SDL's dummy audio device.
+
+## 2026-10-15: No console window on Windows: the game is a GUI program and prints to what it was given, to the parent's console, or to a log
+
+The owner's ruling "people wont like that" (the console beside the game
+when started from Explorer) is built as the design recorded in "The
+owner's rulings from the Windows hands-on check", with the details below.
+
+**As built.** The game and the test-runner build link with `-mwindows`
+(`GUI_LDFLAGS` in `platform/target.mk`; subsystem "Windows GUI", PE
+`Subsystem` 2); the unit tests keep `-mconsole`. `main` is still the
+program's own: MinGW-w64's start-up code for a GUI program
+(`WinMainCRTStartup`) calls it with the parsed command line, as the console
+one does, and the image's layout is unchanged. `check_pe_layout.py --gui` or
+`--console` fails the build if the subsystem is not the one wanted, and the
+Windows smoke reads it from the file it runs. `main` asks
+`host_console.h` first of all what standard output and standard error are
+(none, a pipe, a file, a console this process writes to; Windows:
+`GetStdHandle`, `GetFileType`, `GetConsoleMode`, so the null device and an
+inherited console handle that is not attached are "none"), and
+`console_choose` (`platform/console.c`, pure, tested against a fake) picks:
+
+| stdout, stderr | the parent has a console | mode | the messages go to |
+|---|---|---|---|
+| both given | not asked | INHERITED | the handles, as today (the hydra, the replays, `> file`) |
+| one or both none | yes | PARENT | the console, for the streams that were none (`AttachConsole(ATTACH_PARENT_PROCESS)`, `freopen("CONOUT$")`); a given stream is kept |
+| one none | no | INHERITED_AND_LOG | the given stream; the missing one, and only it, to `pokeemerald.log` |
+| both none | no | LOG | `pokeemerald.log` in the data directory |
+
+Every other OS reports both streams as given, so nothing changes there. The
+case of one stream given and one none is not in the brief: a prompt running
+`game.exe > out.txt` passes the file for stdout and perhaps nothing for
+stderr, and the refusals are on stderr, so the missing stream is mended on
+the console rather than lost, and without a console it goes to the log (the
+first version left it unwritten, which the review of this task found could
+hide a refusal with a non-zero exit and no trace). No message box in that
+row: a stream is given, so someone reads it.
+
+**The log** is `pokeemerald.log` in the data directory by the save's rule
+(`data_dir_find`: `--data-dir`, else the executable's folder in portable
+mode, else the per-user directory), looked for even by a run that needs no
+file; if no data directory can be found it is beside the executable and
+says so. It is emptied at each start (a file made and closed empty, then
+both streams reopened to append to it, so they share the file and neither
+overwrites the other; both unbuffered, so a crash loses no line). Nothing
+is written to a stream that has no handle. Before the log's place is looked
+for, the streams the log will take are pointed at the null device (a defined
+destination, rather than the C runtime's tolerance of a write to a descriptor
+with no handle, which was never verified); the place comes from the command
+line without a report (`options_data_dir_given`, which scans the arguments as
+`options_parse` does), and the arguments are parsed once the log is open, so a
+bad argument is reported into it, once. What `data_dir_find` reports while
+looking is lost to the null device and reported again, into the log, when
+`player_find` finds the files. A command line that names no directory puts the
+log where the defaults would.
+
+**One open file.** The two streams are one open file with one offset: stdout is
+reopened on the log to append, and stderr is made a duplicate of it
+(`host_console_share_stream`: `dup2`, `_dup2`). Two separate opens of the same
+path, the first version, share nothing: the C runtime appends on each write,
+but a fault handler's raw `WriteFile` on stderr's handle (`crash_reboot.c`,
+`arm_division.c`) lands at that handle's own offset and could overwrite what
+stdout wrote. A duplicate handle shares the file pointer, so the three
+writers continue each other. In the one-stream row only the missing stream is
+reopened and nothing is shared.
+
+**The message box** (`SDL_ShowSimpleMessageBox`, usable before `SDL_Init`)
+is shown only in LOG mode and only when `main` returns non-zero before every
+module is running (a second instance on the save, a refused save, an
+unreadable settings file or data directory, a bad argument, a module that
+did not start). Its text is the first 1000 bytes of the log, cut at a UTF-8
+character boundary, where the error is, and the log's path, in a buffer sized
+from the path's limit. `console_shows_message_box` is the decision and is
+tested for every mode; nothing shows a box under a pipe or in a gate.
+
+**The crash reports** (`arm_division.c`, `crash_reboot.c`) wrote to descriptor
+2 by number. A process with no handles, after its streams are reopened on the
+log, does not have its log on 2: run 38683258948 showed stdin 4 and stdout and
+stderr both 0. They now resolve `fileno(stderr)` (still 2 on Linux), which is
+whatever the C runtime made it. A first design that reopened stdin too, to
+keep 0, 1 and 2 in order, did not hold. A Windows test starts a child with
+the log on stderr alone (where `freopen` picks the descriptor), installs the
+crash reboot, crashes, and reads the report from the log.
+
+**Accepted.** A second instance, refused because the save is in use, empties
+the running instance's log before it stops, and the running one's next lines
+are appended at the new end. The log is not durable state (it is rewritten at
+every start and only read by a person), a lock on it would be a second lock
+protocol for a diagnostic file, and the refused instance's own text (the
+reason it stopped) is what the player needs to read.
+
+**Verified on the runner** (run 38693203706 after the review's fixes, green; earlier runs found two of this task's own Windows child tests failing, fixed: a stream is mended by what it was before the attach, and the log cannot count on descriptor 2): the start-up smoke, both replays, the
+cross-OS save and the suite through the hydra pass unchanged on the GUI
+build, so inherited pipes and files work (the smoke also reads the PE
+subsystem and runs `--version`, `--keys` and a bad argument through a pipe);
+`run_windows_no_console.ps1` starts the game through `Win32_Process.Create`,
+whose parent has no console, with no handles and `--version --data-dir`, and
+finds the version line, and only it, in `pokeemerald.log`, again over a log
+from an earlier start; `test_host_console_windows` starts the unit-test
+executable with a pipe, a file, the null device, nothing, with a console and
+without, and checks what `host_console.h` reports, that attaching works when
+the parent has a console and the streams then write on it, that it is refused
+when the parent has none, and that a process with no handles and no console
+logs through `stdout`, `stderr` and a raw handler-style write to stderr's handle, all five lines surviving in order, and that a crash report reaches a log opened on stderr alone.
+
+**Only the owner can check by hand**: a double-click on `pokeemerald-native.exe`
+shows no console window and leaves `pokeemerald.log` (in
+`%APPDATA%\pokeemerald-expansion-native\pokeemerald-native\`); `cmd.exe` and
+PowerShell print `--keys` and `--version` on their own console (the prompt
+returns at once, so the text may appear after it); a second copy on the same
+save shows the message box and names the log (a runner has no desktop to
+show a box on, so only the decision to show it is tested). A restart (a replay's `restart` command) in LOG mode
+opens the log again in the new process and so empties it; replays run under a
+harness with pipes, never in LOG mode.

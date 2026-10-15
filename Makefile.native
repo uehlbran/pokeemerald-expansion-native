@@ -501,7 +501,7 @@ endif
 NATIVE_VERSION = $(or $(shell git describe --always --dirty --match 'v[0-9]*' 2>/dev/null | tr -cd 'A-Za-z0-9._+-'),unknown)
 
 NATIVE_LINKER_SCRIPTS := platform/$(REGIONS_LD_NAME) platform/$(GAME_LD_NAME)
-NATIVE_LDFLAGS := -m$(BITS) $(GBA_LAYOUT_LDFLAGS) \
+NATIVE_LDFLAGS := -m$(BITS) $(GBA_LAYOUT_LDFLAGS) $(GUI_LDFLAGS) \
                   $(NATIVE_LINKER_SCRIPTS:%=-Wl,-T,%) \
                   -Wl,--defsym,gInitialMainCB2=$(INITIAL_MAIN_CB2) \
                   -Wl,--defsym,gba_game_objects_linked=1 $(NATIVE_LINK_SANITIZERS)
@@ -514,7 +514,7 @@ NATIVE_RESOURCES := $(call target_resources,$(OBJ_DIR))
 NATIVE_EXE_CHECK :=
 NATIVE_RUNTIME_FILES :=
 ifeq ($(TARGET_OS),windows)
-  NATIVE_EXE_CHECK := $(PYTHON) -I $(GLUE_DIR)/check_pe_layout.py $(NATIVE_EXE)
+  NATIVE_EXE_CHECK := $(PYTHON) -I $(GLUE_DIR)/check_pe_layout.py --gui $(NATIVE_EXE)
   NATIVE_RUNTIME_FILES := $(OBJ_DIR)/SDL2.dll
 endif
 

@@ -4,10 +4,13 @@ Stands in for nothing on the GBA: it is build glue. The Windows build cannot
 be run where it is made (no Windows, and Wine is not part of the gate), so the
 link's result is checked from the file: usage
 
-    python3 -I check_pe_layout.py pokeemerald-native.exe
+    python3 -I check_pe_layout.py --gui pokeemerald-native.exe
 
 reads the PE headers and exits 1, printing one line per problem, unless:
 
+  * the subsystem is what the flag says: --gui for the game (Windows GUI, so
+    that Explorer opens no console window beside it), --console for the unit
+    tests, whose output the runner shows;
   * the image is a PE32+ x86-64 executable at the base gba_regions.pe.ld
     assumes (0x01800000), with no base relocations, so that the loader maps
     it there or refuses it: no DYNAMIC_BASE and no HIGH_ENTROPY_VA in the
@@ -48,6 +51,8 @@ CODE_ADDRESS = 0x40001000
 MACHINE_AMD64 = 0x8664
 PE32_PLUS_MAGIC = 0x20B
 # Microsoft PE format, "COFF File Header (Object and Image)" and "DLL Characteristics".
+IMAGE_SUBSYSTEM_WINDOWS_GUI = 2
+IMAGE_SUBSYSTEM_WINDOWS_CUI = 3
 IMAGE_FILE_RELOCS_STRIPPED = 0x0001
 IMAGE_DLLCHARACTERISTICS_HIGH_ENTROPY_VA = 0x0020
 IMAGE_DLLCHARACTERISTICS_DYNAMIC_BASE = 0x0040
@@ -91,6 +96,7 @@ DOS_POINTER_OFFSET = 0x3C
 FILE_HEADER_SIZE = 20
 OPTIONAL_IMAGE_BASE = 24
 OPTIONAL_SECTION_ALIGNMENT = 32
+OPTIONAL_SUBSYSTEM = 68
 OPTIONAL_DLL_CHARACTERISTICS = 70
 OPTIONAL_DIRECTORY_COUNT = 108
 OPTIONAL_DIRECTORIES = 112
@@ -120,7 +126,8 @@ class Section:
 
 class Image:
     def __init__(self, base, section_alignment, characteristics, dll_characteristics, relocation_directory_size,
-                 sections, manifest=None):
+                 sections, manifest=None, subsystem=IMAGE_SUBSYSTEM_WINDOWS_GUI):
+        self.subsystem = subsystem
         self.base, self.section_alignment = base, section_alignment
         self.characteristics, self.dll_characteristics = characteristics, dll_characteristics
         self.relocation_directory_size, self.sections = relocation_directory_size, sections
@@ -180,6 +187,7 @@ def read_image(data):
             raise CheckError("not a PE32+ x86-64 file")
         base = struct.unpack_from("<Q", data, optional + OPTIONAL_IMAGE_BASE)[0]
         section_alignment = struct.unpack_from("<I", data, optional + OPTIONAL_SECTION_ALIGNMENT)[0]
+        subsystem = struct.unpack_from("<H", data, optional + OPTIONAL_SUBSYSTEM)[0]
         dll_characteristics = struct.unpack_from("<H", data, optional + OPTIONAL_DLL_CHARACTERISTICS)[0]
         directory_count = struct.unpack_from("<I", data, optional + OPTIONAL_DIRECTORY_COUNT)[0]
         directory = optional + OPTIONAL_DIRECTORIES
@@ -197,7 +205,7 @@ def read_image(data):
                                     fields[9], fields[3], fields[4]))
         manifest = read_manifest(data, base, sections, resource_rva)
         return Image(base, section_alignment, characteristics, dll_characteristics, relocation_size, sections,
-                     manifest)
+                     manifest, subsystem)
     except struct.error:
         raise CheckError("the PE headers are cut short")
 
@@ -206,9 +214,16 @@ def round_up(value, alignment):
     return (value + alignment - 1) // alignment * alignment
 
 
-def check_image(image):
-    """The problems of image, one line each."""
+SUBSYSTEMS = {"--gui": (IMAGE_SUBSYSTEM_WINDOWS_GUI, "Windows GUI"),
+              "--console": (IMAGE_SUBSYSTEM_WINDOWS_CUI, "Windows console")}
+
+
+def check_image(image, subsystem_flag):
+    """The problems of image, one line each; subsystem_flag is --gui or --console."""
     problems = []
+    wanted, wanted_name = SUBSYSTEMS[subsystem_flag]
+    if image.subsystem != wanted:
+        problems.append("the subsystem is %d, not %d (%s)" % (image.subsystem, wanted, wanted_name))
     if image.base != IMAGE_BASE:
         problems.append("the image base is %#x, not %#x" % (image.base, IMAGE_BASE))
     if image.dll_characteristics & IMAGE_DLLCHARACTERISTICS_DYNAMIC_BASE:
@@ -298,52 +313,57 @@ def self_test():
     GOOD_MANIFEST = (b'<assembly><application><windowsSettings><activeCodePage '
                      b'xmlns="http://schemas.microsoft.com/SMI/2019/WindowsSettings">UTF-8</activeCodePage>'
                      b'</windowsSettings></application></assembly>')
-    expect("a good layout", check_image(layout()), [])
+    expect("a good layout", check_image(layout(), "--gui"), [])
+    expect("a GUI image checked as a console one", check_image(layout(), "--console"), ["the subsystem is 2, not 3"])
+    image = layout()
+    image.subsystem = 3   # the specification's value for the console subsystem
+    expect("a console image checked as a GUI one", check_image(image, "--gui"), ["the subsystem is 3, not 2"])
+    expect("a console image", check_image(image, "--console"), [])
     image = layout()
     image.base = 0x400000
-    expect("the base", check_image(image), ["image base is 0x400000", "is at 0x1801000, not 0x401000"])
+    expect("the base", check_image(image, "--gui"), ["image base is 0x400000", "is at 0x1801000, not 0x401000"])
     image = layout()
     image.dll_characteristics |= 0x0040 | 0x0020   # the specification's values, not the constants under test
-    expect("randomisation", check_image(image), ["DYNAMIC_BASE", "HIGH_ENTROPY_VA"])
+    expect("randomisation", check_image(image, "--gui"), ["DYNAMIC_BASE", "HIGH_ENTROPY_VA"])
     image = layout()
     image.characteristics = 0x2
     image.relocation_directory_size = 8
     image.sections.append(Section(".reloc", CODE_ADDRESS + 0x6000, 0x10, 0x42000040))
-    expect("relocations", check_image(image), ["flag is not set", "directory is not empty", "there is a .reloc"])
+    expect("relocations", check_image(image, "--gui"), ["flag is not set", "directory is not empty", "there is a .reloc"])
     image = layout()
     del image.sections[1]
-    expect("a hole", check_image(image), ["is at 0x2000000, not 0x1901000"])
+    expect("a hole", check_image(image, "--gui"), ["is at 0x2000000, not 0x1901000"])
     image = layout()
     image.sections[2].size += 0x1000
-    expect("a region of the wrong size", check_image(image),
+    expect("a region of the wrong size", check_image(image, "--gui"),
            ["is at 0x2040000, not 0x2041000", "EWRAM: .gba is 0x41000 bytes"])
     image = layout()
     image.sections[1].flags = READ_WRITE_UNINITIALISED
-    expect("a writable gap", check_image(image), [".gap, between the regions, is writable"])
+    expect("a writable gap", check_image(image, "--gui"), [".gap, between the regions, is writable"])
     image = layout()
     image.sections[1].raw_size = 0x1000
-    expect("a gap stored in the file", check_image(image),
+    expect("a gap stored in the file", check_image(image, "--gui"),
            [".gap, between the regions, is stored in the file (0x1000 bytes)"])
     image = layout()
     image.sections[2].flags = READ_ONLY_UNINITIALISED
-    expect("a read-only region", check_image(image), ["EWRAM: .gba is not writable"])
+    expect("a read-only region", check_image(image, "--gui"), ["EWRAM: .gba is not writable"])
     image = layout()
     image.sections[-5].name = ".code"
-    expect("the code", check_image(image), [".text is not at"])
+    expect("the code", check_image(image, "--gui"), [".text is not at"])
     image = layout()
     image.sections[-4].flags, image.sections[-3].flags = image.sections[-3].flags, image.sections[-4].flags
-    expect("data before read-only data", check_image(image),
+    expect("data before read-only data", check_image(image, "--gui"),
            [".data is read-only but follows the writable .rdata"])
     image = layout()
     image.sections[-1].flags &= ~0x02000000
-    expect("a kept read-only section after the data", check_image(image),
+    expect("a kept read-only section after the data", check_image(image, "--gui"),
            [".debug is read-only but follows the writable .data"])
     image = layout()
     image.manifest = None
-    expect("no manifest", check_image(image), ["there is no application manifest"])
+    expect("no manifest", check_image(image, "--gui"), ["there is no application manifest"])
     image = layout()
     image.manifest = GOOD_MANIFEST.replace(b"UTF-8", b"Legacy")
-    expect("a manifest of another code page", check_image(image), ["does not set the active code page to UTF-8"])
+    expect("a manifest of another code page", check_image(image, "--gui"), ["does not set the active code page to UTF-8"])
 
     # A resource tree as windres writes one, at RVA 0x1000 of a section stored at file offset 0x200:
     # the root (0x00, room for two entries), type 24 -> the names (0x20), id 1 -> the languages
@@ -399,19 +419,20 @@ def self_test():
 def main(argv):
     if argv == ["--self-test"]:
         return self_test()
-    if len(argv) != 1:
-        sys.stderr.write(__doc__.split("\n\n")[0] + "\nusage: check_pe_layout.py EXE | --self-test\n")
+    if len(argv) != 2 or argv[0] not in SUBSYSTEMS:
+        sys.stderr.write(__doc__.split("\n\n")[0] + "\nusage: check_pe_layout.py --gui|--console EXE | --self-test\n")
         return 2
+    flag, path = argv
     try:
-        with open(argv[0], "rb") as handle:
-            problems = check_image(read_image(handle.read()))
+        with open(path, "rb") as handle:
+            problems = check_image(read_image(handle.read()), flag)
     except (OSError, CheckError) as error:
-        sys.stderr.write("check_pe_layout: %s: %s\n" % (argv[0], error))
+        sys.stderr.write("check_pe_layout: %s: %s\n" % (path, error))
         return 1
     for problem in problems[:MAX_PROBLEMS]:
-        sys.stderr.write("check_pe_layout: %s: %s\n" % (argv[0], problem))
+        sys.stderr.write("check_pe_layout: %s: %s\n" % (path, problem))
     if len(problems) > MAX_PROBLEMS:
-        sys.stderr.write("check_pe_layout: %s: %d more problems\n" % (argv[0], len(problems) - MAX_PROBLEMS))
+        sys.stderr.write("check_pe_layout: %s: %d more problems\n" % (path, len(problems) - MAX_PROBLEMS))
     return 1 if problems else 0
 
 

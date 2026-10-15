@@ -34,6 +34,14 @@
 # --keys names the copy's directory as SDL_GetBasePath gives it (Windows'
 # form, through cygpath, with its trailing separator).
 #
+# Then the console: the executable is a GUI program (its PE header's subsystem
+# is 2, read here with od, since Git Bash has no objdump; skipped for a Linux
+# executable), so that Explorer opens no console window beside it
+# (docs/DECISIONS.md, "No console window on Windows"); and what it prints
+# still reaches a parent that gave it a pipe, through which --version and
+# --keys are read as they are through a file above. The log of a run with no
+# console at all is run_windows_no_console.ps1's.
+#
 # No run uses the per-user directory (docs/DECISIONS.md, the settings task):
 # each passes --data-dir, both file paths headless, or is portable, so the
 # machine's own %APPDATA% is never written. The script runs on Linux as well,
@@ -193,6 +201,27 @@ run_plain "$exe" "$work" --version
 [ $code -eq 0 ] || fail "--version: exit status $code"
 [ "$(tr -d '\r' < "$scratch/stdout")" = "${keys_version#pokeemerald-native }" ] \
     || fail "--version does not print the version alone, the one --keys printed"
+
+echo "== the PE subsystem is Windows GUI"
+if [ "$(head -c 2 "$exe")" = MZ ]; then
+    # The PE header's offset is the 32-bit number at 0x3C; the subsystem is the 16-bit number 68 bytes into the
+    # optional header, which follows the signature (4 bytes) and the file header (20).
+    pe_offset=$(od -An -tu4 -j60 -N4 "$exe" | tr -d ' ')
+    subsystem=$(od -An -tu2 -j$((pe_offset + 24 + 68)) -N2 "$exe" | tr -d ' ')
+    [ "$subsystem" = 2 ] || fail "the PE subsystem is $subsystem, not 2 (Windows GUI): Explorer would open a console window"
+else
+    echo "(not a PE file: skipped)"
+fi
+
+echo "== --version and --keys through a pipe"
+piped=$(cd "$work" && timeout $LIMIT_SECONDS "$exe" --version | cat)
+[ "$(printf '%s' "$piped" | tr -d '\r')" = "${keys_version#pokeemerald-native }" ] \
+    || fail "--version through a pipe does not print the version"
+piped=$(cd "$work" && timeout $LIMIT_SECONDS "$exe" --keys --data-dir keys | cat)
+printf '%s\n' "$piped" | tr -d '\r' | grep -qxF "  A       Q" || fail "--keys through a pipe does not show A on Q"
+piped=$(cd "$work" && timeout $LIMIT_SECONDS "$exe" --bogus-option 2>&1 | cat)
+printf '%s\n' "$piped" | grep -qF "options: bad argument '--bogus-option'" \
+    || fail "a bad argument's report does not reach a pipe on standard error"
 
 echo "== portable: a copy of the executable beside a settings.ini"
 portable="$scratch/portable"

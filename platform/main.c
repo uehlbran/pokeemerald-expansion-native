@@ -27,6 +27,13 @@
  * lock again as any start does. --keys prints what was found and ends there,
  * and --version before anything is looked for.
  *
+ * On Windows the executable is a GUI program, which may have no console to
+ * print to; console.h says where its messages go then (the parent's streams,
+ * its console, or pokeemerald.log in the data directory), main decides that
+ * first of all (in the log mode --version too looks for the data directory
+ * first, to open the log), and a failure before the game is running is also
+ * shown in a message box when there is no one to read the log.
+ *
  * Test-runner mode (--test-runner) makes the process what mgba-rom-test is
  * to expansion's hydra (tools/mgba-rom-test-hydra, run through
  * platform/test_runner/native-rom-test): mGBA's debug registers print to
@@ -50,6 +57,7 @@
 #include "audio.h"
 #include "audio_dump.h"
 #include "bios.h"
+#include "console.h"
 #include "crash_reboot.h"
 #include "crt0.h"
 #include "data_dir.h"
@@ -62,6 +70,7 @@
 #include "frame_pacer.h"
 #include "game_hooks.h"
 #include "gba_memmap.h"
+#include "host_console.h"
 #include "input.h"
 #include "interrupt.h"
 #include "options.h"
@@ -528,11 +537,44 @@ static int restart_process(int argc, char **argv, int64_t epoch, uint32_t line)
     return MAIN_EXIT_FAILURE;
 }
 
-int main(int argc, char **argv)
+/* The message box of a start-up failure in LOG mode (console.h); SDL
+ * documents it as usable before SDL_Init. */
+static void show_message_box(const char *title, const char *text)
+{
+    if (SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, title, text, NULL) != 0)
+        (void)fprintf(stderr, "main: SDL_ShowSimpleMessageBox failed: %s\n", SDL_GetError());
+}
+
+/* What the program's start knows before the options are parsed: the command
+ * line, how the messages go (console.h), the log's path once it is open, and
+ * whether every module has started. */
+struct start {
+    int argc;
+    char **argv;
+    enum console_mode mode;
+    struct console_streams log_streams; /* the streams the log takes */
+    char log_path[DATA_DIR_PATH_SIZE];
+    bool started; /* set once every module is running, when a failure stops being a start-up one */
+};
+
+/* The log is opened before anything is parsed or reported, in the data
+ * directory the command line names, found without a report; the arguments
+ * are then parsed with the log open, and report into it. */
+static void open_log_for_mode(struct start *start)
+{
+    struct options named_data_dir = {.data_dir = options_data_dir_given(start->argc, start->argv)};
+    (void)console_open_log(&named_data_dir, data_dir_sdl_host(), &start->log_streams, start->log_path,
+                           sizeof start->log_path);
+}
+
+/* The program from the command line to its end. */
+static int play(struct start *start)
 {
     struct options options;
     int status = MAIN_EXIT_OK;
-    if (options_parse(argc, argv, &options) != OPTIONS_OK)
+    if (console_uses_log(start->mode))
+        open_log_for_mode(start);
+    if (options_parse(start->argc, start->argv, &options) != OPTIONS_OK)
         return MAIN_EXIT_USAGE;
     if (options.help) {
         options_print_usage(stdout);
@@ -557,6 +599,7 @@ int main(int argc, char **argv)
         save_lock_release();
         return MAIN_EXIT_FAILURE;
     }
+    start->started = true;
 
     status = run_game(&options);
     if (frame_flush_save() != 0 && status == MAIN_EXIT_OK)
@@ -580,6 +623,20 @@ int main(int argc, char **argv)
      * (3)). */
     save_lock_release();
     if (restart && status == MAIN_EXIT_OK)
-        return restart_process(argc, argv, restart_epoch, restart_line);
+        return restart_process(start->argc, start->argv, restart_epoch, restart_line);
+    return status;
+}
+
+int main(int argc, char **argv)
+{
+    const enum host_stream_kind out_kind = host_console_stream_kind(HOST_STREAM_OUT);
+    const enum host_stream_kind err_kind = host_console_stream_kind(HOST_STREAM_ERR);
+    struct start start = {.argc = argc,
+                          .argv = argv,
+                          .mode = console_choose(out_kind, err_kind, host_console_attach_parent),
+                          .log_streams = console_missing_streams(out_kind, err_kind)};
+    const int status = play(&start);
+    if (!start.started && status != MAIN_EXIT_OK)
+        console_report_start_failure(start.mode, start.log_path, show_message_box);
     return status;
 }

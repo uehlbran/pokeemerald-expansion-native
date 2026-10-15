@@ -159,7 +159,7 @@ REGIONS_LD := $(REGIONS_LD_NAME)
 # its sections are empty, but its symbols exist, as crt0.c needs.
 GAME_LD := $(GAME_LD_NAME)
 GBA_LDFLAGS := $(GBA_LAYOUT_LDFLAGS) -Wl,-T,$(REGIONS_LD) -Wl,-T,$(GAME_LD)
-LDFLAGS_ALL := -m$(BITS) $(SANITIZERS) $(GBA_LDFLAGS)
+LDFLAGS_ALL := -m$(BITS) $(SANITIZERS) $(GBA_LDFLAGS) $(CONSOLE_LDFLAGS)
 
 # The sanitizer options every test runs under, set here so the environment
 # cannot weaken them: leaks detected, no suppressions file, UBSan backtraces.
@@ -281,7 +281,7 @@ SYMBOL_MAP_TESTS := test_symbols
 # The Windows tests cannot run here, so each link's layout is checked from the
 # file, as the game's is (Makefile.native).
 ifeq ($(TARGET_OS),windows)
-TEST_LINK_CHECK = python3 -I build_glue/check_pe_layout.py $(1) || { rm -f $(1); exit 1; }
+TEST_LINK_CHECK = python3 -I build_glue/check_pe_layout.py --console $(1) || { rm -f $(1); exit 1; }
 endif
 
 # A test's source: test/<name>.c or test/<family>/<name>.c.

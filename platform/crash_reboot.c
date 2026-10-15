@@ -114,7 +114,9 @@ static void report_add_hex(struct report *report, uintptr_t value)
     report_add(report, text);
 }
 
-/* stderr as the handler writes to it, resolved by crash_reboot_init. */
+/* stderr as the handler writes to it, resolved by crash_reboot_init: the descriptor the
+ * C runtime's stderr has, which is not 2 for a program that had no stderr and
+ * opened its log on it (console.h). */
 static host_handler_file report_file = HOST_HANDLER_FILE_NONE;
 
 /* Best-effort: there is nothing to do if stderr is gone. */
@@ -218,7 +220,7 @@ int crash_reboot_init(int argc, char *const argv[])
     const volatile uint8_t *bytes = persistent_bytes();
     for (size_t i = 0; i < CRASH_REBOOT_PERSISTENT_SIZE; i++)
         reboot.started_with[i] = bytes[i];
-    report_file = host_file_for_handler(STDERR_FILENO);
+    report_file = host_file_for_handler(fileno(stderr));
     if (host_fault_install_crash(on_crash) != 0)
         return CRASH_REBOOT_ERR_SIGNAL;
     return CRASH_REBOOT_OK;

@@ -19,6 +19,11 @@
 #   REGIONS_LD_NAME, GAME_LD_NAME   the file names of those two linker scripts
 #                        (in platform/)
 #   SDL_CFLAGS, SDL_LIBS how to compile and link against SDL2
+#   CONSOLE_LDFLAGS, GUI_LDFLAGS   the subsystem of an executable: the unit
+#                        tests are console programs (Windows: -mconsole), the
+#                        game is a GUI program, so that Explorer opens no
+#                        console window beside it (Windows: -mwindows; Linux:
+#                        neither has a flag)
 #   $(call target_resources,DIR)   the resource objects every executable
 #                        links, made in DIR by this file's rule (Windows: the
 #                        application manifest; Linux: none)
@@ -44,6 +49,8 @@ SDL_LIBS   := $(shell pkg-config --libs sdl2)
 # Non-PIE, the image at 0x40000000, clear of every region on both bit widths
 # (docs/ARCHITECTURE.md, "The memory model").
 GBA_LAYOUT_LDFLAGS := -no-pie -Wl,-Ttext-segment=0x40000000
+CONSOLE_LDFLAGS :=
+GUI_LDFLAGS :=
 REGIONS_LD_NAME := gba_regions.ld
 GAME_LD_NAME := gba_game.ld
 target_resources =
@@ -89,8 +96,8 @@ TARGET_CFLAGS := -mno-ms-bitfields -D__USE_MINGW_ANSI_STDIO=1 -Wa,--keep-locals 
 # (sdl2-mingw) into build/sdl2-mingw/. Used directly, not through its
 # sdl2.pc: that file carries the prefix the package was built under, adds
 # -Dmain=SDL_main, -lSDL2main and -mwindows (a GUI executable with SDL's
-# WinMain), and this one is a console executable with its own main(), so
-# SDL_MAIN_HANDLED and -mconsole (platform/main.c).
+# WinMain), and this one has its own main(), so SDL_MAIN_HANDLED (platform/main.c)
+# and the subsystem set below.
 SDL2_MINGW_DIR := $(abspath $(TARGET_MK_DIR)../build/sdl2-mingw)/x86_64-w64-mingw32
 SDL_CFLAGS := -isystem $(SDL2_MINGW_DIR)/include/SDL2 -DSDL_MAIN_HANDLED
 SDL_LIBS   := -L$(SDL2_MINGW_DIR)/lib -lSDL2
@@ -101,11 +108,21 @@ SDL_LIBS   := -L$(SDL2_MINGW_DIR)/lib -lSDL2
 # refuses it; .text at 0x40001000, where the Linux build's code is (the
 # headers take the first page of the image at 0x40000000 there).
 # gba_regions.pe.ld puts the regions and the filled gaps between.
-GBA_LAYOUT_LDFLAGS := -mconsole -static-libgcc -Wl,--image-base=0x01800000 -Wl,--disable-dynamicbase \
+GBA_LAYOUT_LDFLAGS := -static-libgcc -Wl,--image-base=0x01800000 -Wl,--disable-dynamicbase \
                       -Wl,--disable-high-entropy-va -Wl,--disable-reloc-section \
                       -Wl,--section-start=.text=0x40001000
 REGIONS_LD_NAME := gba_regions.pe.ld
 GAME_LD_NAME := gba_game.pe.ld
+
+# The game is the "Windows GUI" subsystem and keeps its own main: MinGW-w64's
+# start-up code for -mwindows (WinMainCRTStartup) calls main with the
+# command line it parsed, as the console one does. The subsystem is the only
+# difference to the loader: it creates no console for the process, and the
+# C runtime takes stdout and stderr from the handles the parent gave it, if
+# any (platform/console.h says what the game does with none). The unit tests
+# stay console programs, so that run_windows_tests.sh shows their output.
+CONSOLE_LDFLAGS := -mconsole
+GUI_LDFLAGS := -mwindows
 
 # The application manifest that makes the process's code page UTF-8, linked
 # into the game and into every test executable alike, so that the narrow

@@ -75,6 +75,12 @@ enum options_error {
  * the data directory and the save and clock paths. */
 enum options_error options_parse(int argc, char **argv, struct options *out);
 
+/* The --data-dir the arguments give (the last, as options_parse takes it),
+ * or NULL, found without a report: console.h opens its log before the
+ * command line is parsed for real, and needs the directory to put it in. A
+ * bad argument ends the scan; what came before it counts. */
+const char *options_data_dir_given(int argc, char **argv);
+
 /* The usage text, to `out`. */
 void options_print_usage(FILE *out);
 

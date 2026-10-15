@@ -35,8 +35,9 @@ in your per-user data directory ([below](#where-the-files-live)).
 64-bit Windows 10 version 1903 (the May 2019 Update) or later. Keep
 `pokeemerald-native.exe` and `SDL2.dll` in the same folder and start the
 executable from anywhere: the save and the settings live in your per-user
-data directory ([below](#where-the-files-live)). A console window opens
-beside the game; it shows the game's messages and is not needed to play.
+data directory ([below](#where-the-files-live)). No console window opens
+beside the game; where its messages go instead is
+[below](#no-console-window-on-windows).
 
 The executable is not signed, so Windows SmartScreen may say "Windows
 protected your PC". Click "More info", then "Run anyway". Paths and names
@@ -168,7 +169,7 @@ each name, so it also shows how to write one.
 A line the game cannot use (a misspelt setting, a key name SDL does not know,
 a scale outside 1 to 16, a fast-forward speed other than 2, 3, 4 or
 `unlimited`, a line without `=`) is reported with its line number
-on standard error (the console window on Windows), for example
+on standard error (on Windows, [see below](#no-console-window-on-windows)), for example
 
 ```
 settings: /home/you/.local/share/pokeemerald-expansion-native/pokeemerald-native/settings.ini:4: 'jump' is not a setting (a, b, select, start, right, left, up, down, r, l, scale, fast_forward, fast_forward_toggle, fast_forward_speed, fast_forward_audio); the line is ignored
@@ -316,6 +317,20 @@ says otherwise:
   or a data directory it cannot make or that is a file: it says which and
   does not start.
 
-## Planned, not built
+## No console window on Windows
 
-No console window on Windows.
+The Windows executable is a graphical program, so starting it from Explorer,
+a shortcut or Steam opens the game window and nothing else. The game still
+prints (the refusals above, `--keys`, `--version`), and where that goes
+depends on how it was started:
+
+| Started from | The messages go to |
+|---|---|
+| Explorer, a shortcut, Steam | `pokeemerald.log` in the data directory ([above](#where-the-files-live): the per-user directory, the executable's own folder in portable mode, or `--data-dir`), emptied at each start, so it never grows. The messages that stop the game from starting are also shown in a message box that names the error and the log file. |
+| A command prompt (`cmd.exe`, PowerShell) with nothing redirected | the prompt. The prompt does not wait for a graphical program, so it comes back at once and the messages appear after it; run `start /wait pokeemerald-native.exe --keys` in `cmd.exe`, or `Start-Process -Wait -NoNewWindow` in PowerShell, to have it wait. |
+| A pipe or a file (`> out.txt`, `\| more`, a script) | there, as with any program. |
+| A launcher that gives the game one stream (say, output to a file) and no console | that stream; the other, if it is left out, goes to `pokeemerald.log` as above (no message box then, since someone reads the stream). |
+
+If no data directory can be found at all, the log is written beside the
+executable and says so. Linux and macOS programs print to the terminal as
+they always have; nothing changes there.
