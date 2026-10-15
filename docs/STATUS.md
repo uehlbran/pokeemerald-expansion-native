@@ -700,9 +700,14 @@ hands-on check; `--keys` prints the paths).
 push and a Windows runner dispatch (the new Windows-side tests:
 host_file read and is_directory, the player module, test_frame's dummy
 window, the smoke's `--keys`, `--version`, non-ASCII `--data-dir` and
-portable-mode runs). Then fast-forward (added by the owner 2026-10-15),
-the console-window removal, macOS x86_64, Steam Deck, and the Apple
-silicon feasibility spike (PLAN.md items (g) to (i)).
+portable-mode runs). And fast-forward (the owner's addition of
+2026-10-15): branch work/fastforward, an Opus worker; a hold key (Tab)
+and a toggle key (Shift+Tab), both rebindable, the speed a setting (2x
+default; 2, 3, 4, unlimited) in the frame pacer only, audio sped up with
+a mute setting and a bounded queue, a corner indicator, the overlay and
+`--keys` listing it. Then the console-window removal, macOS x86_64,
+Steam Deck, and the Apple silicon feasibility spike (PLAN.md items (d),
+(h), (i)).
 (2) Done and merged (5cc507a482): the documentation pass and the release
 pipeline (README and the public docs current, docs/RUNNING.md for players,
 tools/build-native.sh, release.yml; the note above has the first run).
@@ -834,6 +839,7 @@ Nothing yet; nothing exists to be broken.
 | audio-rate (ruling 1: 32768 Hz, FIFO upsampling, --audio-dump) | Opus | Sonnet |
 | release-docs (docs pass, RUNNING.md, release.yml, build script) | Sonnet | Sonnet |
 | settings (data directory, settings.ini, F1 overlay, --keys) | Opus | Sonnet |
+| fastforward (hold and toggle keys, the pacer multiplier, audio, indicator) | Opus | in flight |
 | interrupt | Opus | Sonnet |
 | psg | Opus | Sonnet |
 | save (flash, save_file) | Opus | Sonnet |
