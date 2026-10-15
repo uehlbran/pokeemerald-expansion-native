@@ -55,7 +55,14 @@ game must drop back to normal speed). (2) A hands-on check of the
 console-free Windows build once it merges (double-click: no console;
 the log file; a command prompt still printing `--keys`). (3) Carried
 from before, below: the 65536 Hz audio-rate recommendation, the
-2026-10-14 Windows saves to move once, the optional installs.
+2026-10-14 Windows saves to move once, the optional installs. (4) One
+command, when convenient: `rm -r ~/.local/share/pokeemerald-expansion-native`.
+A reviewer's mutant of the console task (one that made Linux take the
+Windows no-console path) created that per-user directory on this
+machine at 23:50 (two empty directories now); the reviewer's own `rm`
+was refused by its permission check, and the orchestrator does not
+redo an action a worker was refused. No gate wrote it: the gates now
+check that the directory is unchanged by them instead of absent.
 
 | Gate on main tonight | Commit | Result |
 |---|---|---|
