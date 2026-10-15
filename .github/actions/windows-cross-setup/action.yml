@@ -1,0 +1,29 @@
+# What the Windows cross-build needs on top of native-setup (which has already
+# run): the MinGW-w64 packages (docs/BUILDING.md, the Windows line), clang for
+# the data's COFF check (check-flat), SDL2 for MinGW cached by the sha256
+# pinned in Makefile.native, and ccache under the MinGW compiler's name, first
+# on PATH so that ccache finds the real one after it. The same steps as the
+# cross-build job of windows.yml.
+name: Windows cross-build setup
+description: Install the MinGW-w64 cross-build's packages and cache its SDL2; ccache for the cross compiler.
+
+runs:
+  using: composite
+  steps:
+    - name: Prerequisites (docs/BUILDING.md, the Windows line)
+      shell: bash
+      run: |
+        sudo apt-get install -y --no-install-recommends clang gcc-mingw-w64-x86-64 binutils-mingw-w64-x86-64 mingw-w64-tools
+
+    - name: Use ccache for the MinGW compiler
+      shell: bash
+      run: |
+        mkdir -p ~/.local/ccache-bin
+        ln -sf /usr/bin/ccache ~/.local/ccache-bin/x86_64-w64-mingw32-gcc
+        echo ~/.local/ccache-bin >> "$GITHUB_PATH"
+
+    - name: Cache SDL2 for MinGW (pinned in Makefile.native by sha256)
+      uses: actions/cache@v4
+      with:
+        path: build/sdl2-mingw
+        key: sdl2-mingw-${{ hashFiles('Makefile.native') }}
