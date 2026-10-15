@@ -263,7 +263,7 @@ run compared with it test by test.
 | 11 | 5862 | 5405 | 18 | 9 | 421 | 0 | 0 | after merging main (work/replay's script-tag untagging): class 4 closed; per test equal to the GBA baseline but for the 9 benchmarks; 44 s |
 | SANITIZE=1 | 5862 | 5402 | 18 | 9 | 421 | 3 | 1 | the sanitized run below, before the palettes were padded: 3 CRASH (fatal AddressSanitizer reports), 9 assumption failures; 78 s |
 | SANITIZE=1 | 5862 | 5405 | 18 | 9 | 421 | 0 | 0 | eight battle-animation palettes padded; per test the GBA baseline but for the 9 benchmarks; 76 s |
-| M8 review, 64 bits (GCC, and clang plain and sanitized: the same, test by test) | 5884 | 5417 | 25 | 9 | 421 | 0 | 0 | the capture replay (class 11): 7 tests KNOWN_FAILING natively; 9 native tests of the replay (`test/capture_replay.c`), 3 of which expect ERROR and are counted with the known failures; the 13 native-only tests of earlier milestones; 9 assumption failures (class 8) |
+| M8 review, 64 bits (GCC, and clang plain and sanitized: the same, test by test) | 5884 | 5417 | 28 (25 KNOWN_FAILING, 3 expected ERROR) | 9 | 421 | 0 | 0 | the capture replay (class 11): 7 tests KNOWN_FAILING natively; 9 native tests of the replay (`test/capture_replay.c`), 3 of which expect ERROR and are counted with the known failures; the 13 native-only tests of earlier milestones; 9 assumption failures (class 8) |
 
 ## Notes from review
 

@@ -522,6 +522,10 @@ and its suite equals GCC's test by test, plain and sanitized; every game and tes
 converted and checked end to end. `docs/DECISIONS.md`, "The macOS port waits
 for its first runs on a Mac", lists what the first runs must show.
 
+The branch that carries the port, `work/macos`, is parked: unmerged until a
+run of `macos.yml`, the full macOS gate, is green on `macos-15-intel`.
+Merging it is the owner's call once GitHub Actions' billing is restored.
+
 The macOS executable is x86_64 only (`docs/DECISIONS.md`, "macOS ships as
 x86_64 under Rosetta; arm64 is not started"): an Intel Mac runs it, and an
 Apple-silicon Mac runs it under Rosetta 2. It is built on the Mac itself, with

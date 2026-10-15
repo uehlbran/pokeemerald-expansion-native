@@ -67,7 +67,9 @@ Not working or not verified:
   clang build passes both replays and the suite on Linux, plain and
   sanitized, but nothing of it has run on a Mac beyond two probes: the macOS
   workflow's first runs were refused before any job started (the account's
-  billing), and the port does not merge until they pass.
+  billing). The branch (`work/macos`) is parked, unmerged, until a run of
+  the full macOS gate on `macos-15-intel` is green; merging it is the
+  owner's call once GitHub Actions' billing is restored.
 - GBA save interchange: native saves use the host's struct layout and are
   not GBA `.sav` files.
 - Nothing past Birch's lab in play, the windowed path with a real display

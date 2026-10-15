@@ -2476,13 +2476,24 @@ both replays and equals GCC's suite, plain and sanitized, reproducible from
 the tree: docs/BUILDING.md, "The clang rehearsal on Linux"; every game and
 test source, filtered for Mach-O, compiles for macOS; the test objects' event
 scripts go through their whole pipeline; patchelf's Mach-O path runs on
-clang's Mach-O objects), and it does not merge until the runs below pass, in
-this order:
+clang's Mach-O objects).
 
-1. `macos.yml` by hand on the branch (`gh workflow run macos.yml --ref
-   work/macos`; GitHub dispatches a workflow only if its file is on the
-   default branch, so `macos.yml` must reach `main` first, alone or with a
-   push trigger restored on the branch for the one run). Its jobs must show:
+**The branch is parked.** `work/macos` stays unmerged, waiting for a run of
+the full macOS gate on `macos-15-intel` (run 1 below), which needs GitHub
+Actions back: the owner's ruling of 2026-10-15 ("The owner's rulings of the
+morning after the night run", 1) leaves Actions off for now. Until then the
+branch only follows `main`, by merges (never a rebase or a force-push), with
+the full Linux gate on each merge. Merging it is the owner's call, once the
+account's billing is restored and run 1 has shown everything listed under
+it. The runs, in this order:
+
+1. The full gate: `macos.yml` by hand on the branch (`gh workflow run
+   macos.yml --ref work/macos`; GitHub dispatches a workflow only if its
+   file is on the default branch, so `macos.yml` must reach `main` first,
+   alone or with a push trigger restored on the branch for the one run).
+   Its jobs (`unit`, `game` and `suite` on `macos-15-intel`; `linux`,
+   `linux-suite` and `compare` on `ubuntu-24.04`; `rosetta` on
+   `macos-latest`) must show:
    - **unit**: 99 unit test binaries (80 portable, 14 `posix/`, 5 `darwin/`)
      each "N passed, 0 failed" under ASan and UBSan, and 98 under TSan
      (`test_crt0` is not run under it); clang-tidy clean on the macOS
@@ -2503,8 +2514,15 @@ this order:
    - **suite**: the test runner's own tests (two crash on purpose and are
      restarted), then 5,884 results (5,417 PASS, 2 CRASH, 3 ERROR (expected:
      `test/capture_replay.c`), 7 EXPECTED_FAIL, 25 KNOWN_FAILING, 9
-     ASSUMPTION_FAIL, 421 TO_DO), plain and sanitized,
-     and no UndefinedBehaviorSanitizer `function` or `pointer-overflow`
+     ASSUMPTION_FAIL, 421 TO_DO), plain and sanitized (the harness's
+     summary counts the 3 expected ERRORs with the known failures: 28).
+     Against `main`'s Linux suite (5,875 results, 5,418 PASS, 18
+     KNOWN_FAILING) the difference is the branch's, the same with GCC on
+     Linux: the capture replay's 9 self-tests (6 PASS, 3 ERROR) and 7 tests
+     that pass on `main` only because their captured values never reach
+     THEN, now KNOWN_FAILING natively (`platform/test_runner/SUITE-LOG.md`,
+     class 11); every other test's result is `main`'s. Also
+     no UndefinedBehaviorSanitizer `function` or `pointer-overflow`
      report (`platform/test_runner/SUITE-LOG.md` has the sites, and the three
      objects built without the `function` check);
    - **compare**: "PASS: the same 5884 tests with the same results" for the
