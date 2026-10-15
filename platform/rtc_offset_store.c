@@ -12,6 +12,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
@@ -73,7 +74,7 @@ static int parse_offset(const char *text, size_t length, int64_t *offset)
 int rtc_offset_store_load(const char *path, int64_t *offset, int *found)
 {
     char text[FILE_BUFFER_SIZE];
-    ssize_t length;
+    ptrdiff_t length;
     int64_t parsed;
     int fd;
 
@@ -89,9 +90,7 @@ int rtc_offset_store_load(const char *path, int64_t *offset, int *found)
         rtc_report_call_failure("open (offset file)");
         return -1;
     }
-    do {
-        length = read(fd, text, sizeof text);
-    } while (length < 0 && errno == EINTR);
+    length = host_file_read(fd, text, sizeof text);
     if (length < 0) {
         rtc_report_call_failure("read (offset file)");
         (void)close(fd); /* already failing */

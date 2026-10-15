@@ -123,6 +123,10 @@ static enum data_dir_error use_given_dir(const char *dir, struct data_paths *out
         (void)fprintf(stderr, MODULE ": cannot make the data directory %s (--data-dir): %s\n", dir, strerror(errno));
         return DATA_DIR_ERR;
     }
+    if (!host_file_is_directory(dir)) { /* EEXIST: something is there, but not a directory */
+        (void)fprintf(stderr, MODULE ": %s (--data-dir) is not a directory\n", dir);
+        return DATA_DIR_ERR;
+    }
     if (!copy_path(dir, out->dir))
         return DATA_DIR_ERR;
     out->mode = DATA_DIR_GIVEN;
@@ -167,7 +171,10 @@ enum data_dir_error data_dir_resolve(const struct options *options, const struct
     if (options->test_runner)
         return DATA_DIR_OK;
     const bool reads_settings = !options->headless || options->keys;
-    const bool needs_dir = options->save_path == NULL || options->rtc_offset_path == NULL || reads_settings;
+    /* --data-dir is made and checked whenever it is given, so that a wrong
+     * one is reported even by a run that gives every file its own path. */
+    const bool needs_dir = options->data_dir != NULL || options->save_path == NULL || options->rtc_offset_path == NULL
+                           || reads_settings;
     if (needs_dir && find_dir(options, host, out) != DATA_DIR_OK)
         return DATA_DIR_ERR;
     if (!place(options->save_path, out->dir, DATA_DIR_SAVE_NAME, out->save)

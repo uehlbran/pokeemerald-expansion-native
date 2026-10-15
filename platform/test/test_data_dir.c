@@ -289,6 +289,55 @@ PTEST(a_data_dir_whose_parent_is_missing_is_reported)
     PT_ASSERT(strstr(said, given) != NULL && strstr(said, "(--data-dir)") != NULL);
 }
 
+PTEST(a_data_dir_that_is_a_file_is_reported)
+{
+    struct dirs dirs;
+    char given[DIR_SIZE + 32u];
+    char said[1024];
+    PT_ASSERT(make_dirs(&dirs));
+    PT_ASSERT(make_file(dirs.pref, "afile"));
+    (void)snprintf(given, sizeof given, "%s/afile", dirs.pref);
+    struct error_case c = {.options = windowed()};
+    c.options.data_dir = given;
+    PT_ASSERT(tsup_capture_stderr(resolve_expecting_a_report, &c, said, sizeof said));
+    PT_ASSERT(remove_dirs(&dirs));
+    PT_ASSERT_EQ_INT(c.status, DATA_DIR_ERR);
+    PT_ASSERT(strstr(said, "data_dir: ") != NULL && strstr(said, given) != NULL);
+    PT_ASSERT(strstr(said, "(--data-dir) is not a directory\n") != NULL);
+}
+
+/* Given, it is made and checked even when no file needs it: a wrong one is never passed over. */
+PTEST(a_data_dir_given_with_both_paths_headless_is_still_made_and_checked)
+{
+    struct dirs dirs;
+    char given[DIR_SIZE + 16u];
+    char said[1024];
+    PT_ASSERT(make_dirs(&dirs));
+    (void)snprintf(given, sizeof given, "%s/new", dirs.pref);
+    struct options o = windowed();
+    o.headless = true;
+    o.save_path = "a.sav";
+    o.rtc_offset_path = "a.rtc";
+    o.data_dir = given;
+    struct data_paths paths;
+    const enum data_dir_error status = data_dir_resolve(&o, &fake_host, &paths);
+    const bool made = tsup_exists(given);
+    PT_ASSERT(make_file(dirs.pref, "afile"));
+    (void)snprintf(given, sizeof given, "%s/afile", dirs.pref);
+    struct error_case c = {.options = o};
+    c.options.data_dir = given;
+    PT_ASSERT(tsup_capture_stderr(resolve_expecting_a_report, &c, said, sizeof said));
+    PT_ASSERT(remove_dirs(&dirs));
+    PT_ASSERT_EQ_INT(status, DATA_DIR_OK);
+    PT_ASSERT(made);
+    PT_ASSERT_EQ_INT(paths.mode, DATA_DIR_GIVEN);
+    PT_ASSERT_EQ_STR(paths.save, "a.sav");
+    PT_ASSERT_EQ_STR(paths.rtc_offset, "a.rtc");
+    PT_ASSERT_EQ_STR(paths.settings, "");
+    PT_ASSERT_EQ_INT(c.status, DATA_DIR_ERR);
+    PT_ASSERT_EQ_U32(fake.base_calls + fake.pref_calls, 0u);
+}
+
 PTEST(a_save_or_clock_path_given_wins_for_its_file_only)
 {
     struct dirs dirs;

@@ -5,20 +5,24 @@
  * offset (rtc_offset_store) survive power-off on the GBA, and natively each
  * is written to a temporary file that replaces the old one only once it is
  * on the disk. Also the small C library calls that differ between hosts:
- * opening a file the same way on every OS and writing all of a buffer to it
- * (rtc_offset_store; and stderr from a fault handler, crash_reboot and
- * arm_division), moving back in it and closing it (the WAV recording,
- * audio_dump), the lock that keeps a second process off a save
- * (save_lock), creating a directory (the replay's output, replay_session),
+ * opening a file the same way on every OS, reading it (the clock's offset,
+ * rtc_offset_store; the player's settings, settings) and writing all of a
+ * buffer to it (rtc_offset_store; and stderr from a fault handler,
+ * crash_reboot and arm_division), moving back in it and closing it (the WAV
+ * recording, audio_dump), the lock that keeps a second process off a save
+ * (save_lock), creating a directory and asking whether one is there (the
+ * replay's output, replay_session; the data directory, data_dir),
  * the local time (the clock's first setting, rtc), and the two questions of
  * a path's syntax a replay's includes ask (replay_include).
  *
- * Wraps, on POSIX (host_posix.c): open with O_CLOEXEC, write, lseek, close,
- * fsync, rename, fsync of the directory, flock, mkdir, localtime_r. On Windows
+ * Wraps, on POSIX (host_posix.c): open with O_CLOEXEC, read, write, lseek,
+ * close, fsync, rename, fsync of the directory, flock, mkdir, stat,
+ * localtime_r. On Windows
  * (host_windows.c): _open (binary, not inherited), WriteFile,
  * SetFilePointerEx, _close, FlushFileBuffers, MoveFileExW with REPLACE_EXISTING and WRITE_THROUGH
  * (which is what makes the replacement durable there: there is no directory
- * sync), LockFileEx and UnlockFileEx, CreateDirectoryW, _localtime64_s, and
+ * sync), LockFileEx and UnlockFileEx, CreateDirectoryW, GetFileAttributesW,
+ * ReadFile, _localtime64_s, and
  * Windows' path syntax (Microsoft, "File path formats on Windows systems");
  * paths in UTF-8, the code page the executable's manifest sets. A failed
  * call returns -1 with errno set (the handler's write: false, errno as it
@@ -44,6 +48,18 @@
  * and writable by its owner (0644, less the umask; Windows: not read-only).
  * Returns the descriptor, or -1 with errno set. */
 int host_file_open(const char *path, int flags);
+
+/* Reads up to size bytes from the open descriptor into buffer, from its
+ * position, which moves past them. Fewer than size is not an error (a file's
+ * end is near, or a pipe has no more yet): call again until it returns 0.
+ * POSIX: read(2), retried when a signal interrupts it, at most PTRDIFF_MAX
+ * bytes a call. Windows: ReadFile on the descriptor's handle, as
+ * host_file_write_all writes through it (no text-mode translation, the
+ * platform's files are binary), at most MAXDWORD bytes a call; the far end of
+ * a pipe closing is the end. Returns the count read, 0 at the end of the file
+ * and for a size of 0, or -1 with errno set (EBADF: the descriptor is not
+ * open). */
+ptrdiff_t host_file_read(int descriptor, void *buffer, size_t size);
 
 /* Writes the size bytes at bytes to the open descriptor, all of them,
  * retrying a short write (and on POSIX one interrupted by a signal). No
@@ -142,8 +158,15 @@ int host_file_release_lock(int descriptor);
 
 /* Creates the directory path with every permission the process's umask
  * allows (Windows: the permissions it inherits from its parent directory).
- * Returns 0, or -1 with errno set (EEXIST if it exists). */
+ * Returns 0, or -1 with errno set (EEXIST if something exists at path, a
+ * directory or not: host_file_is_directory tells which). */
 int host_file_make_directory(const char *path);
+
+/* True if path names a directory (a symbolic link to one too); false for a
+ * file or anything else, for nothing there, and for a path that cannot be
+ * examined. POSIX: stat(2). Windows: GetFileAttributesW. errno is not part
+ * of the answer. */
+bool host_file_is_directory(const char *path);
 
 /* The host's local wall-clock time, in its time zone and daylight saving
  * rules, at seconds since the Unix epoch (64-bit, so past 2038 at both

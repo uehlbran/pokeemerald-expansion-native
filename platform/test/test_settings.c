@@ -243,6 +243,30 @@ PTEST(a_nul_in_a_value_is_not_part_of_a_key_name)
     PT_ASSERT_EQ_INT(s.problems[0].kind, SETTINGS_UNKNOWN_KEY);
 }
 
+/* A control character or a byte outside ASCII never reaches the terminal through a report. */
+PTEST(a_problems_text_keeps_printable_ascii_only)
+{
+    struct settings s;
+    parse("\xff\xfe\n\x1b[31m = x\nb = \xc3\xa9\x07\n", &s);
+    PT_ASSERT_EQ_U32(s.problem_count, 3u);
+    PT_ASSERT_EQ_INT(s.problems[0].kind, SETTINGS_NOT_A_SETTING_LINE);
+    PT_ASSERT_EQ_STR(s.problems[0].text, "??");
+    PT_ASSERT_EQ_INT(s.problems[1].kind, SETTINGS_UNKNOWN_SETTING);
+    PT_ASSERT_EQ_STR(s.problems[1].text, "?[31m");
+    PT_ASSERT_EQ_INT(s.problems[2].kind, SETTINGS_UNKNOWN_KEY);
+    PT_ASSERT_EQ_STR(s.problems[2].text, "???");
+}
+
+PTEST(a_comment_after_a_value_is_part_of_the_value)
+{
+    struct settings s;
+    parse("a = q  # my key\n", &s);
+    PT_ASSERT_EQ_INT(s.keymap.scancodes[A], SDL_SCANCODE_Z); /* the default, not Q */
+    PT_ASSERT_EQ_U32(s.problem_count, 1u);
+    PT_ASSERT_EQ_INT(s.problems[0].kind, SETTINGS_UNKNOWN_KEY);
+    PT_ASSERT_EQ_STR(s.problems[0].text, "q  # my key");
+}
+
 PTEST(problems_past_the_room_are_counted)
 {
     static char text[1024];

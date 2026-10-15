@@ -10,7 +10,6 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <string.h>
-#include <unistd.h>
 
 #include "host_file.h"
 #include "options.h"
@@ -30,6 +29,13 @@ static const char byte_order_mark[] = "\xEF\xBB\xBF";
 
 /* Room for a key's name and its NUL: SDL's longest are some 30 characters. */
 #define KEY_NAME_SIZE 64u
+
+/* The bytes a problem's text keeps as they are, printable ASCII; any other
+ * (a control character, an escape sequence, a byte of UTF-8) is reported as
+ * PROBLEM_TEXT_REPLACEMENT, so that a bad line cannot write to the terminal. */
+#define PROBLEM_TEXT_FIRST ' '
+#define PROBLEM_TEXT_LAST '~'
+#define PROBLEM_TEXT_REPLACEMENT '?'
 
 /* A stretch of the file's text, not NUL-terminated. */
 struct span {
@@ -82,7 +88,11 @@ static void add_problem(struct settings *settings, uint32_t line, enum settings_
         const size_t length = text.length < sizeof problem->text - 1u ? text.length : sizeof problem->text - 1u;
         problem->line = line;
         problem->kind = kind;
-        memcpy(problem->text, text.text, length);
+        for (size_t i = 0; i < length; i++) {
+            const char byte = text.text[i];
+            const bool printable = byte >= PROBLEM_TEXT_FIRST && byte <= PROBLEM_TEXT_LAST;
+            problem->text[i] = printable ? byte : PROBLEM_TEXT_REPLACEMENT;
+        }
         problem->text[length] = '\0';
     }
     settings->problem_count++;
@@ -190,14 +200,11 @@ static void report_call(const char *call, const char *path)
 
 /* Reads the file into text, at most size bytes; the count read, or -1
  * (reported). */
-static long read_file(int descriptor, const char *path, char *text, size_t size)
+static ptrdiff_t read_file(int descriptor, const char *path, char *text, size_t size)
 {
     size_t done = 0;
     while (done < size) {
-        /* Windows' read takes an unsigned int; the count is at most size. */
-        const ssize_t got = read(descriptor, text + done, (unsigned)(size - done));
-        if (got < 0 && errno == EINTR)
-            continue;
+        const ptrdiff_t got = host_file_read(descriptor, text + done, size - done);
         if (got < 0) {
             report_call("read", path);
             return -1;
@@ -206,7 +213,7 @@ static long read_file(int descriptor, const char *path, char *text, size_t size)
             break;
         done += (size_t)got;
     }
-    return (long)done;
+    return (ptrdiff_t)done;
 }
 
 int settings_load(const char *path, struct settings *out)
@@ -221,7 +228,7 @@ int settings_load(const char *path, struct settings *out)
         report_call("open", path);
         return -1;
     }
-    const long size = read_file(descriptor, path, text, sizeof text);
+    const ptrdiff_t size = read_file(descriptor, path, text, sizeof text);
     if (host_file_close(descriptor) != 0) {
         report_call("close", path);
         return -1;

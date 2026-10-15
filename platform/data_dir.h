@@ -10,7 +10,8 @@
  * directory (docs/DECISIONS.md, the owner's adjustments to the tasks from the
  * Windows check), found in this order:
  *   1. --data-dir DIR: that directory, made if it is missing (its parent
- *      must exist); for the gates and tests;
+ *      must exist), refused if something else is there; for the gates and
+ *      tests;
  *   2. portable mode: the executable's directory (SDL_GetBasePath), when a
  *      settings file (DATA_DIR_SETTINGS_NAME) is already there;
  *   3. the per-user directory SDL gives (SDL_GetPrefPath, which makes it):
@@ -24,10 +25,12 @@
  * by --keys; a headless run has no keyboard and no window for it to set, and
  * reads none. Test-runner mode has no files at all.
  *
- * The directory is looked for only when a file needs it, so a headless run
- * given both paths, as every gate's is, never asks SDL for the per-user
- * directory, which SDL would create; and portable mode or --data-dir never
- * asks for it either.
+ * The directory is looked for only when a file needs it or --data-dir names
+ * it, so a headless run given both paths, as every gate's is, never asks SDL
+ * for the per-user directory, which SDL would create; and portable mode or
+ * --data-dir never asks for it either. --data-dir is made and checked
+ * whenever it is given: something there that is not a directory is an
+ * error.
  *
  * The rule is data_dir_resolve, pure but for the two questions it puts to
  * the system through data_dir_host (SDL's, data_dir_sdl_host; a test's
@@ -83,7 +86,8 @@ struct data_dir_host {
 
 enum data_dir_error {
     DATA_DIR_OK = 0,
-    DATA_DIR_ERR = -1 /* reported on stderr: no per-user directory, --data-dir not made, a path too long */
+    DATA_DIR_ERR = -1 /* reported on stderr: no per-user directory, --data-dir not made or not a directory, a
+                         path too long */
 };
 
 /* SDL's answers: SDL_GetBasePath and SDL_GetPrefPath(DATA_DIR_ORGANISATION,
