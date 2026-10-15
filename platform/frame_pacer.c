@@ -35,7 +35,8 @@ static struct {
 
 /* The remainder's unit is 1/(GBA_CPU_HZ * multiplier) tick, so it stays below
  * that product, which must fit its uint32_t. */
-_Static_assert((uint64_t)GBA_CPU_HZ *FRAME_PACER_MAX_MULTIPLIER <= UINT32_MAX, "the remainder fits 32 bits");
+#define LARGEST_REMAINDER_DIVISOR ((uint64_t)GBA_CPU_HZ * FRAME_PACER_MAX_MULTIPLIER)
+_Static_assert(LARGEST_REMAINDER_DIVISOR <= UINT32_MAX, "the remainder fits 32 bits");
 
 uint64_t frame_pacer_next_deadline(uint64_t prev_deadline, uint64_t period, uint64_t now, uint64_t max_stall)
 {

@@ -40,12 +40,17 @@ Verified by an automated gate (the gates and their commands are in
   (docs/BUILDING.md, "Windows").
 - The player's files: the save, the clock's offset and a settings file
   (`settings.ini`, which moves the GBA buttons to other keys and sets the
-  window's scale) live in a per-user data directory, or beside the
-  executable in portable mode; `--keys` prints the keys and the paths, and
-  F1 shows them in an overlay over the game that also quits it
+  window's scale and fast-forward) live in a per-user data directory, or
+  beside the executable in portable mode; `--keys` prints the keys and the
+  paths, and F1 shows them in an overlay over the game that also quits it
   ([docs/RUNNING.md](docs/RUNNING.md)). Unit tests cover the rules, the
   settings file and the overlay's picture; the Windows start-up smoke checks
   the paths `--keys` prints, in a given and in a portable directory.
+- Fast-forward: Tab held, or Shift+Tab to switch it on and off, at 2x (3x,
+  4x or unlimited in the settings file), with the sound sped up or muted
+  and an indicator in the corner; the frame pacer alone changes, so the
+  replays and the suite are untouched. Unit-tested, the sound's queue on
+  SDL's dummy device; not yet seen or heard on a screen.
 
 Not working or not verified:
 
@@ -84,16 +89,17 @@ make -f Makefile.native -j"$(nproc)" check BITS=32  # expansion's test suite on 
 ```
 
 Keys: arrows, Z (A), X (B), A (L), S (R), Return (Start), Backspace
-(Select), F1 for the help overlay and its quit; `settings.ini` changes them
-and `--keys` prints them with the save's path. The first build converts every graphic (34 s on 32 cores). Expansion's
+(Select), F1 for the help overlay and its quit, Tab held or Shift+Tab for
+fast-forward; `settings.ini` changes them and `--keys` prints them with the
+save's path. The first build converts every graphic (34 s on 32 cores). Expansion's
 own `make` and `make check` still build and test the GBA ROM, which is the
 regression reference.
 
 ## Documentation
 
 - [docs/RUNNING.md](docs/RUNNING.md): for players: running the game, the
-  keys and the settings file, the F1 overlay and quitting, where the files
-  live (per-user or portable), the options.
+  keys and the settings file, the F1 overlay and quitting, fast-forward,
+  where the files live (per-user or portable), the options.
 - [docs/BUILDING.md](docs/BUILDING.md): prerequisites, every build variant
   and the gates.
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): the platform layer, its
