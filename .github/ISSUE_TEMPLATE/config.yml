@@ -1,1 +1,8 @@
 blank_issues_enabled: false
+contact_links:
+  - name: A bug in the game's own behaviour (also happens on the GBA build)
+    url: https://github.com/rh-hideout/pokeemerald-expansion/issues
+    about: Engine and game bugs belong to pokeemerald-expansion, not to this repository.
+  - name: Where is the download?
+    url: https://github.com/uehlbran/pokeemerald-expansion-native#where-is-the-download
+    about: This repository distributes no builds and provides no ROMs. The README says why and how to build the game from source.

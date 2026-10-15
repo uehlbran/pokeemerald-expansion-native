@@ -10,11 +10,39 @@ body:
         You build the game yourself; [docs/BUILDING.md](https://github.com/uehlbran/pokeemerald-expansion-native/blob/main/docs/BUILDING.md) says how.
 
         If the bug also happens in the GBA build of pokeemerald-expansion, it is expansion's own and belongs in [its repository](https://github.com/rh-hideout/pokeemerald-expansion/issues), not here.
+  - type: checkboxes
+    id: native-only
+    attributes:
+      label: Reproduced on the native build
+      options:
+        - label: The bug happens on the native build made from this repository, and I have not attached a ROM or any game file.
+          required: true
   - type: textarea
     id: what-happened
     attributes:
       label: What happened, and what did you expect?
       description: Say what you saw and what you thought should happen instead.
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: Operating system
+      description: For example Ubuntu 24.04, Windows 11, macOS 15 or Steam Deck.
+    validations:
+      required: true
+  - type: input
+    id: arch
+    attributes:
+      label: Architecture
+      description: For example x86-64 (64-bit) or x86 (32-bit), arm64 on a Mac.
+    validations:
+      required: true
+  - type: input
+    id: build-command
+    attributes:
+      label: The build command you used
+      description: For example `make -f Makefile.native -j"$(nproc)" native BITS=64`, or the cross-build command from docs/BUILDING.md.
     validations:
       required: true
   - type: input
@@ -24,13 +52,6 @@ body:
       description: The commit the game was built from, for example `a554c4080f`. Run it in a terminal or command prompt (started from Explorer, the output goes to `pokeemerald.log` in the data directory instead). It ends in `-dirty` if the build had uncommitted changes, and is `unknown` for a build made without git.
     validations:
       required: true
-  - type: input
-    id: environment
-    attributes:
-      label: Operating system and how it was built
-      description: For example Linux 64-bit, Linux 32-bit, Windows (cross-built from Linux) or Steam Deck, with the commit you built.
-    validations:
-      required: false
   - type: textarea
     id: steps
     attributes:
