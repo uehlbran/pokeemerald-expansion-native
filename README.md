@@ -25,10 +25,15 @@ You build the game yourself; no download exists.
    wsl --install -d Ubuntu-24.04
    ```
 
-2. In the Ubuntu window, paste each of these lines and press Enter, waiting for each to finish (the last is slow):
+2. In the Ubuntu window, paste this line, press Enter, type your password if asked, and wait for the `$` line:
 
    ```
    sudo apt update && sudo apt install -y build-essential git python3 pkg-config curl clang gcc-multilib libpng-dev libsdl2-dev gcc-mingw-w64-x86-64 binutils-mingw-w64-x86-64
+   ```
+
+   Then paste these and press Enter (the last is slow):
+
+   ```
    git clone --depth 1 https://github.com/uehlbran/pokeemerald-expansion-native.git
    cd pokeemerald-expansion-native
    tools/build-native.sh --os windows
@@ -42,10 +47,15 @@ You build the game yourself; no download exists.
 
 **Linux (Ubuntu 24.04)**
 
-In a terminal, paste each line and press Enter; the build is slow and ends with `build-native: done:`.
+In a terminal, paste this line, press Enter, type your password if asked, and wait for the `$` line:
 
 ```
 sudo apt update && sudo apt install -y build-essential git python3 pkg-config curl clang gcc-multilib libpng-dev libsdl2-dev gcc-mingw-w64-x86-64 binutils-mingw-w64-x86-64
+```
+
+Then paste these and press Enter; the build is slow and ends with `build-native: done:`:
+
+```
 git clone --depth 1 https://github.com/uehlbran/pokeemerald-expansion-native.git
 cd pokeemerald-expansion-native
 tools/build-native.sh --os linux
