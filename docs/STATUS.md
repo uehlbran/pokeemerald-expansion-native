@@ -1,6 +1,6 @@
 # Status
 
-Last updated 2026-10-14 (milestone 7 done: **64-bit done**, every gate green at both widths on main at 94f3c70f62; milestone 8 in progress: the two-tier Linux CI, the host layer, the data converter and the Windows cross-build merged; Windows done on the runner: the unit tests, the smoke, both replays, the cross-OS save and the suite green on windows-latest; the owner verifies by hand next).
+Last updated 2026-10-15 night (see "The night of 2026-10-15" first; earlier: milestone 7 done: **64-bit done**, every gate green at both widths on main at 94f3c70f62; milestone 8 in progress: the two-tier Linux CI, the host layer, the data converter and the Windows cross-build merged; Windows done on the runner: the unit tests, the smoke, both replays, the cross-OS save and the suite green on windows-latest; the owner verifies by hand next).
 
 This file is the honest ledger. A thing is listed as verified only with
 the gate that proved it. Anything without a gate is unverified, whatever
@@ -9,6 +9,61 @@ we believe about it.
 ## Summary for the owner
 
 Read this first; the sections below are the ledger behind it.
+
+### The night of 2026-10-15 (the orchestrator's run while the owner sleeps)
+
+**Main** is at e981eff71a, pushed. Every gate is green on it at both
+widths (the 24-step ledger at the end of this block).
+
+**Finished tonight.**
+- Fast-forward (task g), merged at 6a42fd7ade. Tab held speeds the game;
+  Shift+Tab toggles it; both rebindable in settings.ini
+  (`fast_forward`, `fast_forward_toggle`); `fast_forward_speed` is 2
+  (default), 3, 4 or `unlimited`; `fast_forward_audio` plays the sound
+  sped up (n samples into one, the pitch rises as in mGBA and
+  VisualBoyAdvance) or mutes it; a small "FF 2x" in the corner; the F1
+  overlay, `--keys` and RUNNING.md list it. Only the frame pacer changes
+  speed, so the game's logic, the replays, saving and the test runner are
+  untouched and the clock follows host time. Opus worker; Sonnet review
+  with 22 mutants of its own: two missing tests found (the schedule's
+  restart on a speed change, the unlimited sound path) and added, one
+  wrong sentence about AltGr corrected.
+- The Linux watchdog test that failed on CI (below), merged at e981eff71a.
+
+**In flight.** The console-window removal on Windows (task d), Sonnet,
+on work/console; its Windows run is in progress. Then the queue: macOS
+x86_64 (M2 to M5) on `macos-15-intel`, Steam Deck (task h), the
+Apple-silicon spike (task i), a final review.
+
+**Broke and fixed.** The per-push CI run on main after the settings
+merge (38673212769, commit 030e3b195e) failed in one unit test,
+`test_host_thread_linux`: "actual 2, expected 3" threads. The test
+counted every thread of the process, and the previous test's watchdog
+(ptest runs each test under its own), already joined, can still be
+listed in /proc/self/task for a moment (measured: 215 of 200000 joins
+under load), which raised the count taken before the start. Fixed in
+the test, not by waiting longer: it now follows the watchdog's own task
+id, the one id the list gains across the start, and requires that id
+gone after the stop (1000 runs per width under load; reviewed with
+mutants). The production code was right.
+
+**Needs the owner.** (1) A hands-on check of fast-forward on a real
+keyboard and screen: Tab held and released, Shift+Tab on and off, the
+indicator, the sound at 2x, 3x, 4x and unlimited and with
+`fast_forward_audio = mute`, and Alt-Tab away while holding Tab (the
+game must drop back to normal speed). (2) A hands-on check of the
+console-free Windows build once it merges (double-click: no console;
+the log file; a command prompt still printing `--keys`). (3) Carried
+from before, below: the 65536 Hz audio-rate recommendation, the
+2026-10-14 Windows saves to move once, the optional installs.
+
+| Gate on main tonight | Commit | Result |
+|---|---|---|
+| The full gate, 24 steps: the platform gate (format, lint at both widths, sanitized unit tests at both widths, ThreadSanitizer, tools and glue tests); the builds at 32 and 64 bits, plain and sanitized; gates d and e on all four builds; gate b at 32 and 64 bits, plain and sanitized (5418 passed, 9 assumption failures each); gate h both ways; the Windows cross-build and its 83 tests built; the GBA ROM's sha1 | 6a42fd7ade (fast-forward) | green; the per-user data directory absent before and after |
+| The same 24 steps | e981eff71a (the watchdog test) | green, the same totals; 18 minutes warm |
+| The same 24 steps on the branch before the merge | 0a6c7ba0cb (fast-forward) | green |
+| Windows runner | 6a42fd7ade | run 38682653915 in progress |
+
 
 **NOTE ON RELEASES (for the owner, at the owner's request).** A built
 executable contains the complete game's assets, so a public release of it
@@ -838,7 +893,9 @@ Nothing yet; nothing exists to be broken.
 | audio-rate (ruling 1: 32768 Hz, FIFO upsampling, --audio-dump) | Opus | Sonnet |
 | release-docs (docs pass, RUNNING.md, release.yml, build script) | Sonnet | Sonnet |
 | settings (data directory, settings.ini, F1 overlay, --keys) | Opus | Sonnet |
-| fastforward (hold and toggle keys, the pacer multiplier, audio, indicator) | Opus | in flight |
+| fastforward (hold and toggle keys, the pacer multiplier, audio, indicator) | Opus | Sonnet (mutation testing), orchestrator merge gate |
+| threadtest (the Linux watchdog test that failed on CI) | Sonnet | Sonnet (mutation testing), orchestrator merge gate |
+| console (no console window on Windows) | Sonnet | in flight |
 | interrupt | Opus | Sonnet |
 | psg | Opus | Sonnet |
 | save (flash, save_file) | Opus | Sonnet |
