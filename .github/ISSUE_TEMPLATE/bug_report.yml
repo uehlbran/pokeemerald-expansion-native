@@ -21,7 +21,7 @@ body:
     id: version
     attributes:
       label: Output of `pokeemerald-native --version`
-      description: The commit the game was built from, for example `a554c4080f`. It ends in `-dirty` if the build had uncommitted changes, and is `unknown` for a build made without git.
+      description: The commit the game was built from, for example `a554c4080f`. Run it in a terminal or command prompt (started from Explorer, the output goes to `pokeemerald.log` in the data directory instead). It ends in `-dirty` if the build had uncommitted changes, and is `unknown` for a build made without git.
     validations:
       required: true
   - type: input
@@ -42,7 +42,7 @@ body:
     id: logs
     attributes:
       label: Logs
-      description: The terminal output on Linux, or `pokeemerald.log` in the data directory on Windows (docs/RUNNING.md says where it is). Paste it here.
+      description: The terminal output on Linux, `pokeemerald.log` in the data directory on Windows when the game was started from Explorer, a shortcut or Steam (docs/RUNNING.md says where it is), or on the Steam Deck the output of `./pokeemerald-native.sh` run in Konsole. Paste it here.
       render: text
     validations:
       required: false
