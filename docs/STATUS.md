@@ -93,7 +93,26 @@ game flags (3249f05722). Milestone 6's screenshot flake (the trainer party
 seed hashing a pointer) is recorded in the milestone 6 section and in
 DECISIONS.md. Earlier breakages are in the milestone logs.
 
-**Needs the owner.** A note for later, as asked: the saves written by
+**Needs the owner.** A decision from the audio-rate task, not blocking
+(the branch ships your ruling, 32768 Hz, and is in review): Emerald does
+not run its sound output at GBATEK's default 32768 Hz. `m4aSoundInit`
+asks for `SOUND_MODE_DA_BIT_8` and `SoundInit` (src/m4a.c) sets SOUNDBIAS
+to mode 1, which is 8 bits at 65536 Hz, one sample every 256 cycles; the
+engine's own note rounding even says "PWM rate = 65536 Hz". So the
+console this game runs on samples twice as often as the ruling's grid.
+The grid is one constant in the new module (`SOUND_GRID_RATE_HZ`,
+platform/sound_grid.h) plus the DC filter's pole, so moving is a small
+follow-up commit. Recommendation: follow the game's own setting, 65536
+Hz, because it is what the hardware plays and the title melody's lead
+keeps its harmonics above 16 kHz separate instead of folding them back
+onto lower harmonics (the A/B report measured it with a local build,
+recording C). The A/B evidence for ruling (1) is at
+/home/uehlbran/projects/pen-worktrees/audio-rate.ab/REPORT.md with the
+WAV files A (13379 Hz), B (32768 Hz) and C (65536 Hz, experiment) beside
+it; at 13379 Hz the lead's harmonics 10, 12 and 14 fold to 6.4, 5.0 and
+3.6 kHz and sit 16 to 20 dB above where they belong (table in the
+report). Worth hearing: 55 to 65 s (the title melody) and 266 to 268 s
+(Treecko's cry) in A against B. A note for later, as asked: the saves written by
 the Windows builds of 2026-10-14 live in the launch directory (beside the
 executable, `pokeemerald.sav` and `pokeemerald.rtc`); once the settings
 task moves the defaults to the per-user directory, they will need moving
@@ -643,10 +662,13 @@ check"): a settings file for the keys, and no console window; the
 overworld shadows are expansion's default. With that, ruling (1) and
 macOS are unblocked.
 
-**In flight.** Two workers. (1) The audio-rate task (ruling 1): branch work/audio-rate,
-an Opus worker; the device and the PSG at 32768 Hz, the FIFO frame
-upsampled on the cycle grid, a `--audio-dump` WAV option, and the A/B
-recordings as evidence (outside the repository, for the owner to hear).
+**In flight.** (1) The audio-rate task (ruling 1): branch work/audio-rate,
+an Opus worker, DONE and in review (a Sonnet reviewer with mutation
+testing in its own worktree; the orchestrator's full gate running on the
+author's); the device and the PSG at 32768 Hz, the FIFO frame upsampled
+on the cycle grid, a `--audio-dump` WAV option, and the A/B recordings as
+evidence (outside the repository, for the owner to hear; see "Needs the
+owner" for the 65536 Hz finding).
 (2) Done and merged (5cc507a482): the documentation pass and the release
 pipeline (README and the public docs current, docs/RUNNING.md for players,
 tools/build-native.sh, release.yml; the note above has the first run).
