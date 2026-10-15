@@ -224,10 +224,13 @@ static void find_and_ask(const char *text, const char *deck, struct options o, b
     PT_ASSERT(text == NULL || write_file(settings, text));
     o.data_dir = dir;
     PT_ASSERT(deck != NULL ? tsup_set_environment("SteamDeck", deck) : tsup_unset_environment("SteamDeck"));
-    PT_ASSERT_EQ_INT(player_find(&o, &no_host), 0);
+    const int found = player_find(&o, &no_host);
     *fullscreen = player_starts_fullscreen(&o);
-    PT_ASSERT(tsup_unset_environment("SteamDeck"));
-    PT_ASSERT(tsup_remove_tree(dir));
+    const bool unset = tsup_unset_environment("SteamDeck"); /* before any assert, so a failure cannot leak it */
+    const bool removed = tsup_remove_tree(dir);
+    PT_ASSERT_EQ_INT(found, 0);
+    PT_ASSERT(unset);
+    PT_ASSERT(removed);
 }
 
 static bool starts_fullscreen(const char *text, const char *deck, struct options o)

@@ -95,7 +95,7 @@ F1 shows the help overlay over the game: the version, the data directory and
 the paths of the save, the clock's file and the settings file, the keys in
 force, the controller's buttons and fast-forward's keys, speed and sound,
 under the line `Q: quit  F1: close`; once the last thing you pressed was a
-controller button, the line names the controller's instead (`X: quit  B: close`).
+controller button, stick or trigger, the line names the controller's instead (`X: quit  B: close`).
 The overlay shows those lines from the top as far as the window has room: in
 a small window (`--scale 1` or 2) the last ones may not fit, and
 `pokeemerald-native --keys` prints them all.

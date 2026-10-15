@@ -486,7 +486,10 @@ static void print_problem(const struct settings_problem *problem, const char *pa
                       problem->text);
         break;
     case SETTINGS_BAD_SPEED:
-        (void)fprintf(out, "the fast-forward speed '%s' is not 2, 3, 4 or " UNLIMITED_VALUE, problem->text);
+        (void)fprintf(out, "the fast-forward speed '%s' is not ", problem->text);
+        for (uint32_t speed = FASTFORWARD_MIN_SPEED; speed <= FASTFORWARD_MAX_SPEED; speed++)
+            (void)fprintf(out, speed == FASTFORWARD_MIN_SPEED ? "%u" : ", %u", (unsigned)speed);
+        (void)fputs(" or " UNLIMITED_VALUE, out);
         break;
     case SETTINGS_BAD_AUDIO:
         (void)fprintf(out, "the fast-forward audio '%s' is not " PLAY_VALUE " or " MUTE_VALUE, problem->text);

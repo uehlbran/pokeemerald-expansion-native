@@ -16,8 +16,10 @@
  * included, is not a Deck. The settings file's `fullscreen` (settings.h)
  * says yes or no, or leaves it to the machine (auto): fullscreen on a Deck,
  * a window elsewhere. The toggle key is F11 unless the settings move it; F1
- * stays the overlay's. A press that repeats does nothing, and nothing here
- * acts before fullscreen_init, which main calls for the runs that start the
+ * stays the overlay's. Unlike fast-forward's keys, the key and the
+ * controller's fullscreen button (the left trigger unless moved) work while
+ * the help overlay is shown. A press that repeats does nothing, and nothing
+ * here acts before fullscreen_init, which main calls for the runs that start the
  * overlay (player.h player_at_keyboard), so that a replay is never
  * fullscreen. Apart from reading SDL's event structure and its scancodes,
  * nothing here calls SDL; state is this module's own and only the main thread
