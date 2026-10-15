@@ -24,7 +24,8 @@
 #include <stddef.h>
 #include <stdint.h>
 
-/* Sanity ceiling for the requested rate; the engine's rates are far lower. */
+/* Sanity ceiling for the requested rate; the output's 32768 Hz (frame.h) is
+ * far lower. */
 #define AUDIO_MAX_SAMPLE_RATE_HZ 192000u
 
 /* AUDIO_SILENT opens no device: queue calls only count frames (headless

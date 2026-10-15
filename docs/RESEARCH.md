@@ -219,8 +219,12 @@ platform module written from GBATEK "GBA Sound Controller", driven by the
 frame sequencer, envelopes, sweep, length counters and the noise LFSR
 unit-tested. Direct Sound FIFO A/B, DMA1/2 and Timer 0/1 are not
 emulated as hardware; the mixer's output buffer is consumed directly, as
-in every port. Output: `SDL_QueueAudio` at the engine's native rate with
-a bounded queue depth, single-threaded, no callback.
+in every port. Output: `SDL_QueueAudio` with a bounded queue depth,
+single-threaded, no callback, at the GBA's 32768 Hz PWM grid (GBATEK
+SOUNDBIAS, "Resampling to 32.768kHz"), not at the engine's 13379 Hz: the
+PSG is sampled on that grid and the engine's frame is read on it by
+zero-order hold on cycle time (`platform/sound_grid.h`; DECISIONS.md, the
+owner's ruling (1) of 2026-10-14 and the PSG entry's amendment).
 
 ### DMA: a channel model, immediate for NOW, polled for HBLANK and VBLANK
 

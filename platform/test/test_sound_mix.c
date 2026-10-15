@@ -164,11 +164,11 @@ PTEST(extremes_saturate)
 
 PTEST(dc_filter_step_response_matches_the_pole_exactly)
 {
-    /* y[n] = x[n] - x[n-1] + trunc(y[n-1] * 32604 / 32768), constant x = 10000
+    /* y[n] = x[n] - x[n-1] + trunc(y[n-1] * 32701 / 32768), constant x = 10000
      * on the left from frame 0 (right stays 0). Worked by hand: y0 = 10000,
-     * y1 = trunc(326040000 / 32768) = 9949, y2 = 9949 + trunc(9949 * 32604 /
-     * 32768) = 9899 (a pole of 32603 gives 9898), y3 = 9849. Frames 100 and 199
-     * come from iterating the same recurrence. */
+     * y1 = trunc(327010000 / 32768) = 9979, y2 = trunc(9979 * 32701 / 32768)
+     * = trunc(326323279 / 32768) = 9958, y3 = 9937. Frames 100 and 199 come
+     * from iterating the same recurrence (a pole of 32700 gives 8079 and 6535). */
     struct sound_mix_registers r = {.soundcnt_h = 0, .soundcnt_x = ENABLED};
     enum { LONG = 200 };
     static int16_t psg[2 * LONG], out[2 * LONG];
@@ -176,11 +176,11 @@ PTEST(dc_filter_step_response_matches_the_pole_exactly)
         psg[2 * i] = 10000;
     mix_once(&r, NULL, NULL, psg, out, LONG);
     PT_ASSERT_EQ_INT(out[0], 10000);
-    PT_ASSERT_EQ_INT(out[2], 9949);
-    PT_ASSERT_EQ_INT(out[4], 9899);
-    PT_ASSERT_EQ_INT(out[6], 9849);
-    PT_ASSERT_EQ_INT(out[2 * 100], 6014);
-    PT_ASSERT_EQ_INT(out[2 * 199], 3620);
+    PT_ASSERT_EQ_INT(out[2], 9979);
+    PT_ASSERT_EQ_INT(out[4], 9958);
+    PT_ASSERT_EQ_INT(out[6], 9937);
+    PT_ASSERT_EQ_INT(out[2 * 100], 8105);
+    PT_ASSERT_EQ_INT(out[2 * 199], 6575);
     PT_ASSERT_EQ_INT(out[1], 0);
 }
 

@@ -170,10 +170,11 @@ static int start_ppu(const struct options *o)
     (void)o;
     return ppu_init();
 }
+/* On the output grid, which frame owns (frame_start_psg). */
 static int start_psg(const struct options *o)
 {
     (void)o;
-    return psg_init(FRAME_AUDIO_SAMPLE_RATE_HZ);
+    return frame_start_psg();
 }
 /* main is this program's own, not SDL's SDL_main (SDL_MAIN_HANDLED on
  * Windows, where SDL would otherwise take main), so SDL is told before any of
