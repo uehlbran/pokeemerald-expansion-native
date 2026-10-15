@@ -671,12 +671,13 @@ output as a WAV, and host_file gained seek and close. Reviewed with
 mutation testing (eleven mutants, none survived; one medium finding, a
 full disk ended the game, fixed: the recording stops and the exit status
 says so); the orchestrator's full gate green on the branch; the replays'
-dumps and screenshots unchanged. The A/B evidence is outside the
+dumps and screenshots unchanged. On main the full gate was green again
+(5418 suite tests) and the Windows runner (run 38664700659, 20.6 min)
+passed everything with the new Windows-side tests (host_file's seek and
+close, the WAV header rewrite). The A/B evidence is outside the
 repository (see "Needs the owner"); nobody has listened to it yet.
 
-**In flight.** (1) The full gate on main after the audio merge, then the
-push and a Windows runner dispatch for the two new Windows-side tests
-(host_file's seek and close; the WAV header rewrite). (2) The settings
+**In flight.** The settings
 task (the owner's rulings from the Windows check and the two
 adjustments): branch work/settings, an Opus worker; the per-user data
 directory with portable mode and `--data-dir`, `settings.ini` rebinding
