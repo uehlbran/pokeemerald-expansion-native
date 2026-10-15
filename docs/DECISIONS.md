@@ -1661,10 +1661,12 @@ scancode's key-up, whatever the modifiers then, and is released on
 the focus by then, so without it the game could stay fast-forwarded with no
 key held (SDL 2 also resets its keyboard state on focus loss on most
 backends, but that is SDL's behaviour, not a promise this relies on). The
-toggle flips on each press and on nothing else: not a key-up, not focus
-loss, so it persists across frames until pressed again or Quit. Repeats do
-nothing. While the F1 overlay is shown, presses are the overlay's (as
-KEYINPUT reads no button then), so neither key changes fast-forward from
+toggle flips on each press and on nothing else but one event: not a
+key-up, so it persists across frames until pressed again, Quit or the loss
+of focus (amended 2026-10-15: "Fast-forward focus loss, the 65536 Hz audio
+grid, the macOS signature and the arm64 rewrite", item 1; it first survived
+focus loss). Repeats do nothing. While the F1 overlay is shown, presses are
+the overlay's (as KEYINPUT reads no button then), so neither key changes fast-forward from
 under it; a key-up still ends the hold, because ignoring it would leave the
 game fast-forwarded by a key let go of while reading. A toggle switched on
 stays on under the overlay and the game runs on fast beneath it (the
@@ -2293,7 +2295,13 @@ Four decisions of 2026-10-15.
    toggled to fast-forward and left in the background would otherwise run
    at full speed unseen (at `unlimited`, a busy core; on a Deck, the
    battery). The first specification named only the hold; this extends it.
-   Not implemented yet.
+   Built the same day: `fastforward_handle_event` clears the toggle with the
+   hold on `SDL_WINDOWEVENT_FOCUS_LOST`, which covers the controller's toggle
+   too, since the keyboard and the controller flip one state; the sound
+   returns as on a toggle off (leaving mute or unlimited empties the queue
+   and plays again after the preroll). A press after the focus returns
+   switches it on again; a controller unplugged still leaves a toggle on, as
+   before.
 2. **The audio grid moves to 65536 Hz**, the rate Emerald itself selects
    (SOUNDBIAS mode 1 in `SoundInit`, the engine's "PWM rate = 65536 Hz"),
    superseding the 32768 Hz of decision (1) of "Decisions on an independent
