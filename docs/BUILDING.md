@@ -1,5 +1,8 @@
 # Building
 
+New to building software? The [step-by-step guide](GETTING-STARTED.md) walks through
+Windows, Linux and the Steam Deck.
+
 One command builds the 64-bit game for an operating system, from a fresh
 checkout, once its prerequisites are installed (below). It checks them,
 naming what is missing, runs the build and prints where the executable is.

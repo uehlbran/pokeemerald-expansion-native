@@ -11,6 +11,93 @@ you build it from this repository, and no build is published.
 ![The title screen of the native build](docs/images/title-screen.png)
 ![A wild battle in the native build](docs/images/battle.png)
 
+## Get started
+
+You build the game yourself; no download exists.
+
+**Windows 10 or 11**
+
+1. In PowerShell, opened as administrator, install Ubuntu, then restart if the text says to:
+
+   ```
+   wsl --install -d Ubuntu-24.04
+   ```
+
+2. In the Ubuntu window that opens (from the Start menu, if none does), install what the build needs. The first time, it asks for a new user name and a password; the password stays invisible as you type:
+
+   ```
+   sudo apt update
+   ```
+
+   ```
+   sudo apt install -y build-essential git python3 pkg-config curl clang gcc-multilib libpng-dev libsdl2-dev gcc-mingw-w64-x86-64 binutils-mingw-w64-x86-64
+   ```
+
+3. Download the code and build the Windows game:
+
+   ```
+   git clone --depth 1 https://github.com/uehlbran/pokeemerald-expansion-native.git
+   ```
+
+   ```
+   cd pokeemerald-expansion-native
+   ```
+
+   ```
+   tools/build-native.sh --os windows
+   ```
+
+4. Open the result in Explorer:
+
+   ```
+   explorer.exe build/native64-windows
+   ```
+
+   Copy `pokeemerald-native.exe` and `SDL2.dll` into a new folder on the
+   Desktop and double-click the `.exe`. If Windows says "Windows protected your
+   PC" (the executable is not signed), click "More info", then "Run anyway".
+
+Every step explained: [docs/GETTING-STARTED.md](docs/GETTING-STARTED.md#windows-10-or-11).
+
+**Linux (Ubuntu 24.04)**
+
+```
+sudo apt update
+```
+
+```
+sudo apt install -y build-essential git python3 pkg-config curl clang gcc-multilib libpng-dev libsdl2-dev gcc-mingw-w64-x86-64 binutils-mingw-w64-x86-64
+```
+
+```
+git clone --depth 1 https://github.com/uehlbran/pokeemerald-expansion-native.git
+```
+
+```
+cd pokeemerald-expansion-native
+```
+
+```
+tools/build-native.sh --os linux
+```
+
+```
+./build/native64/pokeemerald-native
+```
+
+Every step explained: [docs/GETTING-STARTED.md](docs/GETTING-STARTED.md#linux-ubuntu-2404).
+
+**Steam Deck**: build the Linux game, then add it to Steam; see
+[docs/GETTING-STARTED.md](docs/GETTING-STARTED.md#steam-deck). Not yet
+tried on a Deck.
+
+**macOS**: not yet; in progress on the branch `work/macos`.
+
+Keys: arrows for the D-pad, Z for A, X for B, A for L, S for R, Enter for
+Start, Backspace for Select. F1 opens a help overlay, F11 toggles fullscreen,
+Tab held is fast-forward. [docs/RUNNING.md](docs/RUNNING.md) has the settings
+file, the controller and where the save is.
+
 ## What this is
 
 The game code is expansion's, pinned at the tag `expansion/1.17.1`, compiled
@@ -55,30 +142,6 @@ expansion tag.
 | macOS x86-64 | In progress on the branch `work/macos`, not merged; not yet run on a Mac |
 | Apple silicon | Not started |
 
-## Quick start
-
-Prerequisites: Ubuntu 24.04, native or under WSL2, with the packages in
-[docs/BUILDING.md](docs/BUILDING.md#prerequisites). The Windows executable is
-built on Linux as well.
-
-```
-tools/build-native.sh --os linux      # build/native64/pokeemerald-native
-tools/build-native.sh --os windows    # build/native64-windows/pokeemerald-native.exe
-```
-
-To play on Linux, run `./build/native64/pokeemerald-native` from any
-directory. On Windows, start `pokeemerald-native.exe`; the build writes
-`SDL2.dll` beside it. The save and the settings file live in a per-user data
-directory.
-
-Keys: arrows for the D-pad, Z for A, X for B, A for L, S for R, Return for
-Start, Backspace for Select. F1 opens a help overlay, F11 toggles fullscreen,
-Tab held is fast-forward.
-
-[docs/RUNNING.md](docs/RUNNING.md) has the settings file, the controller,
-the options and where the files go. The 32-bit, sanitized and test builds
-are in [docs/BUILDING.md](docs/BUILDING.md).
-
 ## How it is verified
 
 A gate is a check a change must pass before it merges. The commands are in
@@ -97,6 +160,9 @@ A gate is a check a change must pass before it merges. The commands are in
   sanitized, compared with the GBA run test by test.
 - The GBA build still produces the same ROM and passes its own suite, and
   a save written by one width loads in the other.
+
+The 32-bit, sanitized and test builds are in
+[docs/BUILDING.md](docs/BUILDING.md).
 
 On every push, CI builds the 64-bit game, runs the platform layer's checks
 and plays both replays on it. Nightly, it builds the GBA ROM and checks its
