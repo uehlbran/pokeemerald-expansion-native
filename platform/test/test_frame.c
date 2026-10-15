@@ -1168,6 +1168,76 @@ PTEST(the_hold_ends_when_the_window_loses_the_focus_without_a_key_up)
     PT_ASSERT(!active);
 }
 
+/* The toggle ends with the focus as the hold does: on at the frame before, at the normal pace
+ * at the frame after, and switched on again by the next press once the focus is back. */
+PTEST(the_toggle_ends_when_the_window_loses_the_focus_and_switches_on_again_after)
+{
+    PT_ASSERT(start_fast_forward(2u, FASTFORWARD_AUDIO_PLAY));
+    const bool toggled = push_toggle();
+    const bool ran = run_frames(3);
+    const uint32_t on = frame_pacer_multiplier();
+    const bool lost = push_focus_lost();
+    const bool ran_lost = run_frames(1);
+    const uint32_t after = frame_pacer_multiplier();
+    const bool ran_idle = run_frames(3);
+    const uint32_t still_after = frame_pacer_multiplier();
+    const bool again = push_toggle();
+    const bool ran_again = run_frames(1);
+    const uint32_t toggled_again = frame_pacer_multiplier();
+    stop();
+    PT_ASSERT(toggled && lost && again && ran && ran_lost && ran_idle && ran_again);
+    PT_ASSERT_EQ_U32(on, 2u);
+    PT_ASSERT_EQ_U32(after, FRAME_PACER_NORMAL_SPEED);
+    PT_ASSERT_EQ_U32(still_after, FRAME_PACER_NORMAL_SPEED);
+    PT_ASSERT_EQ_U32(toggled_again, 2u);
+}
+
+/* The hold's path, unchanged by the toggle's: holding Tab again after the focus returns
+ * fast-forwards again. */
+PTEST(the_hold_fast_forwards_again_after_the_focus_returns)
+{
+    PT_ASSERT(start_fast_forward(2u, FASTFORWARD_AUDIO_PLAY));
+    const bool pressed = push_key_event(SDL_KEYDOWN, SDL_SCANCODE_TAB, KMOD_NONE);
+    const bool lost = push_focus_lost();
+    const bool ran = run_frames(1);
+    const uint32_t after_loss = frame_pacer_multiplier();
+    const bool held_again = push_key_event(SDL_KEYDOWN, SDL_SCANCODE_TAB, KMOD_NONE);
+    const bool ran_again = run_frames(1);
+    const uint32_t after_hold = frame_pacer_multiplier();
+    stop();
+    PT_ASSERT(pressed && lost && held_again && ran && ran_again);
+    PT_ASSERT_EQ_U32(after_loss, FRAME_PACER_NORMAL_SPEED);
+    PT_ASSERT_EQ_U32(after_hold, 2u);
+}
+
+/* Unlimited and muted are the two speeds whose sound is stale afterwards: the focus lost ends
+ * them as a toggle off does, the queue emptied, the device paused and playing again after the
+ * preroll. */
+PTEST(the_loss_of_the_focus_returns_the_sound_as_a_toggle_off_does)
+{
+    static const struct {
+        uint32_t speed;
+        enum fastforward_audio audio;
+    } cases[] = {{FASTFORWARD_UNLIMITED, FASTFORWARD_AUDIO_PLAY}, {2u, FASTFORWARD_AUDIO_MUTE}};
+    for (size_t i = 0; i < sizeof cases / sizeof cases[0]; i++) {
+        PT_ASSERT(start_fast_forward_playing(cases[i].speed, cases[i].audio));
+        bool ran = push_toggle() && run_frames(30);
+        const bool lost = push_focus_lost();
+        ran = run_frames(1) && ran;
+        const uint32_t multiplier = frame_pacer_multiplier();
+        const bool paused_after = audio_paused();
+        const uint32_t queued_after = audio_queued_bytes();
+        ran = run_frames(FRAME_AUDIO_PREROLL_FRAMES) && ran;
+        const bool playing_after_preroll = !audio_paused();
+        stop();
+        PT_ASSERT(lost && ran);
+        PT_ASSERT_EQ_U32(multiplier, FRAME_PACER_NORMAL_SPEED);
+        PT_ASSERT(paused_after);
+        PT_ASSERT_EQ_U32(queued_after, 0u);
+        PT_ASSERT(playing_after_preroll);
+    }
+}
+
 /* Toggled on, a hundred frames and a key-up later still on; toggled again, off. */
 PTEST(the_toggle_persists_across_frames_until_pressed_again)
 {
@@ -1345,6 +1415,28 @@ PTEST(the_trigger_let_go_ends_the_hold_and_the_stick_click_toggles_once)
     PT_ASSERT(pushed && ran);
     PT_ASSERT_EQ_U32(released, FRAME_PACER_NORMAL_SPEED);
     PT_ASSERT_EQ_U32(toggled, 2u); /* held for three frames, flipped once */
+}
+
+/* The stick click's toggle ends with the focus as the trigger's hold does, and a second click
+ * after the focus returns switches it on. */
+PTEST(the_window_losing_the_focus_ends_the_sticks_toggle_and_a_click_switches_it_on_again)
+{
+    PT_ASSERT(start_player());
+    bool pushed = push_pad_button(SDL_CONTROLLERBUTTONDOWN, SDL_CONTROLLER_BUTTON_RIGHTSTICK);
+    pushed = push_pad_button(SDL_CONTROLLERBUTTONUP, SDL_CONTROLLER_BUTTON_RIGHTSTICK) && pushed;
+    bool ran = run_frames(2);
+    const uint32_t on = frame_pacer_multiplier();
+    pushed = push_focus_lost() && pushed;
+    ran = run_frames(1) && ran;
+    const uint32_t after = frame_pacer_multiplier();
+    pushed = push_pad_button(SDL_CONTROLLERBUTTONDOWN, SDL_CONTROLLER_BUTTON_RIGHTSTICK) && pushed;
+    ran = run_frames(1) && ran;
+    const uint32_t again = frame_pacer_multiplier();
+    stop();
+    PT_ASSERT(pushed && ran);
+    PT_ASSERT_EQ_U32(on, 2u);
+    PT_ASSERT_EQ_U32(after, FRAME_PACER_NORMAL_SPEED);
+    PT_ASSERT_EQ_U32(again, 2u);
 }
 
 PTEST(the_overlay_opens_and_closes_from_the_controller_alone)

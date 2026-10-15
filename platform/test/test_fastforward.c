@@ -2,10 +2,10 @@
 /*
  * test_fastforward.c: fast-forward's keys and state (fastforward.c): the
  * key names with their modifiers, which presses are which key, the hold
- * ending on its key-up and on the window losing focus, the toggle staying
- * on across frames and key-ups until pressed again, the overlay taking the
- * presses but not the release, the multiplier and the sound at each speed;
- * and the indicator's text, place and picture. The expected pictures are
+ * ending on its key-up and on the window losing focus, the toggle ending on
+ * the focus loss too and staying on across frames and key-ups until pressed
+ * again, the overlay taking the presses but not the release, the multiplier
+ * and the sound at each speed; and the indicator's text, place and picture. The expected pictures are
  * drawn with font.h's own calls, which test_font.c checks pixel by pixel.
  */
 #include "fastforward.h"
@@ -256,6 +256,10 @@ PTEST(the_hold_ends_when_the_window_loses_the_focus)
     PT_ASSERT(!fastforward_active());
     release(SDL_SCANCODE_TAB, KMOD_NONE);
     PT_ASSERT(!fastforward_active());
+    press(SDL_SCANCODE_TAB, KMOD_NONE);
+    PT_ASSERT(fastforward_active());
+    release(SDL_SCANCODE_TAB, KMOD_NONE);
+    PT_ASSERT(!fastforward_active());
     fastforward_shutdown();
 }
 
@@ -269,7 +273,7 @@ PTEST(other_window_events_leave_the_hold_on)
     fastforward_shutdown();
 }
 
-PTEST(the_toggle_stays_on_across_frames_key_ups_and_focus_until_pressed_again)
+PTEST(the_toggle_stays_on_across_frames_and_key_ups_until_pressed_again)
 {
     start();
     press(SDL_SCANCODE_TAB, KMOD_LSHIFT);
@@ -279,11 +283,61 @@ PTEST(the_toggle_stays_on_across_frames_key_ups_and_focus_until_pressed_again)
     release(SDL_SCANCODE_TAB, KMOD_LSHIFT);
     release(SDL_SCANCODE_LSHIFT, KMOD_NONE);
     release(SDL_SCANCODE_TAB, KMOD_NONE);
-    window_event(SDL_WINDOWEVENT_FOCUS_LOST);
+    window_event(SDL_WINDOWEVENT_MOVED);
+    window_event(SDL_WINDOWEVENT_FOCUS_GAINED);
     PT_ASSERT(fastforward_active());
     press(SDL_SCANCODE_TAB, KMOD_RSHIFT);
     PT_ASSERT(!fastforward_active());
     PT_ASSERT_EQ_U32(fastforward_multiplier(), FRAME_PACER_NORMAL_SPEED);
+    fastforward_shutdown();
+}
+
+/* A game left toggled on in the background would run at full speed unseen (DECISIONS.md, the
+ * rulings of 2026-10-15): the toggle ends with the focus, on the event itself. */
+PTEST(the_toggle_ends_when_the_window_loses_the_focus)
+{
+    start();
+    press(SDL_SCANCODE_TAB, KMOD_LSHIFT);
+    PT_ASSERT(fastforward_active());
+    window_event(SDL_WINDOWEVENT_FOCUS_LOST);
+    PT_ASSERT(!fastforward_active());
+    PT_ASSERT_EQ_U32(fastforward_multiplier(), FRAME_PACER_NORMAL_SPEED);
+    PT_ASSERT(!fastforward_indicator_shown());
+    window_event(SDL_WINDOWEVENT_FOCUS_GAINED);
+    PT_ASSERT(!fastforward_active());
+    fastforward_shutdown();
+}
+
+/* The press after the focus returns switches it on, not off: the loss left the toggle off. */
+PTEST(the_toggle_switches_on_again_after_the_focus_returns)
+{
+    start();
+    press(SDL_SCANCODE_TAB, KMOD_LSHIFT);
+    window_event(SDL_WINDOWEVENT_FOCUS_LOST);
+    window_event(SDL_WINDOWEVENT_FOCUS_GAINED);
+    press(SDL_SCANCODE_TAB, KMOD_LSHIFT);
+    PT_ASSERT(fastforward_active());
+    PT_ASSERT_EQ_U32(fastforward_multiplier(), 2u);
+    press(SDL_SCANCODE_TAB, KMOD_LSHIFT);
+    PT_ASSERT(!fastforward_active());
+    fastforward_shutdown();
+}
+
+/* Both at once: the loss ends both, and each works again afterwards. */
+PTEST(the_loss_of_the_focus_ends_the_hold_and_the_toggle_and_each_works_again_after)
+{
+    start();
+    press(SDL_SCANCODE_TAB, KMOD_LSHIFT);
+    press(SDL_SCANCODE_TAB, KMOD_NONE);
+    window_event(SDL_WINDOWEVENT_FOCUS_LOST);
+    PT_ASSERT(!fastforward_active());
+    window_event(SDL_WINDOWEVENT_FOCUS_GAINED);
+    press(SDL_SCANCODE_TAB, KMOD_NONE);
+    PT_ASSERT(fastforward_active());
+    release(SDL_SCANCODE_TAB, KMOD_NONE);
+    PT_ASSERT(!fastforward_active());
+    press(SDL_SCANCODE_TAB, KMOD_LSHIFT);
+    PT_ASSERT(fastforward_active());
     fastforward_shutdown();
 }
 
@@ -661,18 +715,42 @@ PTEST(a_toggle_stays_on_when_the_controller_that_switched_it_on_is_removed)
     PT_ASSERT(on);
 }
 
-PTEST(the_window_losing_the_focus_ends_the_controllers_hold)
+static void pad_focus_lost(void)
 {
-    start_with_pad();
-    pad_trigger(32767);
     SDL_Event lost;
     SDL_zero(lost);
     lost.type = SDL_WINDOWEVENT;
     lost.window.event = SDL_WINDOWEVENT_FOCUS_LOST;
     pad_send(lost);
+}
+
+PTEST(the_window_losing_the_focus_ends_the_controllers_hold)
+{
+    start_with_pad();
+    pad_trigger(32767);
+    pad_focus_lost();
     const bool after = fastforward_active();
+    pad_trigger(32767); /* squeezed again after the focus returns */
+    const bool again = fastforward_active();
     stop_with_pad();
     PT_ASSERT(!after);
+    PT_ASSERT(again);
+}
+
+PTEST(the_window_losing_the_focus_ends_the_controllers_toggle_and_it_switches_on_again)
+{
+    start_with_pad();
+    pad_button(SDL_CONTROLLERBUTTONDOWN, SDL_CONTROLLER_BUTTON_RIGHTSTICK);
+    pad_button(SDL_CONTROLLERBUTTONUP, SDL_CONTROLLER_BUTTON_RIGHTSTICK);
+    const bool on = fastforward_active();
+    pad_focus_lost();
+    const bool after = fastforward_active();
+    pad_button(SDL_CONTROLLERBUTTONDOWN, SDL_CONTROLLER_BUTTON_RIGHTSTICK);
+    const bool again = fastforward_active();
+    stop_with_pad();
+    PT_ASSERT(on);
+    PT_ASSERT(!after);
+    PT_ASSERT(again);
 }
 
 PTEST(while_the_overlay_is_shown_the_controllers_presses_are_its_own)

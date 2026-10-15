@@ -1807,8 +1807,10 @@ scancode's key-up, whatever the modifiers then, and is released on
 the focus by then, so without it the game could stay fast-forwarded with no
 key held (SDL 2 also resets its keyboard state on focus loss on most
 backends, but that is SDL's behaviour, not a promise this relies on). The
-toggle flips on each press and on nothing else: not a key-up, not focus
-loss, so it persists across frames until pressed again or Quit. Repeats do
+toggle flips on each press and on nothing else but one event: not a
+key-up, so it persists across frames until pressed again, Quit or the loss
+of focus (amended 2026-10-15: "The owner's rulings of the morning after the
+night run", item 2; it first survived focus loss). Repeats do
 nothing. While the F1 overlay is shown, presses are the overlay's (as
 KEYINPUT reads no button then), so neither key changes fast-forward from
 under it; a key-up still ends the hold, because ignoring it would leave the
@@ -2452,9 +2454,13 @@ Asked one at a time on the morning of 2026-10-15, with the night's findings
    toggled to fast-forward and left in the background would otherwise run
    at full speed unseen (at `unlimited`, a busy core; on a Deck, the
    battery). The owner's specification of 2026-10-15 named only the hold;
-   this extends it.
-   Not implemented: the owner stopped all new tasks the same morning; it
-   waits for a later session.
+   this extends it. Built the same day: `fastforward_handle_event` clears
+   the toggle with the hold on `SDL_WINDOWEVENT_FOCUS_LOST`, which covers the
+   controller's toggle too, since the keyboard and the controller flip one
+   state; the sound returns as on a toggle off (leaving mute or unlimited
+   empties the queue and plays again after the preroll). A press after the
+   focus returns switches it on again; a controller unplugged still leaves
+   a toggle on, as before.
 3. **macOS after 2027: decided later.** No Apple-silicon work (P0, P1 or
    P2 of PLAN.md, "Native Apple silicon: what a port would take") starts
    until the owner says so in a later session; the spike report is the end
