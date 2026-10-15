@@ -12,8 +12,10 @@ Read this first; the sections below are the ledger behind it.
 
 ### The night of 2026-10-15 (the orchestrator's run while the owner sleeps)
 
-**Main** is at 8e6ac8d0fb (code), pushed. Every gate is green on it at
-both widths (the 24-step ledger at the end of this block).
+**Main** is at 11732f8789 (code; ff5f152dfe with STATUS), pushed. Every
+gate is green on it at both widths (the 24-step ledger at the end of this
+block). GitHub Actions runs nothing since 03:40 (billing, item (0)), so the
+last CI runs on main are those of 8e6ac8d0fb (green).
 
 **Finished tonight.**
 - Fast-forward (task g), merged at 6a42fd7ade. Tab held speeds the game;
@@ -219,7 +221,8 @@ its memory layout and faults, the CI and release workflows) start once that
 branch's review fixes are in, so that they read a settled branch. Findings:
 tests and gates 0 defects, 7 risks, 2 style; docs 3 defects, 3 risks, 2
 style; the smaller merges' code 0 defects, 3 risks, 4 style. Triage:
-- Fixed through the normal loop on work/fablefix (in flight): the three
+- Fixed through the normal loop on work/fablefix (merged at 526f0abec5;
+  reviewed with mutants, no blocker): the three
   docs defects (a stale `--keys` sample, a wrong test count, an unverified
   SteamOS claim stated as fact), the hand-check list's pointer, the
   `ubuntu-latest` pin to `ubuntu-24.04` in release.yml and windows.yml, the
@@ -227,7 +230,8 @@ style; the smaller merges' code 0 defects, 3 risks, 4 style. Triage:
   with a tight bound (a CI flake waiting to happen), the missing Linux test
   of the console modes, the overlay latch missing an open-and-close within
   one poll, and a fullscreen test that could not tell one toggle from three.
-- Style items: one cleanup branch after it.
+- Style items: one cleanup branch, merged at 11732f8789 (reviewed; one
+  comment corrected).
 - Recorded, not changed tonight: (a) a second instance empties the first
   instance's `pokeemerald.log` before it is refused, and both then append
   to it (accepted in the console entry of DECISIONS as the log is not
@@ -254,6 +258,8 @@ style; the smaller merges' code 0 defects, 3 risks, 4 style. Triage:
 | Windows runner | 41b10a1617 | run 38697083593 green; the per-push Linux run 38697084840 green |
 | The same 24 steps | 8e6ac8d0fb (Steam Deck) | green, the same suite totals; 87 Windows test executables built |
 | Windows runner | 8e6ac8d0fb | run 38709681302 green; per-push Linux 38709682041 green |
+| The same 24 steps | 526f0abec5 (the final review's fixes) | green, the same suite totals, 87 Windows test executables |
+| The same 24 steps | 11732f8789 (the final review's style items) | green, the same suite totals |
 | Release workflow, publish off | 8e6ac8d0fb | run 38709729818: both archives built and their sums verify; the Linux tarball holds the executable, the launcher, libSDL2-2.0.so.0, SDL2-LICENSE.txt, LICENSE, README.txt, RUNNING.md, and run through the launcher from `/` it loads the bundled SDL2 and prints its version; the attestation step fails as on every run while the repository is private (nothing published, no tag) |
 
 
