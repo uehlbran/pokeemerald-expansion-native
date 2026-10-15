@@ -18,6 +18,11 @@ docs/UPSTREAM_MODIFICATIONS.md, docs/research/ and the first section of
 CREDITS.md. It also covers the modifications this project made to upstream
 files, which are listed in docs/UPSTREAM_MODIFICATIONS.md, to the extent
 those modifications are separable from the upstream code.
+Files of the platform layer that translate upstream's decompiled code,
+platform/m4a/ (the C translation of src/m4a_1.s and the transcription of
+src/m4a.c in its tests) and platform/decompress_asm.c (the routines of
+src/decompress_asm.s), are covered only to the extent they are separable
+from the code they translate.
 
 It does not cover, and this project claims no rights over: the
 pret/pokeemerald decompilation and the pokeemerald-expansion project and

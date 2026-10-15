@@ -38,6 +38,13 @@ under `test/` (the modified upstream files there are covered by the sentence on
 modifications, through docs/UPSTREAM_MODIFICATIONS.md, which also gained the
 rows for the mdBook stubs under `docs/` that it had missed).
 
+Amended 2026-10-15: files of the platform layer that translate upstream's
+decompiled code (`platform/m4a/`, the C translation of `src/m4a_1.s` with the
+transcription of `src/m4a.c` in its tests, and `platform/decompress_asm.c`,
+the routines of `src/decompress_asm.s`) are covered by the license only to the
+extent they are separable from the code they translate; `LICENSE`'s scope says
+so.
+
 ## 2026-10-08: Memory model mirrors the GBA address space
 
 The platform maps EWRAM, IWRAM, I/O, palette, VRAM, OAM and flash at their
