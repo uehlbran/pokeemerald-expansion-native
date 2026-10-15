@@ -177,8 +177,8 @@ PTEST(unlimited_wait_returns_at_once_and_normal_speed_waits_again)
     for (unsigned i = 0; i < 100; i++)
         frame_pacer_wait();
     uint64_t unlimited = SDL_GetPerformanceCounter() - start;
-    /* Back at the normal speed the schedule starts again from now: no frames
-     * owed from the unlimited stretch, and no burst to catch up on. */
+    /* Back at the normal speed the waits take their time again (that the schedule starts from
+     * now is a_change_of_speed_restarts_the_schedule_from_now's). */
     PT_ASSERT_EQ_INT(frame_pacer_set_multiplier(FRAME_PACER_NORMAL_SPEED), 0);
     start = SDL_GetPerformanceCounter();
     for (unsigned i = 0; i < 3; i++)

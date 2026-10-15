@@ -143,7 +143,8 @@ void console_report_start_failure(enum console_mode mode, const char *log_path, 
     (void)fflush(NULL); /* the streams are the log: what they hold is not in the file yet */
     const size_t length = read_log_head(log_path, head, sizeof head);
     const int written = snprintf(text, sizeof text, "%.*s\n\nThe log file is %s", (int)length, head, log_path);
-    if (written < 0 || (size_t)written >= sizeof text)
+    /* snprintf truncates and terminates: a cut message is shown, being more use than none */
+    if (written < 0)
         text[0] = '\0';
     show(BOX_TITLE, text);
 }
