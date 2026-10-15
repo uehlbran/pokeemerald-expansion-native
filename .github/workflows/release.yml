@@ -20,10 +20,11 @@
 # and `sha256sum --check SHA256SUMS.txt`.
 #
 # NOTE: this repository is private. actions/attest-build-provenance works in a
-# private repository only on GitHub Enterprise Cloud (its README); on another
-# plan the attestation step fails and so does the run. The step is
-# unconditional on purpose, with no switch for it: a first dispatch shows which
-# case this is.
+# private repository only on GitHub Enterprise Cloud (its README). Here the
+# step fails with "Feature not available for user-owned private repositories"
+# (run 38660260570, 2026-10-15), after the archives and the sums were uploaded,
+# so the run ends red with the files on it. The step is unconditional on
+# purpose, with no switch: it works, unchanged, once the repository is public.
 name: release
 
 on:

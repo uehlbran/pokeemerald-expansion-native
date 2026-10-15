@@ -20,6 +20,14 @@ builds and attests the archives on a workflow run for the owner's own
 testing and publishes a GitHub release only with an explicit `publish`
 input; a public release happens only on the owner's explicit instruction
 after this note. Nothing public, no release and no tag has been created.
+The workflow is merged (5cc507a482) and was dispatched once with publish
+off, run 38660260570: both archives built (Linux 5 min, Windows 7.5 min,
+cold caches), the sums verify, the tarball holds the executable, LICENSE,
+README.txt and RUNNING.md, the zip those plus SDL2.dll and SDL2's licence
+(checked by downloading the `release-files` artifact, kept 14 days); the
+attestation step fails with GitHub's "Feature not available for user-owned
+private repositories", so the run ends red after the upload, and that step
+works unchanged once the repository is public.
 
 **Finished.** Milestones 1 to 6. **32-bit is done**: the native build
 boots and plays the opening (gate d) and the debug menu (gate e), plain and
@@ -639,10 +647,9 @@ macOS are unblocked.
 an Opus worker; the device and the PSG at 32768 Hz, the FIFO frame
 upsampled on the cycle grid, a `--audio-dump` WAV option, and the A/B
 recordings as evidence (outside the repository, for the owner to hear).
-(2) The documentation pass and the release pipeline (the owner's two
-standing orders): branch work/release-docs, a Sonnet worker; README and
-the public docs current, docs/RUNNING.md for players, release.yml with
-`publish` off by default, a one-command build script in BUILDING.md.
+(2) Done and merged (5cc507a482): the documentation pass and the release
+pipeline (README and the public docs current, docs/RUNNING.md for players,
+tools/build-native.sh, release.yml; the note above has the first run).
 Then the keys settings file and the console-window removal, then macOS.
 
 ## Verified by a gate
@@ -769,7 +776,7 @@ Nothing yet; nothing exists to be broken.
 | rtc | Sonnet | Sonnet |
 | sdlout (video, audio, frame_pacer) | Sonnet | Sonnet |
 | audio-rate (ruling 1: 32768 Hz, FIFO upsampling, --audio-dump) | Opus | in flight |
-| release-docs (docs pass, RUNNING.md, release.yml, build script) | Sonnet | in flight |
+| release-docs (docs pass, RUNNING.md, release.yml, build script) | Sonnet | Sonnet |
 | interrupt | Opus | Sonnet |
 | psg | Opus | Sonnet |
 | save (flash, save_file) | Opus | Sonnet |

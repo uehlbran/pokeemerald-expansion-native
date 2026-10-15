@@ -1540,7 +1540,10 @@ generates SHA-256 sums, attaches GitHub artifact attestations
 CI and a named commit, and publishes to a GitHub release only when run with
 an explicit `publish` input; without it the artifacts stay on the workflow
 run for the owner's own testing. No public release and no tag is created by
-anyone but the owner.
+anyone but the owner. Built and dispatched once on 2026-10-15 (run
+38660260570, publish off): the archives and sums are right; the attestation
+step fails on a user-owned private repository ("Feature not available ...
+please make this repository public") and needs no change once it is public.
 
 **Why no public release.** A built executable contains the complete game's
 assets, so a public release is legally the same as distributing a ROM,

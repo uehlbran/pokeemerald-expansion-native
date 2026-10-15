@@ -478,7 +478,9 @@ allocations below the image end near it, so the tests' fixed page is
 and the Windows 64-bit zip, with the same make commands as above (the Windows
 steps are `.github/actions/windows-cross-setup`, after
 `.github/actions/native-setup`), writes `SHA256SUMS.txt` and attests both
-archives (`gh attestation verify <file> --repo <owner>/<repo>`). Each archive
+archives (`gh attestation verify <file> --repo <owner>/<repo>`; GitHub offers
+attestations to a user-owned repository only once it is public, so while this
+one is private that step fails after the files are uploaded). Each archive
 holds the executable, `LICENSE`, `RUNNING.md` and a short `README.txt`; the
 Windows zip also holds `SDL2.dll` and SDL2's licence. The files stay on the run
 as artifacts for 14 days. The run creates a GitHub release only with the
