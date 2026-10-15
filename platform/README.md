@@ -443,7 +443,8 @@ make -f Makefile.native -j32 check [SANITIZE=1] [TESTS=filter]   # expansion's s
 ```
 
 The defaults are `pokeemerald.sav` and `pokeemerald.rtc` in the data
-directory (below), the settings file's scale or 3, paced to 59.7275 Hz, no
+directory (below), the settings file's scale or 3, paced to 59.7275 Hz (2,
+3 or 4 times that, or unpaced, while fast-forward is on, below), no
 frame limit. `--frames N` ends
 the game after N frames with status 0 (the gates use it with `--headless
 --silent --unthrottled`); `--screenshot` writes the last frame as a PPM;
@@ -483,19 +484,24 @@ DMAs would play; `sound_grid` counts each frame's samples on the GBA's
 whatever rate the engine mixes; the PSG is generated on the same grid;
 `sound_mix` routes the two FIFOs and the PSG as `SOUNDCNT_H` says, at
 `psg.c`'s scale, and removes the DC offset the GBA's output capacitor
-removes.
+removes. `frame_pacer` waits each frame's period, divided by fast-forward's
+multiplier (`frame_pacer_set_multiplier`, the remainder kept exactly in
+units of 1/(16777216 n) tick), and `sound_speedup` makes each n samples of
+sound one while fast-forward runs at n times the speed
+(`test/test_sound_speedup.c`).
 
-## The player's files, the settings and the help overlay (`player`, `data_dir`, `settings`, `help_text`, `overlay`, `font`, `version`)
+## The player's files, the settings, the help overlay and fast-forward (`player`, `data_dir`, `settings`, `help_text`, `overlay`, `fastforward`, `font`, `version`)
 
 What a player sees of the platform itself; `docs/RUNNING.md` is the player's
 account, `docs/DECISIONS.md` ("The settings file, the data directory and the
-F1 overlay") the reasons.
+F1 overlay", "Fast-forward in the frame pacer") the reasons.
 
 - `player` holds what a run knows of its player, found before any module
   starts (`player_find`, which `main` calls): the paths, the settings, the
   lines `--keys` prints and the overlay is given, the window's scale, and
-  whether the run gets the overlay at all (`player_wants_overlay`: a window
-  played from the keyboard). `test/test_player.c`.
+  whether the run gets the overlay and fast-forward at all
+  (`player_at_keyboard`: a window played from the keyboard, never headless,
+  the test runner or a replay). `test/test_player.c`.
 - `console` decides where the messages go when a Windows GUI program may have
   no console (`console_choose`, a pure function of what `host_console.h`
   reports: the parent's streams, else its console, else `pokeemerald.log` in
@@ -517,7 +523,8 @@ F1 overlay") the reasons.
   the test's own in place of SDL's two calls; `test/linux/test_data_dir_linux.c`
   checks SDL's answers through `XDG_DATA_HOME` and `/proc/self/exe`.
 - `settings` reads `settings.ini` (`key = value`, `#` comments; the buttons by
-  SDL's key names, and `scale`): `settings_parse` is pure, text in and
+  SDL's key names, `scale`, and fast-forward's two keys, speed and sound):
+  `settings_parse` is pure, text in and
   settings out with each bad line's number and kind, and `settings_load`
   reads the file through `host_file.h` and reports. The keymap it makes is
   `input`'s, whose fixed table is now the defaults it starts from.
@@ -529,6 +536,18 @@ F1 overlay") the reasons.
   (never headless, in test-runner mode or for a replay), and `overlay_draw`
   lays out its text in a canvas; `video.c` owns the texture and copies it
   over the frame, never into the frame buffer.
+- `fastforward` is fast-forward's keys and state: the hold key (Tab) on
+  while held, released on its key-up and when the window loses the focus;
+  the toggle key (Shift+Tab) on until pressed again; a key a scancode with
+  exactly its Shift, Ctrl and Alt (`fastforward_key_pressed`); presses the
+  overlay's while it is shown. `frame.c` passes it the events and reads the
+  multiplier for the pacer and the sound each frame; its indicator ("FF
+  2x") is drawn into a canvas the size of its box and copied by `video.c` to
+  the screen's top-right corner while it is on and the overlay hidden.
+  Started for the same runs as the overlay. `test/test_fastforward.c`, and
+  the frame loop's side in `test/test_frame.c` (the pace, the hold released
+  on focus loss, the toggle across frames, the sound's queue within its
+  bound at each speed on SDL's dummy device, mute).
 - `font` is a bitmap font of printable ASCII, glyphs 5 pixels wide and 8
   high (capitals 7, and a row for descenders) in cells 6 wide, lines 10 rows
   apart (`font_glyphs.h`, drawn for this project) and draws text into a 32-bit

@@ -158,7 +158,9 @@ returned to the caller (`main` decides what to do; modules never call
 | `psg`, `psg_channel`, `psg_square`, `psg_wave`, `psg_noise` | the four Game Boy sound channels (shared through `psg_internal.h`) | GBA Sound Controller, Sound Channels 1 to 4 | yes |
 | `audio` | the speaker, via SDL | n/a | yes (SDL dummy drivers; the queue sizes, not the sound) |
 | `audio_dump` | nothing: the sound output recorded to a WAV file, `--audio-dump` | n/a | yes |
-| `frame_pacer` | the LCD's frame period: holds the loop to 59.7275 Hz | LCD Dimensions and Timings | yes (`test_frame_pacer.c`) |
+| `frame_pacer` | the LCD's frame period: holds the loop to 59.7275 Hz, or 2 to 4 times that (or no wait) under fast-forward | LCD Dimensions and Timings | yes (`test_frame_pacer.c`) |
+| `fastforward` | nothing: fast-forward's keys, its state and its indicator | n/a | yes |
+| `sound_speedup` | nothing: n samples of sound made one while fast-forward runs at n times the speed | n/a | yes |
 | `m4a/` | the ARM sound engine `src/m4a_1.s`, in C | n/a (game code) | yes, and a differential test against the ARM original under qemu-arm, run by hand (`platform/m4a/README.md`) |
 | `flash` | the 1 Mbit flash chip's driver entry | GBA Cart Backup Flash ROM | yes |
 | `save_file` | the cartridge's persistence | n/a | yes |

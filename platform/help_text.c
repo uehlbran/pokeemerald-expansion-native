@@ -7,7 +7,7 @@
 
 #include "version.h"
 
-/* The button column's width: "Select" and a space. */
+/* The button column's width: "Select" and a space ("Toggle" too). */
 #define BUTTON_COLUMN_WIDTH 7
 
 #define CONTROLLER_LINE "Controller: A, B, Back (Select), Start, the shoulders (L, R), the D-pad or the left stick"
@@ -23,6 +23,28 @@ static void write_keys(const struct input_keymap *keymap, help_text_sink sink, v
         sink(line, context);
     }
     sink(CONTROLLER_LINE, context);
+}
+
+static void write_fast_forward(const struct fastforward_settings *fast_forward, help_text_sink sink, void *context)
+{
+    char line[HELP_TEXT_LINE_SIZE];
+    char key[FASTFORWARD_KEY_NAME_SIZE];
+    sink("Fast-forward:", context);
+    fastforward_key_name(&fast_forward->hold, key, sizeof key);
+    (void)snprintf(line, sizeof line, "  %-*s %s", BUTTON_COLUMN_WIDTH, "Hold", key);
+    sink(line, context);
+    fastforward_key_name(&fast_forward->toggle, key, sizeof key);
+    (void)snprintf(line, sizeof line, "  %-*s %s", BUTTON_COLUMN_WIDTH, "Toggle", key);
+    sink(line, context);
+    if (fast_forward->speed == FASTFORWARD_UNLIMITED)
+        (void)snprintf(line, sizeof line, "  %-*s unlimited", BUTTON_COLUMN_WIDTH, "Speed");
+    else
+        (void)snprintf(line, sizeof line, "  %-*s %lux", BUTTON_COLUMN_WIDTH, "Speed",
+                       (unsigned long)fast_forward->speed);
+    sink(line, context);
+    (void)snprintf(line, sizeof line, "  %-*s %s", BUTTON_COLUMN_WIDTH, "Sound",
+                   fast_forward->audio == FASTFORWARD_AUDIO_MUTE ? "muted" : "sped up");
+    sink(line, context);
 }
 
 static void write_files(const struct help_info *info, help_text_sink sink, void *context)
@@ -53,4 +75,5 @@ void help_text_write(const struct help_info *info, help_text_sink sink, void *co
     sink(line, context);
     write_files(info, sink, context);
     write_keys(info->keymap, sink, context);
+    write_fast_forward(info->fast_forward, sink, context);
 }

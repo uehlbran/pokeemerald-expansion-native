@@ -1,10 +1,11 @@
-// deps: overlay.c font.c
+// deps: overlay.c font.c fastforward.c input.c
 /*
  * Tests of video. They run with SDL's dummy video driver (set with setenv
  * before the first SDL call, so no display is needed). The pixel format is
  * asserted from SDL's own mask table against GBATEK "LCD Color Settings"
  * (bits 0-4 red, 5-9 green, 10-14 blue). Rendering itself is not asserted;
- * the overlay's pixels are test_overlay.c's.
+ * the overlay's pixels are test_overlay.c's, the fast-forward indicator's
+ * test_fastforward.c's.
  */
 #include <stdio.h>
 #include <stdlib.h>
@@ -12,6 +13,7 @@
 
 #include <SDL.h>
 
+#include "fastforward.h"
 #include "overlay.h"
 #include "ptest.h"
 #include "test_support.h"
@@ -149,6 +151,46 @@ PTEST(the_overlay_is_presented_over_the_frame_and_never_written_into_it)
     PT_ASSERT(shown);
     PT_ASSERT_EQ_INT(present_shown, 0);
     PT_ASSERT_EQ_INT(present_hidden, 0);
+    PT_ASSERT_MEM_EQ(frame_buffer, before, sizeof before);
+}
+
+/* The indicator's texture is made at init when fast-forward is started, copied while it is on
+ * (with and without the overlay over it), and the frame buffer is the same after each present. */
+PTEST(the_indicator_is_presented_over_the_frame_and_never_written_into_it)
+{
+    use_dummy_driver();
+    struct video_config cfg = windowed_config();
+    static uint16_t before[LCD_WIDTH * LCD_HEIGHT];
+    for (size_t i = 0; i < LCD_WIDTH * LCD_HEIGHT; i++)
+        frame_buffer[i] = (uint16_t)((i * 7u) & 0x7FFFu);
+    memcpy(before, frame_buffer, sizeof before);
+    SDL_Event toggle;
+    SDL_zero(toggle);
+    toggle.type = SDL_KEYDOWN;
+    toggle.key.keysym.scancode = SDL_SCANCODE_TAB;
+    toggle.key.keysym.mod = KMOD_LSHIFT;
+    SDL_Event f1;
+    SDL_zero(f1);
+    f1.type = SDL_KEYDOWN;
+    f1.key.keysym.scancode = SDL_SCANCODE_F1;
+    const struct fastforward_settings settings = fastforward_defaults();
+    PT_ASSERT_EQ_INT(overlay_init(two_lines), 0);
+    PT_ASSERT_EQ_INT(fastforward_init(&settings), 0);
+    const int init = video_init(&cfg);
+    const int present_off = video_present(frame_buffer);
+    fastforward_handle_event(&toggle);
+    const bool shown = fastforward_indicator_shown();
+    const int present_on = video_present(frame_buffer);
+    (void)overlay_handle_event(&f1);
+    const int present_under_overlay = video_present(frame_buffer);
+    video_shutdown();
+    fastforward_shutdown();
+    overlay_shutdown();
+    PT_ASSERT_EQ_INT(init, 0);
+    PT_ASSERT(shown);
+    PT_ASSERT_EQ_INT(present_off, 0);
+    PT_ASSERT_EQ_INT(present_on, 0);
+    PT_ASSERT_EQ_INT(present_under_overlay, 0);
     PT_ASSERT_MEM_EQ(frame_buffer, before, sizeof before);
 }
 

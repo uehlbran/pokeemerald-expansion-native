@@ -31,14 +31,28 @@
  *     FIFO DMAs play (m4a_output), at whatever rate the engine mixes, read
  *     on the grid by zero-order hold, and as many PSG samples
  *     (psg_generate), mixed (sound_mix), queued (audio_queue) and, with
- *     --audio-dump, recorded (audio_dump).
+ *     --audio-dump, recorded (audio_dump). Under fast-forward (fastforward.h)
+ *     at n times the speed, each n samples are first made one
+ *     (sound_speedup), so that a frame period's worth is queued each period
+ *     and the queue stays as deep as at the normal speed; unlimited, every
+ *     frame is queued as it is and the queue's bound (audio.h) drops what
+ *     does not fit; muted, the device is paused and nothing is queued. The
+ *     PSG and the mix run in every case, as the hardware's did. Leaving
+ *     mute or unlimited, whose queue is stale or full, the queue starts
+ *     again as at power-on: paused, emptied, and played after
+ *     FRAME_AUDIO_PREROLL_FRAMES frames are queued.
  *  6. The panel shows the frame (video_present, with the help overlay over
- *     it while shown); SDL's events are polled (video_poll_events, each
- *     passed to input_handle_event and overlay_handle_event; a quit, or Q in
- *     the overlay, ends the loop after this frame); the step hook, if one is
- *     set, runs (below); KEYINPUT is written (input_update_keyinput).
+ *     it while shown, and the fast-forward indicator while it is on); SDL's
+ *     events are polled (video_poll_events, each passed to
+ *     input_handle_event, overlay_handle_event and fastforward_handle_event;
+ *     a quit, or Q in the overlay, ends the loop after this frame); the
+ *     speed for the frames from now on is applied: the pacer's
+ *     (frame_pacer_set_multiplier, fastforward_multiplier) and the sound's
+ *     (step 5); the step hook, if one is set, runs (below); KEYINPUT is
+ *     written (input_update_keyinput).
  *  7. If the game wrote the flash chip, the save file is stored.
- *  8. The pacer holds the GBA frame rate (frame_pacer_wait).
+ *  8. The pacer holds the GBA frame rate, or n times it under fast-forward
+ *     (frame_pacer_wait): the same frames, closer together.
  *  9. The frame count; with a frame limit, the last frame ends the loop;
  *     at the end of the loop the screenshot, if asked for, is written.
  * A handler may leave the frame by a jump (the test runner's timeout,

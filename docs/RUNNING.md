@@ -57,9 +57,11 @@ There is no 32-bit Windows build and no sanitizer build for Windows.
 | A | L |
 | S | R |
 | F1 | the help overlay (not a GBA button) |
+| Tab, held | fast-forward while held ([below](#fast-forward)) |
+| Shift+Tab | fast-forward on, and off again |
 
 Those are the defaults; the settings file ([below](#the-settings-file))
-moves any GBA button to another key. The keys are physical positions: on a
+moves any GBA button, and either fast-forward key, to another key. The keys are physical positions: on a
 keyboard that is not QWERTY, "Z" is the key where QWERTY has its Z.
 
 A game controller that SDL2 recognises works as well: its A, B, Start, Back,
@@ -70,7 +72,8 @@ R and D-pad. The controller's buttons cannot be changed.
 
 F1 shows the help overlay over the game: the version, the data directory and
 the paths of the save, the clock's file and the settings file, the keys in
-force and the controller's buttons, under the line `Q: quit  F1: close`.
+force, the controller's buttons and fast-forward's keys, speed and sound,
+under the line `Q: quit  F1: close`.
 The overlay shows those lines from the top as far as the window has room: in
 a small window (`--scale 1` or 2) the last ones may not fit, and
 `pokeemerald-native --keys` prints them all.
@@ -81,6 +84,39 @@ Q, while the overlay is shown, quits the game, as closing the window does.
 Quitting does not save your game: save in the game first (Start, then SAVE),
 as on the GBA. The game's Start menu has no quit; its EXIT closes the menu,
 as in the original.
+
+## Fast-forward
+
+Hold Tab and the game runs at twice its speed until you let go. Press
+Shift+Tab (Tab with either Shift key) to switch fast-forward on, and again
+to switch it off. While it is on, `FF 2x` shows in the top-right corner of
+the window (`FF 3x`, `FF 4x` or `FF max` at the other speeds).
+
+- The speed is a setting, `fast_forward_speed` ([below](#the-settings-file)):
+  2, 3 or 4 times the GBA's speed, or `unlimited`, as fast as your computer
+  runs the game. The game itself is unchanged: it runs the same frames, more
+  of them a second. Everything it counts in frames hurries along (walking,
+  text, animations, and the play time on your trainer card); the clock
+  (the time of day, Berries, tides) keeps your computer's time.
+- The sound plays sped up, faster and higher, as on an emulator: at 2x an
+  octave higher. At `unlimited` it plays in fragments, and when fast-forward
+  ends it starts again cleanly after a moment's silence.
+  `fast_forward_audio = mute` silences the game while fast-forward is on
+  instead.
+- Both keys can be changed in the settings file (`fast_forward` for the one
+  you hold, `fast_forward_toggle` for the switch). A fast-forward key may
+  have `shift+`, `ctrl+` or `alt+`, or several, in front of it, as
+  `shift+tab` has; it then works only with exactly those held, so Tab and
+  Shift+Tab are two keys. A GBA button and fast-forward may share a key:
+  pressing it does both.
+- Letting go of the hold key ends fast-forward, and so does switching to
+  another window while you hold it. Fast-forward switched on with Shift+Tab
+  stays on until you press it again or quit.
+- While the F1 overlay is shown, the fast-forward keys do nothing (letting
+  go of a held Tab still ends it). Fast-forward switched on stays on under
+  the overlay, which covers the indicator.
+- A replay, a game started with `--headless`, and the test runner never
+  fast-forward.
 
 ## The settings file
 
@@ -106,23 +142,37 @@ l = a
 r = s
 # The window: 1 to 16 times the GBA's 240x160 screen.
 scale = 3
+# Fast-forward: hold the first key, or press the second to switch it on
+# and off; shift+, ctrl+ and alt+ go in front of a key.
+fast_forward = tab
+fast_forward_toggle = shift+tab
+# 2, 3 or 4 times the GBA's speed, or unlimited.
+fast_forward_speed = 2
+# While fast-forward is on, the sound: play (sped up) or mute.
+fast_forward_audio = play
 ```
 
 The settings are the ten GBA buttons (`a`, `b`, `select`, `start`, `up`,
-`down`, `left`, `right`, `l`, `r`) and `scale`. A comment is a whole line:
+`down`, `left`, `right`, `l`, `r`), `scale`, and fast-forward's four
+(`fast_forward`, `fast_forward_toggle`, `fast_forward_speed`,
+`fast_forward_audio`; [above](#fast-forward)). A comment is a whole line:
 `a = z  # my key` reads the key name `z  # my key`, which is not one. Names and keys can be
 written in any case, with or without spaces around the `=`; a setting you
 leave out keeps its default, and if a setting appears twice the later line
-wins. Two buttons may share a key. F1 cannot be a button's key: it opens the
-overlay. `pokeemerald-native --keys` prints the keys in force with SDL's
-spelling of each name, so it also shows how to write one.
+wins. Two buttons may share a key. F1 cannot be a button's or a
+fast-forward key: it opens the overlay. The two fast-forward keys must
+differ: if the file makes them one key, the later of the two lines is
+reported and that key keeps its default (to swap them, write both lines).
+`pokeemerald-native --keys` prints the keys in force with SDL's spelling of
+each name, so it also shows how to write one.
 
 A line the game cannot use (a misspelt setting, a key name SDL does not know,
-a scale outside 1 to 16, a line without `=`) is reported with its line number
+a scale outside 1 to 16, a fast-forward speed other than 2, 3, 4 or
+`unlimited`, a line without `=`) is reported with its line number
 on standard error (on Windows, [see below](#no-console-window-on-windows)), for example
 
 ```
-settings: /home/you/.local/share/pokeemerald-expansion-native/pokeemerald-native/settings.ini:4: 'jump' is not a setting (a, b, select, start, right, left, up, down, r, l, scale); the line is ignored
+settings: /home/you/.local/share/pokeemerald-expansion-native/pokeemerald-native/settings.ini:4: 'jump' is not a setting (a, b, select, start, right, left, up, down, r, l, scale, fast_forward, fast_forward_toggle, fast_forward_speed, fast_forward_audio); the line is ignored
 ```
 
 and the game starts with the rest of the file. `--scale` on the command
@@ -223,6 +273,11 @@ Keyboard:
   R       S
   L       A
 Controller: A, B, Back (Select), Start, the shoulders (L, R), the D-pad or the left stick
+Fast-forward:
+  Hold    Tab
+  Toggle  Shift+Tab
+  Speed   2x
+  Sound   sped up
 ```
 
 The mode in brackets is `per-user`, `portable` or `--data-dir`. The version

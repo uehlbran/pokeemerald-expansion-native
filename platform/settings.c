@@ -18,6 +18,13 @@
 #define MODULE "settings"
 
 #define SCALE_SETTING "scale"
+#define FAST_FORWARD_SETTING "fast_forward"
+#define FAST_FORWARD_TOGGLE_SETTING "fast_forward_toggle"
+#define FAST_FORWARD_SPEED_SETTING "fast_forward_speed"
+#define FAST_FORWARD_AUDIO_SETTING "fast_forward_audio"
+#define UNLIMITED_VALUE "unlimited"
+#define PLAY_VALUE "play"
+#define MUTE_VALUE "mute"
 #define COMMENT_CHAR '#'
 #define SEPARATOR_CHAR '='
 #define DECIMAL_BASE 10
@@ -27,8 +34,9 @@
 static const char byte_order_mark[] = "\xEF\xBB\xBF";
 #define BYTE_ORDER_MARK_SIZE (sizeof byte_order_mark - 1u)
 
-/* Room for a key's name and its NUL: SDL's longest are some 30 characters. */
-#define KEY_NAME_SIZE 64u
+/* Room for a key's name and its NUL: SDL's longest are some 30 characters,
+ * and a fast-forward key's modifiers add at most "ctrl+alt+shift+". */
+#define KEY_NAME_SIZE FASTFORWARD_KEY_NAME_SIZE
 
 /* The bytes a problem's text keeps as they are, printable ASCII; any other
  * (a control character, an escape sequence, a byte of UTF-8) is reported as
@@ -41,6 +49,20 @@ static const char byte_order_mark[] = "\xEF\xBB\xBF";
 struct span {
     const char *text;
     size_t length;
+};
+
+/* The line that set a fast-forward key (0: none, the default), and its value. */
+struct key_line {
+    uint32_t line;
+    struct span value;
+};
+
+/* What settings_parse knows as it goes: the settings, and where the two
+ * fast-forward keys came from, for the check that they differ. */
+struct parse {
+    struct settings *settings;
+    struct key_line hold;
+    struct key_line toggle;
 };
 
 static bool is_blank(char c)
@@ -100,21 +122,45 @@ static void add_problem(struct settings *settings, uint32_t line, enum settings_
     settings->problem_count++;
 }
 
-/* A whole number from 1 to OPTIONS_MAX_SCALE, digits only. */
-static bool parse_scale(struct span value, int *out)
+/* A whole number from min to max, digits only. */
+static bool parse_whole_number(struct span value, int min, int max, int *out)
 {
-    int scale = 0;
+    int number = 0;
     for (size_t i = 0; i < value.length; i++) {
         const char digit = value.text[i];
         if (digit < '0' || digit > '9')
             return false;
-        scale = scale * DECIMAL_BASE + (digit - '0');
-        if (scale > OPTIONS_MAX_SCALE)
+        number = number * DECIMAL_BASE + (digit - '0');
+        if (number > max)
             return false;
     }
-    if (scale < 1)
+    if (number < min)
         return false;
-    *out = scale;
+    *out = number;
+    return true;
+}
+
+/* 2 to FASTFORWARD_MAX_SPEED, or "unlimited". */
+static bool parse_speed(struct span value, uint32_t *out)
+{
+    int speed = 0;
+    if (span_is(value, UNLIMITED_VALUE))
+        *out = FASTFORWARD_UNLIMITED;
+    else if (parse_whole_number(value, FASTFORWARD_MIN_SPEED, FASTFORWARD_MAX_SPEED, &speed))
+        *out = (uint32_t)speed;
+    else
+        return false;
+    return true;
+}
+
+static bool parse_audio(struct span value, enum fastforward_audio *out)
+{
+    if (span_is(value, PLAY_VALUE))
+        *out = FASTFORWARD_AUDIO_PLAY;
+    else if (span_is(value, MUTE_VALUE))
+        *out = FASTFORWARD_AUDIO_MUTE;
+    else
+        return false;
     return true;
 }
 
@@ -142,8 +188,67 @@ static void apply_key(struct settings *settings, uint32_t line, size_t button, s
         settings->keymap.scancodes[button] = scancode;
 }
 
-static void parse_line(struct settings *settings, uint32_t line, struct span raw)
+static void apply_fast_forward_key(struct parse *parse, uint32_t line, struct span value, struct fastforward_key *key,
+                                   struct key_line *from)
 {
+    char name[KEY_NAME_SIZE];
+    struct fastforward_key read;
+    if (!span_to_string(value, name, sizeof name) || !fastforward_key_from_name(name, &read)) {
+        add_problem(parse->settings, line, SETTINGS_UNKNOWN_KEY, value);
+    } else if (read.scancode == OVERLAY_TOGGLE_SCANCODE) {
+        add_problem(parse->settings, line, SETTINGS_RESERVED_KEY, value);
+    } else {
+        *key = read;
+        *from = (struct key_line){.line = line, .value = value};
+    }
+}
+
+/* If the two keys are one, the later line's goes back to its default
+ * (settings.h). */
+static bool keep_apart(struct parse *parse)
+{
+    struct fastforward_settings *const keys = &parse->settings->fast_forward;
+    if (!fastforward_keys_equal(&keys->hold, &keys->toggle))
+        return true;
+    const struct fastforward_settings defaults = fastforward_defaults();
+    if (parse->hold.line > parse->toggle.line) {
+        add_problem(parse->settings, parse->hold.line, SETTINGS_SAME_FAST_FORWARD_KEY, parse->hold.value);
+        keys->hold = defaults.hold;
+        parse->hold.line = 0;
+    } else {
+        add_problem(parse->settings, parse->toggle.line, SETTINGS_SAME_FAST_FORWARD_KEY, parse->toggle.value);
+        keys->toggle = defaults.toggle;
+        parse->toggle.line = 0;
+    }
+    return false;
+}
+
+/* The settings other than the buttons; false if name is none of them. */
+static bool apply_named(struct parse *parse, uint32_t line, struct span name, struct span value)
+{
+    struct settings *const settings = parse->settings;
+    if (span_is(name, SCALE_SETTING)) {
+        if (!parse_whole_number(value, 1, OPTIONS_MAX_SCALE, &settings->scale))
+            add_problem(settings, line, SETTINGS_BAD_SCALE, value);
+    } else if (span_is(name, FAST_FORWARD_SETTING)) {
+        apply_fast_forward_key(parse, line, value, &settings->fast_forward.hold, &parse->hold);
+    } else if (span_is(name, FAST_FORWARD_TOGGLE_SETTING)) {
+        apply_fast_forward_key(parse, line, value, &settings->fast_forward.toggle, &parse->toggle);
+    } else if (span_is(name, FAST_FORWARD_SPEED_SETTING)) {
+        if (!parse_speed(value, &settings->fast_forward.speed))
+            add_problem(settings, line, SETTINGS_BAD_SPEED, value);
+    } else if (span_is(name, FAST_FORWARD_AUDIO_SETTING)) {
+        if (!parse_audio(value, &settings->fast_forward.audio))
+            add_problem(settings, line, SETTINGS_BAD_AUDIO, value);
+    } else {
+        return false;
+    }
+    return true;
+}
+
+static void parse_line(struct parse *parse, uint32_t line, struct span raw)
+{
+    struct settings *const settings = parse->settings;
     const struct span text = trim(raw.text, raw.length);
     if (text.length == 0 || text.text[0] == COMMENT_CHAR)
         return;
@@ -159,11 +264,8 @@ static void parse_line(struct settings *settings, uint32_t line, struct span raw
         add_problem(settings, line, SETTINGS_NOT_A_SETTING_LINE, text);
         return;
     }
-    if (span_is(name, SCALE_SETTING)) {
-        if (!parse_scale(value, &settings->scale))
-            add_problem(settings, line, SETTINGS_BAD_SCALE, value);
+    if (apply_named(parse, line, name, value))
         return;
-    }
     const size_t button = find_button(name);
     if (button == INPUT_BUTTON_COUNT)
         add_problem(settings, line, SETTINGS_UNKNOWN_SETTING, name);
@@ -176,10 +278,12 @@ void settings_defaults(struct settings *out)
     memset(out, 0, sizeof *out);
     out->keymap = input_default_keymap();
     out->scale = OPTIONS_DEFAULT_SCALE;
+    out->fast_forward = fastforward_defaults();
 }
 
 void settings_parse(const char *text, size_t size, struct settings *out)
 {
+    struct parse parse = {.settings = out};
     settings_defaults(out);
     size_t position = 0;
     if (size >= BYTE_ORDER_MARK_SIZE && memcmp(text, byte_order_mark, BYTE_ORDER_MARK_SIZE) == 0)
@@ -190,9 +294,12 @@ void settings_parse(const char *text, size_t size, struct settings *out)
         const char *const end = memchr(start, '\n', size - position);
         const size_t length = end != NULL ? (size_t)(end - start) : size - position;
         line++;
-        parse_line(out, line, (struct span){.text = start, .length = length});
+        parse_line(&parse, line, (struct span){.text = start, .length = length});
         position += length + (end != NULL ? 1u : 0u);
     }
+    /* Twice: the default a refused line leaves may be the other line's key. */
+    if (!keep_apart(&parse))
+        (void)keep_apart(&parse);
 }
 
 static void report_call(const char *call, const char *path)
@@ -253,7 +360,9 @@ static void print_setting_names(FILE *out)
     const struct input_button *const buttons = input_buttons();
     for (size_t i = 0; i < INPUT_BUTTON_COUNT; i++)
         (void)fprintf(out, "%s, ", buttons[i].setting);
-    (void)fputs(SCALE_SETTING, out);
+    (void)fputs(SCALE_SETTING ", " FAST_FORWARD_SETTING ", " FAST_FORWARD_TOGGLE_SETTING ", " FAST_FORWARD_SPEED_SETTING
+                              ", " FAST_FORWARD_AUDIO_SETTING,
+                out);
 }
 
 static void print_problem(const struct settings_problem *problem, const char *path, FILE *out)
@@ -269,10 +378,25 @@ static void print_problem(const struct settings_problem *problem, const char *pa
         (void)fprintf(out, ")");
         break;
     case SETTINGS_UNKNOWN_KEY:
-        (void)fprintf(out, "'%s' is not a key name SDL knows (such as Z, Return, Left Shift, Keypad 8)", problem->text);
+        (void)fprintf(out,
+                      "'%s' is not a key name SDL knows (such as Z, Return, Left Shift, Keypad 8, and for "
+                      "fast-forward Shift+Tab)",
+                      problem->text);
         break;
     case SETTINGS_RESERVED_KEY:
-        (void)fprintf(out, "'%s' opens the help overlay and cannot be a button's key", problem->text);
+        (void)fprintf(out, "'%s' opens the help overlay and cannot be a button's or fast-forward's key", problem->text);
+        break;
+    case SETTINGS_BAD_SPEED:
+        (void)fprintf(out, "the fast-forward speed '%s' is not 2, 3, 4 or " UNLIMITED_VALUE, problem->text);
+        break;
+    case SETTINGS_BAD_AUDIO:
+        (void)fprintf(out, "the fast-forward audio '%s' is not " PLAY_VALUE " or " MUTE_VALUE, problem->text);
+        break;
+    case SETTINGS_SAME_FAST_FORWARD_KEY:
+        (void)fprintf(out,
+                      "'%s' is the other fast-forward key too: one key cannot both hold and toggle, and this one "
+                      "keeps its default",
+                      problem->text);
         break;
     case SETTINGS_BAD_SCALE:
     default:

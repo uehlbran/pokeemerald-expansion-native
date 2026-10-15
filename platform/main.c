@@ -63,6 +63,7 @@
 #include "data_dir.h"
 #include "debug_channel.h"
 #include "dma.h"
+#include "fastforward.h"
 #include "fixed_clock.h"
 #include "flash.h"
 #include "frame.h"
@@ -249,10 +250,18 @@ static int start_bios(const struct options *o)
 }
 
 /* The help overlay, for a window played from the keyboard only
- * (player_wants_overlay); before video, which draws it into its texture. */
+ * (player_at_keyboard); before video, which draws it into its texture. */
 static int start_overlay(const struct options *o)
 {
-    return player_wants_overlay(o) ? overlay_init(player_write_help) : 0;
+    return player_at_keyboard(o) ? overlay_init(player_write_help) : 0;
+}
+
+/* Fast-forward, for the same runs as the overlay, so that no replay, gate
+ * or test run is ever paced faster; before video, which draws its
+ * indicator. */
+static int start_fastforward(const struct options *o)
+{
+    return player_at_keyboard(o) ? fastforward_init(player_fast_forward()) : 0;
 }
 
 static int start_video(const struct options *o)
@@ -388,6 +397,7 @@ static const struct module_step module_steps[] = {
     {"audio", start_audio, audio_shutdown},
     {"audio_dump", start_audio_dump, audio_dump_shutdown},
     {"overlay", start_overlay, overlay_shutdown},
+    {"fastforward", start_fastforward, fastforward_shutdown},
     {"video", start_video, video_shutdown},
     {"input", start_input, input_shutdown},
     {"rtc", start_rtc, rtc_shutdown},

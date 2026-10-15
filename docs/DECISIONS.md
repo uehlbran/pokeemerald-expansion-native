@@ -1767,3 +1767,136 @@ replacement for the divide-error trap), each with a size estimate and a
 recommendation, in a document rather than code to keep, and then stop and
 put it in front of the owner. macOS x86_64 under Rosetta remains the
 shipped macOS build (the earlier macOS decision).
+
+## 2026-10-15: Fast-forward in the frame pacer: the keys, the speed, the sound and the indicator
+
+The owner's item (g) (PLAN.md "Milestone 8 plan"), as built. The player's
+account is `docs/RUNNING.md` "Fast-forward"; the modules are
+`platform/fastforward.h`, `frame_pacer.h` and `sound_speedup.h`.
+
+**The module.** `fastforward.c` is a state machine with no SDL call: SDL
+events in (`fastforward_handle_event`, from `frame.c`'s event loop beside
+`input_handle_event` and `overlay_handle_event`), "on, and at what
+multiplier" out (`fastforward_active`, `fastforward_multiplier`,
+`fastforward_muted`). A key is a scancode and the modifiers held with it,
+Shift, Ctrl and Alt on either side; a press is the key's when exactly those
+are held, ignoring Caps Lock, Num Lock, GUI and SDL's Mode key (`KMOD_MODE`)
+and a modifier key's own bit (SDL sets Left Shift's bit in Left Shift's own
+press, so "left shift" alone would otherwise never match). AltGr is not
+ignored: SDL reports it as Right Alt (Left Ctrl and Right Alt on Windows),
+so Tab with AltGr held is Alt+Tab (Ctrl+Alt+Tab on Windows), not Tab.
+Exact matching is what makes Tab and Shift+Tab two keys with no precedence
+rule. The settings file writes a
+key as SDL's name after any of `shift+`, `ctrl+`, `alt+` (blanks around the
+`+`, any case and order); a name that itself holds a `+` (`Keypad +`) or
+starts with "alt" (`AltErase`) is still the key, since a modifier needs its
+`+`. Buttons take no modifiers (KEYINPUT reads keys, not chords), so
+`a = shift+z` stays an unknown key. F1 is refused for both, with or without
+a modifier, as for the buttons. A button and fast-forward may share a key,
+as two buttons may: refusing it would break a settings file of the last
+build with `select = tab`. One key for both is refused after the whole
+file is read, on the later of the two lines (its setting keeps its default,
+checked twice, since a default can clash with the other line), so that
+swapping the two keys in two lines works in either order, which a check
+line by line would refuse.
+
+**The hold and the toggle.** The hold is on from its press to its
+scancode's key-up, whatever the modifiers then, and is released on
+`SDL_WINDOWEVENT_FOCUS_LOST` too: the key-up goes to the window that has
+the focus by then, so without it the game could stay fast-forwarded with no
+key held (SDL 2 also resets its keyboard state on focus loss on most
+backends, but that is SDL's behaviour, not a promise this relies on). The
+toggle flips on each press and on nothing else: not a key-up, not focus
+loss, so it persists across frames until pressed again or Quit. Repeats do
+nothing. While the F1 overlay is shown, presses are the overlay's (as
+KEYINPUT reads no button then), so neither key changes fast-forward from
+under it; a key-up still ends the hold, because ignoring it would leave the
+game fast-forwarded by a key let go of while reading. A toggle switched on
+stays on under the overlay and the game runs on fast beneath it (the
+overlay never paused the game); the overlay hides the indicator.
+
+**The pacer's arithmetic.** At n times the speed the period is the GBA's
+divided by n with its exact remainder: `frame_pacer_period_ticks(hz, n,
+&rem)` returns floor((hz * 280896 + rem) / (16777216 n)) and keeps the
+remainder in units of 1/(16777216 n) tick, so n periods of a run sum to
+exactly floor(k * 280896 * hz / (16777216 n)) with no drift (tested at 2, 3
+and 4 against values worked by hand at 1 GHz, 10 MHz and 1 kHz). The
+remainder stays below 16777216 * 4, inside its uint32_t (a static
+assertion), and the counter limit (6e13 Hz) still keeps hz * 280896 inside
+64 bits. Unlimited does not wait, as `FRAME_PACER_UNTHROTTLED` does not.
+`frame.c` sets the multiplier once a frame, after the events are polled
+(`frame_pacer_set_multiplier(fastforward_multiplier())`); a change of speed
+restarts the schedule from now, as a long stall does, and resets the
+remainder: frames owed at the old speed (behind at 4x on a slow host, or
+the stretch run unlimited) are not run back to back at the new one. The
+game's logic is untouched: each `frame_run` is one GBA frame (one V-Blank,
+one frame count) at every speed, only closer together; the test that
+applies the multiplier to the frame count instead of the period fails
+(`test_frame.c`).
+
+**The clock.** Confirmed by construction: the RTC's time source in a
+played game is `time(NULL)` (`rtc.c` `system_clock`, chosen by `main`
+whenever `--rtc-fixed` is absent), never the frame count, so the time of
+day, Berries and tides keep host time at any speed. Only `--rtc-fixed`
+reads frames, for replays, which never fast-forward. What the game counts
+in frames (its play time, every animation) runs with the frames, as on an
+emulator.
+
+**The sound.** The bound alone (audio.c drops a block that would take the
+queue past four frames' worth) keeps the queue bounded at any speed, but
+what it plays is poor: the queue sits full, the sound lags the picture by
+67 ms, it plays every n-th frame or so as a fragment with a click at each
+seam, and after fast-forward the queue stays at the bound at 1x (producer
+and consumer at the same rate), so any jitter drops a block for as long as
+the game runs. Chosen instead, the simplest that sounds continuous:
+`sound_speedup` makes each n consecutive stereo samples one, their mean
+(rounded toward zero; a box filter, a crude low-pass against aliasing), so
+the sound plays continuously n times as fast and as high, one frame
+period's worth queued per period, and the queue stays as deep as at 1x
+(300 frames on SDL's dummy device, measured: at most 2632, 3068 and 3288
+bytes at 2, 3 and 4x, none dropped, against 3364 at the normal speed and
+the bound's 8784; unlimited sat at the bound and dropped some 154000 sample
+frames). Unlimited has no n to divide by (the host's
+speed varies), so its frames are queued as they are and the bound drops
+what does not fit: fragments at the normal pitch, as mGBA and VBA-M play
+fast-forward. `fast_forward_audio = mute` pauses the device
+(`audio_set_paused`) while fast-forward is on, and the frame loop queues
+nothing then (the PSG and the mix still run, as the hardware's did). On
+leaving mute or unlimited, whose queue is stale or full, the queue starts
+again as at power-on: paused, emptied (`audio_clear`), and played after
+`FRAME_AUDIO_PREROLL_FRAMES` frames are queued, so no stale sound bursts
+out and the latency is back to normal; leaving 2 to 4x needs nothing. The
+queue is bounded at every speed in every case (the 300-frame test on SDL's
+dummy audio device, which drains in real time, at 2, 3, 4 and unlimited;
+the bound's removal fails it at unlimited, and at the normal speed no frame
+test would notice, since only fast-forward can fill the queue).
+`--audio-dump` records what is queued, so a played game's recording has
+its fast-forward sped up and its muted stretch missing; no replay or gate
+fast-forwards, so theirs are unchanged.
+
+**The indicator.** "FF 2x", "FF 3x", "FF 4x" or "FF max", the overlay's
+font, white on the overlay's translucent black, a pixel of padding, two
+pixels from the top and right edges of the 240x160 screen
+(`fastforward_indicator_place`: 31x10 at x 207 for "FF 2x", 37x10 at x 201
+for "FF max"). It is drawn at the LCD's resolution, not the window's: six
+characters need no finer text, and a texture in LCD pixels copied to a
+rectangle of the renderer's logical 240x160 scales and letterboxes with the
+frame, as sharp as the game's own pixels. `video.c` makes it once at init
+(the speed is a setting, fixed for the run) and copies it after the frame
+while fast-forward is on and the overlay hidden; the frame buffer and the
+screenshots never see it.
+
+**What a replay and the gates see.** `main` starts fast-forward only where
+it starts the overlay, renamed for both from `player_wants_overlay` to
+`player_at_keyboard`: a window played from the keyboard, never headless,
+in test-runner mode or for a replay. Unstarted, `fastforward_multiplier` is
+the normal speed and the frame loop's speed step changes nothing, so every
+replay, dump, screenshot and suite run is as before (checked: both 64-bit
+replays and the cross-width script, outputs unchanged). `--unthrottled`
+stays unthrottled at any multiplier.
+
+**Not verified here** (no display, no sound card): the indicator on a
+screen, the sped-up sound by ear, and the keys on a real keyboard (Tab and
+Shift+Tab through a real window's focus changes; SDL's dummy driver
+delivers pushed events only). Their logic is unit-tested and the queue's
+depth is measured on SDL's dummy audio device.

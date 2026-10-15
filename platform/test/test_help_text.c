@@ -1,7 +1,8 @@
-// deps: input.c overlay.c font.c data_dir.c
+// deps: input.c overlay.c font.c data_dir.c fastforward.c
 /*
  * test_help_text.c: the lines --keys prints and the overlay shows
- * (help_text.c), line for line, for the default keys and files in each mode.
+ * (help_text.c), line for line, for the default keys and files in each mode,
+ * and fast-forward's keys, speed and sound as the settings make them.
  */
 #include "help_text.h"
 #include "ptest.h"
@@ -57,10 +58,22 @@ PTEST(the_defaults_per_user_line_for_line)
         "  R       S",
         "  L       A",
         "Controller: A, B, Back (Select), Start, the shoulders (L, R), the D-pad or the left stick",
+        "Fast-forward:",
+        "  Hold    Tab",
+        "  Toggle  Shift+Tab",
+        "  Speed   2x",
+        "  Sound   sped up",
     };
     const struct input_keymap keymap = input_default_keymap();
+    const struct fastforward_settings fast_forward = fastforward_defaults();
     const struct data_paths paths = paths_in(DATA_DIR_PER_USER, "/home/p/.local/share/pen/app/");
-    const struct help_info info = {.version = "v1-test", .keymap = &keymap, .paths = &paths, .settings_found = false};
+    const struct help_info info = {
+        .version = "v1-test",
+        .keymap = &keymap,
+        .fast_forward = &fast_forward,
+        .paths = &paths,
+        .settings_found = false,
+    };
     memset(&collected, 0, sizeof collected);
     help_text_write(&info, collect, &collected);
     PT_ASSERT_EQ_U32(collected.count, sizeof expected / sizeof expected[0]);
@@ -73,8 +86,15 @@ PTEST(the_keys_in_force_and_a_settings_file_found_portable)
     struct input_keymap keymap = input_default_keymap();
     keymap.scancodes[0] = SDL_SCANCODE_SPACE;
     keymap.scancodes[9] = SDL_SCANCODE_LSHIFT;
+    const struct fastforward_settings fast_forward = fastforward_defaults();
     const struct data_paths paths = paths_in(DATA_DIR_PORTABLE, "C:\\Games\\pen\\");
-    const struct help_info info = {.version = "unknown", .keymap = &keymap, .paths = &paths, .settings_found = true};
+    const struct help_info info = {
+        .version = "unknown",
+        .keymap = &keymap,
+        .fast_forward = &fast_forward,
+        .paths = &paths,
+        .settings_found = true,
+    };
     memset(&collected, 0, sizeof collected);
     help_text_write(&info, collect, &collected);
     PT_ASSERT_EQ_STR(collected.lines[0], "pokeemerald-native unknown");
@@ -87,8 +107,15 @@ PTEST(the_keys_in_force_and_a_settings_file_found_portable)
 PTEST(a_given_directory_and_a_run_without_settings_or_directory)
 {
     const struct input_keymap keymap = input_default_keymap();
+    const struct fastforward_settings fast_forward = fastforward_defaults();
     struct data_paths paths = paths_in(DATA_DIR_GIVEN, "out/");
-    const struct help_info info = {.version = "x", .keymap = &keymap, .paths = &paths, .settings_found = true};
+    const struct help_info info = {
+        .version = "x",
+        .keymap = &keymap,
+        .fast_forward = &fast_forward,
+        .paths = &paths,
+        .settings_found = true,
+    };
     memset(&collected, 0, sizeof collected);
     help_text_write(&info, collect, &collected);
     PT_ASSERT_EQ_STR(collected.lines[1], "Data directory (--data-dir): out/");
@@ -101,6 +128,47 @@ PTEST(a_given_directory_and_a_run_without_settings_or_directory)
     PT_ASSERT_EQ_STR(collected.lines[2], "Save: a.sav");
     PT_ASSERT_EQ_STR(collected.lines[3], "Clock: a.rtc");
     PT_ASSERT_EQ_STR(collected.lines[4], "Settings: none read");
+}
+
+/* The last five lines, for fast-forward's settings as a file makes them. */
+static void check_fast_forward(const struct fastforward_settings *fast_forward, const char *const expected[5])
+{
+    const struct input_keymap keymap = input_default_keymap();
+    const struct data_paths paths = paths_in(DATA_DIR_GIVEN, "out/");
+    const struct help_info info = {
+        .version = "x",
+        .keymap = &keymap,
+        .fast_forward = fast_forward,
+        .paths = &paths,
+        .settings_found = true,
+    };
+    memset(&collected, 0, sizeof collected);
+    help_text_write(&info, collect, &collected);
+    PT_ASSERT(collected.count >= 5u);
+    for (size_t i = 0; i < 5; i++)
+        PT_ASSERT_EQ_STR(collected.lines[collected.count - 5u + i], expected[i]);
+}
+
+PTEST(fast_forwards_keys_speed_and_sound_as_set)
+{
+    struct fastforward_settings fast_forward = {
+        .hold = {.scancode = SDL_SCANCODE_SPACE, .modifiers = 0u},
+        .toggle = {.scancode = SDL_SCANCODE_F, .modifiers = FASTFORWARD_CTRL | FASTFORWARD_ALT},
+        .speed = 4u,
+        .audio = FASTFORWARD_AUDIO_MUTE,
+    };
+    static const char *const four[] = {"Fast-forward:", "  Hold    Space", "  Toggle  Ctrl+Alt+F", "  Speed   4x",
+                                       "  Sound   muted"};
+    check_fast_forward(&fast_forward, four);
+    fast_forward.speed = FASTFORWARD_UNLIMITED;
+    fast_forward.audio = FASTFORWARD_AUDIO_PLAY;
+    static const char *const unlimited[] = {"Fast-forward:", "  Hold    Space", "  Toggle  Ctrl+Alt+F",
+                                            "  Speed   unlimited", "  Sound   sped up"};
+    check_fast_forward(&fast_forward, unlimited);
+    fast_forward.speed = 3u;
+    static const char *const three[] = {"Fast-forward:", "  Hold    Space", "  Toggle  Ctrl+Alt+F", "  Speed   3x",
+                                        "  Sound   sped up"};
+    check_fast_forward(&fast_forward, three);
 }
 
 PTEST_MAIN()
