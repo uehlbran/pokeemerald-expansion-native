@@ -694,13 +694,12 @@ mutants; the two survivors got their tests; eight findings fixed); the
 orchestrator's full gate green on the branch, the per-user directory
 never created by any gate; docs/RUNNING.md rewritten. Not yet seen in a
 real window: the overlay's picture and F1/Q live (the owner's next
-hands-on check; `--keys` prints the paths).
+hands-on check; `--keys` prints the paths). On main the full gate was
+green again and the Windows runner (run 38673211728, 27 min) passed
+everything with the new Windows-side tests and the smoke's new runs
+(`--keys`, `--version`, the non-ASCII `--data-dir`, portable mode).
 
-**In flight.** The full gate on main after the settings merge, then the
-push and a Windows runner dispatch (the new Windows-side tests:
-host_file read and is_directory, the player module, test_frame's dummy
-window, the smoke's `--keys`, `--version`, non-ASCII `--data-dir` and
-portable-mode runs). And fast-forward (the owner's addition of
+**In flight.** Fast-forward (the owner's addition of
 2026-10-15): branch work/fastforward, an Opus worker; a hold key (Tab)
 and a toggle key (Shift+Tab), both rebindable, the speed a setting (2x
 default; 2, 3, 4, unlimited) in the frame pacer only, audio sped up with
