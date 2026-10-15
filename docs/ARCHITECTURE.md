@@ -293,7 +293,8 @@ the condition's set-up and its timed wait). `host_linked.c` reads the region
 symbols the linker scripts define on Linux and Windows and the alias lists
 name on macOS. `TARGET_OS` (`platform/target.mk`, included by `host.mk`, so by
 every Makefile) selects them: Linux or Darwin (macOS), the machine building,
-or `windows` for the cross-build. A port adds its sources and its value. `crt0` and `main` also use
+or `windows` for the cross-build. The width, `BITS`, is 32 unless given, 64
+for macOS, which runs no 32-bit program (`platform/bits.mk`). A port adds its sources and its value. `crt0` and `main` also use
 the toolchain (the linker scripts' own symbols, weak references, SDL's
 `main`) but call nothing of the OS's, so they are not users.
 

@@ -2,6 +2,7 @@
 #
 #   make -f Makefile.native -j$(nproc) native  [BITS=32|64] [TEST=0|1] [SANITIZE=0|1]
 #                                       [O_LEVEL=2] [DINFO=1]
+#                                      # BITS: 32 by default, 64 on a Mac (platform/bits.mk)
 #   make -f Makefile.native -j$(nproc) objects ...   # compile only
 #   make -f Makefile.native -j$(nproc) check [BITS=..] [SANITIZE=..] [TESTS=filter]
 #                                      # expansion's test suite through its hydra
@@ -124,12 +125,12 @@
 # (DATA_LAYOUT_CHECKS, below).
 # --------------------------------------------------------------------------
 
-# 32 or 64. 32 is the first milestone; 64 must keep compiling. data-flat and
-# check-flat convert the 64-bit data, so 64 is their default.
+# 32 or 64. 32 is the first milestone's default, 64 a Mac's (platform/bits.mk);
+# data-flat and check-flat convert the 64-bit data, so 64 is their default.
 ifneq (,$(filter data-flat check-flat,$(MAKECMDGOALS)))
   BITS ?= 64
 endif
-BITS ?= 32
+include platform/bits.mk
 # 1 builds the test objects (test/**) and defines TESTING=1, as on GBA.
 TEST ?= 0
 # As expansion's Makefile: `check` is the test runner build.

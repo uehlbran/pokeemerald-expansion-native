@@ -1,7 +1,8 @@
 # platform/Makefile: builds the platform layer and its unit tests standalone,
 # without expansion's build. Run from the repository root as
 #
-#   make -C platform test          build and run every unit test (BITS=32)
+#   make -C platform test          build and run every unit test (BITS=32; 64 on a Mac,
+#                                  platform/bits.mk)
 #   make -C platform test BITS=64  the same for a 64-bit build
 #   make -C platform lib           build build/<bits>/libplatform.a
 #   make -C platform lib NOSAN=1   the same without sanitizers, in
@@ -10,7 +11,7 @@
 #   make -C platform test TARGET_OS=windows BITS=64   cross-build the unit tests into
 #                                  build/64-windows/test/*.exe, not run (Windows runs them:
 #                                  test_runner/run_windows_tests.sh)
-#   make -C platform test BITS=64  on a Mac: the same, for macOS (64-bit only; BUILDING.md)
+#   make -C platform test          on a Mac: the same, for macOS (64-bit only; BUILDING.md)
 #   make -C platform format        apply clang-format (../.clang-format) to every file below
 #   make -C platform format-check  fail, naming the files, if any would change
 #   make -C platform lint          clang-tidy (../.clang-tidy) and cppcheck over every .c file;
@@ -37,7 +38,7 @@
 
 include game_flags.mk
 
-BITS ?= 32
+include bits.mk
 ifeq ($(filter $(BITS),32 64),)
 $(error BITS must be 32 or 64, not '$(BITS)')
 endif

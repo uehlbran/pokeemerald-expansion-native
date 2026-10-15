@@ -14,12 +14,12 @@
 # live in platform/test/test_m4a_*.c and also link expansion's
 # src/m4a_tables.c, the engine's data tables.
 
-BITS ?= 32
+PLATFORM := ..
+include $(PLATFORM)/bits.mk
 ifeq ($(filter $(BITS),32 64),)
 $(error BITS must be 32 or 64, not '$(BITS)')
 endif
 
-PLATFORM := ..
 ROOT     := ../..
 BUILD    := build/$(BITS)
 
