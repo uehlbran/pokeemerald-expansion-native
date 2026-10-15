@@ -88,7 +88,8 @@ tools/build-native.sh --os linux
 Every step explained: [docs/GETTING-STARTED.md](docs/GETTING-STARTED.md#linux-ubuntu-2404).
 
 **Steam Deck**: build the Linux game, then add it to Steam; see
-[docs/GETTING-STARTED.md](docs/GETTING-STARTED.md#steam-deck). Not yet tried on a Deck.
+[docs/GETTING-STARTED.md](docs/GETTING-STARTED.md#steam-deck). Not yet
+tried on a Deck.
 
 **macOS**: not yet; in progress on the branch `work/macos`.
 

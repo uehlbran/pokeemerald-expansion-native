@@ -104,8 +104,8 @@ back to Windows.
 
     Lots of text scrolls past, and some of it says "warning". That is normal.
     This is the slow step, and the window can look still for a while. Do not
-    close it; wait for the prompt to come back. Success looks like this, as the last
-    line:
+    close it; wait for the prompt to come back. Success looks like this, as
+    the last line:
 
     ```
     build-native: done: /home/YOU/pokeemerald-expansion-native/build/native64-windows/pokeemerald-native.exe
