@@ -96,12 +96,15 @@ SINGLE_BATTLE_TEST("Lash Out damage is only boosted on the turn that Intimidate 
 SINGLE_BATTLE_TEST("Lash Out damage is boosted on turn 1 by switch in abilities")
 {
 #if PLATFORM_NATIVE
-    // Known failing natively: an upstream test bug. The comparisons hold
-    // under no reading of the mechanic: the battle gives 36 then 36 after
-    // Intimidate and 88 then 88 after Supersweet Syrup (no turn-1 boost:
-    // TurnValuesCleanUp clears lashOutAffected after the battle-start
-    // events), the same on the GBA; the test wants turn 2 to be 1.33 and 2
-    // times turn 1, where a boosted turn 1 would be twice turn 2.
+    // Known failing natively: the test's expectation is wrong under either
+    // reading of the mechanic. The battle gives 36 then 36 after Intimidate
+    // and 88 then 88 after Supersweet Syrup, the same on the GBA: expansion
+    // clears lashOutAffected after the battle-start events (TurnValuesCleanUp
+    // at FIRST_TURN_EVENTS_END), so turn 1 is not boosted and the turns are
+    // equal; Showdown keeps the battle-start drop for turn 1, which would make
+    // turn 1 twice turn 2. The test wants turn 2 to be 1.33 and 2 times turn
+    // 1, which neither gives. Whether turn 1 should be boosted is a
+    // difference between expansion and Showdown, not this port's.
     // On the GBA, and natively without the capture replay, THEN's call runs
     // the initialiser again over the captured values and compares zeros
     // (platform/test_runner/SUITE-LOG.md, class 11, has the measurements).

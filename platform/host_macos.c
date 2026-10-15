@@ -43,6 +43,7 @@
 #include "host_internal.h"
 #include "host_memory.h"
 #include "host_process.h"
+#include "wait_left.h"
 #include "x86_divide.h"
 
 #if !defined(__x86_64__)
@@ -106,11 +107,10 @@ uintptr_t host_fault_general_register(const struct host_fault *fault, unsigned n
  * divide error (measured on macos-15-intel; docs/DECISIONS.md, "On macOS a
  * SIGFPE sent by kill looks like a divide error"), so si_code alone cannot
  * tell them apart. A divide error is also a DIV or IDIV at the program
- * counter, where the processor stopped (x86_divide.h). A SIGFPE sent while the
- * program counter happens to be at such an instruction still reads as a
- * divide error (docs/DECISIONS.md, "On macOS a SIGFPE sent by kill looks like
- * a divide error"). The bytes read are at the saved program counter, in code
- * that is mapped: the instruction that faulted, or raise's own. */
+ * counter, where the processor stopped (x86_divide.h), so only a SIGFPE sent
+ * while the program counter is at one still reads as one. The bytes read are
+ * at the saved program counter, in code that is mapped: the instruction that
+ * faulted, or raise's own. */
 bool host_fault_is_divide_error(const struct host_fault *fault)
 {
     if (fault->signal_number != SIGFPE || fault->info->si_code != FPE_INTDIV)
@@ -304,8 +304,6 @@ int host_file_flush(int descriptor)
 
 /* --- host_thread: the monotonic wait --------------------------------------------- */
 
-#define NANOSECONDS_PER_SECOND 1000000000L
-
 /* macOS has no pthread_condattr_setclock: its condition variables' absolute
  * waits are measured on the wall clock. */
 int host_condition_init(pthread_cond_t *condition)
@@ -316,19 +314,17 @@ int host_condition_init(pthread_cond_t *condition)
 /* What is left of the deadline on the monotonic clock is waited for as a
  * relative time, which the kernel measures from the call on its own monotonic
  * clock (mach_absolute_time); the wall clock is never read, so a step of it
- * moves nothing. After every wake-up the caller loops, and this computes what
- * is left again. */
+ * moves nothing. The relative wait is at most an hour (wait_left.h says why).
+ * After every wake-up the caller loops, and this computes what is left again.
+ * CLOCK_MONOTONIC counts a system sleep and mach_absolute_time does not, so a
+ * wait that spans a sleep ends late by at most the sleep. */
 int host_condition_wait_until(pthread_cond_t *condition, pthread_mutex_t *lock, const struct timespec *deadline)
 {
     struct timespec now;
     if (clock_gettime(CLOCK_MONOTONIC, &now) != 0)
         return errno;
-    struct timespec left = {.tv_sec = deadline->tv_sec - now.tv_sec, .tv_nsec = deadline->tv_nsec - now.tv_nsec};
-    if (left.tv_nsec < 0) {
-        left.tv_sec--;
-        left.tv_nsec += NANOSECONDS_PER_SECOND;
-    }
-    if (left.tv_sec < 0 || (left.tv_sec == 0 && left.tv_nsec == 0))
+    struct timespec left;
+    if (!wait_left(deadline, &now, &left))
         return ETIMEDOUT;
     return pthread_cond_timedwait_relative_np(condition, lock, &left);
 }

@@ -259,10 +259,6 @@ void host_fault_uninstall_crash(void)
 
 /* --- host_fault: what a handler reads ------------------------------------------ */
 
-/* host_fault_is_divide_error is each system's own: Linux tells a divide error
- * by si_code alone (host_linux.c), macOS also needs the instruction
- * (host_macos.c). */
-
 int host_fault_number(const struct host_fault *fault)
 {
     return fault->signal_number;

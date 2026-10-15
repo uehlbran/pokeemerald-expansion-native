@@ -103,12 +103,40 @@ static struct narrow_result idivb_register(uint16_t ax, uint8_t divisor)
 }
 
 /* divb %ch (F6 F5): without a REX prefix, ModRM rm 5 of an 8-bit operand is
- * CH, the second byte of ECX (Intel SDM vol. 2, table 2-2), not BPL. CL holds
- * a non-zero byte, so that reading the wrong byte would divide. */
+ * CH, the second byte of ECX (Intel SDM vol. 2, table 2-2), not BPL. CL and
+ * the bits above CH hold non-zero bytes, so that reading the wrong byte, or
+ * more than the byte, would divide. */
+#define ABOVE_THE_HIGH_BYTE UINT32_C(0xA5A50000)
 static struct narrow_result divb_high_byte(uint16_t ax, uint8_t divisor)
 {
     struct narrow_result r = {UPPER_PATTERN | ax, EDX_PATTERN};
-    __asm__ volatile("divb %%ch" : "+a"(r.eax), "+d"(r.edx) : "c"((uint32_t)divisor << 8 | 7u));
+    __asm__ volatile("divb %%ch" : "+a"(r.eax), "+d"(r.edx) : "c"(ABOVE_THE_HIGH_BYTE | (uint32_t)divisor << 8 | 7u));
+    return r;
+}
+
+/* divb %ah (F6 F4): rm 4, the first of the high bytes, AH, which is also the
+ * dividend's high byte: AX = 5 divides by AH = 0. */
+static struct narrow_result divb_ah(void)
+{
+    struct narrow_result r = {UPPER_PATTERN | 5u, EDX_PATTERN};
+    __asm__ volatile("divb %%ah" : "+a"(r.eax), "+d"(r.edx));
+    return r;
+}
+
+/* divb %dh (F6 F6): rm 6, DH, with DL and the bits above DH non-zero. */
+static struct narrow_result divb_dh(uint16_t ax)
+{
+    struct narrow_result r = {UPPER_PATTERN | ax, EDX_PATTERN & ~UINT32_C(0xFF00)};
+    __asm__ volatile("divb %%dh" : "+a"(r.eax), "+d"(r.edx));
+    return r;
+}
+
+/* divb %bh (F6 F7): rm 7, the last of the high bytes, BH, with BL and the
+ * bits above BH non-zero. */
+static struct narrow_result divb_bh(uint16_t ax)
+{
+    struct narrow_result r = {UPPER_PATTERN | ax, EDX_PATTERN};
+    __asm__ volatile("divb %%bh" : "+a"(r.eax), "+d"(r.edx) : "b"(ABOVE_THE_HIGH_BYTE | 7u));
     return r;
 }
 
@@ -165,6 +193,20 @@ PTEST(an_8_bit_unsigned_division_by_zero_gives_all_ones_or_zero_at_8_bits)
     expect_narrow(zero, UPPER_PATTERN, EDX_PATTERN);
     expect_narrow(high, UPPER_PATTERN | 0xFFFFu, EDX_PATTERN);
     expect_narrow(memory, UPPER_PATTERN | 0xFFFFu, EDX_PATTERN);
+}
+
+/* Every high-byte register as the divisor, AH to BH (ModRM rm 4 to 7 without
+ * REX), each read as its one byte. */
+PTEST(the_high_byte_registers_ah_to_bh_are_the_divisor_without_rex)
+{
+    PT_ASSERT_EQ_INT(arm_division_init(), ARM_DIVISION_OK);
+    const struct narrow_result ah = divb_ah();
+    const struct narrow_result dh = divb_dh(5);
+    const struct narrow_result bh = divb_bh(5);
+    arm_division_shutdown();
+    expect_narrow(ah, UPPER_PATTERN | 0xFFFFu, EDX_PATTERN);
+    expect_narrow(dh, UPPER_PATTERN | 0xFFFFu, EDX_PATTERN & ~UINT32_C(0xFF00));
+    expect_narrow(bh, UPPER_PATTERN | 0xFFFFu, EDX_PATTERN);
 }
 
 PTEST(an_8_bit_signed_division_by_zero_saturates_by_the_sign_at_8_bits)

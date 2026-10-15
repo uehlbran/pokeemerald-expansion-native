@@ -54,9 +54,11 @@ PTEST(a_failed_write_drops_the_message_and_carries_on)
     int fds[2];
     PT_ASSERT_EQ_INT(pipe(fds), 0);
     PT_ASSERT_EQ_INT(close(fds[0]), 0);
-    void (*const previous_sigpipe)(int) = signal(SIGPIPE, SIG_IGN);
+    struct sigaction ignore = {.sa_handler = SIG_IGN}, previous_sigpipe;
+    (void)sigemptyset(&ignore.sa_mask);
+    int ignored = sigaction(SIGPIPE, &ignore, &previous_sigpipe);
     FILE *out = fdopen(fds[1], "w");
-    PT_ASSERT(previous_sigpipe != SIG_ERR);
+    PT_ASSERT_EQ_INT(ignored, 0);
     PT_ASSERT(out != NULL);
     clear_registers();
     PT_ASSERT_EQ_INT(gba_memmap_init(), GBA_MEMMAP_OK);
@@ -70,7 +72,7 @@ PTEST(a_failed_write_drops_the_message_and_carries_on)
     debug_channel_shutdown();
     clearerr(out);
     (void)fclose(out);
-    (void)signal(SIGPIPE, previous_sigpipe);
+    (void)sigaction(SIGPIPE, &previous_sigpipe, NULL); /* restoring what sigaction gave cannot fail */
     clear_registers();
     PT_ASSERT(zero);
 }

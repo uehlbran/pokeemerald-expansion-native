@@ -93,6 +93,17 @@ jobs:
         with:
           ccache-name: unit
 
+      # Some of the unit tests are compiled against expansion's headers
+      # (platform/Makefile's GAME_FLAG_OBJS: inspect_args.c reads global.h),
+      # and those include headers the build generates (map_groups.h, ...);
+      # Linux's gate runs after a build of the game, which makes them. Here,
+      # without a game build: the tools, then the generated headers, as
+      # Makefile.native makes them before it builds.
+      - name: The build tools and expansion's generated headers
+        run: |
+          make -f make_tools.mk -j"$(nproc)"
+          make -f Makefile.native generated
+
       # No LeakSanitizer: AddressSanitizer on macOS has none (platform/Makefile,
       # SANITIZER_ENV).
       - name: The unit tests, 64-bit, under AddressSanitizer and UndefinedBehaviorSanitizer

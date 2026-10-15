@@ -10,19 +10,21 @@
  * Wraps, on Linux: signals (sigaction with SA_SIGINFO and SA_ONSTACK,
  * sigaltstack, pthread_sigmask, raise; host_posix.c) and the registers the
  * kernel saved in the handler's ucontext_t (uc_mcontext.gregs, i386 and
- * x86-64; host_linux.c). On Windows (host_windows_fault.c): a vectored
- * exception handler, called first, for the divide error; the process's
- * unhandled-exception filter for the crash handler; the registers the system
- * saved in the exception's CONTEXT (x86-64). The handlers run in a signal
- * handler or an exception handler: they may call only async-signal-safe
- * functions (signal-safety(7)), which the accessors below, host_file's
- * host_file_write_from_handler, host_process_end and, on Linux,
- * host_process_restart are (on Windows the restart creates a process, which
- * a handler must not: host_process_restart_is_handler_safe). They are
- * installed and removed from the main thread; a fault of another thread
- * (SDL's) reaches them too, on the thread that faulted and on that thread's
- * own stack: the alternate stack (Windows: the kept stack) is the installing
- * thread's, so a stack overflow on another thread is not reported.
+ * x86-64; host_linux.c). On macOS: the same signals (host_posix.c) and the
+ * registers in uc_mcontext->__ss (x86-64; host_macos.c). On Windows
+ * (host_windows_fault.c): a vectored exception handler, called first, for
+ * the divide error; the process's unhandled-exception filter for the crash
+ * handler; the registers the system saved in the exception's CONTEXT
+ * (x86-64). The handlers run in a signal handler or an exception handler:
+ * they may call only async-signal-safe functions (signal-safety(7)), which
+ * the accessors below, host_file's host_file_write_from_handler,
+ * host_process_end and, on Linux and macOS, host_process_restart are (on
+ * Windows the restart creates a process, which a handler must not:
+ * host_process_restart_is_handler_safe). They are installed and removed from
+ * the main thread; a fault of another thread (SDL's) reaches them too, on
+ * the thread that faulted and on that thread's own stack: the alternate
+ * stack (Windows: the kept stack) is the installing thread's, so a stack
+ * overflow on another thread is not reported.
  */
 #ifndef PLATFORM_HOST_FAULT_H
 #define PLATFORM_HOST_FAULT_H
@@ -73,8 +75,8 @@ typedef bool (*host_fault_divide_handler)(struct host_fault *fault);
 typedef void (*host_fault_crash_handler)(const struct host_fault *fault);
 
 /* Installs handler for the integer divide error (x86 #DE: a division by zero
- * or a quotient too wide; Linux: every SIGFPE, so the handler tells a divide
- * error from another one with host_fault_is_divide_error; Windows:
+ * or a quotient too wide; Linux and macOS: every SIGFPE, so the handler tells
+ * a divide error from another one with host_fault_is_divide_error; Windows:
  * EXCEPTION_INT_DIVIDE_BY_ZERO and EXCEPTION_INT_OVERFLOW only), keeping the
  * handler it replaces. A fault the handler passes on goes to that handler
  * (Windows: on through the system's dispatch, to the crash handler if one is
@@ -107,7 +109,11 @@ void host_fault_uninstall_crash(void);
 
 /* True if the fault is an integer divide error raised by an instruction (not
  * a signal another process or raise() sent; Windows cannot tell a
- * RaiseException with a divide error's code, which the decoder then refuses). */
+ * RaiseException with a divide error's code, which the decoder then refuses).
+ * Each system's own: Linux tells it by si_code alone (host_linux.c); macOS,
+ * which gives a sent SIGFPE FPE_INTDIV too, also needs a DIV or IDIV at the
+ * program counter (host_macos.c), so a SIGFPE sent while the program counter
+ * is at one reads as a divide error there. */
 bool host_fault_is_divide_error(const struct host_fault *fault);
 
 /* The host's number for the fault, for reports: the signal number; Windows:

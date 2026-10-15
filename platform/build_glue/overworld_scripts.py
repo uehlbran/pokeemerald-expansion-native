@@ -147,13 +147,13 @@ def split(c_text, name):
 
 
 def run(name, c_path, asm_path):
-    with open(c_path) as handle:
+    with open(c_path, encoding="utf-8") as handle:
         new_c, assembly, problems = split(handle.read(), name)
     if problems:
         return ["%s: %s" % (c_path, problem) for problem in problems]
-    with open(asm_path, "w") as handle:
+    with open(asm_path, "w", encoding="utf-8") as handle:
         handle.write(assembly)
-    with open(c_path, "w") as handle:
+    with open(c_path, "w", encoding="utf-8") as handle:
         handle.write(new_c)
     return []
 
@@ -254,17 +254,17 @@ def self_test():
         expect(name, split(text, "S"), (None, None, wanted))
     with tempfile.TemporaryDirectory() as directory:
         c_path, asm_path = os.path.join(directory, "t.i"), os.path.join(directory, "t.scripts.s")
-        with open(c_path, "w") as handle:
+        with open(c_path, "w", encoding="utf-8") as handle:
             handle.write(c_text)
         expect("run", run("S", c_path, asm_path), [])
-        expect("run: the C rewritten", open(c_path).read(), SELF_TEST_EXPECTED_C)
-        expect("run: the assembler file", open(asm_path).read(), SELF_TEST_EXPECTED_ASM)
-        with open(c_path, "w") as handle:
+        expect("run: the C rewritten", open(c_path, encoding="utf-8").read(), SELF_TEST_EXPECTED_C)
+        expect("run: the assembler file", open(asm_path, encoding="utf-8").read(), SELF_TEST_EXPECTED_ASM)
+        with open(c_path, "w", encoding="utf-8") as handle:
             handle.write(SELF_TEST_REFUSALS[0][1])
         os.remove(asm_path)
         expect("run: a refusal names the file", run("S", c_path, asm_path),
                ["%s: %s" % (c_path, SELF_TEST_REFUSALS[0][2][0])])
-        expect("run: and writes nothing", (os.path.exists(asm_path), open(c_path).read()),
+        expect("run: and writes nothing", (os.path.exists(asm_path), open(c_path, encoding="utf-8").read()),
                (False, SELF_TEST_REFUSALS[0][1]))
     for failure in failures:
         sys.stderr.write("overworld_scripts self-test: %s\n" % failure)

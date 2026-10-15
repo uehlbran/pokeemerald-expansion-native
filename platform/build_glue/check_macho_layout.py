@@ -35,16 +35,22 @@ unless:
     the byte that keeps EWRAM from being empty, so that they fit EWRAM
     (gba_regions.ld's ASSERT); IWRAM's 0x7F00 bytes come
     first and the test runner's persistent state, if linked, at 0x03007F00;
-  * in __DATA the game's zero-initialised data (__game_bss) comes right
-    before COMMON_DATA's (__game_common), nothing between them, so that
-    game_bss_start to game_bss_end holds both and keeps the GBA's order
-    (gba_game.ld says why);
+  * __DATA has the game's zero-initialised data (__game_bss) and
+    COMMON_DATA's (__game_common), as every link does (gba_game.macho.s puts
+    a byte in each), the first right before the second, nothing between
+    them, so that game_bss_start to game_bss_end holds both and keeps the
+    GBA's order (gba_game.ld says why);
   * in __DATA no writable data starts below __data: host_macos.c's
     host_image_writable is __data's start to the segment's end, so the
     game's __game_data, __game_bss and __game_common, and the program's
     __bss and __common, must lie past __data's start (ld64 orders the
     names it knows by its own table, and probe M2 saw only the order among
     the branch's own sections).
+
+Not checked here: the order of the test table's objects (test_test_runner.o
+first, Makefile.native's NATIVE_LINK_OBJS), which crt0_init checks at run
+time; where __game_data lies beyond its being past __data's start; and that
+each section lies inside its segment, which ld64 makes so.
 
 The addresses and sizes are GBATEK's ("GBA Memory Map"), written out again on
 purpose: this checks the link, not gba_regions.macho.s against itself.
@@ -236,11 +242,9 @@ def check_game_data(segments):
     if data is None:
         return ["no __DATA segment"]
     names = [section.name for section in data.sections]
-    if "__game_bss" not in names or "__game_common" not in names:
-        return []
-    problems = []
-    bss = names.index("__game_bss")
-    if names.index("__game_common") != bss + 1:
+    problems = ["__DATA has no %s (gba_game.macho.s puts a byte in it, in every link)" % name
+                for name in ("__game_bss", "__game_common") if name not in names]
+    if not problems and names.index("__game_common") != names.index("__game_bss") + 1:
         problems.append("__DATA's __game_common does not follow __game_bss (%s): gba_game.o must be linked first"
                         % ", ".join(names))
     start = next((section.address for section in data.sections if section.name == "__data"), None)
@@ -263,9 +267,10 @@ def check(path, data):
 # --------------------------------------------------------------------------
 # The self-test: executables' headers built here, good and bad.
 
-def pack_segment(name, address, size, sections, initprot=VM_PROT_READ | VM_PROT_WRITE):
+def pack_segment(name, address, size, sections, initprot=VM_PROT_READ | VM_PROT_WRITE, maxprot=None):
     command = struct.pack(SEGMENT_FIELDS, LC_SEGMENT_64, SEGMENT_SIZE + SECTION_SIZE * len(sections),
-                          name.encode(), address, size, 0, 0, initprot, initprot, len(sections), 0)
+                          name.encode(), address, size, 0, 0, initprot if maxprot is None else maxprot, initprot,
+                          len(sections), 0)
     for section in sections:
         section_name, section_address, section_size = section[:3]
         flags = section[3] if len(section) > 3 else 0
@@ -329,6 +334,7 @@ def self_test():
     expect("PIE", pack_executable(good, flags=MH_PIE), ["MH_PIE"])
     expect("chained fixups", pack_executable(good, extra_commands=(LC_DYLD_CHAINED_FIXUPS,)), ["chained fixups"])
     expect("a 4 GiB page zero", pack_executable(replaced(good, "__PAGEZERO", size=0x100000000)), ["__PAGEZERO"])
+    expect("a page zero one page up", pack_executable(replaced(good, "__PAGEZERO", address=PAGE)), ["__PAGEZERO"])
     expect("the image elsewhere", pack_executable(replaced(good, "__TEXT", address=0x100000000)), ["__TEXT is not"])
     code_past = [("__text", IMAGE_BASE + 0x1000, 0x2000000, S_ATTR_PURE_INSTRUCTIONS)]
     expect("code past the tag bit", pack_executable(replaced(good, "__TEXT", size=0x2002000, sections=code_past)),
@@ -341,6 +347,9 @@ def self_test():
                  ("__some", CODE_LIMIT - 4, 8, S_ATTR_SOME_INSTRUCTIONS)]
     expect("a section with some instructions past the tag bit",
            pack_executable(replaced(good, "__TEXT", size=0x2002000, sections=some_past)), ["__TEXT,__some ends"])
+    code_to = [("__text", IMAGE_BASE + 0x1000, CODE_LIMIT - IMAGE_BASE - 0x1000, S_ATTR_PURE_INSTRUCTIONS)]
+    expect("code that ends at 0x42000000",
+           pack_executable(replaced(good, "__TEXT", size=0x2002000, sections=code_to)), [])
     data_past = [("__text", IMAGE_BASE + 0x1000, 0x1000000, S_ATTR_PURE_INSTRUCTIONS),
                  ("__const", IMAGE_BASE + 0x1001000, 0x2000000, 0)]
     expect("read-only data past it, as .rodata on Linux",
@@ -370,6 +379,15 @@ def self_test():
                                                       ("__game_common", 0x42001100, 0x40)], VM_PROT_READ)
                       for segment in good]
     expect("a read-only segment there is no matter", pack_executable(read_only_data), [])
+    may_be_writable = [segment + (VM_PROT_READ | VM_PROT_WRITE | 0x4,) if segment[0] == "__TEXT" else segment
+                       for segment in sanitized_text]
+    expect("read-only data past 0x42000000 in a segment whose maxprot allows writing (ld64's older __TEXT)",
+           pack_executable(may_be_writable), [])
+    for initprot, mapped in ((VM_PROT_READ, "read-only"), (VM_PROT_WRITE, "write-only")):
+        expect("a region mapped %s" % mapped,
+               pack_executable([segment + (initprot,) if segment[0] == "__GBA_VRAM" else segment
+                                for segment in good]),
+               ["__GBA_VRAM is not mapped readable and writable (initprot %d)" % initprot])
     expect("a region moved", pack_executable(replaced(good, "__GBA_VRAM", address=0x06100000)), ["__GBA_VRAM is at"])
     expect("a region missing", pack_executable([segment for segment in good if segment[0] != "__GBA_OAM"]),
            ["__GBA_OAM: no such segment"])
@@ -388,7 +406,15 @@ def self_test():
     persistent_first = [(IWRAM_PERSISTENT, 0x03000000, 0x8), (IWRAM_BELOW_PERSISTENT, 0x03001000, 0x7F00)]
     expect("the persistent state first", pack_executable(replaced(good, "__GBA_IWRAM", sections=persistent_first)),
            ["does not start with __iwram", "__persistent is at 0x3000000"])
+    no_persistent_state = [(IWRAM_BELOW_PERSISTENT, 0x03000000, 0x7F00), (IWRAM_PERSISTENT, 0x03007F10, 0)]
+    expect("an empty __persistent elsewhere (no test runner linked)",
+           pack_executable(replaced(good, "__GBA_IWRAM", sections=no_persistent_state)), [])
     data = next(segment for segment in good if segment[0] == "__DATA")
+    for missing in ("__game_bss", "__game_common"):
+        expect("no %s" % missing,
+               pack_executable(replaced(good, "__DATA", sections=[section for section in data[3]
+                                                                  if section[0] != missing])),
+               ["__DATA has no %s" % missing])
     apart = [data[3][0], data[3][1], data[3][2], data[3][4], data[3][3]]
     expect("COMMON_DATA apart from the game's bss", pack_executable(replaced(good, "__DATA", sections=apart)),
            ["__game_common does not follow __game_bss"])

@@ -12,7 +12,9 @@
 # (libsdl-org/sdl2-compat, src/sdl2_compat.c, LoadSDL3Library), so it is
 # bundled under that name. Each library's licence is copied from its
 # Homebrew keg as DIRECTORY/<library>-LICENSE.txt. Fails if a library has no
-# licence there, or if anything still names a path outside the system's.
+# licence there, if a library is named by a path that is not on disk (a
+# relative one, @rpath/..., which the script does not resolve, or a missing
+# file), or if anything still names a path outside the system's.
 # Written for macOS's bash 3.2 and BSD tools; not runnable elsewhere.
 set -euo pipefail
 
@@ -66,6 +68,10 @@ while [ -n "$queue" ]; do
     case "$nl$seen" in *"$nl$src|"*) continue ;; esac
     seen="$seen$src|$name$nl"
     [ ! -e "$dir/$name" ] || fail "two libraries are named $name"
+    case "$src" in
+        @*) fail "$name is named $src, a path relative to its loader that this script does not resolve" ;;
+    esac
+    [ -e "$src" ] || fail "$name is named $src, which does not exist"
     cp -L "$src" "$dir/$name"
     chmod u+w "$dir/$name"
     cp "$(licence_of "$src")" "$dir/${name%.dylib}-LICENSE.txt"

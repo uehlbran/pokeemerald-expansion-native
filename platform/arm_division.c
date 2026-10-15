@@ -81,12 +81,12 @@
 /* Segment override prefixes (Intel SDM vol. 2, 2.1.1, group 2) that
  * address the flat user segment on Linux and macOS (in 64-bit mode they are
  * null prefixes, Intel SDM vol. 1, 3.3.7.1), and the operand-size prefix
- * (66h, group 3), which makes F7's operand 16-bit: clang divides two values
- * it knows fit 16 bits with it (arm_division.h). FS (64h) and GS (65h) add
- * thread-local bases and are refused, as are the address-size prefix (67h,
- * other addressing), LOCK and REP. Repeated prefixes are legal (the last
- * segment one wins); MAX_PREFIXES caps how many the decoder skips, well
- * within the 15-byte instruction limit. */
+ * (66h, group 3), which makes F7's operand 16-bit: GCC and clang divide two
+ * values they know fit 16 bits with it (arm_division.h). FS (64h) and GS
+ * (65h) add thread-local bases and are refused, as are the address-size
+ * prefix (67h, other addressing), LOCK and REP. Repeated prefixes are legal
+ * (the last segment one wins); MAX_PREFIXES caps how many the decoder skips,
+ * well within the 15-byte instruction limit. */
 #define PREFIX_SEGMENT_ES 0x26u
 #define PREFIX_SEGMENT_CS 0x2Eu
 #define PREFIX_SEGMENT_SS 0x36u

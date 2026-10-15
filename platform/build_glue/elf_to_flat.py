@@ -235,7 +235,7 @@ def format_symbol_table(values, header=TABLE_HEADER):
 def read_symbol_table(path):
     """{name: value} from a table format_symbol_table wrote."""
     values = {}
-    with open(path) as handle:
+    with open(path, encoding="utf-8") as handle:
         for number, line in enumerate(handle, 1):
             fields = line.split("#", 1)[0].split()
             if not fields:
@@ -252,15 +252,23 @@ def read_symbol_table(path):
 
 def write_if_changed(path, text):
     """Write text to path unless the file already holds it, so that what
-    depends on the file is remade only when it changes."""
+    depends on the file is remade only when it changes. The text is written
+    whole to a file beside it and renamed over it, so that a build stopped
+    part way leaves the old file or the new one, never part of one."""
     try:
-        with open(path) as handle:
+        with open(path, encoding="utf-8") as handle:
             if handle.read() == text:
                 return
     except FileNotFoundError:
         pass
-    with open(path, "w") as handle:
-        handle.write(text)
+    temporary = "%s.%d.tmp" % (path, os.getpid())
+    try:
+        with open(temporary, "w", encoding="utf-8") as handle:
+            handle.write(text)
+        os.replace(temporary, path)
+    finally:
+        if os.path.exists(temporary):
+            os.remove(temporary)
 
 
 # --------------------------------------------------------------------------
@@ -670,15 +678,22 @@ def self_test_values(failures, directory):
 def self_test_table_file(failures, directory):
     path = os.path.join(directory, "table.txt")
     write_if_changed(path, format_symbol_table({"B": 0x10, "A": 0x1}))
-    expect(failures, "table file", open(path).read(), TABLE_HEADER + "A 0x1\nB 0x10\n")
+    expect(failures, "table file", open(path, encoding="utf-8").read(), TABLE_HEADER + "A 0x1\nB 0x10\n")
     expect(failures, "table read back", read_symbol_table(path), {"A": 1, "B": 16})
     os.utime(path, ns=(1, 1))
     write_if_changed(path, format_symbol_table({"A": 0x1, "B": 0x10}))
     expect(failures, "an unchanged table is not rewritten", os.stat(path).st_mtime_ns, 1)
+    os.link(path, path + ".before")
     write_if_changed(path, format_symbol_table({"A": 0x2}))
     expect(failures, "a changed table is", read_symbol_table(path), {"A": 2})
+    # Written whole beside it and renamed over it: the old file (its second
+    # link here) is left as it was, and nothing else is left in the directory.
+    expect(failures, "a changed table replaces the file", read_symbol_table(path + ".before"), {"A": 1, "B": 16})
+    expect(failures, "and leaves no temporary file", sorted(name for name in os.listdir(directory)
+                                                            if name.startswith("table.txt")),
+           ["table.txt", "table.txt.before"])
     for text in ("A\n", "A 0x1 extra\n", "A zz\n", "A 0x1\nA 0x2\n"):
-        with open(path, "w") as handle:
+        with open(path, "w", encoding="utf-8") as handle:
             handle.write(text)
         try:
             read_symbol_table(path)
@@ -880,7 +895,7 @@ def run_absolutes(table_path, object_paths):
 def run_conversion(target_name, table_path, output_path, object_path):
     text, problems = convert(object_path, read_elf64(object_path), target_name, read_symbol_table(table_path))
     if text is not None:
-        with open(output_path, "w") as handle:
+        with open(output_path, "w", encoding="utf-8") as handle:
             handle.write(text)
     return problems
 

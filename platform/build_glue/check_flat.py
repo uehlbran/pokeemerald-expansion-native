@@ -469,7 +469,7 @@ def self_test_objects(directory):
 
 def run_listing(directory, target_name, elf_path, values, text):
     listing, output = os.path.join(directory, "a.s"), os.path.join(directory, "a.flat.o")
-    with open(listing, "w") as handle:
+    with open(listing, "w", encoding="utf-8") as handle:
         handle.write(text)
     problems = assemble(DEFAULT_CLANG, target_name, listing, output)
     return problems or check(target_name, elf_path, values, output)
@@ -569,6 +569,13 @@ VALUE_EDITS = (
       "values.o: symbol B_CONST (global undefined) is not in the ELF object"]),
     ("a 64-bit value", ("\t.quad 0xffffffffffffffff", "\t.quad 0xfffffffffffffffe"),
      ["values.o: .rodata+0x10 (script): the 64-bit word holds 0xfffffffffffffffe, NEG_CONST is 0xffffffffffffffff"]),
+    # Each word is compared whole: a wrong byte above the lowest is found.
+    ("a 16-bit value wrong in its high byte", ("\t.short 0x0006", "\t.short 0x0106"),
+     ["values.o: .rodata+0x2 (script): the 16-bit word holds 0x106, B_CONST is 0x6"]),
+    ("a 32-bit value wrong in its high byte", ("\t.long 0x00000007", "\t.long 0x01000007"),
+     ["values.o: .rodata+0x4 (script): the 32-bit word holds 0x1000007, B_CONST is 0x7"]),
+    ("a 64-bit value wrong in its high byte", ("\t.quad 0xffffffffffffffff", "\t.quad 0x7fffffffffffffff"),
+     ["values.o: .rodata+0x10 (script): the 64-bit word holds 0x7fffffffffffffff, NEG_CONST is 0xffffffffffffffff"]),
     ("an address word beside them", ("\t.long _script+1\n", "\t.long _script+2\n"),
      ["values.o: .rodata+0x18 (script): a 4-byte word to script+2, the ELF word to script+1"]),
 )

@@ -31,8 +31,9 @@
  * x86-64), and resumes after the instruction.
  *
  * The 8- and 16-bit forms (F6 /6 and /7; F7 with the operand-size prefix)
- * are what clang makes of a C division whose operands it knows fit that
- * width (a u8 by a u8, a u8 by an s16; GCC divides at the int's 32 bits).
+ * are what both compilers make of some C divisions whose operands they know
+ * fit that width (a u16 by a u16 in GCC's RandomWeightedIndex; clang more
+ * often, a u8 by a u8, a u8 by an s16).
  * They get libgcc's rule at the instruction's width: all ones or zero, or
  * the most positive or negative value by the dividend's sign, or zero (AL and
  * AH at 8 bits, AX and DX at 16; the registers' other bits as they were). The

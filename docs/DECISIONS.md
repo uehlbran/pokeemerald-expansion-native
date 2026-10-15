@@ -2185,7 +2185,13 @@ The kernel measures the relative time on its own monotonic clock, so a step
 of the wall clock can move neither the deadline (never read from it) nor the
 wait. Probe M2 measured it: a 300 ms deadline ended at 300 ms after three
 wake-ups, clean under ThreadSanitizer. The alternative, polling with a short
-sleep, wakes the process for nothing and is less precise.
+sleep, wakes the process for nothing and is less precise. Each relative wait
+is at most an hour (`platform/wait_left.c`, tested in the Linux gate):
+Apple converts it to Mach time units, and the watchdog's farthest deadline,
+about 68 years, could overflow that conversion where the timebase is not
+1:1; the loop waits again for what is left. The deadline's clock counts a
+system sleep and the relative wait does not, so a wait across a sleep ends
+late by at most the sleep.
 
 ## 2026-10-15: Saves on macOS are flushed to the disk with F_FULLFSYNC
 
@@ -2321,8 +2327,9 @@ were undefined behaviour in expansion's test harness, now fixed:
 
 - **Clang's narrow divisions by zero get libgcc's rule at their width.**
   Clang compiles a C division whose operands it knows fit 8 or 16 bits to an
-  8- or 16-bit DIV or IDIV (23 sites in the game, against 9 in GCC's build,
-  where GCC widens to 32 bits). By zero the decoder refused them, and 4
+  8- or 16-bit DIV or IDIV far more often than GCC does (in the 64-bit game,
+  117 such instructions in 74 functions, against GCC's 37 in 23; counted in
+  `objdump -d` of each executable). By zero the decoder refused them, and 4
   tests crashed. `platform/arm_division.c` now decodes them and writes
   libgcc's rule at the instruction's width (all ones or zero, the most
   positive or negative value by the sign, zero), which keeps what a program
@@ -2403,6 +2410,61 @@ are sized by it, and a path the system refuses fails loudly at the first
 open. The tests that pad a path to 4096 bytes with repeated slashes and
 expect it to work (`test_rtc_linux.c`) are therefore Linux's; the refusal of
 a path over the platform's limit is portable and runs everywhere.
+
+## 2026-10-15: What the macOS port changes in the Linux and Windows builds
+
+The macOS port leaves the Linux and Windows builds as they were, except
+where a change is shared on purpose. Each such change, and why it is right
+there too:
+
+- **The divide-error handler completes 8- and 16-bit divisions**
+  (`platform/arm_division.c`: F6 /6 and /7, and F7 with the operand-size
+  prefix), which it refused before, ending the process. GCC writes these
+  forms as well as clang: the Linux 64-bit game has 37 DIV or IDIV
+  instructions with a byte or word operand, in 23 functions (36 in the
+  32-bit game, 37 in the Windows game; clang's game has 117), among them
+  `RandomWeightedIndex`'s `Random() % weightSum`, a `u16` by a `u16`
+  (counted with `objdump -d`). So a division by zero at one of them now gets
+  libgcc's rule at its width on every system, where it crashed on Linux and
+  Windows. No gate divides by zero at one in GCC's builds.
+- **The host layer's Linux files** (`host_linux.c`, `host_posix.c`) compile
+  to other objects with the same calls on Linux: what macOS does
+  differently is behind functions both define (the file flush, the
+  executable's path, the condition variable's clock and wait, the stack
+  switch's sanitizer calls, which SIGFPE is a divide error).
+  `game_hooks.c` adds `PlatformIsCallStackAddress`, which the battle
+  runner's capture replay calls on every system.
+- **The music player's command table** (`platform/m4a/m4a_sequencer.c`) is
+  called through `XcmdFunc`, its entries' own type, instead of the table's
+  unprototyped `MPlayFunc`: a call through the type of the function called,
+  which clang's function check requires. The arguments and the ABI are the
+  same; GCC's 64-bit code differs only in its registers.
+- **A field effect's result is cut to its low byte**
+  (`src/field_effect.c`, `FieldEffectScript_CallNative`; its row in
+  `docs/UPSTREAM_MODIFICATIONS.md`), one `movzbl` more in GCC's code. Every
+  native build takes it: the x86 ABIs leave a `u8` or `bool8` result's
+  upper bits undefined whichever compiler built the callee, and every
+  result is below 256.
+- **The sanitized Linux links set `gba_writable_data_floor` to 0x43000000**
+  (`platform/target.mk`, `GBA_SANITIZED_LAYOUT_LDFLAGS`; "Clang builds the
+  game as GCC does", "Where the writable data lies"). GCC's sanitized
+  builds had their writable data from 0x429BDD08 (the game) and 0x42F08110
+  (the test runner), in the window whose addresses expansion takes for
+  EWRAM (`gba_regions.ld` says how that was measured); `gba_regions.ld`'s
+  ASSERTs now refuse such a link. The plain builds' layout is unchanged.
+- **Modules only macOS calls**: `x86_divide.c` and `wait_left.c` are in
+  `libplatform.a` on every system (every `platform/*.c` is), unreferenced
+  by the Linux and Windows executables (neither has an `x86_divide_at` or
+  `wait_left` symbol); their unit tests run in the Linux gate and the
+  Windows test build.
+- **Build glue**: `elf_to_flat.py` writes its symbol table whole to a file
+  beside it and renames it over the old one, so an interrupted build leaves
+  no half-written table; the text it writes is the same.
+
+The Linux replays and the platform gate pass at both widths, and the Linux
+suite's results differ from main's only in the battle tests whose captures
+now reach THEN ("Five expansion tests are known-failing natively" and
+`platform/test_runner/SUITE-LOG.md`, class 11).
 
 ## 2026-10-15: The macOS port waits for its first runs on a Mac
 
@@ -3117,8 +3179,10 @@ intended, and that the token's fetch of `${{ github.sha }}` works (a scheduled o
 With the capture replay ("Clang builds the game as GCC does" above, and
 `platform/test_runner/SUITE-LOG.md`, class 11) five of expansion's tests
 fail natively that pass on the GBA and on main. They are marked
-`KNOWN_FAILING` natively, each with its reason in a comment, and are
-upstream test bugs, not a fault of the port or of the replay. The evidence:
+`KNOWN_FAILING` natively, each with its reason in a comment. Each test's
+expectation is wrong on the battle's values: four are upstream test bugs,
+and the fifth (the second below) holds under neither reading of its
+mechanic. None is a fault of the port or of the replay. The evidence:
 on scratch copies of main (66d48c9d7a) and of this branch, the battle runner
 printed every capture as the battle made it and each test's THEN printed its
 comparisons. The battle's values are identical on main natively at 64 and
@@ -3135,15 +3199,15 @@ the expectation corrected, each holds on the battle's values.
   test means to show).
 - "Lash Out damage is boosted on turn 1 by switch in abilities"
   (`lash_out.c:85`): 36 then 36 after Intimidate, 88 then 88 after
-  Supersweet Syrup; the test wants turn 2 to be 1.33 and 2 times turn 1,
-  which no reading of the mechanic gives. Expansion clears `lashOutAffected`
-  with the other per-turn values after the battle-start events
-  (`TurnValuesCleanUp` at `FIRST_TURN_EVENTS_END`), so turn 1 is not
-  boosted and the turns are equal; Showdown keeps a battle-start drop for
-  turn 1 (its `endTurn()` skips the reset of `statsLoweredThisTurn` when it
-  makes turn 1), which would make turn 1 twice turn 2. Which of the two the
-  cartridge does is upstream's question; the GBA build behaves as the native
-  one.
+  Supersweet Syrup; the test wants turn 2 to be 1.33 and 2 times turn 1.
+  Expansion clears `lashOutAffected` with the other per-turn values after
+  the battle-start events (`TurnValuesCleanUp` at `FIRST_TURN_EVENTS_END`,
+  `src/battle_main.c`), so turn 1 is not boosted and the turns are equal;
+  Showdown keeps a battle-start drop for turn 1 (its `endTurn()` skips the
+  reset of `statsLoweredThisTurn` when it makes turn 1), which would make
+  turn 1 twice turn 2. The test's expectation is wrong under either
+  reading. Whether turn 1 should be boosted is a difference between
+  expansion and Showdown, the same on the GBA build, not this port's.
 - "Lash Out damage is boosted by Cotton Down activation in doubles"
   (`lash_out.c:119`): 150 on turn 1 (Cotton Down's drop that turn), 76 on
   turn 2; `EXPECT_MUL_EQ`'s operands are the wrong way round.

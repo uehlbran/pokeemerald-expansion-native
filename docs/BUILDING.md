@@ -71,7 +71,9 @@ with expansion's test suite linked in;
 UndefinedBehaviorSanitizer on everything (expansion's objects recover and
 report every finding with `ASAN_OPTIONS=halt_on_error=0`; the platform
 layer aborts at the first). The platform layer's own unit tests, always
-sanitized:
+sanitized (a few are compiled against expansion's headers, which include
+headers the build generates: after a build of the game, or in a fresh clone
+after `make -f make_tools.mk` and `make -f Makefile.native generated`):
 
 ```
 make -C platform test BITS=32

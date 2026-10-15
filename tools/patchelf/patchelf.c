@@ -482,7 +482,7 @@ static bool patch_macho(char *f, size_t file_size, int argc, char *argv[])
     {
         if (at > commands_end - LOAD_COMMAND_MIN_SIZE)
         {
-            fprintf(stderr, "a load command is outside the load commands\n");
+            fprintf(stderr, "a load command's header is past the load commands\n");
             return false;
         }
         uint32_t command = read_le(f + at, 4);
