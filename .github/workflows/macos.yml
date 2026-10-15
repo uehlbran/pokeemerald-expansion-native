@@ -1,5 +1,5 @@
-# The macOS port's gates (milestone 8, tasks M2 to M5; docs/BUILDING.md,
-# "macOS"). The build runs on a Mac from a fresh clone with Homebrew's tools
+# The macOS port's gates (docs/BUILDING.md, "macOS"). The build runs on a
+# Mac from a fresh clone with Homebrew's tools
 # (.github/actions/macos-setup), on macos-15-intel and no other label: the
 # executable is x86_64 (docs/DECISIONS.md, "macOS ships as x86_64 under
 # Rosetta", and "macOS CI runs on macos-15-intel only"). Linux jobs make what
@@ -46,8 +46,8 @@
 # reaches main; at the time limits a night costs up to 2,340 billed minutes
 # on a private repository (the three macOS jobs' 220 minutes at ten times,
 # the Linux jobs' 140), and nothing on a public one; whether it stays
-# nightly is the owner's call at the merge (docs/DECISIONS.md, "The macOS
-# port waits for its first runs on a Mac"). The time limits are estimates
+# nightly is decided when this port is merged (docs/DECISIONS.md, "The
+# macOS port waits for its first runs on a Mac"). The time limits are estimates
 # from the Linux and Windows jobs: no run has measured this workflow yet
 # (that entry lists what its first run must show).
 name: macos

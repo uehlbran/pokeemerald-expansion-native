@@ -172,7 +172,7 @@ LAYOUT_OBJS := $(LAYOUT_FIRST_OBJS) $(LAYOUT_LAST_OBJS)
 # cannot weaken them: leaks detected, no suppressions file, UBSan backtraces.
 # Apple's AddressSanitizer for x86_64 macOS has no LeakSanitizer: with
 # detect_leaks=1 it aborts at start-up ("detect_leaks is not supported on
-# this platform", probe M2, research/probes/README.md), so on macOS the leak
+# this platform", measured on macos-15-intel), so on macOS the leak
 # check is left out, the unit tests' one sanitizer difference
 # (docs/DECISIONS.md, "The sanitizers on macOS"); every leak the tests could
 # show is checked on Linux.

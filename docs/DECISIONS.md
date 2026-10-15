@@ -905,12 +905,12 @@ matters, the rebased memory model is the work to plan, with this entry
 and "Native Apple silicon: the spike's findings" as the starting point; nothing else in
 the port depends on the choice.
 
-Not yet shown (2026-10-15, the final review of the port): the x86_64 game on
-an Apple-silicon Mac under Rosetta 2. Probe M0 showed the layout there (61 of
-61 checks, 100 of 100 starts); the game itself has not run there. CI does
-not check it (only `macos-15-intel` runs this port's jobs: "macOS CI runs on
-macos-15-intel only"); it is on the owner's hand-check list on a Mac ("The
-macOS port waits for its first runs on a Mac", run 3): Rosetta 2, an x86_64
+Not yet shown (2026-10-15): the x86_64 game on an Apple-silicon Mac under
+Rosetta 2. Probe M0 showed the layout there (61 of 61 checks, 100 of 100
+starts); the game itself has not run there. CI does not check it (only
+`macos-15-intel` runs this port's jobs: "macOS CI runs on macos-15-intel
+only"); it is a check by hand on such a Mac ("The macOS port waits for its
+first runs on a Mac", run 3): Rosetta 2, an x86_64
 Homebrew in `/usr/local`, the unit tests built and run as x86_64,
 `tools/build-native.sh --os macos` under `arch -x86_64`, and the opening
 replay, including its divisions by zero (`FPE_INTDIV` with the DIV at the
@@ -1898,16 +1898,15 @@ around 2027, so the native Apple-silicon question (the
 spike) is no longer about speed on newer Macs: it decides whether macOS stays
 supported and tested after 2027 at all. The spike's report weighs it so.
 
-Amended after the first review of the port, and the amendment withdrawn at
-the final review: a job, `rosetta`, ran on `macos-latest` (arm64) to show
-the x86_64 build on Apple silicon (an x86_64 Homebrew in `/usr/local`
-under Rosetta 2, the unit tests built and run as x86_64, the game built by
-`tools/build-native.sh --os macos` under `arch -x86_64`, the opening
-replay). The owner's rule for this port is the label `macos-15-intel` and
+Amended, then withdrawn: a job, `rosetta`, once ran on `macos-latest`
+(arm64) to show the x86_64 build on Apple silicon (an x86_64 Homebrew in
+`/usr/local` under Rosetta 2, the unit tests built and run as x86_64, the
+game built by `tools/build-native.sh --os macos` under `arch -x86_64`, the
+opening replay). The rule for this port is the label `macos-15-intel` and
 nothing else, and the job also installed Homebrew from the head of its
 install repository at every run, so it is gone with that install. The
-Rosetta check is the owner's, by hand on an Apple-silicon Mac ("The macOS
-port waits for its first runs on a Mac", run 3), and is noted with the
+Rosetta check is done by hand on an Apple-silicon Mac ("The macOS port
+waits for its first runs on a Mac", run 3), and is noted with the
 Apple-silicon decision ("macOS ships as x86_64 under Rosetta").
 
 ## 2026-10-15: Steam Deck: controller functions, fullscreen and the package
@@ -2037,8 +2036,8 @@ address, mapped by the kernel before any code runs; names for the regions'
 bounds and the soft reset's brackets; the regions' sections in a fixed order;
 an image at 0x40000000 whose code ends below the script tag's 0x42000000.
 Probe M0 showed ld64 builds such an image and macOS loads it unslid (100 of
-100 starts), and probe M2 answered how the rest can be said
-(`research/probes/README.md`). The choices:
+100 starts), and probe M2, a link and toolchain check on `macos-15-intel`,
+answered how the rest can be said. The choices:
 
 - **Each region a segment, placed with `-segaddr`**, its section declared
   zero-filled in `platform/gba_regions.macho.s`, in a non-PIE image
@@ -2134,7 +2133,7 @@ reported the save written could lose it. `host_file_flush` on macOS is
 `fsync` where the file system refuses it (some network and FAT volumes),
 which is then the best the system offers: on `ENOTSUP`, `ENOTTY` and
 `EINVAL` only. Any other error (`EIO` from the drive, say) is reported, not
-covered by an `fsync` that may succeed (review: the first version fell back on
+covered by an `fsync` that may succeed (an earlier version fell back on
 every error but `EBADF`; SQLite falls back on any, which reports a failed
 flush as a success). The cost, measured on the
 runner's APFS volume (probe M2): 4.5 to 24 ms for the 128 KiB save against
@@ -2151,8 +2150,8 @@ there, the place Apple's File System Programming Guide gives an
 application's own files, and portable mode is the executable's directory
 (`SDL_GetBasePath`). The alternatives were `~/Documents` (visible and synced
 to iCloud, wrong for a save the game owns) and the XDG directories Linux
-uses (not where a Mac user looks). Two things are left to the packaging
-task: in an `.app` bundle `SDL_GetBasePath` names the bundle's `Resources`
+uses (not where a Mac user looks). Two things are left to the packaging:
+in an `.app` bundle `SDL_GetBasePath` names the bundle's `Resources`
 folder, which is inside the signed bundle, so portable mode should not be
 offered there; and the replays pass `--save` and `--rtc-offset`, so none of
 them reads the per-user directory: the macOS workflow checks the path
@@ -2209,8 +2208,8 @@ GCC's on Linux in four ways, each handled where it arises:
   `pointer-overflow` in its C form (arithmetic on a null pointer). The
   sanitized replays of a clang build on Linux reported 8 sites in
   expansion's code, and nothing else; at first both checks were turned off
-  for every expansion object, which review called what it was, 8 defects
-  hidden and any future one with them. Now six are fixed under the guard
+  for every expansion object, which hid the 8 defects and any future one
+  with them. Now six are fixed under the guard
   (`src/decompress.c` three times, `src/field_player_avatar.c`,
   `src/event_object_movement.c`, `src/save.c`), and three objects, where one
   call takes functions of many types from a table that cannot say which, are
@@ -2230,9 +2229,9 @@ GCC's on Linux in four ways, each handled where it arises:
 - **Where the writable data lies.** Expansion asks whether an address is in
   EWRAM by its bits 24-27 (`src/librfu_rfu.c`), which in the image are 2 for
   0x42000000-0x42FFFFFF. The sanitized builds' read-only data passes
-  0x42000000 and their writable data followed it there: review saw
-  `gRfuAPIBuffer` refused as "in EWRAM" in a clang build on Linux and the
-  game die in `InitRFU`. The sanitized builds now link their writable data
+  0x42000000 and their writable data followed it there: a clang build on
+  Linux had `gRfuAPIBuffer` refused as "in EWRAM" and the game die in
+  `InitRFU`. The sanitized builds now link their writable data
   from 0x43000000 (`platform/target.mk`, `GBA_SANITIZED_LAYOUT_LDFLAGS`:
   `gba_writable_data_floor` on Linux, `-segaddr __DATA` on macOS), and every
   link check refuses writable data in such a window (`gba_regions.ld`'s
@@ -2273,9 +2272,9 @@ were undefined behaviour in expansion's test harness, now fixed:
   (`HP_BAR(..., captureDamage: &damage)`) made the runner write into a
   variable of a call that had returned, which a later call read from the
   same stack slot. `-mllvm -disable-licm-promotion` made clang's code read it
-  as GCC's does, for the two Beat Up results that showed it; review showed
-  the cause, undefined behaviour in expansion's test harness that one flag
-  cannot cover (a 15-line reproducer reads 0 at clang -O2 with or without
+  as GCC's does, for the two Beat Up results that showed it; the cause is
+  undefined behaviour in expansion's test harness that one flag cannot
+  cover (a 15-line reproducer reads 0 at clang -O2 with or without
   it). The flag is gone: natively the runner keeps a capture's value and
   runs SCENE again at the start of THEN's call, which writes it into that
   call's variable (`test/test_runner_battle.c`, "A capture";
@@ -2346,22 +2345,21 @@ Nothing of the port has run on macOS beyond probes M0 and M2. The macOS
 workflow's first runs (38714839300, and 38717390655 after a push) were
 refused before any job started: "recent account payments have failed or your
 spending limit needs to be increased", which stopped every job on the account
-that night, the Windows nightly's too. Only the owner can change that, so the
-branch was finished and rehearsed on Linux (a clang build of the game passes
+that night, the Windows nightly's too. So the branch was finished and
+rehearsed on Linux (a clang build of the game passes
 both replays and equals GCC's suite, plain and sanitized, reproducible from
 the tree: docs/BUILDING.md, "The clang rehearsal on Linux"; every game and
 test source, filtered for Mach-O, compiles for macOS; the test objects' event
 scripts go through their whole pipeline; patchelf's Mach-O path runs on
 clang's Mach-O objects).
 
-**The branch is parked.** `work/macos` stays unmerged, waiting for a run of
-the full macOS gate on `macos-15-intel` (run 1 below), which needs GitHub
-Actions back: the owner's ruling of 2026-10-15 ("The owner's rulings of the
-morning after the night run", 1) leaves Actions off for now. Until then the
-branch only follows `main`, by merges (never a rebase or a force-push), with
-the full Linux gate on each merge. Merging it is the owner's call, once the
-account's billing is restored and run 1 has shown everything listed under
-it. The merge also decides the nightly: `macos.yml`'s schedule is left as
+**The branch waits.** `work/macos` stays unmerged, waiting for a run of the
+full macOS gate on `macos-15-intel` (run 1 below), which needs GitHub
+Actions running again on the account. Until then the branch only follows
+`main`, by merges (never a rebase or a force-push), with the full Linux gate
+on each merge. Merging it is a decision for the project's maintainer, once
+run 1 has shown everything listed under it. The merge also decides the
+nightly: `macos.yml`'s schedule is left as
 it is (a schedule fires only on the default branch, so it starts the night
 the file reaches `main`), and at its jobs' time limits a night costs up to
 2,340 billed minutes on a private repository (the three macOS jobs' 220
@@ -2419,7 +2417,7 @@ in this order:
      uploads the game, ever: "No workflow uploads the game"; the
      platform gate's `check_workflow_uploads.py` passes on this file).
 2. The same workflow on `main` after the merge, and its nightly from then on.
-3. The owner's own Mac, Intel or Apple silicon under Rosetta: the build from a
+3. A Mac by hand, Intel or Apple silicon under Rosetta: the build from a
    fresh clone with the Homebrew line of `docs/BUILDING.md`, the game in a
    window with sound, a save and its reload, and the save directory under
    `~/Library/Application Support`. On an Apple-silicon Mac this is also

@@ -230,12 +230,11 @@ are wrong:
 | "Lash Out damage is boosted on turn 1 by switch in abilities" (2 of 4, Intimidate) | `lash_out.c` | `EXPECT_MUL_EQ(36, 1.33, 36)` | the same attack drop |
 | "Lash Out damage is boosted by Cotton Down activation in doubles" (2 of 2) | `lash_out.c` | `EXPECT_MUL_EQ(150, 2.0, 76)` | 150 then 76 is the boost on turn 1; the check's operands are the wrong way round |
 
-An upstream report would say: a capture into a variable with an initialiser
-is lost on the GBA, so these tests check nothing; once captures reach THEN,
-five fail on their expectations and two (Substitute's and Shed Tail's cost)
-on a SCENE that reads `gParties` before the battle has copied the party in,
-whose correction is the maximum HP of GIVEN's party (drafted here, not
-posted; upstream reports go out only with the owner's approval).
+For upstream: a capture into a variable with an initialiser is lost on the
+GBA, so these tests check nothing; once captures reach THEN, five fail on
+their expectations and two (Substitute's and Shed Tail's cost) on a SCENE
+that reads `gParties` before the battle has copied the party in, whose
+correction is the maximum HP of GIVEN's party (not reported upstream yet).
 
 Not a capture, and left as it is: "Dynamax: Dynamax expires after three
 turns and correctly converts HP according to Dynamax Level" reads
@@ -253,9 +252,9 @@ The sanitized build made with clang (the macOS build's compiler, rehearsed
 on Linux) checks two things GCC's UndefinedBehaviorSanitizer does not: a
 call through a pointer of another function type (`function`), and
 arithmetic on a null pointer (`pointer-overflow`, which GCC's check of the
-same name leaves out for a zero offset). Review ran the opening replay of
-that build without `-fno-sanitize=function,pointer-overflow`, which had hidden
-both for every expansion object, and found 8 sites in expansion's code; the
+same name leaves out for a zero offset). The opening replay of that build
+without `-fno-sanitize=function,pointer-overflow`, which had hidden both for
+every expansion object, finds 8 sites in expansion's code; the
 debug menu replay adds a ninth (`src/debug.c`). Each, by the site the
 sanitizer names (the line numbers are upstream's):
 
@@ -306,8 +305,8 @@ run compared with it test by test.
 | 11 | 5862 | 5405 | 18 | 9 | 421 | 0 | 0 | after merging main (the script-tag untagging): class 4 closed; per test equal to the GBA baseline but for the 9 benchmarks; 44 s |
 | SANITIZE=1 | 5862 | 5402 | 18 | 9 | 421 | 3 | 1 | the sanitized run below, before the palettes were padded: 3 CRASH (fatal AddressSanitizer reports), 9 assumption failures; 78 s |
 | SANITIZE=1 | 5862 | 5405 | 18 | 9 | 421 | 0 | 0 | eight battle-animation palettes padded; per test the GBA baseline but for the 9 benchmarks; 76 s |
-| M8 review, 64 bits (GCC, and clang plain and sanitized: the same, test by test) | 5884 | 5417 | 28 (25 KNOWN_FAILING, 3 expected ERROR) | 9 | 421 | 0 | 0 | the capture replay (class 11): 7 tests KNOWN_FAILING natively; 9 native tests of the replay (`test/capture_replay.c`), 3 of which expect ERROR and are counted with the known failures; the 13 native-only tests of earlier milestones; 9 assumption failures (class 8) |
-| M8 final review, 64 and 32 bits, and 64 sanitized (GCC) | 5884 | 5419 | 26 (23 KNOWN_FAILING, 3 expected ERROR) | 9 | 421 | 0 | 0 | class 11: Substitute's and Shed Tail's cost tests corrected natively and passing, the 5 others KNOWN_FAILING; against main's 5875 (5418 PASS, 18 known failing) only the 9 replay self-tests and those 5 differ; three sanitized result lines cut by sanitizer reports, each PASS on the next line |
+| M8, the capture replay, 64 bits (GCC, and clang plain and sanitized: the same, test by test) | 5884 | 5417 | 28 (25 KNOWN_FAILING, 3 expected ERROR) | 9 | 421 | 0 | 0 | the capture replay (class 11): 7 tests KNOWN_FAILING natively; 9 native tests of the replay (`test/capture_replay.c`), 3 of which expect ERROR and are counted with the known failures; the 13 native-only tests of earlier milestones; 9 assumption failures (class 8) |
+| M8, two cost tests corrected, 64 and 32 bits, and 64 sanitized (GCC; clang the same) | 5884 | 5419 | 26 (23 KNOWN_FAILING, 3 expected ERROR) | 9 | 421 | 0 | 0 | class 11: Substitute's and Shed Tail's cost tests corrected natively and passing, the 5 others KNOWN_FAILING; against main's 5875 (5418 PASS, 18 known failing) only the 9 replay self-tests and those 5 differ; three sanitized result lines cut by sanitizer reports, each PASS on the next line |
 
 ## Notes from review
 

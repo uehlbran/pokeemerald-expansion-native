@@ -3,7 +3,8 @@
  * counter is at a division by zero (arm_division.h), with macOS's system call
  * numbers. Where Linux's si_code says SI_USER (../linux), macOS's says
  * FPE_INTDIV for a SIGFPE that kill or raise sends, as for a divide error
- * (measured on macOS 15: research/probes/README.md, probe M2), so a fault
+ * (measured on macOS 15; docs/DECISIONS.md, "On macOS a SIGFPE sent by kill
+ * looks like a divide error"), so a fault
  * handler cannot tell them apart, and arm_division completes the division at
  * the program counter as the processor would have faulted on it: with
  * libgcc's result, here 0 / 0, which is 0, and the program goes on past it.

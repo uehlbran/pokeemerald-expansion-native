@@ -103,7 +103,8 @@ uintptr_t host_fault_general_register(const struct host_fault *fault, unsigned n
 /* --- host_fault: which SIGFPE is a divide error ------------------------------------ */
 
 /* macOS gives a SIGFPE that kill or raise sends FPE_INTDIV too, as it gives a
- * divide error (probe M2, research/probes/README.md), so si_code alone cannot
+ * divide error (measured on macos-15-intel; docs/DECISIONS.md, "On macOS a
+ * SIGFPE sent by kill looks like a divide error"), so si_code alone cannot
  * tell them apart. A divide error is also a DIV or IDIV at the program
  * counter, where the processor stopped (x86_divide.h). A SIGFPE sent while the
  * program counter happens to be at such an instruction still reads as a
@@ -120,7 +121,7 @@ bool host_fault_is_divide_error(const struct host_fault *fault)
 /* --- host_process: the executable's path ------------------------------------------ */
 
 /* The path dyld recorded when the program started, absolute even when it was
- * started by a relative one (measured: research/probes/README.md, probe M2).
+ * started by a relative one (measured on macos-15-intel).
  * macOS has no /proc/self/exe, and _NSGetExecutablePath is not on
  * signal-safety(7)'s list, so it is read once, by a constructor, before main
  * and before any handler exists; the crash handler's execve then reads this

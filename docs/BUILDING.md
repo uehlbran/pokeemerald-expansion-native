@@ -536,8 +536,9 @@ allocations below the image end near it, so the tests' fixed page is
 
 ## macOS (built on a Mac)
 
-Nothing below has run on a Mac yet beyond the two probes
-(`research/probes/README.md`, probes M0 and M2): the macOS workflow's first
+Nothing below has run on a Mac yet beyond two early checks of the loader and
+the link on a macOS runner (probes M0 and M2, whose results
+`docs/DECISIONS.md` records where each is used): the macOS workflow's first
 runs were refused by GitHub before any job started (the account's billing,
 2026-10-15), so the build, the unit tests and the gates are written and
 rehearsed on Linux only. The rehearsal (below, "The clang rehearsal on
@@ -547,9 +548,9 @@ and its suite equals GCC's test by test, plain and sanitized; every game and tes
 converted and checked end to end. `docs/DECISIONS.md`, "The macOS port waits
 for its first runs on a Mac", lists what the first runs must show.
 
-The branch that carries the port, `work/macos`, is parked: unmerged until a
-run of `macos.yml`, the full macOS gate, is green on `macos-15-intel`.
-Merging it is the owner's call once GitHub Actions' billing is restored.
+The branch that carries the port, `work/macos`, waits unmerged for a run of
+`macos.yml`, the full macOS gate, on `macos-15-intel`. Merging it is a
+decision for the project's maintainer once that run is green.
 
 The macOS executable is x86_64 only (`docs/DECISIONS.md`, "macOS ships as
 x86_64 under Rosetta; arm64 is not started"): an Intel Mac runs it, and an
@@ -666,7 +667,8 @@ runs on a Mac").
 `windows.yml`, and by hand, `gh workflow run macos.yml`) runs on
 `macos-15-intel` and no other label (`docs/DECISIONS.md`, "macOS CI runs on
 macos-15-intel only"; the x86_64 build under Rosetta 2 on Apple silicon is
-the owner's check by hand): the unit tests under ASan and UBSan and under TSan, clang-tidy on the
+checked by hand on such a Mac): the unit tests under ASan and UBSan and under
+TSan, clang-tidy on the
 macOS sources and patchelf's Mach-O tests; the game plain and sanitized, its
 segments and libraries (`otool`), both replays of each and the macOS stage of
 the cross-OS save gate (`tests/smoke/run_cross_os.sh load` on the save the
@@ -678,8 +680,8 @@ times a Linux minute, so the jobs are ordered for an early failure to stop the
 rest: the game and the suite start only after the unit tests pass. At the
 jobs' time limits a night costs up to 2,340 billed minutes on a private
 repository and nothing on a public one; the schedule fires only on the
-default branch, and whether it stays nightly is the owner's call when the
-branch merges. It uploads no game, ever (`docs/DECISIONS.md`, "No workflow
+default branch, and whether it stays nightly is decided when the port is
+merged. It uploads no game, ever (`docs/DECISIONS.md`, "No workflow
 uploads the game"): each job builds what it runs (`compare`
 builds the Linux game again for the cross-OS gate's last stage), and only
 text and the cross-OS stages' `pokeemerald.sav` and `pokeemerald.rtc` pass

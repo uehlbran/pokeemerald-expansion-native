@@ -110,10 +110,10 @@ GUI_LDFLAGS :=
 target_resources =
 
 # The fixed-address image probe M0 found ld64 builds and the kernel loads
-# with no slide (research/probes/README.md): no PIE, a one-page __PAGEZERO
-# instead of the 4 GiB one (so that the GBA's addresses are free), the image
-# at 0x40000000 as on Linux, and no chained fixups, without which ld64
-# ignores the image base. ld64 warns that -no_pie and a small __PAGEZERO are
+# with no slide (docs/DECISIONS.md, "The macOS executable's layout"): no PIE,
+# a one-page __PAGEZERO instead of the 4 GiB one (so that the GBA's addresses
+# are free), the image at 0x40000000 as on Linux, and no chained fixups,
+# without which ld64 ignores the image base. ld64 warns that -no_pie and a small __PAGEZERO are
 # deprecated for new macOS versions; for x86_64 they still work (probe M0:
 # 100 of 100 starts on macos-15-intel).
 MACHO_IMAGE_LDFLAGS := -Wl,-no_pie -Wl,-pagezero_size,0x1000 -Wl,-image_base,0x40000000 -Wl,-no_fixup_chains

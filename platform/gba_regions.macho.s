@@ -11,7 +11,8 @@
  *  - each region is a segment of its own, with its sections declared below;
  *    the link places each segment at its address with -segaddr, in a non-PIE
  *    image at 0x40000000 with a one-page __PAGEZERO and no chained fixups
- *    (with them ld64 ignores the image base; research/probes/README.md);
+ *    (with them ld64 ignores the image base; docs/DECISIONS.md, "The macOS
+ *    executable's layout");
  *  - the names gba_regions.ld defines (gba_linked_ewram_start, ...) are
  *    ld64's own bounds of a section or a segment (section$start$SEG$SECT,
  *    segment$end$SEG), given those names by gba_regions.macho.aliases, the

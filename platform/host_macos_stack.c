@@ -11,7 +11,7 @@
  * Why not ucontext, which Linux uses: macOS has deprecated getcontext,
  * makecontext and swapcontext since 10.6, and <ucontext.h> refuses to compile
  * without _XOPEN_SOURCE; under the platform's -Werror each call is an error
- * (probe M2, research/probes/README.md), and docs/C-RULES.md does not let a
+ * (measured on macos-15-intel), and docs/C-RULES.md does not let a
  * warning be silenced. So the switch is written here, as Windows' is
  * (host_windows_stack.c), smaller for this ABI: host_macos_stack_enter saves
  * the caller's callee-saved registers on the caller's stack, moves RSP to the

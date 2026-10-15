@@ -14,7 +14,7 @@ unless:
   * the file is a 64-bit x86-64 executable (MH_EXECUTE), not position
     independent (no MH_PIE) and without chained fixups (no
     LC_DYLD_CHAINED_FIXUPS), with which ld64 ignores the image base
-    (research/probes/README.md, probe M0);
+    (docs/DECISIONS.md, "The macOS executable's layout");
   * __PAGEZERO is one 4 KiB page, so that the GBA's addresses are free, and
     __TEXT starts at 0x40000000; every section that holds instructions
     (S_ATTR_PURE_INSTRUCTIONS or S_ATTR_SOME_INSTRUCTIONS: __text, __stubs)
