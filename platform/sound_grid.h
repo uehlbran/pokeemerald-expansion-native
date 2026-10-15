@@ -75,7 +75,9 @@ struct sound_grid_frame sound_grid_next_frame(struct sound_grid *grid);
  * holds: 1254 for 224). The last cycle of a span is the cycle the PSG's
  * sample is taken at too (the channels' state after the span), and the
  * last span ends inside the frame, so the lookup never reaches past the
- * FIFO frame. fifo_samples must be at least 1. */
+ * FIFO frame. frame is one sound_grid_next_frame returned (carried below
+ * 512, its sample count from it), fifo_samples at least 1, out room for
+ * frame->samples. */
 void sound_grid_hold_fifo(const struct sound_grid_frame *frame, const int8_t *fifo, size_t fifo_samples, int8_t *out);
 
 #endif /* PLATFORM_SOUND_GRID_H */
