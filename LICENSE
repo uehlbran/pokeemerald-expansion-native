@@ -3,21 +3,21 @@ MIT License (scoped)
 Copyright (c) 2026 pokeemerald-expansion-native contributors
 
 Scope. This license covers only the files this project adds on top of
-pokeemerald-expansion (the "Platform Layer"): everything under
-platform/ and tests/, the native build files (Makefile.native,
-tools/build-native.sh and the files they include that are not part of
-upstream pokeemerald-expansion), the native input-replay and gate scripts,
-the workflows native.yml, windows.yml and release.yml, the actions under
-.github/actions/ and the files under .github/release/, .clang-format and
-.clang-tidy, the files this project added under test/ (crit_odds.c,
-gba_table_reads.c, malloc.c, siirtc.c and trainer_util.c), and the documents
-README.md, CONTRIBUTING.md, docs/ARCHITECTURE.md, docs/BUILDING.md,
-docs/C-RULES.md, docs/DECISIONS.md, docs/RESEARCH.md, docs/RUNNING.md,
-docs/UPGRADING.md, docs/UPSTREAM_MODIFICATIONS.md, docs/research/ and the
-first section of CREDITS.md. It also covers the modifications this
-project made to upstream files, which are listed in
-docs/UPSTREAM_MODIFICATIONS.md, to the extent those modifications are
-separable from the upstream code.
+pokeemerald-expansion (the "Platform Layer"): everything under platform/
+and tests/, the native build files (Makefile.native, tools/build-native.sh
+and the files they include that are not part of upstream
+pokeemerald-expansion), the native input-replay and gate scripts, the
+workflows native.yml, windows.yml and release.yml, the actions under
+.github/actions/, .github/ISSUE_TEMPLATE/ and the files under
+.github/release/, .clang-format and .clang-tidy, the files this project
+added under test/ (crit_odds.c, gba_table_reads.c, malloc.c, siirtc.c and
+trainer_util.c), and the documents README.md, CONTRIBUTING.md,
+docs/ARCHITECTURE.md, docs/BUILDING.md, docs/C-RULES.md,
+docs/DECISIONS.md, docs/RESEARCH.md, docs/RUNNING.md, docs/UPGRADING.md,
+docs/UPSTREAM_MODIFICATIONS.md, docs/research/ and the first section of
+CREDITS.md. It also covers the modifications this project made to upstream
+files, which are listed in docs/UPSTREAM_MODIFICATIONS.md, to the extent
+those modifications are separable from the upstream code.
 
 It does not cover, and this project claims no rights over: the
 pret/pokeemerald decompilation and the pokeemerald-expansion project and
