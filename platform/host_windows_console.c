@@ -55,11 +55,17 @@ static FILE *stream_of(enum host_stream which)
 
 bool host_console_attach_parent(void)
 {
+    static const enum host_stream streams[] = {HOST_STREAM_OUT, HOST_STREAM_ERR};
+    /* Asked before the attach: joining a console may give the process
+     * standard handles (the C runtime's descriptors stay as they were), and
+     * a stream is mended by what it was, not by what the handles are after. */
+    bool missing[sizeof streams / sizeof streams[0]];
+    for (size_t i = 0; i < sizeof streams / sizeof streams[0]; i++)
+        missing[i] = host_console_stream_kind(streams[i]) == HOST_STREAM_NONE;
     if (!AttachConsole(ATTACH_PARENT_PROCESS))
         return false;
-    static const enum host_stream streams[] = {HOST_STREAM_OUT, HOST_STREAM_ERR};
     for (size_t i = 0; i < sizeof streams / sizeof streams[0]; i++) {
-        if (host_console_stream_kind(streams[i]) != HOST_STREAM_NONE)
+        if (!missing[i])
             continue;
         FILE *const stream = stream_of(streams[i]);
         // cppcheck-suppress leakReturnValNotUsed ; freopen gives back the stream it was given, which stays stdout or stderr

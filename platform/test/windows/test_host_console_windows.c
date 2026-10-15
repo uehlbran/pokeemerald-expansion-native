@@ -37,13 +37,14 @@
 /* The codes the "attach" child ends with. */
 #define ATTACH_REFUSED 20u
 #define ATTACH_WROTE 21u
-#define ATTACH_WRITE_FAILED 22u
+#define ATTACH_OUT_FAILED 22u
+#define ATTACH_ERR_FAILED 24u
 #define CHILD_FAILED 23u
 
 /* The codes the "log" child ends with. */
 #define LOG_WRITTEN 30u
 #define LOG_NOT_OPENED 31u
-#define LOG_WRONG_DESCRIPTORS 32u
+#define LOG_WRONG_DESCRIPTORS 100u
 #define LOG_WRITE_FAILED 33u
 
 /* How long a child may take. */
@@ -66,12 +67,23 @@ static unsigned attach_and_write(void)
 {
     if (!host_console_attach_parent())
         return ATTACH_REFUSED;
-    const bool wrote = fputs("console test: standard output\n", stdout) >= 0 && fflush(stdout) == 0
-                       && fputs("console test: standard error\n", stderr) >= 0 && fflush(stderr) == 0;
-    return wrote ? ATTACH_WROTE : ATTACH_WRITE_FAILED;
+    if (fputs("console test: standard output\n", stdout) < 0 || fflush(stdout) != 0)
+        return ATTACH_OUT_FAILED;
+    if (fputs("console test: standard error\n", stderr) < 0 || fflush(stderr) != 0)
+        return ATTACH_ERR_FAILED;
+    return ATTACH_WROTE;
 }
 
 static bool run_self(const char *body, HANDLE out, HANDLE err, DWORD flags, uint32_t *code);
+
+/* The three descriptors as one code above LOG_WRONG_DESCRIPTORS, each from -2 to 2 as 0 to 4, so that a failure shows them. */
+static unsigned descriptors_code(void)
+{
+    const int in = _fileno(stdin);
+    const int out = _fileno(stdout);
+    const int err = _fileno(stderr);
+    return (unsigned)((in + 2) * 25 + (out + 2) * 5 + (err + 2));
+}
 
 /* What a game started by Explorer does with LOG mode: opens its log on the
  * standard streams, which it does not have, and prints through the C
@@ -85,7 +97,7 @@ static unsigned open_the_log_and_write(void)
     if (options.data_dir == NULL || console_open_log(&options, data_dir_sdl_host(), &streams, path, sizeof path) != 0)
         return LOG_NOT_OPENED;
     if (_fileno(stdin) != 0 || _fileno(stdout) != 1 || _fileno(stderr) != 2)
-        return LOG_WRONG_DESCRIPTORS;
+        return LOG_WRONG_DESCRIPTORS + descriptors_code();
     if (fputs("through stdout\n", stdout) < 0 || fputs("through stderr\n", stderr) < 0
         || _write(2, raw, sizeof raw - 1u) != (int)(sizeof raw - 1u))
         return LOG_WRITE_FAILED;
