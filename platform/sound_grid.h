@@ -12,9 +12,16 @@
  * 2^24 / 32768 = 512 CPU cycles. The host plays that grid: the PSG is
  * generated on it (psg.c, "RESAMPLING"), and the FIFO frame the m4a engine
  * mixed is read on it by zero-order hold on cycle time, which is what the
- * DAC and the PWM stage do. Emerald's SoundInit selects the next mode, 65536
- * Hz (src/m4a.c: SOUNDBIAS_H bits 6-7 = 1); this grid stays at GBATEK's
- * default, as docs/DECISIONS.md records.
+ * DAC and the PWM stage do. The tone channels play at 131072 / (2048 - n)
+ * Hz (square) and 65536 / (2048 - n) Hz (wave), so on this grid their
+ * periods are whole numbers of quarter samples and what folds lands on
+ * their own harmonics or quarter-harmonics, never between them.
+ *
+ * Emerald itself selects the next mode, 8 bits at 65536 Hz (src/m4a.c:
+ * m4aSoundInit asks for SOUND_MODE_DA_BIT_8, SoundInit writes SOUNDBIAS_H
+ * bits 6-7 = 1); this grid stays at GBATEK's default, as docs/DECISIONS.md
+ * records. SOUND_GRID_RATE_HZ is the grid's one constant (sound_mix.c's DC
+ * pole is set for its 32768 Hz).
  *
  * Pure: no state of its own, no register access; the frame loop keeps the
  * grid's position and passes the FIFO frame in.

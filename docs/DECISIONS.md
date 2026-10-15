@@ -270,7 +270,11 @@ grid GBATEK's PWM stage samples on by default (SOUNDBIAS, "Resampling to
 samples on that grid, 548 or 549 with the remaining cycles carried
 (`platform/sound_grid.h`), and the PSG is asked for exactly that many, so it
 is point-sampled where the PWM stage samples it and folds only what the
-hardware folds at that setting. The FIFO frame is read on the same grid by
+hardware folds at that setting: the square and wave channels' frequencies
+are 131072 / (2048 - n) and 65536 / (2048 - n) Hz, so their periods are
+whole numbers of quarter samples on this grid and their folded harmonics
+land on harmonics (or quarter-harmonics), not between them as at 13379 Hz.
+The FIFO frame is read on the same grid by
 zero-order hold on cycle time: each engine sample held for its timer
 interval (1254 cycles for 224 a frame) and taken at the last cycle of each
 output sample's span, which is what the FIFO's DAC and the PWM stage do. So
@@ -278,11 +282,12 @@ the engine's other rates (SampleFreqSet's table) play too, where the old
 path left them silent. The DC filter's pole moves with the rate (32701/32768,
 the same 11 Hz corner). The A/B recordings of the opening replay, the old
 path against this one, are the ruling's evidence; they hold the game's music
-and are kept outside the repository. Not followed: Emerald's own SoundInit
-selects the next SOUNDBIAS mode, 8 bits at 65536 Hz (`src/m4a.c`,
-SOUNDBIAS_H bits 6-7 = 1), so the console this game runs on samples every
-256 cycles; the grid is one constant, and moving it to 65536 Hz is the
-owner's call.
+and are kept outside the repository. Not followed: Emerald itself selects
+the next SOUNDBIAS mode, 8 bits at 65536 Hz (`src/m4a.c`: m4aSoundInit asks
+for SOUND_MODE_DA_BIT_8 and SoundInit writes SOUNDBIAS_H bits 6-7 = 1), so
+the console this game runs on samples every 256 cycles; the grid is one
+constant (`SOUND_GRID_RATE_HZ`), and moving it to 65536 Hz is the owner's
+call.
 
 ## 2026-10-08: UBSan shift-base is disabled for expansion's objects only
 
