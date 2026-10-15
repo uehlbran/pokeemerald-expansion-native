@@ -358,7 +358,7 @@ usage: pokeemerald-native [options]
 
 A player needs `--keys`, `--version`, `--scale`, `--silent` and perhaps
 `--data-dir`, `--save` and `--rtc-offset`; the rest are for the project's
-tests (`--audio-dump` records what you hear, at the GBA's 32768 Hz, for
+tests (`--audio-dump` records what you hear, at the GBA's 65536 Hz, for
 comparing builds). `--keys` prints this (here run with
 `--data-dir /home/you/pokeemerald-data` and no settings file), and the game then exits:
 

@@ -75,7 +75,9 @@ reference. Vsync is not used for pacing.
 
 Amendment 2026-10-14: audio no longer runs at the engine's rate but at the
 GBA's 32768 Hz PWM grid, the engine's frame read on it (the owner's ruling
-(1); the amendment to "PSG trigger, wave-bank and output-scale rules").
+(1); the amendment to "PSG trigger, wave-bank and output-scale rules");
+amendment 2026-10-15: that grid now runs at 65536 Hz, the same entry's
+second amendment.
 
 ## 2026-10-08: One guard macro, PLATFORM_NATIVE
 
@@ -288,6 +290,38 @@ for SOUND_MODE_DA_BIT_8 and SoundInit writes SOUNDBIAS_H bits 6-7 = 1), so
 the console this game runs on samples every 256 cycles; the grid is one
 constant (`SOUND_GRID_RATE_HZ`), and moving it to 65536 Hz is the owner's
 call.
+
+Amendment 2026-10-15: the grid now runs at 65536 Hz, matching the SOUNDBIAS
+mode Emerald itself selects (item 5 of the rulings of 2026-10-15). What is
+built:
+
+- `SOUND_GRID_CYCLES_PER_SAMPLE` is 256 (SOUNDBIAS bits 14-15 = 1, "8bit /
+  65.536kHz") and `SOUND_GRID_RATE_HZ` is 2^24 / 256 = 65536, so a frame of
+  280896 cycles holds 1097 or 1098 samples (1097.25 on average; four frames
+  are 4389 samples and the grid is back on the frame). Sixty frames are
+  65 835 samples exactly (60 * 280896 / 256) and 3600 frames 3 950 100, with
+  the remainder carried as before.
+- The DC filter's pole keeps the same corner: with R = (fs - 67) / fs the
+  corner fs * (1 - R) / 2pi is 67 / 2pi, 10.7 Hz, at any rate, so R is
+  65469 / 65536 here (it was 32701 / 32768). The pole is derived from the
+  grid's rate in `sound_mix.c`.
+- The queue bound is still four video frames (66.9 ms): 4 * 1098 = 4392
+  stereo frames, 17 568 bytes (it was 2196 and 8784), and the preroll and
+  fast-forward's n-into-one follow the rate unchanged.
+- `--audio-dump` writes the header at 65536 Hz (bytes a second 262 144); a
+  dump of the whole opening replay is 90 659 228 bytes, twice the old one.
+- The device is opened at 65536 Hz with SDL's conversion on
+  (`allowed_changes = 0`): where the driver cannot run at that rate SDL
+  resamples to the driver's, as it did from 32768 Hz, and the obtained spec
+  is compared with the request as before; the dummy driver, which the tests
+  use, accepts it as it is.
+- The A/B, the opening replay on main (32768 Hz) against this build: the
+  replays' dumps and screenshots are identical. In the title second the lead's
+  harmonics 10, 12 and 14 sit at their own frequencies on both grids within
+  1.5 dB, and nothing folds above 16384 Hz any longer: 1.06% of the second's
+  energy (-19.8 dB) is there at 65536 Hz, harmonics that 32768 Hz folded onto
+  lower ones (harmonic 19 at 13246.6 Hz is -80.2 dBFS, against -70.8). The
+  recordings hold the game's music and stay outside the repository.
 
 ## 2026-10-08: UBSan shift-base is disabled for expansion's objects only
 
@@ -2467,8 +2501,9 @@ Asked one at a time on the morning of 2026-10-15, with the night's findings
 5. **The audio grid moves to 65536 Hz**, the rate Emerald itself selects
    (SOUNDBIAS mode 1 in `SoundInit`, the engine's "PWM rate = 65536 Hz"),
    superseding the 32768 Hz of ruling (1) of 2026-10-14, with an A/B
-   recording against the current build as the evidence. Not implemented:
-   stopped with the other new tasks the same morning; a later session.
+   recording against the current build as the evidence. Built: the
+   amendment of 2026-10-15 to the entry "PSG trigger, wave-bank and
+   output-scale rules" has the numbers.
 6. **The macOS package keeps its ad-hoc signature** (`codesign -s -`, no
    identity, no account): the library path rewrite breaks the bundled
    libraries' signatures and an ad-hoc one keeps them loadable; Gatekeeper

@@ -27,7 +27,7 @@
  *     dispatch; VCOUNT stays 161 while the game runs until the next frame,
  *     so SetGpuReg writes through (lcd_status.h).
  *  5. Sound: the frame's samples on the output grid (sound_grid: the GBA's
- *     32768 Hz, 548 or 549 a frame): the frame of the m4a engine's ring the
+ *     65536 Hz, 1097 or 1098 a frame): the frame of the m4a engine's ring the
  *     FIFO DMAs play (m4a_output), at whatever rate the engine mixes, read
  *     on the grid by zero-order hold, and as many PSG samples
  *     (psg_generate), mixed (sound_mix), queued (audio_queue) and, with
@@ -75,11 +75,12 @@
 #include "sound_grid.h"
 
 /* The output's rate: the grid the GBA's PWM stage samples the PSG and the
- * FIFOs on (sound_grid.h; GBATEK SOUNDBIAS, "Resampling to 32.768kHz"), not
+ * FIFOs on (sound_grid.h; GBATEK SOUNDBIAS, "Amplitude Resolution/Sampling
+ * Cycle", mode 1, the mode Emerald selects), not
  * the m4a engine's mixing rate (13379 Hz in Emerald, 224 samples a frame),
  * whose frame is read on this grid. The device and the PSG run at it, one
  * accountant counting the samples of each frame (frame_run, step 5;
- * docs/DECISIONS.md, the owner's ruling (1) of 2026-10-14). */
+ * docs/DECISIONS.md, the audio rate entries of 2026-10-14 and 2026-10-15). */
 #define FRAME_AUDIO_SAMPLE_RATE_HZ SOUND_GRID_RATE_HZ
 
 /* Output channels: the mix is interleaved left, right (GBATEK "GBA Sound
@@ -160,7 +161,7 @@ int frame_exit_status(void);
 int frame_flush_save(void);
 
 /* Starts the PSG on the output grid (psg_init at FRAME_AUDIO_SAMPLE_RATE_HZ):
- * at that rate each of its samples is exactly one 512-cycle span, so the
+ * at that rate each of its samples is exactly one 256-cycle span, so the
  * count frame_run asks it for keeps it on the grid the FIFOs are read on.
  * main's start step for the PSG, at power-on and after a soft reset. Returns
  * 0, or -1 (reported). */

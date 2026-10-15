@@ -480,7 +480,7 @@ input, the save, pacing. `lcd_status` owns `VCOUNT` and `DISPSTAT`'s status
 bits; `VCOUNT` reads 161 between frames (`docs/ARCHITECTURE.md`, "The
 frame"). `m4a_output` finds the frame of the m4a engine's PCM ring the FIFO
 DMAs would play; `sound_grid` counts each frame's samples on the GBA's
-32768 Hz output grid (548 or 549) and reads the FIFO frame on it, at
+65536 Hz output grid (1097 or 1098) and reads the FIFO frame on it, at
 whatever rate the engine mixes; the PSG is generated on the same grid;
 `sound_mix` routes the two FIFOs and the PSG as `SOUNDCNT_H` says, at
 `psg.c`'s scale, and removes the DC offset the GBA's output capacitor

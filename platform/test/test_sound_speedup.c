@@ -69,28 +69,28 @@ PTEST(at_four_times_the_speed_the_channels_stay_apart)
     PT_ASSERT_EQ_INT(stereo[1], -1);
 }
 
-/* Eight frames of the 32768 Hz grid are 4389 samples (548.625 a frame, sound_grid.h): at n
- * times the speed, floor(4389 / n) of them come out in all, as many as the device plays in
+/* Eight frames of the 65536 Hz grid are 8778 samples (1097.25 a frame, sound_grid.h): at n
+ * times the speed, floor(8778 / n) of them come out in all, as many as the device plays in
  * eight / n frame periods. */
 PTEST(a_run_of_grid_frames_at_each_speed_gives_one_in_n)
 {
-    static int16_t stereo[549u * SOUND_SPEEDUP_CHANNELS];
-    static const size_t grid[] = {548, 549, 548, 549, 548, 549, 548, 550};
+    static int16_t stereo[1098u * SOUND_SPEEDUP_CHANNELS];
+    static const size_t grid[] = {1097, 1097, 1097, 1098, 1097, 1097, 1097, 1098};
     for (uint32_t factor = 1; factor <= SOUND_SPEEDUP_MAX_FACTOR; factor++) {
         struct sound_speedup s;
         start(&s, factor);
         size_t in = 0;
         size_t out = 0;
         for (size_t i = 0; i < sizeof grid / sizeof grid[0]; i++) {
-            const size_t frames = grid[i] < 549u ? grid[i] : 549u;
+            const size_t frames = grid[i];
             memset(stereo, 0, sizeof stereo);
             const size_t got = sound_speedup_run(&s, stereo, frames);
             PT_ASSERT(got <= frames);
             in += frames;
             out += got;
         }
-        PT_ASSERT_EQ_U32(in, 4388u);
-        PT_ASSERT_EQ_U32(out, 4388u / factor);
+        PT_ASSERT_EQ_U32(in, 8778u);
+        PT_ASSERT_EQ_U32(out, 8778u / factor);
     }
 }
 

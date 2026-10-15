@@ -1,10 +1,10 @@
 /*
  * sound_grid.c: the output grid and the FIFOs read on it (sound_grid.h).
  *
- * Written from GBATEK "GBA Sound Control Registers" (SOUNDBIAS, "Resampling
- * to 32.768kHz") and "GBA Sound Channel A and B - DMA Sound" (a FIFO's
- * sample plays from one timer overflow to the next), with the frame's length
- * from "LCD Dimensions and Timings". Integer arithmetic only.
+ * Written from GBATEK "GBA Sound Control Registers" (SOUNDBIAS,
+ * "Amplitude Resolution/Sampling Cycle") and "GBA Sound Channel A and B -
+ * DMA Sound" (a FIFO's sample plays from one timer overflow to the next),
+ * with the frame's length from "LCD Dimensions and Timings". Integer arithmetic only.
  */
 #include "sound_grid.h"
 

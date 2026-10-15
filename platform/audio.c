@@ -2,7 +2,7 @@
  * audio.c: the speaker, via SDL2's queue API.
  *
  * Real hardware: the sound mixer's output is a continuous stream at the PWM
- * stage's sampling rate (32768 Hz by default, GBATEK SOUNDBIAS), consumed in
+ * stage's sampling rate (65536 Hz in the mode Emerald selects, GBATEK SOUNDBIAS), consumed in
  * real time; frame.h says what rate the platform opens the device at.
  * Here: a push model, SDL_OpenAudioDevice (not the legacy SDL_OpenAudio)
  * with no callback, and SDL_QueueAudio once per frame, as the reference
@@ -10,8 +10,11 @@
  * unbounded queue, unchecked calls and missing cleanup.
  *
  * Format: signed 16-bit native-endian stereo. allowed_changes = 0 makes SDL
- * convert internally so the obtained spec equals the request; the obtained
- * spec is still compared and a mismatch is an error.
+ * convert internally (an SDL_AudioStream between the queue and the driver)
+ * so the obtained spec equals the request even where the driver or the
+ * hardware only runs at 48000 or 44100 Hz, which most do: the 65536 Hz grid
+ * reaches them resampled by SDL, as 32768 Hz did. The obtained spec is still
+ * compared and a mismatch is an error.
  *
  * Queue bound: the GBA frame period is 280896 cycles at 16777216 Hz
  * (59.7275 Hz, GBATEK "LCD Dimensions and Timings"). Four frame periods
