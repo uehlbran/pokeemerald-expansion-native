@@ -59,6 +59,25 @@ bool host_console_attach_parent(void)
     return false;
 }
 
+int host_console_discard_stream(FILE *stream)
+{
+    // cppcheck-suppress leakReturnValNotUsed ; freopen gives back the stream it was given, which the caller keeps
+    if (freopen("/dev/null", "w", stream) == NULL) {
+        (void)fprintf(stderr, "host_console: opening /dev/null failed: %s\n", strerror(errno));
+        return -1;
+    }
+    return 0;
+}
+
+int host_console_share_stream(FILE *source, FILE *target)
+{
+    if (fflush(target) != 0 || dup2(fileno(source), fileno(target)) < 0) {
+        (void)fprintf(stderr, "host_console: sharing a stream failed: %s\n", strerror(errno));
+        return -1;
+    }
+    return 0;
+}
+
 /* --- host_fault: the divide error ------------------------------------------ */
 
 static struct {

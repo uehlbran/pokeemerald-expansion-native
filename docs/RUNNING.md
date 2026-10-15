@@ -329,6 +329,7 @@ depends on how it was started:
 | Explorer, a shortcut, Steam | `pokeemerald.log` in the data directory ([above](#where-the-files-live): the per-user directory, the executable's own folder in portable mode, or `--data-dir`), emptied at each start, so it never grows. The messages that stop the game from starting are also shown in a message box that names the error and the log file. |
 | A command prompt (`cmd.exe`, PowerShell) with nothing redirected | the prompt. The prompt does not wait for a graphical program, so it comes back at once and the messages appear after it; run `start /wait pokeemerald-native.exe --keys` in `cmd.exe`, or `Start-Process -Wait -NoNewWindow` in PowerShell, to have it wait. |
 | A pipe or a file (`> out.txt`, `\| more`, a script) | there, as with any program. |
+| A launcher that gives the game one stream (say, output to a file) and no console | that stream; the other, if it is left out, goes to `pokeemerald.log` as above (no message box then, since someone reads the stream). |
 
 If no data directory can be found at all, the log is written beside the
 executable and says so. Linux and macOS programs print to the terminal as

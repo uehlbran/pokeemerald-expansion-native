@@ -545,32 +545,36 @@ static void show_message_box(const char *title, const char *text)
         (void)fprintf(stderr, "main: SDL_ShowSimpleMessageBox failed: %s\n", SDL_GetError());
 }
 
-/* LOG mode: the log is opened as soon as its place is known, which takes the
- * options; a command line that does not parse gets the defaults' place, and
- * is parsed again with the log open, so that the report of what was wrong,
- * lost to the streams of a program with none, is in the log. */
-static void begin_log(int argc, char **argv, struct options *options, bool parsed, char *log_path, size_t size)
+/* What the program's start knows before the options are parsed: the command
+ * line, how the messages go (console.h), the log's path once it is open, and
+ * whether every module has started. */
+struct start {
+    int argc;
+    char **argv;
+    enum console_mode mode;
+    struct console_streams log_streams; /* the streams the log takes */
+    char log_path[DATA_DIR_PATH_SIZE];
+    bool started; /* set once every module is running, when a failure stops being a start-up one */
+};
+
+/* The log is opened before anything is parsed or reported, in the data
+ * directory the command line names, found without a report; the arguments
+ * are then parsed with the log open, and report into it. */
+static void open_log_for_mode(struct start *start)
 {
-    struct options defaults;
-    char *program_only[] = {argv[0], NULL};
-    if (!parsed && options_parse(1, program_only, &defaults) != OPTIONS_OK)
-        return; /* cannot happen: no argument to refuse */
-    const struct console_streams streams = console_standard_streams();
-    (void)console_open_log(parsed ? options : &defaults, data_dir_sdl_host(), &streams, log_path, size);
-    if (!parsed)
-        (void)options_parse(argc, argv, options);
+    struct options named_data_dir = {.data_dir = options_data_dir_given(start->argc, start->argv)};
+    (void)console_open_log(&named_data_dir, data_dir_sdl_host(), &start->log_streams, start->log_path,
+                           sizeof start->log_path);
 }
 
-/* The program from the command line to its end; *started is set once every
- * module is running, which is when a failure stops being a start-up one. */
-static int play(int argc, char **argv, enum console_mode mode, char *log_path, size_t log_path_size, bool *started)
+/* The program from the command line to its end. */
+static int play(struct start *start)
 {
     struct options options;
     int status = MAIN_EXIT_OK;
-    const bool parsed = options_parse(argc, argv, &options) == OPTIONS_OK;
-    if (mode == CONSOLE_LOG)
-        begin_log(argc, argv, &options, parsed, log_path, log_path_size);
-    if (!parsed)
+    if (console_uses_log(start->mode))
+        open_log_for_mode(start);
+    if (options_parse(start->argc, start->argv, &options) != OPTIONS_OK)
         return MAIN_EXIT_USAGE;
     if (options.help) {
         options_print_usage(stdout);
@@ -595,7 +599,7 @@ static int play(int argc, char **argv, enum console_mode mode, char *log_path, s
         save_lock_release();
         return MAIN_EXIT_FAILURE;
     }
-    *started = true;
+    start->started = true;
 
     status = run_game(&options);
     if (frame_flush_save() != 0 && status == MAIN_EXIT_OK)
@@ -619,19 +623,20 @@ static int play(int argc, char **argv, enum console_mode mode, char *log_path, s
      * (3)). */
     save_lock_release();
     if (restart && status == MAIN_EXIT_OK)
-        return restart_process(argc, argv, restart_epoch, restart_line);
+        return restart_process(start->argc, start->argv, restart_epoch, restart_line);
     return status;
 }
 
 int main(int argc, char **argv)
 {
-    const enum console_mode mode = console_choose(host_console_stream_kind(HOST_STREAM_OUT),
-                                                  host_console_stream_kind(HOST_STREAM_ERR),
-                                                  host_console_attach_parent);
-    char log_path[DATA_DIR_PATH_SIZE] = "";
-    bool started = false;
-    const int status = play(argc, argv, mode, log_path, sizeof log_path, &started);
-    if (!started && status != MAIN_EXIT_OK)
-        console_report_start_failure(mode, log_path, show_message_box);
+    const enum host_stream_kind out_kind = host_console_stream_kind(HOST_STREAM_OUT);
+    const enum host_stream_kind err_kind = host_console_stream_kind(HOST_STREAM_ERR);
+    struct start start = {.argc = argc,
+                          .argv = argv,
+                          .mode = console_choose(out_kind, err_kind, host_console_attach_parent),
+                          .log_streams = console_missing_streams(out_kind, err_kind)};
+    const int status = play(&start);
+    if (!start.started && status != MAIN_EXIT_OK)
+        console_report_start_failure(start.mode, start.log_path, show_message_box);
     return status;
 }

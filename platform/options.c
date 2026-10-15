@@ -158,8 +158,9 @@ static bool parse_number_option(const char *arg, const char *value, struct optio
     return true;
 }
 
-/* Returns OPTIONS_OK, or OPTIONS_ERR_USAGE after printing what is wrong. */
-enum options_error options_parse(int argc, char **argv, struct options *out)
+/* Fills *out from the arguments, quietly. Returns the index of the first
+ * argument that is not one, or -1 if all are. */
+static int scan_arguments(int argc, char **argv, struct options *out)
 {
     *out = (struct options){
         .scale = OPTIONS_DEFAULT_SCALE,
@@ -177,7 +178,24 @@ enum options_error options_parse(int argc, char **argv, struct options *out)
             i++;
             continue;
         }
-        (void)fprintf(stderr, "options: bad argument '%s'%s\n", arg, value == NULL ? "" : " (or its value)");
+        return i;
+    }
+    return -1;
+}
+
+const char *options_data_dir_given(int argc, char **argv)
+{
+    struct options scanned;
+    (void)scan_arguments(argc, argv, &scanned);
+    return scanned.data_dir;
+}
+
+/* Returns OPTIONS_OK, or OPTIONS_ERR_USAGE after printing what is wrong. */
+enum options_error options_parse(int argc, char **argv, struct options *out)
+{
+    const int bad = scan_arguments(argc, argv, out);
+    if (bad >= 0) {
+        (void)fprintf(stderr, "options: bad argument '%s'%s\n", argv[bad], bad + 1 < argc ? " (or its value)" : "");
         options_print_usage(stderr);
         return OPTIONS_ERR_USAGE;
     }

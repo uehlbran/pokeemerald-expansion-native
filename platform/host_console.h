@@ -19,6 +19,7 @@
 #define PLATFORM_HOST_CONSOLE_H
 
 #include <stdbool.h>
+#include <stdio.h>
 
 enum host_stream {
     HOST_STREAM_OUT, /* standard output */
@@ -42,5 +43,18 @@ enum host_stream_kind host_console_stream_kind(enum host_stream which);
  * (Explorer, a service, a detached launcher) or a stream could not be
  * reopened. Never called on POSIX systems, where no stream is NONE. */
 bool host_console_attach_parent(void);
+
+/* Points the stream at the null device, so that what is written to it before
+ * its real destination is known goes nowhere instead of to a descriptor that
+ * may not exist. Returns 0, or -1 after a report on stderr (the stream is then
+ * closed). POSIX: /dev/null; Windows: NUL. */
+int host_console_discard_stream(FILE *stream);
+
+/* Makes target write where source writes: target's descriptor becomes a
+ * duplicate of source's, so that the two are one open file with one offset,
+ * which a fault handler's raw write to either continues rather than
+ * overwrites. Flushes target first. Returns 0, or -1 after a report on
+ * stderr. POSIX: dup2; Windows: _dup2, whose duplicate shares the file pointer. */
+int host_console_share_stream(FILE *source, FILE *target);
 
 #endif /* PLATFORM_HOST_CONSOLE_H */

@@ -9,10 +9,12 @@
  * never the process's.
  */
 #include "console.h"
+#include "host_file.h"
 #include "ptest.h"
 #include "test_support.h"
 
 #include <stdbool.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -73,14 +75,28 @@ PTEST(one_stream_missing_is_mended_on_the_parent_console)
     }
 }
 
-/* Without a console to mend it on, the stream that was given still has the messages' destination. */
-PTEST(one_stream_missing_and_no_parent_console_keeps_the_given_stream)
+/* Without a console to mend it on, the stream that was given is kept and the one that was not is the log. */
+PTEST(one_stream_missing_and_no_parent_console_keeps_the_given_stream_and_logs_the_other)
 {
     for (size_t i = 1; i < KIND_COUNT; i++) {
         attach.succeeds = false;
-        PT_ASSERT_EQ_INT(console_choose(all_kinds[i], HOST_STREAM_NONE, fake_attach), CONSOLE_INHERITED);
-        PT_ASSERT_EQ_INT(console_choose(HOST_STREAM_NONE, all_kinds[i], fake_attach), CONSOLE_INHERITED);
+        PT_ASSERT_EQ_INT(console_choose(all_kinds[i], HOST_STREAM_NONE, fake_attach), CONSOLE_INHERITED_AND_LOG);
+        PT_ASSERT_EQ_INT(console_choose(HOST_STREAM_NONE, all_kinds[i], fake_attach), CONSOLE_INHERITED_AND_LOG);
     }
+}
+
+PTEST(the_log_takes_the_streams_that_are_missing_only)
+{
+    struct console_streams both = console_missing_streams(HOST_STREAM_NONE, HOST_STREAM_NONE);
+    struct console_streams err_only = console_missing_streams(HOST_STREAM_PIPE, HOST_STREAM_NONE);
+    struct console_streams out_only = console_missing_streams(HOST_STREAM_NONE, HOST_STREAM_FILE);
+    struct console_streams neither = console_missing_streams(HOST_STREAM_CONSOLE, HOST_STREAM_PIPE);
+    PT_ASSERT(both.out == stdout && both.err == stderr);
+    PT_ASSERT(err_only.out == NULL && err_only.err == stderr);
+    PT_ASSERT(out_only.out == stdout && out_only.err == NULL);
+    PT_ASSERT(neither.out == NULL && neither.err == NULL);
+    PT_ASSERT(console_uses_log(CONSOLE_LOG) && console_uses_log(CONSOLE_INHERITED_AND_LOG));
+    PT_ASSERT(!console_uses_log(CONSOLE_INHERITED) && !console_uses_log(CONSOLE_PARENT));
 }
 
 /* --- the message box ------------------------------------------------------------- */
@@ -88,7 +104,7 @@ PTEST(one_stream_missing_and_no_parent_console_keeps_the_given_stream)
 static struct {
     unsigned calls;
     char title[128];
-    char text[2048];
+    char text[8192];
 } box;
 
 static void fake_box(const char *title, const char *text)
@@ -103,9 +119,11 @@ PTEST(only_the_log_mode_shows_a_message_box)
     PT_ASSERT(console_shows_message_box(CONSOLE_LOG));
     PT_ASSERT(!console_shows_message_box(CONSOLE_INHERITED));
     PT_ASSERT(!console_shows_message_box(CONSOLE_PARENT));
+    PT_ASSERT(!console_shows_message_box(CONSOLE_INHERITED_AND_LOG));
     box.calls = 0;
     console_report_start_failure(CONSOLE_INHERITED, "", fake_box);
     console_report_start_failure(CONSOLE_PARENT, "", fake_box);
+    console_report_start_failure(CONSOLE_INHERITED_AND_LOG, "", fake_box); /* a stream is given: someone reads it */
     PT_ASSERT_EQ_U32(box.calls, 0u);
 }
 
@@ -119,6 +137,7 @@ PTEST(a_start_failure_without_a_log_says_so_in_the_box)
 
 /* --- the log --------------------------------------------------------------------- */
 
+#define LONG_PATH_SIZE 2048u
 #define DIR_SIZE (TSUP_PATH_SIZE + 2u)
 #define PATH_SIZE (DIR_SIZE + 64u)
 
@@ -212,7 +231,7 @@ static bool read_text(const char *path, char *text, size_t size)
 
 static bool write_file(const char *dir, const char *name, const char *text)
 {
-    char path[PATH_SIZE];
+    char path[LONG_PATH_SIZE];
     (void)snprintf(path, sizeof path, "%s/%s", dir, name);
     FILE *const file = fopen(path, "wb");
     return file != NULL && fputs(text, file) >= 0 && fclose(file) == 0;
@@ -346,9 +365,14 @@ PTEST(a_directory_that_cannot_hold_the_log_is_refused)
     struct options o = windowed();
     char path[PATH_SIZE];
     const int status = console_open_log(&o, &fake_host, &scene.streams, path, sizeof path);
+    /* What is written meanwhile goes to the null device, not to the streams' old files. */
+    const bool wrote = fputs("nowhere\n", scene.streams.err) >= 0 && fflush(scene.streams.err) == 0;
+    const intmax_t err_size = tsup_file_size(scene.err_path);
     PT_ASSERT(end_scene(&scene));
     PT_ASSERT_EQ_INT(status, -1);
     PT_ASSERT_EQ_STR(path, "");
+    PT_ASSERT(wrote);
+    PT_ASSERT_EQ_INT((int)err_size, 0);
 }
 
 /* Both streams write the one file, in the order the lines were printed. */
@@ -368,6 +392,53 @@ PTEST(both_streams_write_the_log_in_order)
     PT_ASSERT(end_scene(&scene));
     PT_ASSERT(read);
     PT_ASSERT_EQ_STR(text, "first on err\nsecond on out\nthird on err\n");
+}
+
+/* The two streams and a fault handler's raw write to stderr's descriptor are one open file: none
+ * overwrites another. With two separate opens, the raw write lands at stderr's own offset. */
+PTEST(the_streams_and_a_handlers_raw_write_continue_each_other)
+{
+    struct scene scene;
+    PT_ASSERT(make_scene(&scene));
+    struct options o = windowed();
+    char path[PATH_SIZE];
+    char text[512];
+    static const char raw[] = "raw on stderr's descriptor\n";
+    const int status = console_open_log(&o, &fake_host, &scene.streams, path, sizeof path);
+    PT_ASSERT_EQ_INT(status, 0);
+    (void)fprintf(scene.streams.err, "first on err\n");
+    (void)fprintf(scene.streams.out, "second on out\n");
+    const host_handler_file handle = host_file_for_handler(fileno(scene.streams.err));
+    const bool wrote_raw = host_file_write_from_handler(handle, raw, sizeof raw - 1u);
+    (void)fprintf(scene.streams.out, "fourth on out\n");
+    (void)fprintf(scene.streams.err, "fifth on err\n");
+    const bool read = read_text(path, text, sizeof text);
+    PT_ASSERT(end_scene(&scene));
+    PT_ASSERT(wrote_raw && read);
+    PT_ASSERT_EQ_STR(text, "first on err\nsecond on out\nraw on stderr's descriptor\nfourth on out\nfifth on err\n");
+}
+
+/* A stream given is left alone: only the missing one is the log. */
+PTEST(a_stream_that_is_not_taken_keeps_its_file)
+{
+    struct scene scene;
+    PT_ASSERT(make_scene(&scene));
+    struct options o = windowed();
+    char path[PATH_SIZE];
+    char text[512];
+    char out_text[64];
+    struct console_streams only_err = {.out = NULL, .err = scene.streams.err};
+    const int status = console_open_log(&o, &fake_host, &only_err, path, sizeof path);
+    PT_ASSERT_EQ_INT(status, 0);
+    (void)fprintf(scene.streams.err, "to the log\n");
+    (void)fprintf(scene.streams.out, "to the given stream\n");
+    (void)fflush(scene.streams.out);
+    const bool log_read = read_text(path, text, sizeof text);
+    const bool out_read = read_text(scene.out_path, out_text, sizeof out_text);
+    PT_ASSERT(end_scene(&scene));
+    PT_ASSERT(log_read && out_read);
+    PT_ASSERT_EQ_STR(text, "to the log\n");
+    PT_ASSERT_EQ_STR(out_text, "to the given stream\n");
 }
 
 /* A start's log is that start's alone, however long the last one's was. */
@@ -405,6 +476,93 @@ PTEST(a_start_failure_in_log_mode_shows_the_error_and_the_log_path)
     PT_ASSERT(strstr(box.title, "could not start") != NULL);
     PT_ASSERT(strstr(box.text, "save_lock: pokeemerald.sav is in use by another instance") != NULL);
     PT_ASSERT(strstr(box.text, path) != NULL);
+}
+
+/* A log whose first bytes are head followed by filler, in the per-user directory of a scene
+ * with a path of the given depth, shown in the box. */
+static bool box_for_log_text(const char *log_text, const char *extra_directory, const struct scene *scene)
+{
+    char dir[LONG_PATH_SIZE];
+    char path[LONG_PATH_SIZE];
+    if (snprintf(dir, sizeof dir, "%s%s", scene->pref, extra_directory) >= (int)sizeof dir)
+        return false;
+    if (extra_directory[0] != '\0' && !tsup_make_directory(dir))
+        return false;
+    if (!write_file(dir, "pokeemerald.log", log_text))
+        return false;
+    if (snprintf(path, sizeof path, "%s/pokeemerald.log", dir) >= (int)sizeof path)
+        return false;
+    box.calls = 0;
+    console_report_start_failure(CONSOLE_LOG, path, fake_box);
+    return box.calls == 1u;
+}
+
+/* The box shows the first 1000 bytes of the log, then the path. */
+PTEST(the_box_shows_no_more_than_a_thousand_bytes_of_the_log)
+{
+    struct scene scene;
+    PT_ASSERT(make_scene(&scene));
+    static char big[3001];
+    memset(big, 'x', sizeof big - 1u);
+    const bool shown = box_for_log_text(big, "", &scene);
+    PT_ASSERT(end_scene(&scene));
+    PT_ASSERT(shown);
+    PT_ASSERT_EQ_U32((unsigned)strspn(box.text, "x"), 1000u);
+    PT_ASSERT(strncmp(box.text + 1000, "\n\nThe log file is ", 18) == 0);
+}
+
+/* A log shorter than the cap is shown whole, with no stale bytes after it. */
+PTEST(the_box_shows_a_short_log_whole)
+{
+    struct scene scene;
+    PT_ASSERT(make_scene(&scene));
+    memset(box.text, 'Z', sizeof box.text - 1u); /* what a box left before it */
+    const bool shown = box_for_log_text("short\n", "", &scene);
+    PT_ASSERT(end_scene(&scene));
+    PT_ASSERT(shown);
+    PT_ASSERT(strncmp(box.text, "short\n\n\nThe log file is ", 24) == 0);
+    PT_ASSERT(strchr(box.text, 'Z') == NULL);
+}
+
+/* The cut at 1000 bytes does not leave half of a two-byte character: 999 letters, then "e acute". */
+PTEST(the_box_does_not_cut_a_utf8_character_in_two)
+{
+    struct scene scene;
+    PT_ASSERT(make_scene(&scene));
+    static char text[2001];
+    memset(text, 'x', 999u);
+    memcpy(text + 999, "\xc3\xa9", 2u);
+    memset(text + 1001, 'y', 1000u);
+    text[2001 - 1] = '\0';
+    const bool shown = box_for_log_text(text, "", &scene);
+    PT_ASSERT(end_scene(&scene));
+    PT_ASSERT(shown);
+    PT_ASSERT_EQ_U32((unsigned)strspn(box.text, "x"), 999u);
+    PT_ASSERT(strncmp(box.text + 999, "\n\nThe log file is ", 18) == 0);
+}
+
+/* The path is not limited by the room the log's start leaves in the box. */
+PTEST(the_box_names_a_log_path_of_over_four_hundred_bytes)
+{
+    struct scene scene;
+    PT_ASSERT(make_scene(&scene));
+    char deep[260];
+    deep[0] = '/';
+    memset(deep + 1, 'd', 200u);
+    deep[201] = '\0';
+    char deeper[520];
+    (void)snprintf(deeper, sizeof deeper, "%s/%s", deep, deep + 1);
+    char first[LONG_PATH_SIZE];
+    (void)snprintf(first, sizeof first, "%s%s", scene.pref, deep);
+    PT_ASSERT(tsup_make_directory(first));
+    static char log_text[1201];
+    memset(log_text, 'e', sizeof log_text - 1u); /* a full head, so that head and path together outgrow 1400 bytes */
+    const bool shown = box_for_log_text(log_text, deeper, &scene);
+    PT_ASSERT(end_scene(&scene));
+    PT_ASSERT(shown);
+    PT_ASSERT(strlen(box.text) > 400u);
+    PT_ASSERT_EQ_U32((unsigned)strspn(box.text, "e"), 1000u);
+    PT_ASSERT(strstr(box.text, deeper) != NULL);
 }
 
 PTEST_MAIN()

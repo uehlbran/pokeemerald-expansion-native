@@ -1,4 +1,4 @@
-// deps: console.c data_dir.c
+// deps: console.c data_dir.c gba_memmap.c crash_reboot.c
 /*
  * test_host_console_windows.c: what the standard streams are and the parent's
  * console (host_console.h) on Windows. This executable started again as a
@@ -20,6 +20,10 @@
 #include <windows.h>
 
 #include "console.h"
+#include "crash_reboot.h"
+#include "crash_reboot_fixture.h"
+#include "gba_memmap.h"
+#include "host_file.h"
 #include "data_dir.h"
 #include "host_console.h"
 #include "ptest.h"
@@ -30,6 +34,7 @@
 #define CHILD_ATTACH "attach"
 #define CHILD_MIDDLE "middle"
 #define CHILD_LOG "log"
+#define CHILD_CRASH_LOG "crash_log"
 
 /* Names the data directory the "log" child puts its log in. */
 #define DIR_VARIABLE "HOST_CONSOLE_WINDOWS_TEST_DIR"
@@ -45,6 +50,10 @@
 #define LOG_WRITTEN 30u
 #define LOG_NOT_OPENED 31u
 #define LOG_WRITE_FAILED 33u
+
+/* The code the "crash_log" child ends with if it did not crash. */
+#define CRASH_LOG_NO_CRASH 40u
+#define CRASH_LOG_SETUP_FAILED 41u
 
 /* How long a child may take. */
 #define CHILD_MILLISECONDS 20000u
@@ -80,16 +89,35 @@ static bool run_self(const char *body, HANDLE out, HANDLE err, DWORD flags, uint
  * runtime's streams and through stderr's descriptor, where a crash report goes. */
 static unsigned open_the_log_and_write(void)
 {
-    static const char raw[] = "through stderr's descriptor\n";
+    static const char raw[] = "raw on stderr's descriptor\n";
     struct options options = {.scale = OPTIONS_DEFAULT_SCALE, .data_dir = getenv(DIR_VARIABLE)};
-    const struct console_streams streams = console_standard_streams();
+    const struct console_streams streams = {.out = stdout, .err = stderr};
     char path[DATA_DIR_PATH_SIZE];
     if (options.data_dir == NULL || console_open_log(&options, data_dir_sdl_host(), &streams, path, sizeof path) != 0)
         return LOG_NOT_OPENED;
-    if (fputs("through stdout\n", stdout) < 0 || fputs("through stderr\n", stderr) < 0
-        || _write(_fileno(stderr), raw, sizeof raw - 1u) != (int)(sizeof raw - 1u))
+    /* stderr, stdout, a fault handler's raw write to stderr's handle, then both again: with
+     * the streams as separate opens the raw write lands at stderr's own offset and overwrites. */
+    const host_handler_file handle = host_file_for_handler(fileno(stderr));
+    if (fputs("1 through stderr\n", stderr) < 0 || fputs("2 through stdout\n", stdout) < 0
+        || !host_file_write_from_handler(handle, raw, sizeof raw - 1u) || fputs("4 through stdout\n", stdout) < 0
+        || fputs("5 through stderr\n", stderr) < 0)
         return LOG_WRITE_FAILED;
     return LOG_WRITTEN;
+}
+
+/* The crash report with the log on stderr only, as when a launcher gave stdout: the reboot's
+ * handler writes to the descriptor stderr has, whatever number the C runtime made it. */
+static unsigned crash_with_the_log_on_stderr(void)
+{
+    char *argv[] = {"test_host_console_windows", NULL};
+    struct options options = {.scale = OPTIONS_DEFAULT_SCALE, .data_dir = getenv(DIR_VARIABLE)};
+    const struct console_streams streams = {.out = NULL, .err = stderr};
+    char path[DATA_DIR_PATH_SIZE];
+    if (options.data_dir == NULL || console_open_log(&options, data_dir_sdl_host(), &streams, path, sizeof path) != 0
+        || gba_memmap_init() != GBA_MEMMAP_OK || crash_reboot_init(1, argv) != CRASH_REBOOT_OK)
+        return CRASH_LOG_SETUP_FAILED;
+    crash_by_null_call();
+    return CRASH_LOG_NO_CRASH;
 }
 
 /* The child that starts the "attach" child as Explorer would start a program:
@@ -258,7 +286,31 @@ PTEST(a_process_with_no_handles_and_no_console_logs_through_every_way_of_writing
     PT_ASSERT(tsup_remove_tree(dir));
     PT_ASSERT(ran);
     PT_ASSERT_EQ_U32(code, LOG_WRITTEN);
-    PT_ASSERT_EQ_STR(text, "through stdout\nthrough stderr\nthrough stderr's descriptor\n");
+    PT_ASSERT_EQ_STR(
+        text, "1 through stderr\n2 through stdout\nraw on stderr's descriptor\n4 through stdout\n5 through stderr\n");
+}
+
+/* The crash report goes to the log whatever descriptor stderr was given. */
+PTEST(a_crash_report_reaches_a_log_opened_on_stderr_alone)
+{
+    char dir[TSUP_PATH_SIZE];
+    char path[TSUP_PATH_SIZE + 32u];
+    PT_ASSERT(tsup_make_temp_directory(dir, sizeof dir, "console_crash"));
+    PT_ASSERT(tsup_set_environment(DIR_VARIABLE, dir));
+    uint32_t code = 0;
+    const bool ran = run_self(CHILD_CRASH_LOG, NULL, NULL, DETACHED_PROCESS, &code);
+    (void)snprintf(path, sizeof path, "%s/%s", dir, CONSOLE_LOG_NAME);
+    char text[1024] = "";
+    FILE *const log = fopen(path, "rb");
+    if (log != NULL) {
+        text[fread(text, 1, sizeof text - 1u, log)] = '\0';
+        (void)fclose(log);
+    }
+    PT_ASSERT(tsup_unset_environment(DIR_VARIABLE));
+    PT_ASSERT(tsup_remove_tree(dir));
+    PT_ASSERT(ran);
+    PT_ASSERT(code != CRASH_LOG_NO_CRASH && code != CRASH_LOG_SETUP_FAILED);
+    PT_ASSERT(strstr(text, "crash_reboot: exception 0x") != NULL);
 }
 
 PTEST(attaching_when_the_parent_has_no_console_is_refused)
@@ -281,5 +333,7 @@ int main(void)
         return (int)start_the_attacher();
     if (strcmp(name, CHILD_LOG) == 0)
         return (int)open_the_log_and_write();
+    if (strcmp(name, CHILD_CRASH_LOG) == 0)
+        return (int)crash_with_the_log_on_stderr();
     return (int)WSUP_CHILD_RETURNED;
 }

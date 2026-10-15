@@ -93,6 +93,18 @@ PTEST(the_options_with_a_value_take_the_next_argument)
     PT_ASSERT(o.audio_dump_path == NULL);
 }
 
+PTEST(the_data_dir_is_found_without_a_report)
+{
+    char *none[] = {"game", "--headless", NULL};
+    char *given[] = {"game", "--data-dir", "one", "--silent", "--data-dir", "two", NULL};
+    char *after_bad[] = {"game", "--data-dir", "one", "--bogus", "--data-dir", "two", NULL};
+    char *as_value[] = {"game", "--save", "--data-dir", "--silent", NULL};
+    PT_ASSERT(options_data_dir_given(2, none) == NULL);
+    PT_ASSERT_EQ_STR(options_data_dir_given(6, given), "two");
+    PT_ASSERT_EQ_STR(options_data_dir_given(6, after_bad), "one");
+    PT_ASSERT(options_data_dir_given(4, as_value) == NULL); /* the value of --save, not an option */
+}
+
 PTEST(audio_dump_takes_a_path_with_or_without_a_device)
 {
     struct options o;

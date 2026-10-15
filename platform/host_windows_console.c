@@ -10,8 +10,11 @@
  * STARTUPINFO, or none; the C runtime takes stdout and stderr from them when
  * it starts, so a pipe or a file given by the parent needs nothing here.
  */
+#include <errno.h>
+#include <io.h>
 #include <stdbool.h>
 #include <stdio.h>
+#include <string.h>
 
 #include <windows.h>
 
@@ -75,4 +78,23 @@ bool host_console_attach_parent(void)
         }
     }
     return true;
+}
+
+int host_console_discard_stream(FILE *stream)
+{
+    // cppcheck-suppress leakReturnValNotUsed ; freopen gives back the stream it was given, which the caller keeps
+    if (freopen("NUL", "w", stream) == NULL) {
+        (void)fprintf(stderr, "host_console: opening NUL failed: %s\n", strerror(errno));
+        return -1;
+    }
+    return 0;
+}
+
+int host_console_share_stream(FILE *source, FILE *target)
+{
+    if (fflush(target) != 0 || _dup2(_fileno(source), _fileno(target)) != 0) {
+        (void)fprintf(stderr, "host_console: sharing a stream failed: %s\n", strerror(errno));
+        return -1;
+    }
+    return 0;
 }
