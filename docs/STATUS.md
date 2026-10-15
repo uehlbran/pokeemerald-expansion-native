@@ -101,7 +101,23 @@ is in its DECISIONS entry "The macOS port waits for its first runs on a
 Mac"; macos.yml must reach main or carry a push trigger once to be
 dispatched). Now in work/macos: the release archive for macOS, `tools/
 build-native.sh --os macos` and RUNNING's Gatekeeper section (Sonnet), and
-a first-pass Sonnet review of the port. Then the final review. DECISIONS.md has the macOS runner dates (x86_64 macOS runners end
+a first-pass Sonnet review of the port. The orchestrator's full Linux
+gate on work/macos at c8cd418835 is green (24 steps, the suites 5418 at
+both widths plain and sanitized, the GBA ROM unchanged). The review found
+no blocker provable without a Mac and nine items now being fixed by the
+author at their cause, among them: the two clang code-generation
+switches were symptom fixes (a dangling pointer in expansion's test
+harness behind the Beat Up failures; eight real defects in expansion's
+code behind the sanitizer exclusions, one of which, a u8 function called
+through a u32 pointer in field_effect.c, can return garbage on any x86-64
+build); an out-of-bounds write in patchelf's new Mach-O path; and a
+latent placement hazard that also concerns Linux: `rfu_initializeAPI`
+treats any address 0x?2xxxxxx as EWRAM, and the author measured writable
+data at 0x429bdd08 in the gcc-sanitized 64-bit image and above 0x42f00000
+in the sanitized test runners at both widths (the plain images end below
+0x42000000; no gate reaches the wireless code). The fix keeps writable data
+out of that window and makes all three link checks refuse it; it lands with
+the macOS branch. Then the final review. DECISIONS.md has the macOS runner dates (x86_64 macOS runners end
 in fall 2027) and what they change for the Apple-silicon question.
 
 **Broke and fixed.** The per-push CI run on main after the settings
