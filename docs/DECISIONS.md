@@ -2356,102 +2356,216 @@ platform/arm_division_libgcc/libgcc_division.txt in full, every row.
 This starts nothing. No Apple-silicon work is scheduled; the decision fixes only how P1 is built if it is ever
 scheduled.
 
-## 2026-10-15: CI artifacts never hold the game beyond a run
+## 2026-10-15: No workflow uploads the game
 
 The repository goes public soon, as source only. On a public repository
 every workflow artifact is downloadable by any logged-in GitHub user, and a
 built executable (the game, the test runner, any archive of either)
 contains the complete game's assets, which this project never distributes
-(README; "Why no public release" above). So no artifact may hold the game
-or any part of it beyond the minutes a job needs.
+(README; "Why no public release" above). The rule: **no workflow
+uploads the game or any part of it, at any retention, for any length of
+time.** Game-bearing: the game, the test runner, any archive of either, any
+save, data file or output directory containing expansion's assets or a
+binary (an executable). Not game-bearing: logs, suite results, text
+outputs, probe output with no game content, and (an adjustment the
+same day) the frame images and the save and clock files of the replay,
+smoke and save gates: a frame image and a save are not a playable build, and
+they are how a red replay or save gate is diagnosed. (The first design of this rule,
+the same day, kept the builds between jobs for one day and deleted them in
+a last job; it was superseded before it ran, because a day is still a day
+on a public page. Nothing of it remains but the release path below.)
 
-**The audit.** Every `actions/upload-artifact` step of the four workflows of
-this project, with what its `path` matched and what was done. Upstream's
-build.yml and labels.yml upload nothing; docs.yml's only upload is
+**The audit.** Every `actions/upload-artifact` step of the workflows of this
+project, what its `path` matched, and what was done. Upstream's build.yml
+and labels.yml upload nothing; docs.yml's only upload is
 `actions/upload-pages-artifact` of `docs/book` (upstream's mdBook output of
 the documentation, no game; it is filtered to upstream's branches and does
 not run here). The smoke scripts (tests/smoke/*.sh, lib.sh, save_steps.sh)
 write into `out/` only what the game's `--out`, `--save` and
 `--rtc-offset` write and what the scripts derive from it: dumps (`.txt`),
-screenshots (`.ppm`, `failed.ppm`), `expanded.replay`, saves (`.sav`,
-`before.sav`), clock files (`.rtc`), the game's `stdout.log`/`stderr.log`,
-sanitizer lists (`.all`, `.known-patterns`) and `.diff` files. None copies
-or links an executable, a ROM, converted assets or a symbol map there
-(`cp` in them copies saves and clock files); the Windows smoke works in
-`mktemp -d`, outside `out/`, and its copies of the executable are removed
-by the script; the hydra's patched copy sits beside the test runner in
-`build/`, removed on exit. Nothing sets a core file's location to `out/`.
-A save written by a replay holds the replay's game state (the player, the
-party, the map), not expansion's assets, which live in the executable; the
-screenshots are 240x160 frames of the replay's scenes.
+screenshots (`.ppm`), `expanded.replay`, saves (`.sav`), clock files
+(`.rtc`), the game's `stdout.log`/`stderr.log`, sanitizer lists (`.all`,
+`.known-patterns`) and `.diff` files. None copies or links an executable, a
+ROM, converted assets or a symbol map there; the Windows smoke works in
+`mktemp -d`, outside `out/`. A save holds the replay's game state (the
+player, the party, the map), not expansion's assets, which live in the
+executable, and a screenshot is a 240x160 frame of a scene. The gates write
+the frames as PPM (`.ppm`; no gate writes PNG, but `.png` is allowed too).
+So the failure uploads carry text and logs, frame images and the save and
+clock files of the save gates, by an explicit list of file patterns, and
+never an executable, shared library, object, archive or any other binary.
 
 | Workflow, artifact | What `path` matched | Game-bearing | Disposition |
 | --- | --- | --- | --- |
-| native.yml `replay-outputs-*` (6 steps, failure only) | `out/` whole | no (only the above) | narrowed to `out/**/*.EXT`, one pattern per extension (txt, log, ppm, sav, rtc, diff, replay, all, known-patterns; no braces, @actions/glob sets nobrace and `{a,b}` matches nothing); excludes anything else that might ever land in `out/` (executables, `.symbols`, `.o`, cores) |
-| windows.yml `windows-build` | the Windows game `.exe`, its `.symbols`, `SDL2.dll`, the 70 unit-test `.exe`s and `.symbols`, the Linux save directory | yes (the game and the tests) | `retention-days: 1`, deleted by `cleanup` |
-| windows.yml `linux-build` | the Linux game and its `.symbols` | yes | `retention-days: 1`, deleted by `cleanup` |
-| windows.yml `windows-suite-build` | the Windows test runner `.exe` and `SDL2.dll` | yes | `retention-days: 1`, deleted by `cleanup` |
-| windows.yml `suite-linux64` | `suite-linux64.log` | no | kept (on the keep list) |
-| windows.yml `windows-results` | `out/suite-windows.log`, the whole `again/` directory | no (log; dumps, screenshots, saves) | narrowed to the log and `again/*.EXT`, one pattern per extension (txt, ppm, sav, rtc, log); kept |
-| windows.yml `cross-os-save-outputs`, `compare-outputs`, `windows-logs-before-the-suite`, `windows-logs` (failure only) | `out/` whole (and the unit tests' `*.log`) | no | narrowed as native.yml's, one pattern per extension; kept |
-| release.yml `linux-archive`, `windows-archive` | the tarball, the zip | yes | uploaded only with `publish`, one day, deleted by `cleanup` |
-| release.yml `release-files` | both archives and `SHA256SUMS.txt` | yes | created only with `publish`, one day (was 14), deleted by `cleanup`; the release is the publication |
-| the loader-probe workflow (three jobs; removed from the tree afterwards) | its `out/*.txt` | no | unchanged: the reports and run logs are text; the probe executables, objects and linker outputs in the same `out/` do not match `*.txt`, and a probe holds no game (a few empty sections and a C file) |
+| native.yml `replay-outputs-*` (6 steps, failure only) | `out/**/*.EXT` for txt, log, ppm, sav, rtc, diff, replay, all, known-patterns | no | kept, one pattern per line; `.png` added to the list |
+| windows.yml `windows-build` | the Windows game `.exe`, `.symbols`, `SDL2.dll`, the 70 unit-test `.exe`s, the Linux save directory | yes | removed: the Windows job builds them itself, in WSL |
+| windows.yml `linux-build` | the Linux game and its `.symbols` | yes | removed: the Windows job builds the Linux game in WSL |
+| windows.yml `windows-suite-build` | the Windows test runner `.exe` and `SDL2.dll` | yes | removed: built in the Windows job |
+| windows.yml `suite-linux64` | `suite-linux64.log` | no | kept (text, the comparison needs it) |
+| windows.yml `windows-results` | `out/suite-windows.log`, and the whole `again/` directory | log: no; the rest: dumps, screenshots, saves | only `out/suite-windows.log`; the stage's saves no longer travel (below) |
+| windows.yml `cross-os-save-outputs`, `compare-outputs`, `windows-logs-before-the-suite` | `out/` by extension | no | removed with their jobs; the Windows job's own `windows-logs` (failure only) covers them |
+| windows.yml `windows-logs` (failure only) | the unit tests' `*.log` and `out/**/*.EXT` | no | the same patterns as native.yml's, one per line |
+| release.yml `linux-archive`, `windows-archive`, `release-files` | the tarball, the zip, the sums | yes | uploaded only with `publish` (the explicit input; a run without it uploads nothing, checked below), one day, deleted by `cleanup`, which now runs only with `publish`; the release is the publication |
+| the loader-probe workflow (removed from the tree afterwards) | its `out/*.txt` | no | unchanged: reports and run logs are text; the probes' executables in the same `out/` do not match |
 
-**The mechanism.** The rule is stated at the top of each of the four
-workflows. Game-bearing artifacts that carry a build between jobs
-(windows.yml's three) get `retention-days: 1`, and a last job, `cleanup`
-(`if: always()`, `needs:` every other job of the workflow, so that it runs
-after the consumers have finished; `permissions: actions: write` and
-`contents: read` on that job only), runs the composite action
-`.github/actions/delete-run-artifacts`. The action lists this run's
-artifacts through the API and deletes (`gh api -X DELETE
-repos/{owner}/{repo}/actions/artifacts/<id>`) every one whose name is not on
-the job's explicit keep list of artifacts without the game, then lists
-again and fails if a deletion failed or anything not kept is left. The
-default is therefore closed: a new artifact that is not named as safe is
-deleted, and a listing that fails fails the job. windows.yml's list:
-`suite-linux64`, `windows-results`, `windows-logs-before-the-suite`,
-`windows-logs`, `cross-os-save-outputs`, `compare-outputs`. release.yml's
-list is empty. The failure-only uploads name their files by extension, so a
-binary that lands in `out/` is not uploaded; the cost is that a file of
-another kind written there is not kept either (add its extension when a
-script starts writing one). Expired artifacts are skipped in the listing, and the check after the deletions re-lists up to 5 times, 3 s apart, failing only if a non-kept artifact is still listed after the last try. If `cleanup` cannot run or fails, the exposure is the one-day retention, not zero. Because the builds are deleted, a finished run cannot re-run a single failed job; "re-run all jobs" is the way. native.yml uploads nothing game-bearing and
-needs no `cleanup`.
+**The Windows job builds its own game.** windows.yml is now three jobs:
+`linux-suite` (unchanged; its log is uploaded), `windows` and `compare`
+(downloads the two suite logs). The Windows job does everything the three
+Linux jobs and the Windows job did, in one place. The Windows build is a
+cross-build whose data path needs GNU as for ELF and the converter
+("The data for Windows and macOS is assembled on Linux and converted"),
+which Windows does not have, so the job runs the same make commands as the
+Linux cross-build (docs/BUILDING.md, "Windows (cross-build from Linux)") in
+a WSL distribution on the Windows runner. The choice, and why:
+
+- **WSL, not MSYS2.** The alternative is MSYS2 with GNU binutils for
+  x86_64-elf built from source and cached: a toolchain build that is itself
+  untested here, a second environment for the build next to the second
+  environment for the suite (MSYS2's, already there), and a data path (GNU
+  as in MSYS2, clang's COFF check, the converter's Python) that has never
+  run there. WSL runs the commands of docs/BUILDING.md unchanged on the
+  distribution the Linux jobs use (Ubuntu 24.04), so what differs from the
+  Linux jobs is the environment, not the build.
+- **The action.** `Vampire/setup-wsl`, pinned to the full commit of v7.2.0
+  (`4c48163d9f981914dd8caa0fc335fe19cca5bff4`, node24; the tag object is
+  `e707f0b61a07f8ea48a64d83edfcbd4a7af45926`, and a `uses:` pin names the commit
+  the tag points to), distribution `Ubuntu-24.04` named explicitly because v7
+  changed the default.
+  Its README says WSL 1 has been enabled on the Windows images since
+  windows-2019 and WSL 2 is also available since windows-2022 (its default is
+  2).
+- **WSL 2, explicitly, and no fallback.** The job sets
+  `wsl-version: 2` and a step fails the job unless the kernel is WSL 2's
+  (`microsoft-standard-WSL2` in `/proc/sys/kernel/osrelease`). It never
+  falls back to WSL 1: the fixed-address Linux game (regions mapped with
+  `MAP_FIXED` below 4 GiB, a restart through `/proc/self/exe`) must not be
+  judged under WSL 1's syscall translation layer, which would say nothing
+  about Linux. If a runner has no WSL 2 the job is red and says so.
+- **The Linux file system only.** The checkout itself
+  happens in WSL: `git init`, then a fetch of exactly `${{ github.sha }}`
+  (depth 1) into `~/work` with the job's token (`contents: read`, passed
+  through `WSLENV` and sent as an HTTP header for that one command with
+  `git -c http.extraHeader=...`, never written into `.git/config`), and a
+  check that HEAD is that commit. The build and every Linux run happen
+  there, never under `/mnt` (9p: slow for 28,000 files, and not Linux file
+  semantics, which the fixed-address game and its save locks should not be
+  judged on). The Windows checkout serves the Windows steps only, and the
+  Windows executables are copied out to it only to be run.
+- **The commands.** apt, as root in WSL: `apt-get install -y
+  --no-install-recommends build-essential gcc-multilib libc6-dev-i386
+  pkg-config git python3 libpng-dev libsdl2-dev clang ccache
+  gcc-mingw-w64-x86-64 binutils-mingw-w64-x86-64 mingw-w64-tools curl
+  ca-certificates` (the Linux cross-build's list; curl for the pinned SDL2
+  fetch). Then, in `~/work` (WSL's own file system): `make -f Makefile.native -j"$(nproc)" native
+  BITS=64`; `tests/smoke/run_cross_os.sh save ...`; the same with
+  `TARGET_OS=windows`; `make -C platform -j"$(nproc)" test TARGET_OS=windows
+  BITS=64`; `make -C platform tools-test TARGET_OS=windows BITS=64`; `...
+  TARGET_OS=windows TEST=1`. The tree is the fetch above. The `.exe`s and
+  `SDL2.dll` are copied to the Windows file system of the same job, where
+  the Windows steps (Git Bash, pwsh, MSYS2) run unchanged.
+- **Time.** The Windows run is expected to grow from about 12 to about
+  30 minutes, which is accepted: the three Linux builds (the Linux game, the
+  Windows game, the Windows test runner; 7, 8 and 8.5 minutes warm on
+  Linux runners) now run one after another in the Windows job, with the WSL
+  install (about 1 to 2 minutes with the action's cache) and the apt
+  installs on top, and the Windows steps (8 minutes) after them. The job's
+  limit is 60 minutes. Windows minutes count double.
+- **The cross-OS save gate in one job.** Gate h's three stages run in the
+  one job: the Linux game in WSL writes the save, the Windows game on
+  Windows continues it and saves again, the Linux game in WSL continues
+  that. Nothing is passed between jobs: the saves and clock files stay in
+  the workspace and in WSL's home, and the only things that leave the job
+  are text. No `.sav` or `.rtc` is uploaded by any workflow. What is not
+  known until it runs: whether the fixed-address Linux executable runs in
+  WSL (its regions mapped with `MAP_FIXED` below 4 GiB, `/proc/self/exe`
+  for the restart), which a WSL 2 kernel should allow and WSL 1 may not;
+  if gate h's first stage fails there, that is the finding, and the stages
+  can run on a Linux job again only by passing the two save files (the
+  `.sav` and `.rtc`, named one by one, with text) between jobs, which this
+  rule allows and this design does not need.
+
+**Caches.** Caches may hold compiled objects, converted
+assets and ccache data in every workflow, the Windows one included, and
+never a linked game, a test runner, or an archive of either. native.yml's
+caches stay as they are (the tools, ccache, the converted assets); the
+Windows job gets the same kind (ccache, the converted assets, SDL2 for
+MinGW), in the workspace, copied into WSL before the builds and back after.
+The reason: a cache is not downloadable by the public; the converted assets
+derive from source files that are public in the repository anyway; and the
+legal line is a playable build, not its intermediate pieces. The one path to
+a cache is a pull-request workflow run from a fork, which the repository's
+setting "Require approval for all external contributors" closes; it
+is set before the repository goes public. The Windows job caches no tools
+(they are built in WSL's home each run, about a minute) so that no tool
+built for one environment is restored into the other.
+
+**The check.** `platform/build_glue/check_workflow_uploads.py` reads every
+workflow under `.github/workflows` and every composite action under
+`.github/actions`, and fails on any `upload-artifact` (or
+upload-pages-artifact) path line that is an exclusion (a denylist), has a
+brace or a `${{ }}`, is a directory or has no extension, has a wildcard in
+its extension, or has an extension that is not on the allowed list: text and logs (`.log`,
+`.txt`, `.diff`, `.replay`, `.all`, `.known-patterns`), frame images (`.ppm`,
+which the gates write, and `.png`), and the save gates' `.sav` and `.rtc`.
+Executables, shared libraries, objects, archives and every other binary
+fail, as do directories and names without an extension. The exceptions are exact: release.yml's
+`.tar.gz` and `.zip` in a step or a job whose `if` requires `inputs.publish`
+(the condition is parsed, so `!inputs.publish`, `inputs.publish || ...` and
+`== false` do not count), and upstream's docs.yml upload of `docs/book`.
+`--self-test` runs good and bad workflows: each allowed class (text, log,
+frame image, save, clock) passes, and each rejected class fails (executable,
+shared library, object, archive, other binary, directory, no extension, and
+the pattern rules above), one case per extension. Beyond the path lines it fails any action whose
+name (compared lowercased, so `Actions/Upload-Artifact` is seen) says
+upload, release, publish, deploy, asset or artifact and is not on its short
+list of known ones (checkout, cache, download-artifact,
+attest-build-provenance, configure-pages, deploy-pages, setup-wsl and
+upstream's two label actions); `docker://` steps; external reusable
+workflows (job or step); and, in any `run:` text, `gh release
+upload/edit`, `gh api` writes and uploads, `curl` with an upload flag, `git
+push`, `docker push` and the like. The one command allowed is release.yml's
+`gh release create`, in a step or job whose `if` requires `inputs.publish`.
+A third-party action whose name says none of those words is not caught; the
+list of `uses:` in the tree is short and read at review. `make -C platform
+glue-test` runs the self-test and then the check on the real tree, so the
+platform gate and the local pre-merge gate fail on a bad upload; it also
+runs as a step of native.yml's per-push
+job, which installs python3-yaml for it. The rule is stated at the top of
+each workflow, pointing here and naming the check.
 
 **release.yml.** Without `publish` (the default) a run builds and checks
 each archive in its own job and uploads nothing: the contents listed and
 compared with the seven (Linux) or six (Windows) files each must hold, the
 Linux executable started headless from the unpacked tarball through its
-launcher (`--version`, then `--headless --frames 60`, save and clock in a
-scratch directory), the Windows executable's PE format checked (it cannot
-start on a Linux runner; windows.yml starts the same build on Windows), and
-the SHA-256 of each archive printed in the log. With `publish` the archives
-go to the jobs after them as one-day artifacts, `checksums` makes
-`SHA256SUMS.txt` and the attestations (the step is now on the publish path
-only, so a run without `publish` no longer ends red on a private
-repository), `publish` creates the release, and `cleanup` deletes the
-artifacts. The tag validation and the never-cancelled concurrency group
-are unchanged.
+launcher, the Windows executable's PE format checked, and the SHA-256 of
+each archive printed in the log. With `publish` the archives go to the jobs
+after them as one-day artifacts, `checksums` makes `SHA256SUMS.txt` and the
+attestations, `publish` creates the release, and `cleanup` deletes the
+artifacts. `cleanup` and `.github/actions/delete-run-artifacts` stay for
+this path only (the upload that remains is the one that is the
+publication's means); windows.yml's cleanup job is gone, since it has
+nothing to delete. native.yml never had one.
 
-**Not run.** Actions refuses every job for billing, so none of this could be
-run on a runner when it was written; it was checked by reading, by parsing
-each workflow as YAML and by reading every `needs:` and `if:` chain. The
-first runs after billing returns are its proof, and each must show: windows.yml's
-`cleanup` listing its deletions (`delete windows-build`, `delete
-linux-build`, `delete windows-suite-build`, and `kept` for the rest); no
-game-bearing artifact on the finished run's page; a release.yml run
-without `publish` with no artifact at all and the SHA-256 lines in the
-two jobs' logs; and, once, a run with `publish` on a scratch tag in a
-private copy, if the publish path is to be seen before it is used.
-Also to show: a release.yml run without `publish` ends green with no
-artifact on the page and `cleanup` deleting nothing; `cleanup` running and
-deleting after a failed job and after a cancelled run; `inputs.publish`
-evaluated as a boolean in the job- and step-level `if:`s; the `objdump` line
-and the 60-frame start passing on the runner; the GITHUB_TOKEN's DELETE
-succeeding (a 403 "Resource not accessible by integration" would mean
-`actions: write` is not enough); the builds surviving until `cleanup`, so
-`windows` and `compare` still download them. Things to look at in those runs: that `sparse-checkout` finds the local
-action, that `gh api --paginate --jq` prints the tab-separated lines the
-action reads, that the second listing no longer shows a deleted artifact,
-and that the globs match what the failure paths wrote.
+**Not run.** None of this had run on a runner when it was written; it was checked by running the make
+commands the Windows job runs (the Linux cross-build, the unit tests, the
+TEST=1 build), the new check and its self-test, the platform gate, by
+parsing each workflow as YAML, and by reading. The first runs must show, in
+order: windows.yml's `windows` job installing WSL and the packages and
+failing if it does not get WSL 2 (the kernel check), fetching the commit in
+WSL, and building in about the expected time (about 30 minutes cold, less warm); gate
+h's first stage passing in WSL (the Linux game starts there and writes its
+save); every gate passing as before (unit tests, smoke, no console, replays,
+gate h's second and last stages, the suite through the hydra, the
+comparison); the converted assets and ccache restoring and saving under the
+Windows job's keys; WSL 2's memory ceiling (half the runner's 16 GB: if the
+OOM killer shows in the Linux builds, a `.wslconfig` memory line or a lower
+`-j`); `setup-wsl@4c48163d...` resolving; the SDL2 fetch (`curl`) working from
+inside WSL; native.yml's per-push step running the check with python3-yaml;
+the copy of the executables out to the Windows workspace; no artifact on any run's page but text, frame images, saves and clocks
+(`suite-linux64`, `windows-results`, and the failure outputs); and a release.yml run without
+`publish` with no artifact at all and `cleanup` skipped. Also open until
+then: that `WSLENV: GITHUB_WORKSPACE/p` gives the WSL steps the workspace,
+that `cp --preserve=timestamps` and `tar` onto the Windows file system do
+not trip on ownership, that the `again/` directory's save reaches the last
+stage intact, that a run by hand and the nightly share the caches as
+intended, and that the token's fetch of `${{ github.sha }}` works (a scheduled or manual run on a fork-less private or public repository; if the fetch of a bare SHA is refused, fetch the branch and check out the SHA).

@@ -289,7 +289,7 @@ replay's outputs; the sanitized replays are run with
 | (a) | the native build from a clean clone with the prerequisites above (before a release or a large change is declared done) | `make -f Makefile.native -j"$(nproc)" native BITS=32`, then `BITS=64` |
 | platform | style, lint, the sanitized unit tests at both widths, ThreadSanitizer, the tools and glue self-tests | `make -C platform gate` |
 | (b) | expansion's test suite on the native build equals the GBA baseline, per test, but for the nine benchmarks (assumption failures by decision); the same at both widths | `make -f Makefile.native -j32 check BITS=32`, `BITS=64`, and each with `SANITIZE=1` |
-| (c) | the GBA target builds, its ROM is unchanged (sha1 `e2d4600d4e7b1269ac50c28bc96ece2b758ded9e` for 1.17.1) and its suite equals the baseline | `make -j"$(nproc)"`, `sha1sum pokeemerald.gba`, `make -j"$(nproc)" check` |
+| (c) | the GBA target builds, its ROM is unchanged (sha1 `e2d4600d4e7b1269ac50c28bc96ece2b758ded9e` for 1.17.1) and its suite equals the baseline | `make -j"$(nproc)"`, `sha1sum pokeemerald.gba`, then `make -j"$(nproc)" check`, whose totals must be 5862 total, 5414 passed, 18 known failing, 9 expected failing, 421 to-do, rc 0 (`docs/research/gba-baseline-1.17.1.md`); the nightly's `gba` job runs all three. Building the ROM alone does not compile `test/`, so it cannot pass this gate |
 | (d) | the opening, replayed: dumps and screenshots match, at both widths, plain and sanitized | `tests/smoke/run.sh build/native32/pokeemerald-native out/`, likewise `native32-san`, `native64`, `native64-san` |
 | (e) | expansion's debug menu driven natively, the same four builds | `tests/smoke/run_debug_menu.sh build/native32/pokeemerald-native out/`, likewise the other three |
 | (f) | the unit tests, both replays and the suite are clean under AddressSanitizer and UndefinedBehaviorSanitizer at both widths | (platform) `make -C platform test BITS=32`, `BITS=64`; the sanitized runs of (b), (d) and (e) |
@@ -410,15 +410,21 @@ sanitizers), and so is `BITS=32`.
 
 Nothing built this way runs on the build machine. What runs it is the Windows
 workflow, `.github/workflows/windows.yml` (nightly at 05:17 UTC, and by hand,
-`gh workflow run windows.yml`): three Linux jobs side by side cross-build the
-game and the unit tests (and play the Linux half of the cross-OS save gate),
-cross-build the test runner, and run the suite on the Linux 64-bit build; a
-Windows job (`windows-latest`, Git Bash and the image's MSYS2) runs everything
-below on what they built; a last Linux job compares. The same by hand, on a
-64-bit Windows 10 1903 or later with Git for Windows and, for the suite, MSYS2
-at `C:\msys64`, from a checkout made with `core.autocrlf false` (the scripts
-and the expectations are compared byte for byte) holding the build's outputs
-where the build left them:
+`gh workflow run windows.yml`). Its `windows` job (`windows-latest`) builds
+the game itself and uploads no build: it installs WSL (Ubuntu 24.04, by
+`Vampire/setup-wsl`) and the cross-build's packages there, runs the Linux
+64-bit build, the cross-OS save gate's first stage, and the three Windows
+cross-builds of this section (the game, the unit tests, the TEST=1 test
+runner) in WSL's own file system with the commands above, copies the `.exe`s
+to the Windows file system, runs everything below with Git Bash, pwsh and the
+image's MSYS2, and runs the gate's last stage in WSL again. A Linux job runs
+the suite on the Linux 64-bit build and a last Linux job compares the two
+suites' logs; those logs are the only results the jobs pass, since no workflow
+uploads the game (`docs/DECISIONS.md`, "No workflow uploads the game"). The
+same by hand, on a 64-bit Windows 10 1903 or later with Git for Windows and,
+for the suite, MSYS2 at `C:\msys64`, from a checkout made with `core.autocrlf
+false` (the scripts and the expectations are compared byte for byte) holding
+the build's outputs where the build left them:
 
 ```
 # Git Bash
@@ -529,12 +535,17 @@ allocations below the image end near it, so the tests' fixed page is
 `.github/workflows/release.yml` (by hand only) builds the Linux 64-bit tarball
 and the Windows 64-bit zip, with the same make commands as above (the Windows
 steps are `.github/actions/windows-cross-setup`, after
-`.github/actions/native-setup`), writes `SHA256SUMS.txt` and attests both
-archives (`gh attestation verify <file> --repo <owner>/<repo>`; GitHub offers
-attestations to a user-owned repository only once it is public, so while this
-one is private that step fails after the files are uploaded). Each archive
-holds the executable, `LICENSE`, `RUNNING.md` and a short `README.txt`; the
-Windows zip also holds `SDL2.dll` and SDL2's licence. The files stay on the run
-as artifacts for 14 days. The run creates a GitHub release only with the
-`publish` input and a `tag`, and no public release is made without an
+`.github/actions/native-setup`), checks each archive (its contents, a headless
+start of the Linux executable, the Windows executable's PE format) and prints
+its SHA-256. A run without the `publish` input uploads nothing at all: no
+artifact, no release. With `publish` and a `tag` the archives go to the later
+jobs as one-day artifacts, which a last job deletes; those jobs write
+`SHA256SUMS.txt`, attest both archives (`gh attestation verify <file> --repo
+<owner>/<repo>`; GitHub offers attestations to a user-owned repository only
+once it is public, so while this one is private that step fails) and create
+the GitHub release. Each archive holds the executable, `LICENSE`, `RUNNING.md`
+and a short `README.txt`; the Windows zip also holds `SDL2.dll` and SDL2's
+licence. `platform/build_glue/check_workflow_uploads.py` fails the platform
+gate if any workflow's upload could match more than text, frame images, saves and clock files, release.yml's
+archives excepted under `publish`. No public release is made without an
 explicit decision to publish (`docs/DECISIONS.md`, "Why no public release").

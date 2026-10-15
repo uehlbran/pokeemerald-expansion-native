@@ -1,12 +1,10 @@
-# The last step of a workflow that carries a build between jobs: deletes every
-# artifact of this run whose name is not on the keep list, so that the game
-# (a built executable holds the complete game's assets) is not downloadable
-# after the run, whatever the artifact's retention. The keep list is the
-# explicit list of the workflow's artifacts that hold no game (logs, suite
-# results, replay dumps); an artifact added to the workflow and not named
-# there is deleted, so a new game-bearing artifact cannot be forgotten
-# silently. Fails if the listing, a deletion or the check afterwards fails.
-# docs/DECISIONS.md, "CI artifacts never hold the game beyond a run".
+# The last step of release.yml's publish path, the one place where an archive
+# of the game is uploaded (docs/DECISIONS.md, "No workflow uploads the game"):
+# deletes every artifact of this run whose name is not on the keep list, so
+# that the archives are not downloadable after the run, whatever the
+# artifact's retention. The keep list is the explicit list of artifacts that
+# hold no game; an artifact not named there is deleted. Fails if the listing,
+# a deletion or the check afterwards fails.
 #
 # The job that uses this action needs `permissions: actions: write` (and
 # contents: read for the checkout that finds this file), and `needs:` every

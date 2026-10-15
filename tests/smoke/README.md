@@ -248,8 +248,8 @@ The Linux and the Windows 64-bit builds lay the save out alike (MinGW's
 bit-fields are GCC's on Linux with `-mno-ms-bitfields`, `platform/target.mk`),
 so a save moves between them with nothing converted. `run_cross_os.sh` checks
 it in three stages, each on the directories the stage before it wrote, since
-the builds run on two machines; `.github/workflows/windows.yml` carries the
-directories between its jobs. The steps are `run_cross_width.sh`'s
+the builds run on two machines; `.github/workflows/windows.yml` runs all
+three stages in one job (the Linux ones in WSL), so no directory leaves it. The steps are `run_cross_width.sh`'s
 (`save_steps.sh` holds them for both scripts):
 
 ```
