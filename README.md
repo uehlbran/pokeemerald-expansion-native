@@ -51,7 +51,7 @@ Verified by an automated gate (the gates and their commands are in
   fullscreen by default on a Deck (`SteamDeck=1`), F11 for everyone, and a
   tarball that runs as a non-Steam game from the home directory
   ([docs/RUNNING.md](docs/RUNNING.md), "Steam Deck"). Unit-tested, not tried
-  on a Deck: the owner's hand-check list is in docs/DECISIONS.md.
+  on a Deck: the owner's hand-check list is in docs/STATUS.md, "Needs the owner" (2b).
 - Fast-forward: Tab held, or Shift+Tab to switch it on and off, at 2x (3x,
   4x or unlimited in the settings file), with the sound sped up or muted
   and an indicator in the corner; the frame pacer alone changes, so the

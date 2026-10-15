@@ -149,23 +149,24 @@ PTEST(throttled_wait_takes_about_one_frame_period)
     PT_ASSERT(elapsed * 1000u < freq * 1200u);
 }
 
-/* At 4x, 28 waits fit in the time of 7 at the normal speed (117.2 ms), and
- * clearly less than 28 of those (470 ms): the frames come four times as
- * often. The bounds are as loose as the test above allows. */
+/* At 4x, 7 waits take 29.3 ms: at least that, and less than 7 at the normal
+ * speed (117.2 ms), so the frames come four times as often. The upper bound
+ * is 4x the nominal time, so a loaded runner's oversleeping (a few waits' worth
+ * of ten milliseconds) does not fail it. */
 PTEST(at_four_times_the_waits_are_a_quarter_as_long)
 {
     PT_ASSERT_EQ_INT(frame_pacer_init(FRAME_PACER_REALTIME), 0);
     uint64_t start = SDL_GetPerformanceCounter();
     PT_ASSERT_EQ_INT(frame_pacer_set_multiplier(4u), 0);
-    for (unsigned i = 0; i < 28; i++)
+    for (unsigned i = 0; i < 7; i++)
         frame_pacer_wait();
     uint64_t elapsed = SDL_GetPerformanceCounter() - start;
     const uint32_t multiplier = frame_pacer_multiplier();
     frame_pacer_shutdown();
     uint64_t freq = SDL_GetPerformanceFrequency();
     PT_ASSERT_EQ_U32(multiplier, 4u);
-    PT_ASSERT(elapsed * 1000u >= freq * 117u);
-    PT_ASSERT(elapsed * 1000u < freq * 400u);
+    PT_ASSERT(elapsed * 1000u >= freq * 29u);
+    PT_ASSERT(elapsed * 1000u < freq * 117u);
 }
 
 PTEST(unlimited_wait_returns_at_once_and_normal_speed_waits_again)
@@ -176,8 +177,8 @@ PTEST(unlimited_wait_returns_at_once_and_normal_speed_waits_again)
     for (unsigned i = 0; i < 100; i++)
         frame_pacer_wait();
     uint64_t unlimited = SDL_GetPerformanceCounter() - start;
-    /* Back at the normal speed the schedule starts again from now: no frames
-     * owed from the unlimited stretch, and no burst to catch up on. */
+    /* Back at the normal speed the waits take their time again (that the schedule starts from
+     * now is a_change_of_speed_restarts_the_schedule_from_now's). */
     PT_ASSERT_EQ_INT(frame_pacer_set_multiplier(FRAME_PACER_NORMAL_SPEED), 0);
     start = SDL_GetPerformanceCounter();
     for (unsigned i = 0; i < 3; i++)

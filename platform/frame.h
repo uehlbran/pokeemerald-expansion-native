@@ -36,7 +36,8 @@
  *     (sound_speedup), so that a frame period's worth is queued each period
  *     and the queue stays as deep as at the normal speed; unlimited, every
  *     frame is queued as it is and the queue's bound (audio.h) drops what
- *     does not fit; muted, the device is paused and nothing is queued. The
+ *     does not fit; muted, the device is paused and nothing is queued or recorded (an
+ *     --audio-dump of such a run skips those frames). The
  *     PSG and the mix run in every case, as the hardware's did. Leaving
  *     mute or unlimited, whose queue is stale or full, the queue starts
  *     again as at power-on: paused, emptied, and played after

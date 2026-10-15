@@ -365,7 +365,7 @@ The platform library alone: `make -C platform lib TARGET_OS=windows BITS=64`
 (`platform/build/64-windows/`). The unit tests, cross-built here and run on Windows (below):
 `make -C platform test TARGET_OS=windows BITS=64` writes every test that runs
 on Windows to `platform/build/64-windows/test/` (the portable ones and
-`platform/test/windows/`'s, 85 executables, with `SDL2.dll`); each is linked
+`platform/test/windows/`'s, 87 executables, with `SDL2.dll`); each is linked
 with the PE scripts and checked by `check_pe_layout.py` like the game. The
 Windows sources' static analysis: `make -C platform lint TARGET_OS=windows
 BITS=64` (clang-tidy for the MinGW-w64 target, with its headers, and cppcheck;

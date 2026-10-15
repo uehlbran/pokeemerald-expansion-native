@@ -16,9 +16,11 @@ game shows the keys and the paths, and Q there quits.
            pokeemerald-native.sh (set the file filter to All files). The
            game starts fullscreen on a Deck; RUNNING.md has the controller
            buttons. The script runs the game with the SDL2 in this folder
-           (libSDL2-2.0.so.0, licence in SDL2-LICENSE.txt: it needs glibc
+           (libSDL2-2.0.so.0, licence in SDL2-LICENSE.txt: measured on
+           the Ubuntu 24.04 image the release builds on, it needs glibc
            2.38 and the system's X11, Wayland, audio and graphics libraries,
-           which SteamOS has).
+           which SteamOS is expected to have; not yet tried on a Deck,
+           RUNNING.md says what to do if it does not start).
   Windows  pokeemerald-native.exe, with SDL2.dll in the same folder.
            Windows 10 version 1903 or later, 64-bit. The executable is not
            signed: if SmartScreen says "Windows protected your PC", click

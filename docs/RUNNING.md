@@ -155,7 +155,7 @@ F1 shows the help overlay over the game: the version, the data directory and
 the paths of the save, the clock's file and the settings file, the keys in
 force, the controller's buttons and fast-forward's keys, speed and sound,
 under the line `Q: quit  F1: close`; once the last thing you pressed was a
-controller button, the line names the controller's instead (`X: quit  B: close`).
+controller button, stick or trigger, the line names the controller's instead (`X: quit  B: close`).
 The overlay shows those lines from the top as far as the window has room: in
 a small window (`--scale 1` or 2) the last ones may not fit, and
 `pokeemerald-native --keys` prints them all.
@@ -253,7 +253,8 @@ its licence as `SDL2-LICENSE.txt`), the project's licence and these pages. The
 launcher puts its own folder first in `LD_LIBRARY_PATH`, so it runs the game
 with the bundled SDL2; the executable started directly uses the system's.
 It leaves the working directory alone, so relative paths in options mean what
-you typed. The bundled SDL2 was measured to need glibc 2.38 (the highest
+you typed. The bundled SDL2, from the Ubuntu 24.04 image the release builds
+on, was measured to need glibc 2.38 (the highest
 `GLIBC_` version in `objdump -T`; the executable itself needs 2.34) and 17
 system libraries besides glibc and libm: libasound, libpulse, libsamplerate,
 libX11, libXext, libXcursor, libXi, libXfixes, libXrandr, libXss, libdrm,
@@ -419,31 +420,40 @@ usage: pokeemerald-native [options]
 A player needs `--keys`, `--version`, `--scale`, `--silent` and perhaps
 `--data-dir`, `--save` and `--rtc-offset`; the rest are for the project's
 tests (`--audio-dump` records what you hear, at the GBA's 32768 Hz, for
-comparing builds). `--keys` prints this, and the game then exits:
+comparing builds). `--keys` prints this (here run with
+`--data-dir /home/you/pokeemerald-data` and no settings file), and the game then exits:
 
 ```
 pokeemerald-native a554c4080f
-Data directory (per-user): /home/you/.local/share/pokeemerald-expansion-native/pokeemerald-native/
-Save: /home/you/.local/share/pokeemerald-expansion-native/pokeemerald-native/pokeemerald.sav
-Clock: /home/you/.local/share/pokeemerald-expansion-native/pokeemerald-native/pokeemerald.rtc
-Settings: /home/you/.local/share/pokeemerald-expansion-native/pokeemerald-native/settings.ini (not there: the defaults)
+Data directory (--data-dir): /home/you/pokeemerald-data
+Save: /home/you/pokeemerald-data/pokeemerald.sav
+Clock: /home/you/pokeemerald-data/pokeemerald.rtc
+Settings: /home/you/pokeemerald-data/settings.ini (not there: the defaults)
 Keyboard:
-  A       Z
-  B       X
-  Select  Backspace
-  Start   Return
-  Right   Right
-  Left    Left
-  Up      Up
-  Down    Down
-  R       S
-  L       A
-Controller: A, B, Back (Select), Start, the shoulders (L, R), the D-pad or the left stick
+  A          Z
+  B          X
+  Select     Backspace
+  Start      Return
+  Right      Right
+  Left       Left
+  Up         Up
+  Down       Down
+  R          S
+  L          A
+  Fullscreen F11
+Controller:
+  GBA buttons: A, B, Back (Select), Start, the shoulders (L, R), the D-pad or the left stick
+  Fast-forward hold    Right trigger
+  Fast-forward toggle  Right stick click
+  Help overlay         Y
+  Overlay close        B
+  Overlay quit         X
+  Fullscreen           Left trigger
 Fast-forward:
-  Hold    Tab
-  Toggle  Shift+Tab
-  Speed   2x
-  Sound   sped up
+  Hold       Tab
+  Toggle     Shift+Tab
+  Speed      2x
+  Sound      sped up
 ```
 
 The mode in brackets is `per-user`, `portable` or `--data-dir`. The version

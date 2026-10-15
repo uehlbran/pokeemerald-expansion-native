@@ -62,8 +62,12 @@ static int begin_log(const char *path, const struct console_streams *streams)
     FILE *const first = streams->out != NULL ? streams->out : streams->err;
     // cppcheck-suppress leakReturnValNotUsed ; freopen gives back the stream it was given, which the caller keeps
     const bool reopened = first != NULL && freopen(path, "a", first) != NULL;
-    if (!reopened)
+    if (!reopened) {
+        /* C11 7.21.5.4: freopen closes the stream whether or not the open succeeds. */
+        if (first != NULL)
+            (void)host_console_discard_stream(first);
         return -1;
+    }
     if (streams->out != NULL && streams->err != NULL && host_console_share_stream(streams->out, streams->err) != 0)
         return -1;
     const bool out_unbuffered = streams->out == NULL || setvbuf(streams->out, NULL, _IONBF, 0) == 0;
@@ -139,7 +143,8 @@ void console_report_start_failure(enum console_mode mode, const char *log_path, 
     (void)fflush(NULL); /* the streams are the log: what they hold is not in the file yet */
     const size_t length = read_log_head(log_path, head, sizeof head);
     const int written = snprintf(text, sizeof text, "%.*s\n\nThe log file is %s", (int)length, head, log_path);
-    if (written < 0 || (size_t)written >= sizeof text)
+    /* snprintf truncates and terminates: a cut message is shown, being more use than none */
+    if (written < 0)
         text[0] = '\0';
     show(BOX_TITLE, text);
 }

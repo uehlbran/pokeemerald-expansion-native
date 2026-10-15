@@ -12,8 +12,10 @@ Read this first; the sections below are the ledger behind it.
 
 ### The night of 2026-10-15 (the orchestrator's run while the owner sleeps)
 
-**Main** is at 8e6ac8d0fb (code), pushed. Every gate is green on it at
-both widths (the 24-step ledger at the end of this block).
+**Main** is at 11732f8789 (code; ff5f152dfe with STATUS), pushed. Every
+gate is green on it at both widths (the 24-step ledger at the end of this
+block). GitHub Actions runs nothing since 03:40 (billing, item (0)), so the
+last CI runs on main are those of 8e6ac8d0fb (green).
 
 **Finished tonight.**
 - Fast-forward (task g), merged at 6a42fd7ade. Tab held speeds the game;
@@ -46,6 +48,25 @@ both widths (the 24-step ledger at the end of this block).
   subsystem, the pipes, the no-console log through a process started with
   no handles, both replays, the cross-OS save and the suite (run
   38693203706 on the branch).
+- The Apple-silicon spike (task i), report only, in 39 minutes of its
+  two-hour cap: DECISIONS.md "Native Apple silicon: the spike's findings"
+  and PLAN.md "Native Apple silicon: what a port would take". The answer:
+  a sliding arm64 build is feasible without editing expansion's headers or
+  any other expansion file, but not by redefining addresses in headers. XNU
+  refuses any arm64 executable without a 4 GiB page zero and nothing maps
+  below it, so the GBA addresses become offsets in a window at 2^32 or above,
+  expansion's compiled code is rewritten at build time by two LLVM IR filters
+  (integer/pointer conversions, and division, since arm64's x/0 gives 0
+  where the GBA's libgcc gives other values in 22 of 28 cases), and the
+  data's 41,946 address words are written as offsets. Measured here: the
+  window model passes 14 of 14 idiom checks on expansion's unmodified
+  headers (the control segfaults); the filtered IR of every src file
+  compiles for x86_64 and aarch64 (765 of 767; the two are a known C-filter
+  rule); the division filter matches all 193 libgcc rows; an I/O loop costs
+  3 to 4% more. Cost: 7 to 9 worker tasks, about 1,500 lines. Not run: the
+  whole game in the window (the first task if you say go) and four probes
+  that need the arm64 runner. The probes are on work/spike (unmerged, on
+  origin).
 - Steam Deck (task h), merged at 8e6ac8d0fb. The controller does
   everything the keyboard does: fast-forward held on the right trigger and
   toggled by the right stick click, the help overlay on Y (B closes it, X
@@ -67,8 +88,38 @@ both widths (the 24-step ledger at the end of this block).
   the launcher's `cd` (broke relative paths), SDL2 bundled as your item
   (h) specifies, a missing test, the docs.
 
-**In flight.** macOS x86_64 (M2 to M5) on `macos-15-intel`, Opus, on
-work/macos. Then the Apple-silicon spike (task i) and a final review. DECISIONS.md has the macOS runner dates (x86_64 macOS runners end
+**In flight.** macOS x86_64 (M2 to M5): the Opus worker finished the
+port as far as Linux can check it (work/macos at 3e12d1f0f0, pushed,
+unmerged): the Mach-O layout (the regions as segments at their GBA
+addresses, `-no_pie -pagezero_size 0x1000 -no_fixup_chains`), the macOS
+host layer (faults, the stack switch, the watchdog's relative wait,
+F_FULLFSYNC), the clang build, the test scripts split out for Mach-O,
+patchelf for Mach-O, macos.yml (nightly 06:17 UTC and by hand). On Linux:
+every gate unchanged; a clang-built Linux game passes both replays and
+equals gcc's suite result for result, plain and sanitized. On a Mac:
+nothing beyond probes M0 and M2, because of the billing block. It merges
+only after its first runs on `macos-15-intel` are green (the ordered list
+is in its DECISIONS entry "The macOS port waits for its first runs on a
+Mac"; macos.yml must reach main or carry a push trigger once to be
+dispatched). Now in work/macos: the release archive for macOS, `tools/
+build-native.sh --os macos` and RUNNING's Gatekeeper section (Sonnet), and
+a first-pass Sonnet review of the port. The orchestrator's full Linux
+gate on work/macos at c8cd418835 is green (24 steps, the suites 5418 at
+both widths plain and sanitized, the GBA ROM unchanged). The review found
+no blocker provable without a Mac and nine items now being fixed by the
+author at their cause, among them: the two clang code-generation
+switches were symptom fixes (a dangling pointer in expansion's test
+harness behind the Beat Up failures; eight real defects in expansion's
+code behind the sanitizer exclusions, one of which, a u8 function called
+through a u32 pointer in field_effect.c, can return garbage on any x86-64
+build); an out-of-bounds write in patchelf's new Mach-O path; and a
+latent placement hazard that also concerns Linux: `rfu_initializeAPI`
+treats any address 0x?2xxxxxx as EWRAM, and the author measured writable
+data at 0x429bdd08 in the gcc-sanitized 64-bit image and above 0x42f00000
+in the sanitized test runners at both widths (the plain images end below
+0x42000000; no gate reaches the wireless code). The fix keeps writable data
+out of that window and makes all three link checks refuse it; it lands with
+the macOS branch. Then the final review. DECISIONS.md has the macOS runner dates (x86_64 macOS runners end
 in fall 2027) and what they change for the Apple-silicon question.
 
 **Broke and fixed.** The per-push CI run on main after the settings
@@ -106,6 +157,19 @@ windows.yml and release.yml use that label, so the release's executable
 and its bundled SDL2 would then need a newer glibc than SteamOS 3.8's 2.41
 may have. Pinning both to `ubuntu-24.04`, as native.yml already is, is in
 tonight's cleanup branch.
+(0b) The Apple-silicon decisions (DECISIONS.md, "Native Apple silicon:
+the spike's findings", "What the owner must decide"): whether macOS stays
+supported after 2027 (x86_64 macOS runners end in fall 2027 and Rosetta
+narrows after macOS 27); whether the arm64 build may rewrite expansion's
+compiled code at build time (about 2,300 conversions and 424 divisions)
+instead of some 500 guarded source edits; later, ASLR kept or a launcher
+without it; the macos-latest minutes. Recommendation: the Linux half
+(P1, 3 to 4 tasks, no runner, decides the expansion side) after work/macos
+merges, the arm64 half only if macOS is to stay after 2027.
+(0c) Fast-forward toggled on stays on when the window loses focus; at
+`unlimited` that keeps a core busy while you are elsewhere. Recommended:
+clear the toggle on focus loss too (the final review's finding; your
+specification named only the hold). Say yes or no.
 (1) A hands-on check of fast-forward on a real
 keyboard and screen: Tab held and released, Shift+Tab on and off, the
 indicator, the sound at 2x, 3x, 4x and unlimited and with
@@ -133,6 +197,9 @@ Desktop Mode while holding it ends it too; [7] after a save and a
 restart the save is in
 `/home/deck/.local/share/pokeemerald-expansion-native/pokeemerald-native/`;
 [8] `fullscreen = no` in settings.ini gives a window and F11 toggles;
+back in a window the picture keeps its size and scale (the tests run on
+SDL's dummy driver, which only records the flag, so this and a driver
+that refuses fullscreen are checked by hand only);
 [9] a `pad_overlay = x` line is accepted, and one button for two
 functions is reported on stderr. (3) Carried
 from before, below: the 65536 Hz audio-rate recommendation, the
@@ -146,16 +213,53 @@ was refused by its permission check, and the orchestrator does not
 redo an action a worker was refused. No gate wrote it: the gates now
 check that the directory is unchanged by them instead of absent.
 
+**The final review (Fable), first three of six.** Read-only reviewers
+with a 15-minute cap each, notes outside the repository in
+/home/uehlbran/projects/pen-review/2026-10-15/ (fable-tests.md,
+fable-docs.md, fable-merges.md); the three for the macOS branch (its code,
+its memory layout and faults, the CI and release workflows) start once that
+branch's review fixes are in, so that they read a settled branch. Findings:
+tests and gates 0 defects, 7 risks, 2 style; docs 3 defects, 3 risks, 2
+style; the smaller merges' code 0 defects, 3 risks, 4 style. Triage:
+- Fixed through the normal loop on work/fablefix (merged at 526f0abec5;
+  reviewed with mutants, no blocker): the three
+  docs defects (a stale `--keys` sample, a wrong test count, an unverified
+  SteamOS claim stated as fact), the hand-check list's pointer, the
+  `ubuntu-latest` pin to `ubuntu-24.04` in release.yml and windows.yml, the
+  console log's second open leaving stderr closed on failure, a timing test
+  with a tight bound (a CI flake waiting to happen), the missing Linux test
+  of the console modes, the overlay latch missing an open-and-close within
+  one poll, and a fullscreen test that could not tell one toggle from three.
+- Style items: one cleanup branch, merged at 11732f8789 (reviewed; one
+  comment corrected).
+- Recorded, not changed tonight: (a) a second instance empties the first
+  instance's `pokeemerald.log` before it is refused, and both then append
+  to it (accepted in the console entry of DECISIONS as the log is not
+  durable state; moving the truncation after the save lock is a small
+  change, but Windows-only and unverifiable while Actions is blocked);
+  (b) `run_windows_no_console.ps1` waits on a process id that Windows may
+  reuse, so a rare run could fail for the wrong reason (Windows-only;
+  needs a runner to verify); (c) the console-less Windows path is run end
+  to end for `--version` only (more runner coverage, same reason);
+  (d) for the owner: fast-forward toggled on at `unlimited` stays on when
+  the window loses focus, so an unfocused game keeps a core at 100% (on a
+  Deck in Desktop Mode, battery); the owner's specification releases the
+  hold on focus loss but keeps the toggle across frames; recommendation:
+  also clear the toggle on focus loss (one line), since the player cannot
+  see the indicator then. Under "Needs the owner".
+
 | Gate on main tonight | Commit | Result |
 |---|---|---|
-| The full gate, 24 steps: the platform gate (format, lint at both widths, sanitized unit tests at both widths, ThreadSanitizer, tools and glue tests); the builds at 32 and 64 bits, plain and sanitized; gates d and e on all four builds; gate b at 32 and 64 bits, plain and sanitized (5418 passed, 9 assumption failures each); gate h both ways; the Windows cross-build and its 83 tests built; the GBA ROM's sha1 | 6a42fd7ade (fast-forward) | green; the per-user data directory absent before and after |
-| The same 24 steps | e981eff71a (the watchdog test) | green, the same totals; 18 minutes warm |
+| The full gate, 24 steps: the platform gate (format, lint at both widths, sanitized unit tests at both widths, ThreadSanitizer, tools and glue tests); the builds at 32 and 64 bits, plain and sanitized; gates d and e on all four builds; gate b at 32 and 64 bits, plain and sanitized (5418 passed, 9 assumption failures each); gate h both ways; the Windows cross-build and its unit tests built (83 here); the GBA ROM's sha1 | 6a42fd7ade (fast-forward) | green; the per-user data directory absent before and after |
+| The same 24 steps | e981eff71a (the watchdog test) | green, the same suite totals, 83 Windows test executables; 18 minutes warm |
 | The same 24 steps on the branch before the merge | 0a6c7ba0cb (fast-forward) | green |
 | Windows runner | 6a42fd7ade | run 38682653915 green |
-| The same 24 steps (the per-user directory unchanged by the gate) | 41b10a1617 (console removal) | green, the same totals |
+| The same 24 steps (the per-user directory unchanged by the gate) | 41b10a1617 (console removal) | green, the same suite totals; 85 Windows test executables built |
 | Windows runner | 41b10a1617 | run 38697083593 green; the per-push Linux run 38697084840 green |
-| The same 24 steps | 8e6ac8d0fb (Steam Deck) | green, the same totals |
+| The same 24 steps | 8e6ac8d0fb (Steam Deck) | green, the same suite totals; 87 Windows test executables built |
 | Windows runner | 8e6ac8d0fb | run 38709681302 green; per-push Linux 38709682041 green |
+| The same 24 steps | 526f0abec5 (the final review's fixes) | green, the same suite totals, 87 Windows test executables |
+| The same 24 steps | 11732f8789 (the final review's style items) | green, the same suite totals |
 | Release workflow, publish off | 8e6ac8d0fb | run 38709729818: both archives built and their sums verify; the Linux tarball holds the executable, the launcher, libSDL2-2.0.so.0, SDL2-LICENSE.txt, LICENSE, README.txt, RUNNING.md, and run through the launcher from `/` it loads the bundled SDL2 and prints its version; the attestation step fails as on every run while the repository is private (nothing published, no tag) |
 
 
@@ -990,7 +1094,8 @@ Nothing yet; nothing exists to be broken.
 | fastforward (hold and toggle keys, the pacer multiplier, audio, indicator) | Opus | Sonnet (mutation testing), orchestrator merge gate |
 | threadtest (the Linux watchdog test that failed on CI) | Sonnet | Sonnet (mutation testing), orchestrator merge gate |
 | console (no console window on Windows) | Sonnet | Sonnet (mutation testing), orchestrator merge gate |
-| macos (milestone 8, tasks M2 to M5: macOS x86_64) | Opus | in flight |
+| macos (milestone 8, tasks M2 to M5: macOS x86_64; unmerged, waits for the runner) | Opus; Sonnet for the release, script and RUNNING follow-up | Sonnet (in flight) |
+| spike (task i: native Apple silicon, report only; work/spike unmerged) | Opus | orchestrator |
 | deck (task h: Steam Deck) | Sonnet | Sonnet (mutation testing), orchestrator merge gate |
 | interrupt | Opus | Sonnet |
 | psg | Opus | Sonnet |
