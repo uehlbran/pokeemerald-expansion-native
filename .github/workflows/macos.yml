@@ -33,8 +33,10 @@
 # again for gate h's last stage). Between jobs pass only a stage's save and
 # clock (`pokeemerald.sav`, `pokeemerald.rtc`, named one by one) and text
 # (the suites' logs, the layout's and otool's text, the replays' text
-# dumps, logs and input files). The failure-only uploads keep text alone,
-# one pattern a line: no screenshot, no save, no binary. The caches hold
+# dumps, logs and input files). The failure-only uploads keep text and
+# logs, the gates' frame images (.ppm, .png) and the save gates' saves and
+# clocks (.sav, .rtc), one pattern a line: never an executable, shared
+# library, object file, archive, other binary or directory. The caches hold
 # compiled objects, the converted graphics, the build tools and ccache's
 # data, never a linked game, test runner or archive.
 # macOS minutes count ten times. Nightly at 06:17 UTC, an hour after
@@ -149,11 +151,17 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: linux-outputs
-          # Text alone, one pattern a line (no braces: @actions/glob sets nobrace).
+          # Text, logs, the gates' frame images and the save gates' saves and
+          # clocks, one pattern a line (no braces: @actions/glob sets nobrace);
+          # never an executable, library, object, archive or directory.
           path: |
             out/**/*.txt
             out/**/*.log
             out/**/*.diff
+            out/**/*.ppm
+            out/**/*.png
+            out/**/*.sav
+            out/**/*.rtc
           if-no-files-found: ignore
 
   game:
@@ -258,11 +266,17 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: macos-game-outputs
-          # Text alone, one pattern a line (no braces: @actions/glob sets nobrace).
+          # Text, logs, the gates' frame images and the save gates' saves and
+          # clocks, one pattern a line (no braces: @actions/glob sets nobrace);
+          # never an executable, library, object, archive or directory.
           path: |
             out/**/*.txt
             out/**/*.log
             out/**/*.diff
+            out/**/*.ppm
+            out/**/*.png
+            out/**/*.sav
+            out/**/*.rtc
           if-no-files-found: ignore
 
   suite:
@@ -410,9 +424,15 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: compare-outputs
-          # Text alone, one pattern a line (no braces: @actions/glob sets nobrace).
+          # Text, logs, the gates' frame images and the save gates' saves and
+          # clocks, one pattern a line (no braces: @actions/glob sets nobrace);
+          # never an executable, library, object, archive or directory.
           path: |
             out/**/*.txt
             out/**/*.log
             out/**/*.diff
+            out/**/*.ppm
+            out/**/*.png
+            out/**/*.sav
+            out/**/*.rtc
           if-no-files-found: ignore

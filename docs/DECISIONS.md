@@ -2562,10 +2562,12 @@ in this order:
    - **no upload of the game**: the run's artifacts are `linux-save`
      (gate h's first stage: `pokeemerald.sav`, `pokeemerald.rtc` and text),
      `macos-game` (text, and the second stage's save and clock),
-     `suite-macos`, `suite-linux64`, and on a failure the text-only
-     `*-outputs`; no executable, test runner, archive, converted data,
-     screenshot or output directory among them (no workflow uploads the
-     game, ever: "CI artifacts never hold the game beyond a run").
+     `suite-macos`, `suite-linux64`, and on a failure the `*-outputs`
+     (text, logs, the gates' frame images and the save gates' saves and
+     clocks, by extension); no executable, test runner, library, object,
+     archive, converted data or output directory among them (no workflow
+     uploads the game, ever: "CI artifacts never hold the game beyond a
+     run").
 2. The same workflow on `main` after the merge, and its nightly from then on.
 3. The owner's own Mac, Intel or Apple silicon under Rosetta: the build from a
    fresh clone with the Homebrew line of `docs/BUILDING.md`, the game in a
