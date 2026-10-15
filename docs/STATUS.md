@@ -77,7 +77,8 @@ from before, below: the 65536 Hz audio-rate recommendation, the
 command, when convenient: `rm -r ~/.local/share/pokeemerald-expansion-native`.
 A reviewer's mutant of the console task (one that made Linux take the
 Windows no-console path) created that per-user directory on this
-machine at 23:50 (two empty directories now); the reviewer's own `rm`
+machine at 23:50 (it holds that run's `pokeemerald.log`, 2231 bytes,
+nothing else); the reviewer's own `rm`
 was refused by its permission check, and the orchestrator does not
 redo an action a worker was refused. No gate wrote it: the gates now
 check that the directory is unchanged by them instead of absent.
