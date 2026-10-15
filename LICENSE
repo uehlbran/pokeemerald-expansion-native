@@ -28,11 +28,16 @@ It also covers the modifications this project made to upstream files, which
 are listed in docs/UPSTREAM_MODIFICATIONS.md, to the extent those
 modifications are separable from the upstream code.
 
-Files of the platform layer that translate upstream's decompiled code are
-covered only to the extent they are separable from the code they translate.
-They are platform/m4a/ (the C translation of src/m4a_1.s, and the
-transcription of src/m4a.c in its tests) and platform/decompress_asm.c (the
-routines of src/decompress_asm.s).
+Files of the platform layer that translate or closely follow upstream's
+code are covered only to the extent they are separable from the code they
+follow. Those that translate decompiled code are platform/m4a/ (the C
+translation of src/m4a_1.s, and the transcription of src/m4a.c in its tests)
+and platform/decompress_asm.c (the routines of src/decompress_asm.s). Those
+that follow upstream sources closely are platform/crt0.c (src/crt0.s),
+platform/interrupt.c (IntrMain in src/crt0.s), platform/rtc_siirtc.c
+(src/siirtc.c), platform/gcn_multiboot.c (src/libgcnmultiboot.s) and
+platform/game_hooks.c (test/test_runner.c, test/test_runner_battle.c,
+src/main.c and src/multiboot.c).
 
 It does not cover, and this project claims no rights over: the
 pret/pokeemerald decompilation and the pokeemerald-expansion project and
