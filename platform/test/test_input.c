@@ -1,4 +1,4 @@
-// deps: gba_memmap.c overlay.c font.c
+// deps: gba_memmap.c overlay.c controller.c font.c
 /*
  * Tests of input, written from GBATEK "GBA Keypad Input" before the module.
  *
@@ -369,7 +369,7 @@ static SDL_Event key_down(SDL_Scancode scancode, SDL_Keycode keycode)
 }
 
 /* While the overlay is shown KEYINPUT reads every button released, whatever is pressed, and the
- * buttons come back when it is hidden. The script source stands in for the keyboard, whose state
+ * buttons come back when it is hidden and let go of. The script source stands in for the keyboard, whose state
  * SDL's dummy driver cannot set (above). */
 PTEST(the_game_reads_no_button_while_the_overlay_is_shown)
 {
@@ -385,12 +385,18 @@ PTEST(the_game_reads_no_button_while_the_overlay_is_shown)
     (void)overlay_handle_event(&f1);
     input_update_keyinput();
     const uint16_t hidden = *keyinput();
+    input_script_set(0);
+    input_update_keyinput();
+    input_script_set(INPUT_KEY_A | INPUT_KEY_START);
+    input_update_keyinput();
+    const uint16_t pressed_again = *keyinput();
     input_shutdown();
     overlay_shutdown();
     *keyinput() = 0;
     PT_ASSERT_EQ_U32(before, 0x03F6u);
     PT_ASSERT_EQ_U32(shown, 0x03FFu);
-    PT_ASSERT_EQ_U32(hidden, 0x03F6u);
+    PT_ASSERT_EQ_U32(hidden, 0x03FFu); /* held when it hid: released until let go */
+    PT_ASSERT_EQ_U32(pressed_again, 0x03F6u);
 }
 
 /* ---- controller mapping ---- */

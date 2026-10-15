@@ -20,8 +20,10 @@
 #include <stdbool.h>
 #include <stdio.h>
 
+#include "controller.h"
 #include "data_dir.h"
 #include "fastforward.h"
+#include "fullscreen.h"
 #include "input.h"
 #include "options.h"
 #include "overlay.h"
@@ -40,6 +42,18 @@ const char *player_rtc_offset_path(void);
 /* The keys the settings give the buttons (the defaults without a settings
  * file). */
 const struct input_keymap *player_keymap(void);
+
+/* The controller's functions and their buttons (the defaults without a
+ * settings file). */
+const struct controller_bindings *player_controller(void);
+
+/* Whether the window starts fullscreen, from the settings file and the
+ * environment's SteamDeck (fullscreen.h); false for a run without a player at
+ * the keyboard. */
+bool player_starts_fullscreen(const struct options *options);
+
+/* The fullscreen key (the defaults without a settings file). */
+int player_fullscreen_key(void);
 
 /* Fast-forward's keys, speed and sound (the defaults without a settings
  * file). */

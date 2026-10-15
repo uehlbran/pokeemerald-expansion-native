@@ -63,6 +63,7 @@
 #include "data_dir.h"
 #include "debug_channel.h"
 #include "dma.h"
+#include "controller.h"
 #include "fastforward.h"
 #include "fixed_clock.h"
 #include "flash.h"
@@ -264,12 +265,25 @@ static int start_fastforward(const struct options *o)
     return player_at_keyboard(o) ? fastforward_init(player_fast_forward()) : 0;
 }
 
+/* The controller's functions and the fullscreen key, for the same runs as
+ * the overlay. */
+static int start_controller(const struct options *o)
+{
+    return player_at_keyboard(o) ? controller_init(player_controller()) : 0;
+}
+
+static int start_fullscreen(const struct options *o)
+{
+    return player_at_keyboard(o) ? fullscreen_init(player_fullscreen_key()) : 0;
+}
+
 static int start_video(const struct options *o)
 {
     struct video_config config = {
         .headless = o->headless,
         .scale = player_window_scale(o),
         .title = MAIN_WINDOW_TITLE,
+        .fullscreen = player_starts_fullscreen(o),
     };
     return video_init(&config);
 }
@@ -398,6 +412,8 @@ static const struct module_step module_steps[] = {
     {"audio_dump", start_audio_dump, audio_dump_shutdown},
     {"overlay", start_overlay, overlay_shutdown},
     {"fastforward", start_fastforward, fastforward_shutdown},
+    {"controller", start_controller, controller_shutdown},
+    {"fullscreen", start_fullscreen, fullscreen_shutdown},
     {"video", start_video, video_shutdown},
     {"input", start_input, input_shutdown},
     {"rtc", start_rtc, rtc_shutdown},

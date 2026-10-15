@@ -1,4 +1,4 @@
-// deps: font.c
+// deps: controller.c font.c
 /*
  * test_overlay.c: the help overlay (overlay.c): F1 shows and hides it, Q
  * quits only while it is shown, the game reads no button meanwhile, nothing
@@ -76,7 +76,10 @@ PTEST(f1_shows_and_hides_it_and_the_game_reads_no_button_while_shown)
     PT_ASSERT_EQ_U32(overlay_game_keys(0x0001), 0u);
     PT_ASSERT_EQ_INT(overlay_handle_event(&f1), OVERLAY_CONTINUE);
     PT_ASSERT(!overlay_shown());
-    PT_ASSERT_EQ_U32(overlay_game_keys(0x0009), 0x0009u);
+    /* Held at the first read after it hid: released until let go. */
+    PT_ASSERT_EQ_U32(overlay_game_keys(0x0009), 0u);
+    PT_ASSERT_EQ_U32(overlay_game_keys(0x0008), 0u);
+    PT_ASSERT_EQ_U32(overlay_game_keys(0x0001), 0x0001u);
     overlay_shutdown();
 }
 
@@ -276,6 +279,198 @@ PTEST(a_canvas_narrower_than_its_margins_gets_the_background_only)
     start(lines, 1);
     const bool drawn = overlay_draws(12, 40, 1, NULL, 0);
     overlay_shutdown();
+    PT_ASSERT(drawn);
+}
+
+/* ---- the controller ---- */
+
+static struct controller_edge pressed_edge(enum controller_function function)
+{
+    return (struct controller_edge){.function = function, .pressed = true};
+}
+
+static struct controller_edge released_edge(enum controller_function function)
+{
+    return (struct controller_edge){.function = function, .pressed = false};
+}
+
+PTEST(the_overlay_button_shows_and_hides_it_and_the_game_reads_no_button_while_shown)
+{
+    start(NULL, 0);
+    const struct controller_edge y = pressed_edge(CONTROLLER_OVERLAY);
+    PT_ASSERT_EQ_INT(overlay_handle_controller(&y), OVERLAY_CONTINUE);
+    PT_ASSERT(overlay_shown());
+    PT_ASSERT_EQ_U32(overlay_game_keys(ALL_KEYS), 0u); /* a controller's buttons are keys here too */
+    PT_ASSERT_EQ_INT(overlay_handle_controller(&y), OVERLAY_CONTINUE);
+    PT_ASSERT(!overlay_shown());
+    overlay_shutdown();
+}
+
+PTEST(the_close_button_hides_it_and_does_nothing_while_hidden)
+{
+    start(NULL, 0);
+    const struct controller_edge close = pressed_edge(CONTROLLER_OVERLAY_CLOSE);
+    PT_ASSERT_EQ_INT(overlay_handle_controller(&close), OVERLAY_CONTINUE);
+    PT_ASSERT(!overlay_shown()); /* not a toggle */
+    const struct controller_edge y = pressed_edge(CONTROLLER_OVERLAY);
+    (void)overlay_handle_controller(&y);
+    PT_ASSERT(overlay_shown());
+    PT_ASSERT_EQ_INT(overlay_handle_controller(&close), OVERLAY_CONTINUE);
+    PT_ASSERT(!overlay_shown());
+    overlay_shutdown();
+}
+
+PTEST(the_quit_button_quits_only_while_the_overlay_is_shown)
+{
+    start(NULL, 0);
+    const struct controller_edge x = pressed_edge(CONTROLLER_QUIT);
+    PT_ASSERT_EQ_INT(overlay_handle_controller(&x), OVERLAY_CONTINUE);
+    const struct controller_edge y = pressed_edge(CONTROLLER_OVERLAY);
+    (void)overlay_handle_controller(&y);
+    PT_ASSERT_EQ_INT(overlay_handle_controller(&x), OVERLAY_QUIT);
+    overlay_shutdown();
+}
+
+PTEST(releases_other_functions_null_and_an_unstarted_overlay_do_nothing)
+{
+    start(NULL, 0);
+    const struct controller_edge released_y = released_edge(CONTROLLER_OVERLAY);
+    PT_ASSERT_EQ_INT(overlay_handle_controller(&released_y), OVERLAY_CONTINUE);
+    PT_ASSERT(!overlay_shown());
+    const struct controller_edge hold = pressed_edge(CONTROLLER_FAST_FORWARD_HOLD);
+    const struct controller_edge none = pressed_edge(CONTROLLER_NO_FUNCTION);
+    PT_ASSERT_EQ_INT(overlay_handle_controller(&hold), OVERLAY_CONTINUE);
+    PT_ASSERT_EQ_INT(overlay_handle_controller(&none), OVERLAY_CONTINUE);
+    PT_ASSERT_EQ_INT(overlay_handle_controller(NULL), OVERLAY_CONTINUE);
+    PT_ASSERT(!overlay_shown());
+    overlay_shutdown();
+    const struct controller_edge y = pressed_edge(CONTROLLER_OVERLAY);
+    PT_ASSERT_EQ_INT(overlay_handle_controller(&y), OVERLAY_CONTINUE);
+    PT_ASSERT(!overlay_shown());
+}
+
+/* The B that closes the overlay is still down on the next frame: the game must not take it for
+ * a press (it would back out of a menu). */
+PTEST(a_button_held_when_the_overlay_hides_stays_released_until_let_go)
+{
+    start(NULL, 0);
+    const struct controller_edge y = pressed_edge(CONTROLLER_OVERLAY);
+    const struct controller_edge close = pressed_edge(CONTROLLER_OVERLAY_CLOSE);
+    (void)overlay_handle_controller(&y);
+    PT_ASSERT_EQ_U32(overlay_game_keys(0x0002u), 0u); /* B down while shown */
+    (void)overlay_handle_controller(&close);
+    PT_ASSERT_EQ_U32(overlay_game_keys(0x0002u), 0u);                /* still down: still released */
+    PT_ASSERT_EQ_U32(overlay_game_keys(0x0002u | 0x0010u), 0x0010u); /* a new button passes */
+    PT_ASSERT_EQ_U32(overlay_game_keys(0x0010u), 0x0010u);
+    PT_ASSERT_EQ_U32(overlay_game_keys(0x0002u | 0x0010u), 0x0002u | 0x0010u); /* let go, pressed anew */
+    overlay_shutdown();
+}
+
+/* The frame loop's order: a shown frame with nothing held, then one poll that carries B down,
+ * closes the overlay and reads the keys. The game must not see that B. */
+PTEST(the_b_that_closes_the_overlay_in_the_same_poll_is_not_the_games)
+{
+    start(NULL, 0);
+    const struct controller_edge y = pressed_edge(CONTROLLER_OVERLAY);
+    const struct controller_edge close = pressed_edge(CONTROLLER_OVERLAY_CLOSE);
+    (void)overlay_handle_controller(&y);
+    PT_ASSERT_EQ_U32(overlay_game_keys(0u), 0u);
+    (void)overlay_handle_controller(&close);
+    PT_ASSERT(!overlay_shown());
+    PT_ASSERT_EQ_U32(overlay_game_keys(0x0002u), 0u); /* the first read after it hid */
+    PT_ASSERT_EQ_U32(overlay_game_keys(0x0002u), 0u); /* B still down */
+    PT_ASSERT_EQ_U32(overlay_game_keys(0u), 0u);
+    PT_ASSERT_EQ_U32(overlay_game_keys(0x0002u), 0x0002u); /* a new press is the game's */
+    overlay_shutdown();
+}
+
+PTEST(a_hidden_overlay_never_shown_latches_nothing)
+{
+    start(NULL, 0);
+    PT_ASSERT_EQ_U32(overlay_game_keys(0x0002u), 0x0002u);
+    PT_ASSERT_EQ_U32(overlay_game_keys(0x0002u), 0x0002u);
+    overlay_shutdown();
+}
+
+static SDL_Event pad_button_down(void)
+{
+    SDL_Event event;
+    SDL_zero(event);
+    event.type = SDL_CONTROLLERBUTTONDOWN;
+    event.cbutton.button = SDL_CONTROLLER_BUTTON_A;
+    return event;
+}
+
+static SDL_Event pad_axis(Sint16 value)
+{
+    SDL_Event event;
+    SDL_zero(event);
+    event.type = SDL_CONTROLLERAXISMOTION;
+    event.caxis.axis = SDL_CONTROLLER_AXIS_LEFTX;
+    event.caxis.value = value;
+    return event;
+}
+
+PTEST(the_hint_is_the_keyboards_until_a_controller_button_is_pressed_and_back_at_the_next_key)
+{
+    start(NULL, 0);
+    PT_ASSERT(!overlay_hint_for_pad());
+    const SDL_Event button = pad_button_down();
+    (void)overlay_handle_event(&button);
+    PT_ASSERT(overlay_hint_for_pad());
+    const SDL_Event f2 = press(SDL_SCANCODE_F2, SDLK_F2);
+    (void)overlay_handle_event(&f2);
+    PT_ASSERT(!overlay_hint_for_pad());
+    overlay_shutdown();
+    PT_ASSERT(!overlay_hint_for_pad());
+}
+
+PTEST(a_stick_or_trigger_counts_as_the_controller_only_when_pushed_well_over)
+{
+    start(NULL, 0);
+    SDL_Event axis = pad_axis(CONTROLLER_TRIGGER_PRESS);
+    (void)overlay_handle_event(&axis); /* a stick's drift and rest */
+    PT_ASSERT(!overlay_hint_for_pad());
+    axis = pad_axis(-CONTROLLER_TRIGGER_PRESS);
+    (void)overlay_handle_event(&axis);
+    PT_ASSERT(!overlay_hint_for_pad());
+    axis = pad_axis(-32768);
+    (void)overlay_handle_event(&axis);
+    PT_ASSERT(overlay_hint_for_pad());
+    overlay_shutdown();
+}
+
+PTEST(with_the_controller_last_used_the_hint_names_its_buttons)
+{
+    static const char *const lines[] = {"Save: a.sav"};
+    static const struct placed placed[] = {
+        {6, 10, "X: quit  B: close"},
+        {6, 30, "Save: a.sav"},
+    };
+    start(lines, 1);
+    const SDL_Event button = pad_button_down();
+    (void)overlay_handle_event(&button);
+    const bool drawn = overlay_draws(720, 480, 1, placed, 2);
+    overlay_shutdown();
+    PT_ASSERT(drawn);
+}
+
+PTEST(the_hint_names_rebound_buttons)
+{
+    static const struct placed placed[] = {{6, 10, "Right stick click: quit  Y: close"}};
+    struct controller_bindings b = controller_default_bindings();
+    b.controls[CONTROLLER_QUIT] = SDL_CONTROLLER_BUTTON_RIGHTSTICK;
+    b.controls[CONTROLLER_FAST_FORWARD_TOGGLE] = SDL_CONTROLLER_BUTTON_DPAD_UP;
+    b.controls[CONTROLLER_OVERLAY_CLOSE] = SDL_CONTROLLER_BUTTON_Y;
+    b.controls[CONTROLLER_OVERLAY] = SDL_CONTROLLER_BUTTON_LEFTSTICK;
+    controller_shutdown();
+    PT_ASSERT_EQ_INT(controller_init(&b), 0);
+    start(NULL, 0);
+    const SDL_Event button = pad_button_down();
+    (void)overlay_handle_event(&button);
+    const bool drawn = overlay_draws(720, 480, 1, placed, 1);
+    overlay_shutdown();
+    controller_shutdown();
     PT_ASSERT(drawn);
 }
 

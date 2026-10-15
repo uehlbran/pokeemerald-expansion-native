@@ -1,6 +1,6 @@
 /*
  * help_text.h: what --keys prints and the F1 overlay shows: the version, the
- * keys, the controller's buttons, fast-forward, the data directory and the
+ * keys, the controller's buttons, fullscreen, fast-forward, the data directory and the
  * files.
  *
  * Not hardware: the GBA's buttons were printed on its case. One function
@@ -13,6 +13,7 @@
 
 #include <stdbool.h>
 
+#include "controller.h"
 #include "data_dir.h"
 #include "fastforward.h"
 #include "input.h"
@@ -23,6 +24,8 @@
 struct help_info {
     const char *version;               /* version_string() */
     const struct input_keymap *keymap; /* the keys in force */
+    const struct controller_bindings *pad;
+    int fullscreen_key; /* an SDL_Scancode */
     const struct fastforward_settings *fast_forward;
     const struct data_paths *paths;
     bool settings_found; /* the settings file was there */
@@ -40,7 +43,11 @@ typedef void (*help_text_sink)(const char *line, void *context);
  *                                  "Settings: none read" if the run reads none)
  *     Keyboard:
  *       A       Z                 (each button and its key, input_buttons' order)
- *     Controller: ...
+ *       Fullscreen F11            (the toggle key)
+ *     Controller:
+ *       GBA buttons: ...          (the fixed layout)
+ *       Fast-forward hold    Right trigger   (each function in controller_functions' order
+ *                                             and the label of its button)
  *     Fast-forward:
  *       Hold    Tab               (fastforward_key_name)
  *       Toggle  Shift+Tab

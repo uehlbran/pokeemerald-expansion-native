@@ -90,7 +90,13 @@ jobs:
           set -euo pipefail
           name="pokeemerald-native-${GITHUB_SHA::10}-linux-x86_64"
           mkdir -p "dist/$name"
-          cp build/native64/pokeemerald-native LICENSE docs/RUNNING.md .github/release/README.txt "dist/$name/"
+          cp build/native64/pokeemerald-native .github/release/pokeemerald-native.sh LICENSE docs/RUNNING.md .github/release/README.txt "dist/$name/"
+          # The SDL2 the executable was linked against, under its soname,
+          # for the launcher to put first (the Steam Deck package).
+          sdl=$(ldd build/native64/pokeemerald-native | awk '$1 == "libSDL2-2.0.so.0" { print $3 }')
+          test -n "$sdl"
+          cp --dereference "$sdl" "dist/$name/libSDL2-2.0.so.0"
+          cp /usr/share/doc/libsdl2-2.0-0/copyright "dist/$name/SDL2-LICENSE.txt"
           tar --owner=0 --group=0 --numeric-owner -C dist -czf "dist/$name.tar.gz" "$name"
           rm -r "dist/$name"
           ls -l dist

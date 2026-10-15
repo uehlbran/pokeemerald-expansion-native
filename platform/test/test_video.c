@@ -1,4 +1,4 @@
-// deps: overlay.c font.c fastforward.c input.c
+// deps: overlay.c controller.c font.c fastforward.c input.c
 /*
  * Tests of video. They run with SDL's dummy video driver (set with setenv
  * before the first SDL call, so no display is needed). The pixel format is
@@ -322,6 +322,50 @@ PTEST(ppm_to_unwritable_path_fails)
     PT_ASSERT(video_write_frame_ppm(frame_buffer, "/nonexistent-dir/x.ppm") != 0);
     PT_ASSERT(video_write_frame_ppm(NULL, "/tmp/x.ppm") != 0);
     PT_ASSERT(video_write_frame_ppm(frame_buffer, NULL) != 0);
+}
+
+PTEST(a_window_starts_fullscreen_when_asked_and_toggles_both_ways)
+{
+    use_dummy_driver();
+    struct video_config cfg = windowed_config();
+    cfg.fullscreen = true;
+    PT_ASSERT_EQ_INT(video_init(&cfg), 0);
+    const bool starts = video_is_fullscreen();
+    const int back = video_set_fullscreen(false);
+    const bool window = !video_is_fullscreen();
+    const int again = video_set_fullscreen(true);
+    const bool full = video_is_fullscreen();
+    const int present = video_present(frame_buffer);
+    video_shutdown();
+    PT_ASSERT(starts);
+    PT_ASSERT_EQ_INT(back, 0);
+    PT_ASSERT(window);
+    PT_ASSERT_EQ_INT(again, 0);
+    PT_ASSERT(full);
+    PT_ASSERT_EQ_INT(present, 0);
+}
+
+PTEST(a_window_is_a_window_by_default)
+{
+    use_dummy_driver();
+    struct video_config cfg = windowed_config();
+    PT_ASSERT_EQ_INT(video_init(&cfg), 0);
+    const bool full = video_is_fullscreen();
+    video_shutdown();
+    PT_ASSERT(!full);
+}
+
+PTEST(headless_ignores_fullscreen_and_before_init_it_is_an_error)
+{
+    PT_ASSERT_EQ_INT(video_set_fullscreen(true), -1);
+    PT_ASSERT(!video_is_fullscreen());
+    struct video_config cfg = {.headless = true, .scale = 1, .title = "t", .fullscreen = true};
+    PT_ASSERT_EQ_INT(video_init(&cfg), 0);
+    const int set = video_set_fullscreen(true);
+    const bool full = video_is_fullscreen();
+    video_shutdown();
+    PT_ASSERT_EQ_INT(set, 0);
+    PT_ASSERT(!full);
 }
 
 PTEST_MAIN()

@@ -46,6 +46,12 @@ Verified by an automated gate (the gates and their commands are in
   ([docs/RUNNING.md](docs/RUNNING.md)). Unit tests cover the rules, the
   settings file and the overlay's picture; the Windows start-up smoke checks
   the paths `--keys` prints, in a given and in a portable directory.
+- Steam Deck: the Linux 64-bit build with a controller binding for everything
+  the keyboard does (fast-forward, the overlay and its quit, fullscreen),
+  fullscreen by default on a Deck (`SteamDeck=1`), F11 for everyone, and a
+  tarball that runs as a non-Steam game from the home directory
+  ([docs/RUNNING.md](docs/RUNNING.md), "Steam Deck"). Unit-tested, not tried
+  on a Deck: the owner's hand-check list is in docs/DECISIONS.md.
 - Fast-forward: Tab held, or Shift+Tab to switch it on and off, at 2x (3x,
   4x or unlimited in the settings file), with the sound sped up or muted
   and an indicator in the corner; the frame pacer alone changes, so the
@@ -89,7 +95,7 @@ make -f Makefile.native -j"$(nproc)" check BITS=32  # expansion's test suite on 
 ```
 
 Keys: arrows, Z (A), X (B), A (L), S (R), Return (Start), Backspace
-(Select), F1 for the help overlay and its quit, Tab held or Shift+Tab for
+(Select), F1 for the help overlay and its quit, F11 for fullscreen, Tab held or Shift+Tab for
 fast-forward; `settings.ini` changes them and `--keys` prints them with the
 save's path. The first build converts every graphic (34 s on 32 cores). Expansion's
 own `make` and `make check` still build and test the GBA ROM, which is the
