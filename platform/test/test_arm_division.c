@@ -902,12 +902,28 @@ static struct result divl_sib_base_r13(uint32_t dividend, uint64_t slot)
     return r;
 }
 
+/* The three forms below take a symbol's address as an absolute disp32. Apple's
+ * Mach-O assembler refuses that in an instruction ("32-bit absolute addressing
+ * is not supported in 64-bit mode") but takes it as data, so on macOS each is
+ * written as its bytes with the address a .long: the same bytes and the same
+ * 32-bit absolute fixup (compared with the mnemonic form in an ELF object),
+ * which the fixed-address image, below 2^31 as on Linux, resolves. */
+#if defined(__APPLE__)
+#define DIVL_SIB_NO_BASE_RBX_4 "\t.byte 0xF7, 0x34, 0x9D\n\t.long %c2"
+#define DIVQ_SIB_NO_BASE_R9_8 "\t.byte 0x4A, 0xF7, 0x34, 0xCD\n\t.long %c2"
+#define DIVL_ABSOLUTE "\t.byte 0xF7, 0x34, 0x25\n\t.long %c2"
+#else
+#define DIVL_SIB_NO_BASE_RBX_4 "\tdivl %c2(,%%rbx,4)"
+#define DIVQ_SIB_NO_BASE_R9_8 "\tdivq %c2(,%%r9,8)"
+#define DIVL_ABSOLUTE "\tdivl %c2"
+#endif
+
 /* divl slots(,%rbx,4) (F7 34 9D disp32): SIB with no base, an index and an
  * absolute disp32 (the -fno-pie code's table form; platform/Makefile). */
 static struct result divl_sib_no_base(uint32_t dividend, uint64_t slot)
 {
     struct result r;
-    __asm__ volatile("xorl %%edx, %%edx\n\tdivl %c2(,%%rbx,4)"
+    __asm__ volatile("xorl %%edx, %%edx\n" DIVL_SIB_NO_BASE_RBX_4
                      : "=a"(r.quotient), "=&d"(r.remainder)
                      : "i"(slots), "a"((uint64_t)dividend), "b"(slot * 2u)
                      : "memory");
@@ -918,7 +934,7 @@ static struct result divl_sib_no_base(uint32_t dividend, uint64_t slot)
 static struct result divq_sib_no_base_r9(uint64_t dividend, uint64_t slot)
 {
     struct result r;
-    __asm__ volatile("movq %3, %%r9\n\txorl %%edx, %%edx\n\tdivq %c2(,%%r9,8)"
+    __asm__ volatile("movq %3, %%r9\n\txorl %%edx, %%edx\n" DIVQ_SIB_NO_BASE_R9_8
                      : "=a"(r.quotient), "=&d"(r.remainder)
                      : "i"(slots), "r"(slot), "a"(dividend)
                      : "r9", "memory");
@@ -938,7 +954,7 @@ static struct result divq_sib_no_base_r9(uint64_t dividend, uint64_t slot)
 static struct result divl_absolute(uint32_t dividend)
 {
     struct result r;
-    __asm__ volatile("xorl %%edx, %%edx\n\tdivl %c2"
+    __asm__ volatile("xorl %%edx, %%edx\n" DIVL_ABSOLUTE
                      : "=a"(r.quotient), "=&d"(r.remainder)
                      : "i"(&slots[SLOT_ABSOLUTE]), "a"((uint64_t)dividend)
                      : "memory");

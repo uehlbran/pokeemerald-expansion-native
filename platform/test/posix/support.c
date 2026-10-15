@@ -1,4 +1,9 @@
 #define _XOPEN_SOURCE 700 /* nftw */
+/* macOS: _XOPEN_SOURCE alone limits its headers to POSIX, and <unistd.h>
+ * declares mkdtemp only at the full Darwin level (glibc declares it in
+ * <stdlib.h> at POSIX 2008); _DARWIN_C_SOURCE restores that level. glibc does
+ * not know the macro. */
+#define _DARWIN_C_SOURCE
 /*
  * support.c: test_support.h and posix_support.h for the POSIX systems (Linux
  * today, macOS next): mkdtemp and mkstemp, stat, setenv, dup and dup2, fork

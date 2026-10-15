@@ -100,7 +100,7 @@ jobs:
 
       - name: The unit tests under ThreadSanitizer
         if: always()
-        run: make -C platform -j"$(nproc)" tsan
+        run: make -C platform -j"$(nproc)" tsan BITS=64
 
       # The Linux gate lints the files Linux builds; the macOS ones need the
       # Mac's headers. clang-tidy is Homebrew's LLVM, on the image.

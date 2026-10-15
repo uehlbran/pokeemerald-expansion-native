@@ -623,7 +623,8 @@ x86_64 Homebrew under Rosetta is needed (`arch -x86_64 tools/build-native.sh
 --os macos`), which is unverified. The script has not run on a Mac; its Linux
 and Windows paths are unchanged. The unit tests (`make -C platform test BITS=64`: the portable
 ones, `test/posix/` and `test/darwin/`), ThreadSanitizer (`make -C platform
-tsan`), the suite (`make -f Makefile.native -j"$(nproc)" check BITS=64`, and
+tsan BITS=64`; every `make -C platform` on a Mac takes `BITS=64`, the
+platform's default being 32), the suite (`make -f Makefile.native -j"$(nproc)" check BITS=64`, and
 `SANITIZE=1`), the replays (`tests/smoke/run.sh`,
 `tests/smoke/run_debug_menu.sh`) and patchelf on a Mach-O file (`make -C
 platform tools-test BITS=64`) run on the Mac as on Linux. AddressSanitizer on
