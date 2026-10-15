@@ -28,7 +28,8 @@
 # last job, `cleanup`, deletes every artifact of the run that is not on its
 # explicit list of artifacts without the game (logs, suite results, replay
 # dumps and the saves of the replays). The failure-only uploads name their
-# files by extension.
+# files by extension. Once the run has finished its builds are gone, so a
+# single failed job cannot be re-run: use "re-run all jobs".
 # Windows minutes count double. Nightly at 05:17 UTC, an hour after
 # native.yml's nightly tier, and by hand. The time limits keep a whole run
 # within 40 minutes: the longest chain is a cross-build (20), the Windows job
@@ -176,6 +177,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: cross-os-save-outputs
+          # No braces in these patterns: @actions/glob sets nobrace, so {a,b} matches nothing.
           path: |
             out/**/*.txt
             out/**/*.log
@@ -394,6 +396,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: windows-logs-before-the-suite
+          # No braces in these patterns: @actions/glob sets nobrace, so {a,b} matches nothing.
           path: |
             platform/build/64-windows/test/*.log
             out/**/*.txt
@@ -451,6 +454,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: windows-results
+          # No braces in these patterns: @actions/glob sets nobrace, so {a,b} matches nothing.
           path: |
             out/suite-windows.log
             out/cross-os/load/work/again/*.txt
@@ -465,6 +469,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: windows-logs
+          # No braces in these patterns: @actions/glob sets nobrace, so {a,b} matches nothing.
           path: |
             platform/build/64-windows/test/*.log
             out/**/*.txt
@@ -529,6 +534,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: compare-outputs
+          # No braces in these patterns: @actions/glob sets nobrace, so {a,b} matches nothing.
           path: |
             out/**/*.txt
             out/**/*.log

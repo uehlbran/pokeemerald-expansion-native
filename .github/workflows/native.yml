@@ -100,6 +100,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: replay-outputs-push
+          # No braces in these patterns: @actions/glob sets nobrace, so {a,b} matches nothing.
           path: |
             out/**/*.txt
             out/**/*.log
@@ -189,6 +190,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: replay-outputs-native32
+          # No braces in these patterns: @actions/glob sets nobrace, so {a,b} matches nothing.
           path: |
             out/**/*.txt
             out/**/*.log
@@ -231,6 +233,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: replay-outputs-native64
+          # No braces in these patterns: @actions/glob sets nobrace, so {a,b} matches nothing.
           path: |
             out/**/*.txt
             out/**/*.log
@@ -283,6 +286,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: replay-outputs-native32-san
+          # No braces in these patterns: @actions/glob sets nobrace, so {a,b} matches nothing.
           path: |
             out/**/*.txt
             out/**/*.log
@@ -333,6 +337,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: replay-outputs-native64-san
+          # No braces in these patterns: @actions/glob sets nobrace, so {a,b} matches nothing.
           path: |
             out/**/*.txt
             out/**/*.log
@@ -391,6 +396,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: replay-outputs-cross-width
+          # No braces in these patterns: @actions/glob sets nobrace, so {a,b} matches nothing.
           path: |
             out/**/*.txt
             out/**/*.log

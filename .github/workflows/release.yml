@@ -16,7 +16,9 @@
 # run"): no artifact may hold the game or any part of it beyond the run, and a
 # public repository's artifacts are public. The archives are uploaded only
 # with `publish`, for one day, and the last job, `cleanup`, deletes every
-# artifact of the run (it keeps none); the release is the publication.
+# artifact of the run (it keeps none); the release is the publication. A
+# finished run cannot re-run a single failed job (its archives are deleted):
+# use "re-run all jobs".
 #
 #   check-inputs   the tag, validated before anything else runs
 #   linux          the 64-bit build, the tarball, its check

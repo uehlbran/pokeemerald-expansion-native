@@ -2555,13 +2555,13 @@ screenshots are 240x160 frames of the replay's scenes.
 
 | Workflow, artifact | What `path` matched | Game-bearing | Disposition |
 | --- | --- | --- | --- |
-| native.yml `replay-outputs-*` (6 steps, failure only) | `out/` whole | no (only the above) | narrowed to `out/**/*.{txt,log,ppm,sav,rtc,diff,replay,all,known-patterns}`; excludes anything else that might ever land in `out/` (executables, `.symbols`, `.o`, cores) |
+| native.yml `replay-outputs-*` (6 steps, failure only) | `out/` whole | no (only the above) | narrowed to `out/**/*.EXT`, one pattern per extension (txt, log, ppm, sav, rtc, diff, replay, all, known-patterns; no braces, @actions/glob sets nobrace and `{a,b}` matches nothing); excludes anything else that might ever land in `out/` (executables, `.symbols`, `.o`, cores) |
 | windows.yml `windows-build` | the Windows game `.exe`, its `.symbols`, `SDL2.dll`, the 70 unit-test `.exe`s and `.symbols`, the Linux save directory | yes (the game and the tests) | `retention-days: 1`, deleted by `cleanup` |
 | windows.yml `linux-build` | the Linux game and its `.symbols` | yes | `retention-days: 1`, deleted by `cleanup` |
 | windows.yml `windows-suite-build` | the Windows test runner `.exe` and `SDL2.dll` | yes | `retention-days: 1`, deleted by `cleanup` |
 | windows.yml `suite-linux64` | `suite-linux64.log` | no | kept (on the keep list) |
-| windows.yml `windows-results` | `out/suite-windows.log`, the whole `again/` directory | no (log; dumps, screenshots, saves) | narrowed to the log and `again/*.{txt,ppm,sav,rtc,log}`; kept |
-| windows.yml `cross-os-save-outputs`, `compare-outputs`, `windows-logs-before-the-suite`, `windows-logs` (failure only) | `out/` whole (and the unit tests' `*.log`) | no | narrowed as native.yml's; kept |
+| windows.yml `windows-results` | `out/suite-windows.log`, the whole `again/` directory | no (log; dumps, screenshots, saves) | narrowed to the log and `again/*.EXT`, one pattern per extension (txt, ppm, sav, rtc, log); kept |
+| windows.yml `cross-os-save-outputs`, `compare-outputs`, `windows-logs-before-the-suite`, `windows-logs` (failure only) | `out/` whole (and the unit tests' `*.log`) | no | narrowed as native.yml's, one pattern per extension; kept |
 | release.yml `linux-archive`, `windows-archive` | the tarball, the zip | yes | uploaded only with `publish`, one day, deleted by `cleanup` |
 | release.yml `release-files` | both archives and `SHA256SUMS.txt` | yes | created only with `publish`, one day (was 14), deleted by `cleanup`; the release is the publication |
 | probes.yml `probe-windows-layout`, `probe-macos-layout`, `probe-macos-arm64-layout` | `research/probes/*/out/*.txt` | no | unchanged: the reports and run logs are text; the probe executables, objects and linker outputs in the same `out/` do not match `*.txt`, and a probe holds no game (a few empty sections and a C file) |
@@ -2584,7 +2584,7 @@ deleted, and a listing that fails fails the job. windows.yml's list:
 list is empty. The failure-only uploads name their files by extension, so a
 binary that lands in `out/` is not uploaded; the cost is that a file of
 another kind written there is not kept either (add its extension when a
-script starts writing one). native.yml uploads nothing game-bearing and
+script starts writing one). Expired artifacts are skipped in the listing, and the check after the deletions re-lists up to 5 times, 3 s apart, failing only if a non-kept artifact is still listed after the last try. If `cleanup` cannot run or fails, the exposure is the one-day retention, not zero. Because the builds are deleted, a finished run cannot re-run a single failed job; "re-run all jobs" is the way. native.yml uploads nothing game-bearing and
 needs no `cleanup`.
 
 **release.yml.** Without `publish` (the default) a run builds and checks
@@ -2612,7 +2612,14 @@ game-bearing artifact on the finished run's page; a release.yml run
 without `publish` with no artifact at all and the SHA-256 lines in the
 two jobs' logs; and, once, a run with `publish` on a scratch tag in a
 private copy, if the owner wants the publish path seen before it is used.
-Things to look at in those runs: that `sparse-checkout` finds the local
+Also to show: a release.yml run without `publish` ends green with no
+artifact on the page and `cleanup` deleting nothing; `cleanup` running and
+deleting after a failed job and after a cancelled run; `inputs.publish`
+evaluated as a boolean in the job- and step-level `if:`s; the `objdump` line
+and the 60-frame start passing on the runner; the GITHUB_TOKEN's DELETE
+succeeding (a 403 "Resource not accessible by integration" would mean
+`actions: write` is not enough); the builds surviving until `cleanup`, so
+`windows` and `compare` still download them. Things to look at in those runs: that `sparse-checkout` finds the local
 action, that `gh api --paginate --jq` prints the tab-separated lines the
 action reads, that the second listing no longer shows a deleted artifact,
 and that the globs match what the failure paths wrote.

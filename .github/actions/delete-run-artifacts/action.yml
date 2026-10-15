@@ -38,7 +38,7 @@ runs:
         set -euo pipefail
         listing() {
           gh api --paginate "repos/$GH_REPO/actions/runs/$RUN_ID/artifacts" \
-            --jq '.artifacts[] | [.id, .name] | @tsv'
+            --jq '.artifacts[] | select(.expired | not) | [.id, .name] | @tsv'
         }
         kept() { printf '%s\n' "$KEEP" | grep -Fxq -- "$1"; }
         # Captured first, so that a listing that fails fails the step (a
@@ -57,14 +57,22 @@ runs:
             failed=1
           fi
         done <<< "$before"
-        # Listing again: nothing but the kept artifacts may be left.
-        after=$(listing)
-        left=0
-        while IFS=$'\t' read -r id name; do
-          [ -n "$id" ] || continue
-          if ! kept "$name"; then
-            echo "::error::the artifact $name ($id) is still on the run"
-            left=1
-          fi
-        done <<< "$after"
+        # Listing again, up to 5 times 3 s apart (the API may lag behind a
+        # deletion): fails only if a non-kept artifact is still listed after
+        # the last try.
+        left=1
+        for try in 1 2 3 4 5; do
+          left=0
+          after=$(listing)
+          while IFS=$'\t' read -r id name; do
+            [ -n "$id" ] || continue
+            if ! kept "$name"; then
+              echo "try $try: the artifact $name ($id) is still listed"
+              left=1
+            fi
+          done <<< "$after"
+          [ "$left" -eq 0 ] && break
+          [ "$try" -eq 5 ] || sleep 3
+        done
+        [ "$left" -eq 0 ] || echo "::error::artifacts that are not on the keep list are still on the run"
         [ "$failed" -eq 0 ] && [ "$left" -eq 0 ]
