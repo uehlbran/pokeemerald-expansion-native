@@ -1,3 +1,8 @@
+# Artifacts (docs/DECISIONS.md, "CI artifacts never hold the game beyond a run"):
+# no artifact may hold the game or any part of it beyond the run, because a
+# public repository's artifacts are public. This file uploads logs, replay dumps, screenshots and
+# saves of failed runs only, by explicit globs; no build is uploaded.
+#
 # The native build's gate on a Linux runner, in two tiers (docs/DECISIONS.md,
 # "CI runs in two tiers"; the local pre-merge gate stays the full check at
 # both widths, and CI is the backstop that proves a clean clone builds and
@@ -95,7 +100,16 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: replay-outputs-push
-          path: out/
+          path: |
+            out/**/*.txt
+            out/**/*.log
+            out/**/*.ppm
+            out/**/*.sav
+            out/**/*.rtc
+            out/**/*.diff
+            out/**/*.replay
+            out/**/*.all
+            out/**/*.known-patterns
           if-no-files-found: ignore
 
   gba:
@@ -175,7 +189,16 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: replay-outputs-native32
-          path: out/
+          path: |
+            out/**/*.txt
+            out/**/*.log
+            out/**/*.ppm
+            out/**/*.sav
+            out/**/*.rtc
+            out/**/*.diff
+            out/**/*.replay
+            out/**/*.all
+            out/**/*.known-patterns
           if-no-files-found: ignore
 
   native64:
@@ -208,7 +231,16 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: replay-outputs-native64
-          path: out/
+          path: |
+            out/**/*.txt
+            out/**/*.log
+            out/**/*.ppm
+            out/**/*.sav
+            out/**/*.rtc
+            out/**/*.diff
+            out/**/*.replay
+            out/**/*.all
+            out/**/*.known-patterns
           if-no-files-found: ignore
 
 
@@ -251,7 +283,16 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: replay-outputs-native32-san
-          path: out/
+          path: |
+            out/**/*.txt
+            out/**/*.log
+            out/**/*.ppm
+            out/**/*.sav
+            out/**/*.rtc
+            out/**/*.diff
+            out/**/*.replay
+            out/**/*.all
+            out/**/*.known-patterns
           if-no-files-found: ignore
 
   native64-san:
@@ -292,7 +333,16 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: replay-outputs-native64-san
-          path: out/
+          path: |
+            out/**/*.txt
+            out/**/*.log
+            out/**/*.ppm
+            out/**/*.sav
+            out/**/*.rtc
+            out/**/*.diff
+            out/**/*.replay
+            out/**/*.all
+            out/**/*.known-patterns
           if-no-files-found: ignore
 
   cross-width:
@@ -341,5 +391,14 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: replay-outputs-cross-width
-          path: out/
+          path: |
+            out/**/*.txt
+            out/**/*.log
+            out/**/*.ppm
+            out/**/*.sav
+            out/**/*.rtc
+            out/**/*.diff
+            out/**/*.replay
+            out/**/*.all
+            out/**/*.known-patterns
           if-no-files-found: ignore

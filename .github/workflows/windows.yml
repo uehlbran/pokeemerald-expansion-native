@@ -21,6 +21,14 @@
 #                      save the Windows build wrote
 #
 # Artifacts carry the builds and the stages' directories between the jobs.
+# The builds hold the complete game, so they are not for keeping
+# (docs/DECISIONS.md, "CI artifacts never hold the game beyond a run"): no
+# artifact may hold the game or any part of it beyond the run. The builds
+# (windows-build, windows-suite-build, linux-build) are kept one day, and the
+# last job, `cleanup`, deletes every artifact of the run that is not on its
+# explicit list of artifacts without the game (logs, suite results, replay
+# dumps and the saves of the replays). The failure-only uploads name their
+# files by extension.
 # Windows minutes count double. Nightly at 05:17 UTC, an hour after
 # native.yml's nightly tier, and by hand. The time limits keep a whole run
 # within 40 minutes: the longest chain is a cross-build (20), the Windows job
@@ -143,6 +151,7 @@ jobs:
         with:
           name: windows-build
           if-no-files-found: error
+          retention-days: 1
           path: |
             build/native64-windows/pokeemerald-native.exe
             build/native64-windows/pokeemerald-native.exe.symbols
@@ -157,6 +166,7 @@ jobs:
         with:
           name: linux-build
           if-no-files-found: error
+          retention-days: 1
           path: |
             build/native64/pokeemerald-native
             build/native64/pokeemerald-native.symbols
@@ -166,7 +176,16 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: cross-os-save-outputs
-          path: out/
+          path: |
+            out/**/*.txt
+            out/**/*.log
+            out/**/*.ppm
+            out/**/*.sav
+            out/**/*.rtc
+            out/**/*.diff
+            out/**/*.replay
+            out/**/*.all
+            out/**/*.known-patterns
           if-no-files-found: ignore
 
   cross-build-suite:
@@ -240,6 +259,7 @@ jobs:
         with:
           name: windows-suite-build
           if-no-files-found: error
+          retention-days: 1
           path: |
             build/native64-test-windows/pokeemerald-native-test.exe
             build/native64-test-windows/SDL2.dll
@@ -376,7 +396,15 @@ jobs:
           name: windows-logs-before-the-suite
           path: |
             platform/build/64-windows/test/*.log
-            out/
+            out/**/*.txt
+            out/**/*.log
+            out/**/*.ppm
+            out/**/*.sav
+            out/**/*.rtc
+            out/**/*.diff
+            out/**/*.replay
+            out/**/*.all
+            out/**/*.known-patterns
           if-no-files-found: ignore
 
       # Expansion's hydra needs fork, poll and stdbuf: MSYS2's, which the
@@ -425,7 +453,11 @@ jobs:
           name: windows-results
           path: |
             out/suite-windows.log
-            out/cross-os/load/work/again/
+            out/cross-os/load/work/again/*.txt
+            out/cross-os/load/work/again/*.ppm
+            out/cross-os/load/work/again/*.sav
+            out/cross-os/load/work/again/*.rtc
+            out/cross-os/load/work/again/*.log
           if-no-files-found: ignore
 
       - name: Keep the logs and the outputs of a failed run
@@ -435,7 +467,15 @@ jobs:
           name: windows-logs
           path: |
             platform/build/64-windows/test/*.log
-            out/
+            out/**/*.txt
+            out/**/*.log
+            out/**/*.ppm
+            out/**/*.sav
+            out/**/*.rtc
+            out/**/*.diff
+            out/**/*.replay
+            out/**/*.all
+            out/**/*.known-patterns
           if-no-files-found: ignore
 
   compare:
@@ -489,5 +529,46 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: compare-outputs
-          path: out/
+          path: |
+            out/**/*.txt
+            out/**/*.log
+            out/**/*.ppm
+            out/**/*.sav
+            out/**/*.rtc
+            out/**/*.diff
+            out/**/*.replay
+            out/**/*.all
+            out/**/*.known-patterns
           if-no-files-found: ignore
+
+  # The last job: after every job that uses an artifact, deletes this run's
+  # artifacts except the ones on the list, which hold no game. A new artifact
+  # that is not on the list is deleted, so the game cannot be kept by
+  # forgetting; the job fails if one cannot be deleted. The Actions API is
+  # the only way to delete before the retention ends.
+  cleanup:
+    name: Delete the builds from the run
+    needs: [cross-build, cross-build-suite, linux-suite, windows, compare]
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      actions: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: .github/actions
+          persist-credentials: false
+
+      - uses: ./.github/actions/delete-run-artifacts
+        with:
+          # Without the game: logs, the suites' results, the replays' dumps,
+          # screenshots and saves.
+          keep: |
+            suite-linux64
+            windows-results
+            windows-logs-before-the-suite
+            windows-logs
+            cross-os-save-outputs
+            compare-outputs
