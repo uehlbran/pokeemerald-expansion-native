@@ -225,7 +225,7 @@ selects (GBATEK SOUNDBIAS, "Amplitude Resolution/Sampling Cycle", mode 1),
 not at the engine's 13379 Hz: the
 PSG is sampled on that grid and the engine's frame is read on it by
 zero-order hold on cycle time (`platform/sound_grid.h`; DECISIONS.md, decision (1) of
-"Decisions on an independent review's open questions", the PSG entry's amendments and the
+"Decisions on a code review's open questions", the PSG entry's amendments and the
 audio grid entry of 2026-10-15).
 
 ### DMA: a channel model, immediate for NOW, polled for HBLANK and VBLANK

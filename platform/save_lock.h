@@ -8,8 +8,8 @@
  * lock before any module starts and keeps it until every module has stopped,
  * so that a second instance on the same save refuses to start before it opens
  * a window or reads a file. Test-runner mode writes no save and takes no lock.
- * Decision (3) of 2026-10-14 and its amendment, docs/DECISIONS.md ("Decisions on an
- * independent review's open questions", "The save's lock across a restart and a crash").
+ * Decision (3) of 2026-10-14 and its amendment, docs/DECISIONS.md ("Decisions on a code
+ * review's open questions", "The save's lock across a restart and a crash").
  *
  * The lock is host_file.h's exclusive lock on a companion file beside the
  * save, <save>.lock, created on first use with the mode of every file the

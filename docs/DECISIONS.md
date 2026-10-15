@@ -24,6 +24,10 @@ cannot license. We do not copy code from the reference ports: two of them
 credit GPL and MPL emulators as sources for their BIOS and renderer, so
 their code cannot be relicensed MIT by us.
 
+Amended 2026-10-08: the platform layer lives at `platform/`, not
+`src/platform/` ("The platform layer lives at `platform/`, not
+`src/platform/`" below).
+
 Amended 2026-10-15 (the review before the repository went public): the scope
 list in LICENSE named only part of what this project added, so it gained
 `docs/RUNNING.md` (every release archive carries it next to LICENSE),
@@ -77,7 +81,7 @@ reference. Vsync is not used for pacing.
 
 Amendment 2026-10-14: audio no longer runs at the engine's rate but at the
 GBA's 32768 Hz PWM grid, the engine's frame read on it (decision (1) in
-"Decisions on an independent review's open questions"; the amendment to "PSG trigger, wave-bank and output-scale rules");
+"Decisions on a code review's open questions"; the amendment to "PSG trigger, wave-bank and output-scale rules");
 amendment 2026-10-15: that grid now runs at 65536 Hz, the same entry's
 second amendment.
 
@@ -238,7 +242,7 @@ header makes any future layout change detectable instead of silent.
 
 Amendment, 2026-10-14: the bare-file clause no longer holds. A file without
 the header is refused, never accepted as legacy and never rewritten (decision 2 in
-"Decisions on an independent review's open questions").
+"Decisions on a code review's open questions").
 
 ## 2026-10-08: PSG trigger, wave-bank and output-scale rules
 
@@ -259,7 +263,7 @@ must remove DC after summing, as the GBA's output capacitor did. The PSG
 is generated at the output rate with point sampling and an exact cycle
 remainder, never at m4a's 13379 Hz mixer rate, which would alias badly.
 
-Amendment 2026-10-14: until decision (1) of the same day ("Decisions on an independent review's open questions") the
+Amendment 2026-10-14: until decision (1) of the same day ("Decisions on a code review's open questions") the
 shipped build ran the PSG at m4a's 13379 Hz (`FRAME_AUDIO_SAMPLE_RATE_HZ`),
 so that the 224-sample FIFO frame mixed sample for sample with the PSG
 output. The corrected reasoning: at 13379 Hz the square and noise channels
@@ -477,7 +481,7 @@ redone (for 64-bit). Rejected: guarding every division site in
 expansion (nine today, unknown tomorrow) and `-fsanitize=integer-divide-
 by-zero` recovery (which gives x86's result, not ARM's).
 
-Amended 2026-10-14 (independent review, finding 01-11): the handler does not
+Amended 2026-10-14 (code review): the handler does not
 report every division. Completed divisions by zero are silent, as they were
 on the GBA; only a divide error the decoder cannot complete is reported, with
 its program counter, before it is passed on. 64-bit operands are decoded now
@@ -770,7 +774,7 @@ would hide the corruption from it. The cross-width script's fourth step
 Amendment, 2026-10-14: the first half of this entry is withdrawn. A bare
 image is no longer read as the 32-bit layout or any other: a file without
 the header is refused as an emulator or cartridge save and the converter
-never runs on it (decision 2 in "Decisions on an independent review's open questions"). SAVE_FILE_LEGACY,
+never runs on it (decision 2 in "Decisions on a code review's open questions"). SAVE_FILE_LEGACY,
 SAVE_CONVERT_BARE_IMAGE_POINTER_BITS and main's legacy branch are gone.
 The two-way converter and the slot rule stand. The refusal is
 SAVE_FILE_REFUSED: save_file_load prints one message and leaves the file
@@ -1035,7 +1039,7 @@ stays: it keeps a start from racing a stop.) The POSIX wait is on
 `CLOCK_MONOTONIC` (the condition variable's clock is set with
 `pthread_condattr_setclock`), so a step of the wall clock cannot move a deadline.
 
-Amended 2026-10-14, after the independent code review. The POSIX watchdog
+Amended 2026-10-14, after the code review. The POSIX watchdog
 thread is created with every signal blocked (`pthread_sigmask` around
 `pthread_create`, the caller's mask put back after it) and keeps that mask. A
 signal sent to the process goes to any thread that does not block it, so
@@ -1239,7 +1243,10 @@ What cannot be checked here: that the dispatch and the switch behave as
 reasoned; `test_host_stack`, `test_game_hooks` and the suite's battle tests
 on the Windows runner are the evidence.
 
-## 2026-10-14: Decisions on an independent review's open questions
+## 2026-10-14: Decisions on a code review's open questions
+
+The review was an external code review of the tree on 2026-10-14; its report
+is not in the repository, so each decision below states its own reasons.
 
 (1) The audio rate. The earlier PSG decision ("PSG trigger, wave-bank and output-scale rules") said never to
 point-sample the PSG at m4a's 13379 Hz, and that is the rate the build
@@ -1294,7 +1301,7 @@ driver of our own. (i) is taken.
 Why (i). The hydra is a small POSIX program: fork, pipe, poll, waitpid,
 regex, and `stdbuf` for its runners. The `windows-latest` image has MSYS2 at
 `C:\msys64`, whose runtime provides all of them; measured on the runner
-(run 38601458286): `pacman -S --noconfirm --needed gcc make` takes 24 s, MSYS2's
+([run 38601458286](https://github.com/uehlbran/pokeemerald-expansion-native/actions/runs/38601458286)): `pacman -S --noconfirm --needed gcc make` takes 24 s, MSYS2's
 coreutils has `stdbuf` (with its `libstdbuf.dll`), and both the hydra and
 patchelf build with MSYS2's gcc once the hydra includes `<sys/prctl.h>` on
 Linux only (an `UPSTREAM_MODIFICATIONS.md` row). Upstream's "MSYS2 builds do
@@ -1339,7 +1346,7 @@ the 2-vCPU runner.
 
 Each executable of the Windows layout costs about 1 GiB of the system's
 commit charge from its first start until its file is deleted, whether or not
-it is running. Measured on the runner (run 38601458286, a 2-vCPU image with
+it is running. Measured on the runner ([run 38601458286](https://github.com/uehlbran/pokeemerald-expansion-native/actions/runs/38601458286), a 2-vCPU image with
 8 GiB of memory and a 10,107 MiB commit limit): starting a test executable
 and letting it exit raised the committed bytes by 1,000 MiB, starting it
 again by nothing, starting a copy by another 1,000 MiB, and deleting the copy
@@ -1350,7 +1357,7 @@ measured the process's own commit charge (3 MiB), which does not include it.
 With the 69 test executables of that run (70 since) the runner's commit ran
 out after the 24th had started (the limit grows with the system-managed page
 file, but not without end), and every later start failed ("Resource
-temporarily unavailable", run 38598389601).
+temporarily unavailable", [run 38598389601](https://github.com/uehlbran/pokeemerald-expansion-native/actions/runs/38598389601)).
 `run_windows_tests.sh` therefore runs each test from a copy under its own
 name in a directory of its own and deletes it when the test ends; the suite's
 runners already run from copies the hydra and `native-rom-test` delete.
@@ -1363,7 +1370,7 @@ layer"), recorded here; the model is unchanged.
 
 ## 2026-10-14: The save's lock across a restart and a crash
 
-Decision (3) of "Decisions on an independent review's open questions" as built (`platform/save_lock.h`), and the choice it left open.
+Decision (3) of "Decisions on a code review's open questions" as built (`platform/save_lock.h`), and the choice it left open.
 
 The lock is `host_file.h`'s: `flock(LOCK_EX | LOCK_NB)` on POSIX,
 `LockFileEx(LOCKFILE_EXCLUSIVE_LOCK | LOCKFILE_FAIL_IMMEDIATELY)` over every
@@ -1442,7 +1449,7 @@ so.
 
 ## 2026-10-14: A hands-on check of the Windows build: a settings file and no console window
 
-The Windows build from run 38648131073 was run by hand (boot, the
+The Windows build from [run 38648131073](https://github.com/uehlbran/pokeemerald-expansion-native/actions/runs/38648131073) was run by hand (boot, the
 opening, the first Pokémon, the first battle; audio and saving fine), and
 two things seen while doing it were decided.
 
@@ -1879,7 +1886,7 @@ tested for every mode; nothing shows a box under a pipe or in a gate.
 
 **The crash reports** (`arm_division.c`, `crash_reboot.c`) wrote to descriptor
 2 by number. A process with no handles, after its streams are reopened on the
-log, does not have its log on 2: run 38683258948 showed stdin 4 and stdout and
+log, does not have its log on 2: [run 38683258948](https://github.com/uehlbran/pokeemerald-expansion-native/actions/runs/38683258948) showed stdin 4 and stdout and
 stderr both 0. They now resolve `fileno(stderr)` (still 2 on Linux), which is
 whatever the C runtime made it. A first design that reopened stdin too, to
 keep 0, 1 and 2 in order, did not hold. A Windows test starts a child with
@@ -1893,7 +1900,7 @@ every start and only read by a person), a lock on it would be a second lock
 protocol for a diagnostic file, and the refused instance's own text (the
 reason it stopped) is what the player needs to read.
 
-**Verified on the runner** (run 38693203706 after the review's fixes, green; earlier runs found two of this task's own Windows child tests failing, fixed: a stream is mended by what it was before the attach, and the log cannot count on descriptor 2): the start-up smoke, both replays, the
+**Verified on the runner** ([run 38693203706](https://github.com/uehlbran/pokeemerald-expansion-native/actions/runs/38693203706) after the review's fixes, green; earlier runs found two of this task's own Windows child tests failing, fixed: a stream is mended by what it was before the attach, and the log cannot count on descriptor 2): the start-up smoke, both replays, the
 cross-OS save and the suite through the hydra pass unchanged on the GUI
 build, so inherited pipes and files work (the smoke also reads the PE
 subsystem and runs `--version`, `--keys` and a bad argument through a pipe);
@@ -2117,7 +2124,7 @@ runner.** XNU's source (apple-oss-distributions/xnu, main at f6217f891a,
   the random slide (`mach_loader.c:788-799`).
 - A page zero "of 4 GiB minus the regions" cannot exist: a page zero is one
   segment from address 0, and any that ends below 4 GiB is the refusal above.
-- M0 agrees (run 37922990222, job log of macos-latest): `MAP_FIXED` at
+- M0 agrees ([run 37922990222](https://github.com/uehlbran/pokeemerald-expansion-native/actions/runs/37922990222), job log of macos-latest): `MAP_FIXED` at
   0x02000000 and 0x04000000 fails with ENOMEM under the default page zero
   (A:302-306). A binary linked with `-pagezero_size 0x1000` (rounded up to
   0x4000, A:308) is killed at start, status 137, in 100 of 100 runs (A:412).
@@ -2351,7 +2358,7 @@ Four decisions of 2026-10-15.
    before.
 2. **The audio grid moves to 65536 Hz**, the rate Emerald itself selects
    (SOUNDBIAS mode 1 in `SoundInit`, the engine's "PWM rate = 65536 Hz"),
-   superseding the 32768 Hz of decision (1) of "Decisions on an independent
+   superseding the 32768 Hz of decision (1) of "Decisions on a code
    review's open questions", with an A/B recording against the current
    build as the evidence. Built: the amendment of 2026-10-15 to the entry
    "PSG trigger, wave-bank and output-scale rules" has the numbers.
@@ -2414,7 +2421,7 @@ scheduled.
 
 ## 2026-10-15: No workflow uploads the game
 
-The repository goes public soon, as source only. On a public repository
+The repository is published as source only (decided 2026-10-15). On a public repository
 every workflow artifact is downloadable by any logged-in GitHub user, and a
 built executable (the game, the test runner, any archive of either)
 contains the complete game's assets, which this project never distributes

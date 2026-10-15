@@ -24,7 +24,7 @@ appears if a display is available (WSLg), and nothing depends on it.
 ```
 sudo dpkg --add-architecture i386
 sudo apt-get update
-sudo apt-get install -y build-essential gcc-multilib g++-multilib clang clang-format clang-tidy cppcheck pkg-config git
+sudo apt-get install -y build-essential gcc-multilib g++-multilib clang clang-format clang-tidy cppcheck pkg-config git python3-yaml
 sudo apt-get install -y libsdl2-dev libsdl2-dev:i386 libc6-dev-i386 valgrind
 sudo apt-get install -y gcc-arm-none-eabi binutils-arm-none-eabi libnewlib-arm-none-eabi libpng-dev
 ```
