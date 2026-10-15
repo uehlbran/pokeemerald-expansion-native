@@ -2014,3 +2014,22 @@ save shows the message box and names the log (a runner has no desktop to
 show a box on, so only the decision to show it is tested). A restart (a replay's `restart` command) in LOG mode
 opens the log again in the new process and so empties it; replays run under a
 harness with pipes, never in LOG mode.
+
+## 2026-10-15: macOS CI runs on macos-15-intel only, and GitHub's x86_64 macOS runners end in fall 2027
+
+The owner's facts for the macOS work (the night brief of 2026-10-15): GitHub
+retired the `macos-13` image in December 2025; `macos-14` is in brownouts in
+October 2026 and retires on November 2, 2026; `macos-15-intel` is the last
+x86_64 macOS image, and GitHub ends x86_64 macOS runners altogether when the
+macOS 15 image retires in fall 2027. So every macOS job names
+`macos-15-intel` and no other label (probe M0 already ran there).
+
+What the end date changes. From fall 2027 no GitHub runner runs the x86_64
+macOS build on x86_64 hardware; CI could still build it and run it under
+Rosetta 2 on an arm64 runner (probe M0 measured the x86_64 layout under
+Rosetta: 61 of 61 checks, 100 of 100 starts), but only as long as Rosetta
+itself is there, and Apple keeps Rosetta generally available only through
+macOS 27 ("macOS ships as x86_64 under Rosetta" above). Both horizons fall
+around 2027, so the native Apple-silicon question (PLAN.md item (i), the
+spike) is no longer about speed on newer Macs: it decides whether macOS stays
+supported and tested after 2027 at all. The spike's report weighs it so.

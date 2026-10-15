@@ -12,8 +12,8 @@ Read this first; the sections below are the ledger behind it.
 
 ### The night of 2026-10-15 (the orchestrator's run while the owner sleeps)
 
-**Main** is at e981eff71a, pushed. Every gate is green on it at both
-widths (the 24-step ledger at the end of this block).
+**Main** is at 41b10a1617 (code), pushed. Every gate is green on it at
+both widths (the 24-step ledger at the end of this block).
 
 **Finished tonight.**
 - Fast-forward (task g), merged at 6a42fd7ade. Tab held speeds the game;
@@ -29,11 +29,29 @@ widths (the 24-step ledger at the end of this block).
   restart on a speed change, the unlimited sound path) and added, one
   wrong sentence about AltGr corrected.
 - The Linux watchdog test that failed on CI (below), merged at e981eff71a.
+- No console window on Windows (task d), merged at 41b10a1617. The game
+  links as a Windows GUI program. Started from a command prompt it
+  attaches to that console (`--keys`, `--version` and errors print there;
+  the prompt returns at once, as for any GUI program); under a pipe or a
+  file (the hydra, the replays, `> out.txt`) the output goes there as
+  before; started from Explorer or a shortcut, with no console and no
+  handles, the messages go to `pokeemerald.log` in the data directory
+  (stdout and stderr share one handle, so the crash reports cannot
+  overwrite other lines), truncated at each start, and a failure before
+  the game starts (a second copy on the same save, a bad settings file)
+  shows a message box naming the log. Sonnet worker; Sonnet review with
+  13 mutants: two medium findings fixed (the two streams were separate
+  opens of the log; the crash handlers' new descriptor had no regression
+  test), five smaller ones fixed. The Windows runner verified the GUI
+  subsystem, the pipes, the no-console log through a process started with
+  no handles, both replays, the cross-OS save and the suite (run
+  38693203706 on the branch).
 
-**In flight.** The console-window removal on Windows (task d), Sonnet,
-on work/console; its Windows run is in progress. Then the queue: macOS
-x86_64 (M2 to M5) on `macos-15-intel`, Steam Deck (task h), the
-Apple-silicon spike (task i), a final review.
+**In flight.** The Windows runner on main at 41b10a1617 (run
+38697083593). Next: macOS x86_64 (M2 to M5) on `macos-15-intel` (Opus),
+then Steam Deck (task h), the Apple-silicon spike (task i), a final
+review. DECISIONS.md has the macOS runner dates (x86_64 macOS runners end
+in fall 2027) and what they change for the Apple-silicon question.
 
 **Broke and fixed.** The per-push CI run on main after the settings
 merge (38673212769, commit 030e3b195e) failed in one unit test,
@@ -69,7 +87,9 @@ check that the directory is unchanged by them instead of absent.
 | The full gate, 24 steps: the platform gate (format, lint at both widths, sanitized unit tests at both widths, ThreadSanitizer, tools and glue tests); the builds at 32 and 64 bits, plain and sanitized; gates d and e on all four builds; gate b at 32 and 64 bits, plain and sanitized (5418 passed, 9 assumption failures each); gate h both ways; the Windows cross-build and its 83 tests built; the GBA ROM's sha1 | 6a42fd7ade (fast-forward) | green; the per-user data directory absent before and after |
 | The same 24 steps | e981eff71a (the watchdog test) | green, the same totals; 18 minutes warm |
 | The same 24 steps on the branch before the merge | 0a6c7ba0cb (fast-forward) | green |
-| Windows runner | 6a42fd7ade | run 38682653915 in progress |
+| Windows runner | 6a42fd7ade | run 38682653915 green |
+| The same 24 steps (the per-user directory unchanged by the gate) | 41b10a1617 (console removal) | green, the same totals |
+| Windows runner | 41b10a1617 | run 38697083593 in progress |
 
 
 **NOTE ON RELEASES (for the owner, at the owner's request).** A built
@@ -902,7 +922,7 @@ Nothing yet; nothing exists to be broken.
 | settings (data directory, settings.ini, F1 overlay, --keys) | Opus | Sonnet |
 | fastforward (hold and toggle keys, the pacer multiplier, audio, indicator) | Opus | Sonnet (mutation testing), orchestrator merge gate |
 | threadtest (the Linux watchdog test that failed on CI) | Sonnet | Sonnet (mutation testing), orchestrator merge gate |
-| console (no console window on Windows) | Sonnet | in flight |
+| console (no console window on Windows) | Sonnet | Sonnet (mutation testing), orchestrator merge gate |
 | interrupt | Opus | Sonnet |
 | psg | Opus | Sonnet |
 | save (flash, save_file) | Opus | Sonnet |
