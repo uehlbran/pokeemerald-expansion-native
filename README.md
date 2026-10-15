@@ -32,14 +32,17 @@ Verified by an automated gate (the gates and their commands are in
   dumps and screenshots, plain and sanitized, and runs expansion's suite with
   the 32-bit results; a save moves between the two builds (converted on load).
 - The GBA build is unchanged and still passes its own suite.
+- Windows (x86-64 only, cross-built from Linux) runs the platform's unit
+  tests, a start-up smoke, both replays, expansion's suite (equal to
+  Linux 64-bit, test by test) and the cross-OS save gate on a Windows
+  runner, and the owner verified the build by hand on 2026-10-14: boot,
+  the opening, the first battle, a save and its reload
+  (docs/BUILDING.md, "Windows").
 
 Not working or not verified:
 
-- Windows: cross-built from Linux (x86-64 only); its unit tests and a
-  start-up smoke run on a Windows runner through a manual workflow, and no
-  replay or suite run has happened there yet (docs/BUILDING.md, "Windows").
-- macOS: not attempted. Linux (built under WSL2 Ubuntu 24.04) is the
-  platform the gates run on.
+- macOS: not started. Linux (built under WSL2 Ubuntu 24.04) and Windows
+  are the platforms.
 - GBA save interchange: native saves use the host's struct layout and are
   not GBA `.sav` files.
 - Nothing past Birch's lab in play, the windowed path with a real display
@@ -47,10 +50,21 @@ Not working or not verified:
   The renderer and the sound mixer are covered by unit tests and, beyond
   those, only by the replays' screenshots and the intro's audio.
 
-## Building
+## Playing and building
 
-Prerequisites are in [docs/BUILDING.md](docs/BUILDING.md) (Ubuntu
-packages, including the 32-bit SDL2 libraries). Then:
+There is no release: nothing built is published, so you build the game. To
+play, [docs/RUNNING.md](docs/RUNNING.md) has the keys, the options and
+the files the game writes, for Linux and Windows. To build,
+[docs/BUILDING.md](docs/BUILDING.md) has the prerequisites (Ubuntu packages,
+including the 32-bit SDL2 libraries) and every variant. One command builds
+the 64-bit game for an operating system, and prints where the executable is:
+
+```
+tools/build-native.sh --os linux      # build/native64/pokeemerald-native
+tools/build-native.sh --os windows    # build/native64-windows/pokeemerald-native.exe
+```
+
+The commands of the 32-bit build, the unit tests and the suite:
 
 ```
 make -f Makefile.native -j"$(nproc)" native BITS=32
@@ -67,6 +81,8 @@ regression reference.
 
 ## Documentation
 
+- [docs/RUNNING.md](docs/RUNNING.md): for players: running the game, the
+  keys, the options, the files it writes.
 - [docs/BUILDING.md](docs/BUILDING.md): prerequisites, every build variant
   and the gates.
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): the platform layer, its
