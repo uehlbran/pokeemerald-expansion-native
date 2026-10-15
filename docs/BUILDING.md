@@ -509,6 +509,17 @@ allocations below the image end near it, so the tests' fixed page is
 
 ## macOS (built on a Mac)
 
+Nothing below has run on a Mac yet beyond the two probes
+(`research/probes/README.md`, probes M0 and M2): the macOS workflow's first
+runs were refused by GitHub before any job started (the account's billing,
+2026-10-15), so the build, the unit tests and the gates are written and
+rehearsed on Linux only. The rehearsal: the game built with clang passes both
+replays, plain and sanitized, and its suite equals GCC's test by test, plain
+and sanitized; every game and test source, filtered for Mach-O, compiles for
+`x86_64-apple-macos11`; the test objects' event scripts are split, assembled,
+converted and checked end to end. `docs/DECISIONS.md`, "The macOS port waits
+for its first runs on a Mac", lists what the first runs must show.
+
 The macOS executable is x86_64 only (`docs/DECISIONS.md`, "macOS ships as
 x86_64 under Rosetta; arm64 is not started"): an Intel Mac runs it, and an
 Apple-silicon Mac runs it under Rosetta 2. It is built on the Mac itself, with

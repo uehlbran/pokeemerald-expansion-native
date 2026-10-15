@@ -63,9 +63,10 @@ Not working or not verified:
 - macOS (x86_64, built on a Mac with Homebrew's tools; an Apple-silicon Mac
   runs it under Rosetta 2): the port is written, with its own layout, host
   layer, clang build and CI workflow (docs/BUILDING.md, "macOS"), and its
-  clang build passes both replays and the suite on Linux, but it has not yet
-  been built or run on a Mac: the macOS workflow's first runs were not
-  started (GitHub refused the account's jobs for billing).
+  clang build passes both replays and the suite on Linux, plain and
+  sanitized, but nothing of it has run on a Mac beyond two probes: the macOS
+  workflow's first runs were refused before any job started (the account's
+  billing), and the port does not merge until they pass.
 - GBA save interchange: native saves use the host's struct layout and are
   not GBA `.sav` files.
 - Nothing past Birch's lab in play, the windowed path with a real display

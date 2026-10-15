@@ -183,12 +183,13 @@ endif
 ifeq ($(TSAN),1)
 override SANITIZER_ENV := TSAN_OPTIONS=halt_on_error=1:exitcode=66
 endif
-# The one test binary that leaves a signal handler by siglongjmp, on purpose
-# (test_arm_division_posix): ThreadSanitizer keeps believing the thread is in
-# the handler and calls every later free() signal-unsafe. It runs with that
+# The test binaries that leave a signal handler by siglongjmp, on purpose
+# (test/arm_division_fixture.h's previous handler: test_arm_division_posix and
+# its Linux and macOS parts): ThreadSanitizer keeps believing the thread is in
+# the handler and calls every later free() signal-unsafe. They run with that
 # report off (report_signal_unsafe=0); races are still reported, and every
 # other binary keeps the report.
-SIGNAL_JUMP_TESTS := test_arm_division_posix
+SIGNAL_JUMP_TESTS := test_arm_division_posix test_arm_division_linux test_arm_division_darwin
 # The same list as one shell case pattern (*/a|*/b), for the test recipe.
 space := $(subst ,, )
 SIGNAL_JUMP_PATTERN := $(subst $(space),|,$(addprefix */,$(SIGNAL_JUMP_TESTS)))

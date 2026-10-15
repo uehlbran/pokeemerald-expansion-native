@@ -26,16 +26,13 @@
 #
 # Artifacts carry the builds and the stages' directories between the jobs.
 # macOS minutes count ten times. Nightly at 06:17 UTC, an hour after
-# windows.yml's nightly, and by hand.
+# windows.yml's nightly, and by hand (gh workflow run macos.yml). The time
+# limits are estimates from the Linux and Windows jobs: no run has measured
+# this workflow yet (docs/DECISIONS.md, "The macOS port waits for its first
+# runs on a Mac", lists what its first run must show).
 name: macos
 
 on:
-  push:
-    branches:
-      - work/macos
-    paths-ignore:
-      - 'docs/**'
-      - '**.md'
   schedule:
     - cron: '17 6 * * *'
   workflow_dispatch:
@@ -43,12 +40,12 @@ on:
 permissions:
   contents: read
 
-# A newer push or run by hand replaces an older one on the same branch, to
-# save the macOS minutes; the nightly is in a group of its own, so it never
-# cancels one and is never cancelled.
+# A run by hand replaces an earlier run by hand on the same branch, to save
+# the macOS minutes; the nightly is in a group of its own, so a run by hand
+# never cancels it and it never cancels one.
 concurrency:
   group: macos-${{ github.event_name }}-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name != 'schedule' }}
+  cancel-in-progress: ${{ github.event_name == 'workflow_dispatch' }}
 
 env:
   # The replays and the suite run headless.
@@ -161,6 +158,15 @@ jobs:
             | uniq | tee out/segments.txt
           codesign -dv build/native64/pokeemerald-native 2>&1 | tee out/codesign.txt || true
 
+      # Where the game keeps a player's files on a Mac (docs/DECISIONS.md, "The
+      # game's files on a Mac are in ~/Library/Application Support"): --keys
+      # names the per-user directory SDL gives, which no replay reads (they
+      # pass --save and --rtc-offset).
+      - name: The per-user data directory
+        run: |
+          build/native64/pokeemerald-native --keys | tee out/keys.txt
+          grep -qxF "Data directory (per-user): $HOME/Library/Application Support/pokeemerald-expansion-native/pokeemerald-native/" out/keys.txt
+
       # Its half of the struct layout check (Makefile.native leaves the check
       # out on a Mac, which runs no 32-bit program): compare holds it against
       # the Linux build's.
@@ -195,6 +201,7 @@ jobs:
             out/otool-L.txt
             out/segments.txt
             out/codesign.txt
+            out/keys.txt
             build/native64/data_layout64.txt
             out/cross-os/load/work/again/
           if-no-files-found: ignore

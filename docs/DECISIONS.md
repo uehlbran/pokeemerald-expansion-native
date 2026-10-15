@@ -2277,8 +2277,9 @@ to iCloud, wrong for a save the game owns) and the XDG directories Linux
 uses (not where a Mac user looks). Two things are left to the packaging
 task: in an `.app` bundle `SDL_GetBasePath` names the bundle's `Resources`
 folder, which is inside the signed bundle, so portable mode should not be
-offered there; and the gates pass `--save` and `--rtc-offset`, so no gate
-reads the per-user directory on a Mac (the owner's hand check does).
+offered there; and the replays pass `--save` and `--rtc-offset`, so none of
+them reads the per-user directory: the macOS workflow checks the path
+`--keys` names instead.
 
 ## 2026-10-15: The data on a Mac is assembled there with GNU as and converted
 
@@ -2409,3 +2410,53 @@ are sized by it, and a path the system refuses fails loudly at the first
 open. The tests that pad a path to 4096 bytes with repeated slashes and
 expect it to work (`test_rtc_linux.c`) are therefore Linux's; the refusal of
 a path over the platform's limit is portable and runs everywhere.
+
+## 2026-10-15: The macOS port waits for its first runs on a Mac
+
+Nothing of the port has run on macOS beyond probes M0 and M2. The macOS
+workflow's first runs (38714839300, and 38717390655 after a push) were
+refused before any job started: "recent account payments have failed or your
+spending limit needs to be increased", which stopped every job on the account
+that night, the Windows nightly's too. Only the owner can change that, so the
+branch was finished and rehearsed on Linux (a clang build of the game passes
+both replays and equals GCC's suite, plain and sanitized; every game and test
+source, filtered for Mach-O, compiles for macOS; the test objects' event
+scripts go through their whole pipeline), and it does not merge until the runs
+below pass, in this order:
+
+1. `macos.yml` by hand on the branch (`gh workflow run macos.yml --ref
+   work/macos`; GitHub dispatches a workflow only if its file is on the
+   default branch, so `macos.yml` must reach `main` first, alone or with a
+   push trigger restored on the branch for the one run). Its jobs must show:
+   - **unit**: 97 unit test binaries (79 portable, 13 `posix/`, 5 `darwin/`)
+     each "N passed, 0 failed" under ASan and UBSan, and 96 under TSan
+     (`test_crt0` is not run under it); clang-tidy clean on the macOS
+     sources; `test_patchelf_macho.sh` to its last line, including "the
+     patched Mach-O executable runs and reads the patched values";
+   - **game**: the link passes `check_macho_layout.py` (silent); `otool -l`'s
+     segments as `docs/ARCHITECTURE.md`'s table gives them; `otool -L` names
+     Homebrew's SDL2 (expected `/usr/local/opt/sdl2-compat/lib/libSDL2-2.0.0.dylib`)
+     and the system's libraries only; `--keys` names
+     `~/Library/Application Support/pokeemerald-expansion-native/pokeemerald-native/`;
+     both replays "PASS: 27 dumps, 26 screenshots" and "PASS: 20 dumps, 32
+     screenshots", the same sanitized with no sanitizer report; gate h's
+     load stage PASS on the Linux save;
+   - **suite**: the test runner's own tests (two crash on purpose and are
+     restarted), then 5,875 results (5,418 PASS, 2 CRASH, 7 EXPECTED_FAIL,
+     18 KNOWN_FAILING, 9 ASSUMPTION_FAIL, 421 TO_DO), plain and sanitized;
+   - **compare**: "PASS: the same 5875 tests with the same results" for the
+     plain and for the sanitized suite against Linux 64-bit's; gate h's back
+     stage PASS; the two 64-bit struct layouts identical.
+2. The same workflow on `main` after the merge, and its nightly from then on.
+3. The owner's own Mac, Intel or Apple silicon under Rosetta: the build from a
+   fresh clone with the Homebrew line of `docs/BUILDING.md`, the game in a
+   window with sound, a save and its reload, and the save directory under
+   `~/Library/Application Support`.
+
+What the first run is most likely to show, from what the probes did not
+cover: whether ld-prime takes `-alias_list` (the probe passed each alias as
+`-alias`; the files could become flags); whether `sdl2-compat` honours
+`SDL_AUDIODRIVER` and `SDL_VIDEODRIVER` set after the library is loaded
+(`test_audio`'s and `test_video`'s refused-driver tests, and the dummy
+drivers the gates ask for); ThreadSanitizer's own memory layout beside the
+fixed image; and `ld -r` joining a test object's C and its converted scripts.
