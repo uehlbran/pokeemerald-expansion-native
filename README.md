@@ -15,23 +15,17 @@ you build it from this repository, and no build is published.
 
 The game code is expansion's, pinned at the tag `expansion/1.17.1`, compiled
 for x86 instead of the GBA's ARM. A platform layer under `platform/` stands
-in for the hardware. It provides the memory the game addresses and does what
-the video and sound hardware did, when they did it. It implements the BIOS
-calls and reaches the screen and the keyboard through SDL2.
+in for the hardware and reaches the screen and the keyboard through SDL2.
 
-There is no emulator underneath and no ROM file. The game compiles from the
-decompilation's source and assets, as upstream's GBA build does. This project
-adds no cartridge material.
-
-There are no downloads. A built executable contains the game's complete
-assets, which are not this project's to distribute, so you build it. The
+A built executable contains the game's complete assets, which are not this
+project's to distribute, so you build it rather than download it. The
 release workflow in `.github/workflows/release.yml` packages archives only
 when run by hand, and publishes nothing unless told to. No release has been
 published.
 
 ## What makes this port different
 
-It carries expansion's full engine and data, not a subset. Expansion's own
+It carries expansion's full engine and data. Expansion's own
 test suite runs on the native build. Each of its 5,862 tests gives the result
 it gives on the GBA, except the nine benchmark tests. Those measure GBA cycle
 counts, which do not exist natively, and are reported as assumption failures.
@@ -39,19 +33,26 @@ The game builds at 32 and 64 bits, and a save moves between the two.
 Expansion's game code is changed only under `PLATFORM_NATIVE` guards, and the
 GBA build still produces the same ROM. Every change to an upstream file, the
 build tools included, is logged with its reason in
-[docs/UPSTREAM_MODIFICATIONS.md](docs/UPSTREAM_MODIFICATIONS.md); compare it
-with `git diff --stat expansion/1.17.1`. [docs/UPGRADING.md](docs/UPGRADING.md)
-is the runbook for moving to a newer expansion tag.
+[docs/UPSTREAM_MODIFICATIONS.md](docs/UPSTREAM_MODIFICATIONS.md). To compare
+it with the tree, fetch upstream's tag first, then diff:
+
+```
+git fetch https://github.com/rh-hideout/pokeemerald-expansion.git tag expansion/1.17.1
+git diff --stat expansion/1.17.1
+```
+
+[docs/UPGRADING.md](docs/UPGRADING.md) is the runbook for moving to a newer
+expansion tag.
 
 ## Platforms
 
 | Platform | Status |
 |---|---|
 | Linux x86, 32-bit | Builds, replays and suite pass; run nightly in CI |
-| Linux x86-64 | The primary build; checked on every push |
+| Linux x86-64 | The primary build; built and replayed on every push |
 | Windows x86-64 | Cross-built from Linux; checked nightly on GitHub's Windows runner |
-| Steam Deck | The Linux x86-64 build with controller bindings; not yet tried on a Deck |
-| macOS x86-64 | In progress on an unmerged branch; not yet run on a Mac |
+| Steam Deck | The Linux x86-64 build you make yourself, [added to Steam](docs/RUNNING.md#steam-deck); not yet tried on a Deck |
+| macOS x86-64 | In progress on the branch `work/macos`, not merged; not yet run on a Mac |
 | Apple silicon | Not started |
 
 ## Quick start
@@ -97,9 +98,12 @@ A gate is a check a change must pass before it merges. The commands are in
 - The GBA build still produces the same ROM and passes its own suite, and
   a save written by one width loads in the other.
 
-The 64-bit build, its replays and its plain suite run on every push; the
-rest runs nightly. A separate nightly workflow builds for Windows and runs
-the unit tests, the replays and the suite on a Windows runner.
+On every push, CI builds the 64-bit game, runs the platform layer's checks
+and plays both replays on it. Nightly, it builds the GBA ROM and checks its
+sha1 and its suite. The same night it builds the game at both widths, plain
+and sanitized, runs the replays and the suite on each, and runs the
+cross-width save check. A second nightly workflow builds for Windows and runs the unit tests, the
+replays and the suite on a Windows runner.
 
 ## Design in brief
 
@@ -145,8 +149,8 @@ divergences from the GBA".
 `expansion/1.17.1`. The runbook moves the pin to a newer tag and re-verifies
 every guarded line against the new code. It has not been run yet.
 
-**Does it run on Apple silicon?** Not yet. The macOS build in progress is
-x86-64 and would run through Rosetta 2. An arm64 build needs a different
+**Does it run on Apple silicon?** Not yet. The macOS build on `work/macos`
+is x86-64 and would run through Rosetta 2. An arm64 build needs a different
 memory model, because arm64 executables are always relocated at load.
 
 ## Repository layout
@@ -169,29 +173,20 @@ them. Upstream's README and contribution guide are at
 
 ## Documentation
 
-- [docs/RUNNING.md](docs/RUNNING.md): playing: keys, settings, the
-  overlay, fast-forward, fullscreen, the Steam Deck, the files.
-- [docs/BUILDING.md](docs/BUILDING.md): prerequisites, every build variant,
-  the gates, the Windows cross-build, the release workflow.
-- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): the boundary, the memory
-  model, the frame, the modules, the 64-bit build.
-- [docs/DECISIONS.md](docs/DECISIONS.md): each decision with its
-  alternatives and reasons.
+- [docs/RUNNING.md](docs/RUNNING.md): how to play and where the files are.
+- [docs/BUILDING.md](docs/BUILDING.md): building every variant, and the gates.
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): how the platform layer is built.
+- [docs/DECISIONS.md](docs/DECISIONS.md): each decision and its alternatives.
 - [docs/UPSTREAM_MODIFICATIONS.md](docs/UPSTREAM_MODIFICATIONS.md): every
-  change to an expansion file, with its reason.
-- [docs/UPGRADING.md](docs/UPGRADING.md): the runbook for a newer expansion
-  tag.
-- [docs/C-RULES.md](docs/C-RULES.md): the rules every file of the platform
-  layer follows.
-- [docs/RESEARCH.md](docs/RESEARCH.md): what the GBA does, what the earlier
-  ports did, and the approach taken for each subsystem.
-- [docs/research/](docs/research/): the evidence behind it: the GBA test
-  baseline, the memory-map experiment, the test-runner protocol and notes on
-  each of the three earlier ports.
+  change to an upstream file.
+- [docs/UPGRADING.md](docs/UPGRADING.md): moving to a newer expansion tag.
+- [docs/C-RULES.md](docs/C-RULES.md): the rules the platform layer follows.
+- [docs/RESEARCH.md](docs/RESEARCH.md): what the GBA and the earlier ports
+  taught this one.
+- [docs/research/](docs/research/): the evidence behind the research page.
 - [platform/README.md](platform/README.md): the platform modules one by one.
-- [tests/smoke/README.md](tests/smoke/README.md): the replays and their
-  facts.
-- [CONTRIBUTING.md](CONTRIBUTING.md): the rules, the gates, adding a module.
+- [tests/smoke/README.md](tests/smoke/README.md): the replays.
+- [CONTRIBUTING.md](CONTRIBUTING.md): how to contribute.
 - [CREDITS.md](CREDITS.md): this project's credits, then upstream's.
 - [LICENSE](LICENSE): the scoped MIT license.
 
