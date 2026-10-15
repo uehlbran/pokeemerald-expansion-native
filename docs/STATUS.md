@@ -83,7 +83,30 @@ id, the one id the list gains across the start, and requires that id
 gone after the stop (1000 runs per width under load; reviewed with
 mutants). The production code was right.
 
-**Needs the owner.** (1) A hands-on check of fast-forward on a real
+**Needs the owner.** (0) FIRST, blocking: GitHub Actions starts no job
+on this account since about 03:40 MDT on 2026-10-15 (09:40 UTC). Every run
+since then ends in seconds with "The job was not started because recent
+account payments have failed or your spending limit needs to be increased.
+Please check the 'Billing & plans' section in your settings": the macOS
+runs on work/macos (38714839300 and its rerun, 38717390655) and the
+Windows nightly on main (38717224879); 0 minutes used by them. The runs
+before it are green. Nothing here may change billing, so macOS cannot be
+proven tonight: the macOS branch is finished as far as Linux can check it
+and waits, unmerged, for its runs on `macos-15-intel` (the list is in the
+macOS paragraph below), and the Apple-silicon spike runs on this machine
+with the arm64 runner data probe M0 measured on 2026-10-09. To restore:
+github.com/settings/billing (the payment method or the Actions spending
+limit). For the size of the bill to come: macOS minutes count ten times
+and Windows twice on a private repository; the macOS nightly the plan
+asks for would add roughly an hour of macOS time a night (to be measured
+on its first run), so you may want it weekly; one line in macos.yml.
+Also seen in the refused runs: GitHub moves the `ubuntu-latest` label to
+Ubuntu 26.04 from October 19, 2026 (actions/runner-images#14748);
+windows.yml and release.yml use that label, so the release's executable
+and its bundled SDL2 would then need a newer glibc than SteamOS 3.8's 2.41
+may have. Pinning both to `ubuntu-24.04`, as native.yml already is, is in
+tonight's cleanup branch.
+(1) A hands-on check of fast-forward on a real
 keyboard and screen: Tab held and released, Shift+Tab on and off, the
 indicator, the sound at 2x, 3x, 4x and unlimited and with
 `fast_forward_audio = mute`, and Alt-Tab away while holding Tab (the
