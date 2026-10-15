@@ -44,7 +44,6 @@
 /* The codes the "log" child ends with. */
 #define LOG_WRITTEN 30u
 #define LOG_NOT_OPENED 31u
-#define LOG_WRONG_DESCRIPTORS 100u
 #define LOG_WRITE_FAILED 33u
 
 /* How long a child may take. */
@@ -76,30 +75,19 @@ static unsigned attach_and_write(void)
 
 static bool run_self(const char *body, HANDLE out, HANDLE err, DWORD flags, uint32_t *code);
 
-/* The three descriptors as one code above LOG_WRONG_DESCRIPTORS, each from -2 to 2 as 0 to 4, so that a failure shows them. */
-static unsigned descriptors_code(void)
-{
-    const int in = _fileno(stdin);
-    const int out = _fileno(stdout);
-    const int err = _fileno(stderr);
-    return (unsigned)((in + 2) * 25 + (out + 2) * 5 + (err + 2));
-}
-
 /* What a game started by Explorer does with LOG mode: opens its log on the
  * standard streams, which it does not have, and prints through the C
- * runtime's streams and through descriptor 2, where a crash report goes. */
+ * runtime's streams and through stderr's descriptor, where a crash report goes. */
 static unsigned open_the_log_and_write(void)
 {
-    static const char raw[] = "through descriptor 2\n";
+    static const char raw[] = "through stderr's descriptor\n";
     struct options options = {.scale = OPTIONS_DEFAULT_SCALE, .data_dir = getenv(DIR_VARIABLE)};
     const struct console_streams streams = console_standard_streams();
     char path[DATA_DIR_PATH_SIZE];
     if (options.data_dir == NULL || console_open_log(&options, data_dir_sdl_host(), &streams, path, sizeof path) != 0)
         return LOG_NOT_OPENED;
-    if (_fileno(stdin) != 0 || _fileno(stdout) != 1 || _fileno(stderr) != 2)
-        return LOG_WRONG_DESCRIPTORS + descriptors_code();
     if (fputs("through stdout\n", stdout) < 0 || fputs("through stderr\n", stderr) < 0
-        || _write(2, raw, sizeof raw - 1u) != (int)(sizeof raw - 1u))
+        || _write(_fileno(stderr), raw, sizeof raw - 1u) != (int)(sizeof raw - 1u))
         return LOG_WRITE_FAILED;
     return LOG_WRITTEN;
 }
@@ -244,8 +232,8 @@ PTEST(attaching_to_the_parents_console_works_and_the_streams_write_on_it)
     PT_ASSERT_EQ_U32(code, ATTACH_WROTE);
 }
 
-/* The three standard descriptors are the log's, and every way of writing reaches it. */
-PTEST(a_process_with_no_handles_and_no_console_logs_through_every_descriptor)
+/* Every way of writing to the standard streams reaches the log. */
+PTEST(a_process_with_no_handles_and_no_console_logs_through_every_way_of_writing)
 {
     char dir[TSUP_PATH_SIZE];
     char path[TSUP_PATH_SIZE + 32u];
@@ -270,7 +258,7 @@ PTEST(a_process_with_no_handles_and_no_console_logs_through_every_descriptor)
     PT_ASSERT(tsup_remove_tree(dir));
     PT_ASSERT(ran);
     PT_ASSERT_EQ_U32(code, LOG_WRITTEN);
-    PT_ASSERT_EQ_STR(text, "through stdout\nthrough stderr\nthrough descriptor 2\n");
+    PT_ASSERT_EQ_STR(text, "through stdout\nthrough stderr\nthrough stderr's descriptor\n");
 }
 
 PTEST(attaching_when_the_parent_has_no_console_is_refused)

@@ -50,22 +50,19 @@ enum console_mode console_choose(enum host_stream_kind out, enum host_stream_kin
  * where no one is looking at a stream. */
 bool console_shows_message_box(enum console_mode mode);
 
-/* The three standard streams, or a test's own. */
+/* The two output streams, or a test's own. */
 struct console_streams {
-    FILE *in;
     FILE *out;
     FILE *err;
 };
 
-/* stdin, stdout and stderr. */
+/* stdout and stderr. */
 struct console_streams console_standard_streams(void);
 
 /* LOG mode, once the options are known: finds the log's place (above), and
  * makes the output and error streams write to it, truncating it first. The
- * input stream is reopened on it too, to read: a process started with no
- * handles has no descriptor 0, 1 or 2, the C runtime gives a reopened stream
- * the lowest descriptor that is free, and the crash report (arm_division.c)
- * writes to descriptor 2, so the three are claimed in order. The path is
+ * crash reports find the descriptor of stderr as it is then (a program started
+ * with no handles gets whatever descriptors the C runtime hands out). The path is
  * written to path (size bytes). Returns 0, or -1 if there is no place for the
  * log or it cannot be made (path is then "" and the streams are as they were). */
 int console_open_log(const struct options *options, const struct data_dir_host *host,

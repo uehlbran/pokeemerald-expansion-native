@@ -159,7 +159,6 @@ struct scene {
     char exe_slash[DIR_SIZE];
     char pref_slash[DIR_SIZE];
     char files[TSUP_PATH_SIZE];
-    char in_path[PATH_SIZE];
     char out_path[PATH_SIZE];
     char err_path[PATH_SIZE];
     struct console_streams streams;
@@ -173,25 +172,21 @@ static bool make_scene(struct scene *scene)
         return false;
     (void)snprintf(scene->exe_slash, sizeof scene->exe_slash, "%s/", scene->exe);
     (void)snprintf(scene->pref_slash, sizeof scene->pref_slash, "%s/", scene->pref);
-    (void)snprintf(scene->in_path, sizeof scene->in_path, "%s/in", scene->files);
     (void)snprintf(scene->out_path, sizeof scene->out_path, "%s/out", scene->files);
     (void)snprintf(scene->err_path, sizeof scene->err_path, "%s/err", scene->files);
-    scene->streams.in = fopen(scene->in_path, "w+");
     scene->streams.out = fopen(scene->out_path, "w");
     scene->streams.err = fopen(scene->err_path, "w");
     fake.base = scene->exe_slash;
     fake.pref = scene->pref_slash;
     fake.base_calls = 0;
     fake.pref_calls = 0;
-    return scene->streams.in != NULL && scene->streams.out != NULL && scene->streams.err != NULL;
+    return scene->streams.out != NULL && scene->streams.err != NULL;
 }
 
 /* Closes what is open and removes the directories. */
 static bool end_scene(struct scene *scene)
 {
     bool closed = true;
-    if (scene->streams.in != NULL)
-        closed = fclose(scene->streams.in) == 0 && closed;
     if (scene->streams.out != NULL)
         closed = fclose(scene->streams.out) == 0 && closed;
     if (scene->streams.err != NULL)
@@ -369,12 +364,10 @@ PTEST(both_streams_write_the_log_in_order)
     (void)fprintf(scene.streams.err, "first on err\n");
     (void)fprintf(scene.streams.out, "second on out\n");
     (void)fprintf(scene.streams.err, "third on err\n");
-    const int on_in = fgetc(scene.streams.in); /* the input stream reads the log: it holds descriptor 0 */
     const bool read = read_text(path, text, sizeof text);
     PT_ASSERT(end_scene(&scene));
     PT_ASSERT(read);
     PT_ASSERT_EQ_STR(text, "first on err\nsecond on out\nthird on err\n");
-    PT_ASSERT_EQ_INT(on_in, 'f');
 }
 
 /* A start's log is that start's alone, however long the last one's was. */

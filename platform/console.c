@@ -31,15 +31,14 @@ bool console_shows_message_box(enum console_mode mode)
 
 struct console_streams console_standard_streams(void)
 {
-    return (struct console_streams){.in = stdin, .out = stdout, .err = stderr};
+    return (struct console_streams){.out = stdout, .err = stderr};
 }
 
 /* The file is made and emptied first, by a stream of its own, so that a log
  * that cannot be made leaves the process's streams as they were; the output
  * streams then append, so that they share the file without one overwriting the
  * other at its own offset, and are unbuffered, so that their lines stay in
- * order and a crash loses none. The input stream comes first, to claim
- * descriptor 0 (console.h). */
+ * order and a crash loses none. */
 static int begin_log(const char *path, const struct console_streams *streams)
 {
     FILE *const empty = fopen(path, "w");
@@ -48,9 +47,7 @@ static int begin_log(const char *path, const struct console_streams *streams)
     if (fclose(empty) != 0)
         return -1;
     // cppcheck-suppress leakReturnValNotUsed ; freopen gives back the stream it was given, which the caller keeps
-    const bool in_reopened = freopen(path, "r", streams->in) != NULL;
-    // cppcheck-suppress leakReturnValNotUsed ; as above
-    const bool out_reopened = in_reopened && freopen(path, "a", streams->out) != NULL;
+    const bool out_reopened = freopen(path, "a", streams->out) != NULL;
     // cppcheck-suppress leakReturnValNotUsed ; as above
     const bool err_reopened = out_reopened && freopen(path, "a", streams->err) != NULL;
     if (!err_reopened)
