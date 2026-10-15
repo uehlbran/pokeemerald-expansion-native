@@ -355,7 +355,7 @@ The platform library alone: `make -C platform lib TARGET_OS=windows BITS=64`
 (`platform/build/64-windows/`). The unit tests, cross-built here and run on Windows (below):
 `make -C platform test TARGET_OS=windows BITS=64` writes every test that runs
 on Windows to `platform/build/64-windows/test/` (the portable ones and
-`platform/test/windows/`'s, 80 executables, with `SDL2.dll`); each is linked
+`platform/test/windows/`'s, 81 executables, with `SDL2.dll`); each is linked
 with the PE scripts and checked by `check_pe_layout.py` like the game. The
 Windows sources' static analysis: `make -C platform lint TARGET_OS=windows
 BITS=64` (clang-tidy for the MinGW-w64 target, with its headers, and cppcheck;
@@ -421,7 +421,7 @@ platform/test_runner/compare_suite_results.sh suite-linux64.log suite-windows.lo
 - `run_windows_tests.sh` runs every test executable as `make -C platform
   test` does on Linux (each to its end; a failure if it exits non-zero or its
   output has no "N passed, 0 failed"; its output and its standard error kept
-  beside it) and ends with "all 80 Windows test executables passed". Each
+  beside it) and ends with "all 81 Windows test executables passed". Each
   runs from a copy under its own name, deleted when it ends: an executable of
   this layout costs about 1 GiB of the system's commit charge from its first
   start until its file is deleted (the image's 1 GiB, gaps included, is
