@@ -195,6 +195,9 @@ Desktop Mode while holding it ends it too; [7] after a save and a
 restart the save is in
 `/home/deck/.local/share/pokeemerald-expansion-native/pokeemerald-native/`;
 [8] `fullscreen = no` in settings.ini gives a window and F11 toggles;
+back in a window the picture keeps its size and scale (the tests run on
+SDL's dummy driver, which only records the flag, so this and a driver
+that refuses fullscreen are checked by hand only);
 [9] a `pad_overlay = x` line is accepted, and one button for two
 functions is reported on stderr. (3) Carried
 from before, below: the 65536 Hz audio-rate recommendation, the
