@@ -1586,3 +1586,39 @@ Windows release (SmartScreen's "Windows protected your PC" on an unsigned,
 reputation-less executable). **VirusTotal** scan links would be added to
 release notes only if a public release ever happens, with the known caveat
 that MinGW-built executables draw false positives from some engines.
+
+## 2026-10-15: Fast-forward, Steam Deck and native Apple silicon (the owner's additions)
+
+The owner added three items to the plan on 2026-10-15 (PLAN.md "Milestone
+8 plan", items (g), (h) and (i) have the full text).
+
+**Fast-forward** joins the settings-and-overlay work as the next task: a
+hold key (Tab) and a toggle key (Shift+Tab), both rebindable; the speed a
+setting (2x default; 2, 3, 4, unlimited); the frame pacer alone implements
+it, so the game's logic, the replays, saving and the test runner do not
+change and the RTC keeps following host time; audio plays sped up as mGBA
+and VisualBoyAdvance do, with a setting to mute instead; an indicator with
+the multiplier; the overlay, `--keys` and RUNNING list it; tests for the
+pacer at each multiplier, release on key-up and focus loss, the toggle's
+persistence, and the audio queue's bound.
+
+**Steam Deck**, after macOS x86_64, is the Linux 64-bit build with the
+handheld experience on top (controller bindings for everything, fullscreen
+by default on a Deck, a self-contained package for a non-Steam game in the
+home directory), with a hand-verification checklist for the owner since
+no CI runs on Deck hardware.
+
+**Native Apple silicon: a spike, not a port.** Why: the inventory
+(research/m8-inventory.md) found that arm64 macOS cannot keep the fixed
+GBA address layout the Linux, Windows and x86_64 macOS builds rely on (the
+image is always slid, __PAGEZERO covers the low addresses, and arm64's
+division by zero does not fault, which the divide-error trap depends on),
+so the real port is a different design whose size is unknown. The owner's
+rule: do not start the port; after the x86_64 macOS build is done, run a
+time-boxed feasibility spike on a GitHub arm64 macOS runner that answers
+three questions with measured probes (the regions at fixed addresses at
+runtime; the code reaching those addresses from a slid image; the
+replacement for the divide-error trap), each with a size estimate and a
+recommendation, in a document rather than code to keep, and then stop and
+put it in front of the owner. macOS x86_64 under Rosetta remains the
+shipped macOS build (the earlier macOS decision).

@@ -241,6 +241,49 @@ Order of work:
    per OS in BUILDING.md with a verified script; no public release, no
    tag. (e) and (f) run as one Sonnet task (work/release-docs) beside
    the audio-rate task, since they share no files with it.
+   Added by the owner on 2026-10-15 (while the settings task was in
+   review; it lands as the next task after the settings merge, before the
+   console removal): (g) fast-forward. A hold key (default Tab, the
+   emulator convention) speeds the game while held; a separate toggle
+   key (default Shift+Tab) switches it on and off; both rebindable in
+   the settings file like every other key. The speed is a setting,
+   default 2x, accepting 2, 3, 4 and unlimited; implemented in the frame
+   pacer only, so game logic, replays, saving and the test runner are
+   untouched, and the RTC keeps following host time. Audio during
+   fast-forward follows the emulator convention (mGBA, VisualBoyAdvance):
+   it plays sped up by default, with a settings option to mute during
+   fast-forward instead. A small indicator in the corner while it is
+   active (with the multiplier); the keys and the speed listed in the F1
+   overlay and `--keys`; documented in RUNNING. Tests: the pacer at each
+   multiplier; the hold key releasing on key-up and on focus loss so the
+   game cannot stick in fast-forward; the toggle persisting across
+   frames; the audio queue not growing without bound at any multiplier.
+   Then (d) the console removal, then macOS x86_64 (M2 to M5), then:
+   (h) Steam Deck, after macOS x86_64: it is the Linux 64-bit build, so
+   the task is the handheld experience, not a port. Controller bindings
+   for everything the keyboard can do, including the F1 overlay, Quit
+   and fast-forward (hold and toggle), with sensible defaults for a
+   Steam Deck layout and rebinding in the settings file; fullscreen by
+   default when launched on a Deck (detect it: SteamOS sets SteamDeck=1
+   in the environment) with a fullscreen toggle for everyone; a
+   self-contained package (binary, SDL2, licences, launcher script) that
+   works as a non-Steam game from the user's home directory, since the
+   system partition is read-only; documented in RUNNING. Nothing in CI
+   can run on Deck hardware, so the hand-verification checklist is
+   recorded for the owner.
+   (i) Native Apple silicon: the port is NOT started. A time-boxed
+   feasibility spike on a GitHub arm64 macOS runner after the x86_64
+   macOS build is done. The spike answers three questions with
+   evidence, in a document, not code to keep: can the GBA regions be
+   mapped at their fixed addresses at runtime on arm64 macOS (a shrunk
+   __PAGEZERO via -pagezero_size, mmap with MAP_FIXED, the code slid but
+   the regions not); can the game's code reach data at those fixed
+   addresses from a slid image (absolute symbols and the adrp range, or
+   another mechanism); what replaces the divide-error trap when arm64
+   division by zero does not fault. Each answer comes with a measured
+   probe, a size estimate for the real port and a recommendation; then
+   stop and put it in front of the owner (DECISIONS.md "Native Apple
+   silicon: a spike, not a port").
 2. An inventory of the Windows (MinGW) and macOS ports, no code (an Opus
    worker, to the session scratchpad and summarised here): what in
    `platform/` and the build glue is Linux-specific (the regions mapped

@@ -682,8 +682,10 @@ task (the owner's rulings from the Windows check and the two
 adjustments): branch work/settings, an Opus worker; the per-user data
 directory with portable mode and `--data-dir`, `settings.ini` rebinding
 the keys, the F1 overlay with Quit, `--keys` and `--version`, the gates
-and the players' page updated. Then the console-window removal, then
-macOS.
+and the players' page updated (in review; the author is fixing the
+review's findings). Then fast-forward (added by the owner 2026-10-15),
+the console-window removal, macOS x86_64, Steam Deck, and the Apple
+silicon feasibility spike (PLAN.md items (g) to (i)).
 (2) Done and merged (5cc507a482): the documentation pass and the release
 pipeline (README and the public docs current, docs/RUNNING.md for players,
 tools/build-native.sh, release.yml; the note above has the first run).
