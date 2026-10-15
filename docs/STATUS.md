@@ -93,11 +93,27 @@ game must drop back to normal speed). (2) A hands-on check of the
 console-free Windows build (double-click: no console window;
 `pokeemerald.log` in `%APPDATA%\pokeemerald-expansion-native\pokeemerald-native\`;
 a command prompt still prints `--keys`; a second copy on the same save
-shows a message box naming the log). (2b) The Steam Deck checklist in
-RUNNING.md's Steam Deck section (the bundled SDL2 loads through the
-launcher; Game Mode fullscreen; every control; pulling a controller or
-switching windows while holding the right trigger ends fast-forward;
-the save's place). (3) Carried
+shows a message box naming the log). (2b) On a Steam Deck, with the Linux
+tarball from a release run (RUNNING.md, "Steam Deck", has the steps):
+[1] through the launcher the game loads the bundled SDL2
+(`LD_DEBUG=libs ./pokeemerald-native.sh 2>&1 | grep libSDL2` names the
+folder's copy); [2] copied to the home folder in Desktop Mode and added
+with "Add a Non-Steam Game" (file filter "All files") on
+`pokeemerald-native.sh`, it launches in Game Mode; [3] it starts
+fullscreen at 1280x800, the picture at 5x with black bars, with sound;
+[4] with Steam's default layout for a non-Steam game ("Gamepad" if not):
+A, B, Start, Back, the shoulders, the d-pad and the left stick play; the
+right trigger fast-forwards while held and the right stick click toggles
+it; Y opens the overlay, its hint reads `X: quit  B: close`, B closes it
+without the game reacting to that B, X quits; the left trigger toggles
+fullscreen once per pull; [5] turning off or pulling a controller while
+holding the right trigger ends fast-forward; [6] switching windows in
+Desktop Mode while holding it ends it too; [7] after a save and a
+restart the save is in
+`/home/deck/.local/share/pokeemerald-expansion-native/pokeemerald-native/`;
+[8] `fullscreen = no` in settings.ini gives a window and F11 toggles;
+[9] a `pad_overlay = x` line is accepted, and one button for two
+functions is reported on stderr. (3) Carried
 from before, below: the 65536 Hz audio-rate recommendation, the
 2026-10-14 Windows saves to move once, the optional installs. (4) One
 command, when convenient: `rm -r ~/.local/share/pokeemerald-expansion-native`.
