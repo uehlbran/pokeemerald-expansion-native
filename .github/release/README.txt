@@ -24,7 +24,20 @@ game shows the keys and the paths, and Q there quits.
            signed: if SmartScreen says "Windows protected your PC", click
            "More info", then "Run anyway".
 
+  macOS    pokeemerald-native, with libSDL2-2.0.0.dylib and libSDL3.dylib in
+           the same folder. An Intel Mac, or an Apple-silicon Mac with
+           Rosetta 2 (macOS offers to install it). It is not signed or
+           notarized, so macOS blocks it the first time: on macOS 14 and
+           earlier Control-click the file, choose Open, then Open; on macOS 15
+           and later try to open it, then System Settings > Privacy &
+           Security > Open Anyway; or in Terminal run
+           xattr -dr com.apple.quarantine <this folder>. RUNNING.md has the
+           details and Apple's pages. This build has not yet been run on a Mac
+           by this project's CI.
+
 RUNNING.md has the keys, the settings file, the options and where the files
 are. LICENSE
 covers this project's platform layer only; the game's code and assets are not
-ours to license. The Windows zip also holds SDL2's licence (SDL2-LICENSE.txt).
+ours to license. The Windows zip also holds SDL2's licence (SDL2-LICENSE.txt); the macOS
+tarball holds the licences of the SDL libraries it bundles (sdl2-compat's, as
+libSDL2-2.0.0-LICENSE.txt, and SDL3's, as libSDL3-LICENSE.txt); both are zlib.

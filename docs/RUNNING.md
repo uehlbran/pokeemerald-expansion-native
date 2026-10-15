@@ -13,12 +13,13 @@ distributes none). You build it yourself, with one command per system, from
 ```
 tools/build-native.sh --os linux      # build/native64/pokeemerald-native
 tools/build-native.sh --os windows    # build/native64-windows/pokeemerald-native.exe, built on Linux
+tools/build-native.sh --os macos      # build/native64/pokeemerald-native, built on a Mac
 ```
 
-The Windows executable is cross-built on Linux (WSL2 is fine). The owner can
-also get archives for testing from a run of the repository's "release"
-workflow, which publishes nothing unless told to; their README.txt and this
-page are inside. macOS is not started: there is no build for it.
+The Windows executable is cross-built on Linux (WSL2 is fine); the macOS one
+is built on a Mac. The owner can also get archives for testing from a run of
+the repository's "release" workflow, which publishes nothing unless told to;
+their README.txt and this page are inside.
 
 ## Linux
 
@@ -44,6 +45,65 @@ protected your PC". Click "More info", then "Run anyway". Paths and names
 with characters outside your system's language (accents, other scripts) work.
 
 There is no 32-bit Windows build and no sanitizer build for Windows.
+
+## macOS
+
+An Intel Mac, or an Apple-silicon Mac through Rosetta 2: the build is x86-64
+only. The first time you open an x86-64 program on Apple silicon, macOS offers
+to install Rosetta; accept ([Apple: About Rosetta](https://support.apple.com/en-us/102527)).
+Rosetta is available through macOS 27; from macOS 28 it runs only certain
+older games, so this build has a horizon (`docs/DECISIONS.md`, "macOS ships as
+x86_64 under Rosetta").
+
+**This build has not yet been run on a Mac by this project's CI.** The macOS
+workflow was written and rehearsed on Linux, and its first runs were refused
+by GitHub (billing) before any job started. Until those runs are green,
+treat everything on this page about macOS as untried.
+
+**A build you make yourself** (`tools/build-native.sh --os macos` on the Mac)
+is not quarantined and needs none of the steps below: macOS only blocks
+programs that came from a download.
+
+**The release archive** (`pokeemerald-native-...-macos-x86_64.tar.gz`) holds
+the executable and the SDL libraries it loads (`libSDL2-2.0.0.dylib` and
+`libSDL3.dylib`, with their licences), which it finds in its own folder. It is
+not signed with a developer identity and not notarized, so Gatekeeper blocks it
+the first time. Unpack it (double-click in Finder), then allow it, whichever
+way fits your macOS:
+
+- **macOS 14 Sonoma and earlier.** In Finder, Control-click (right-click) the
+  file `pokeemerald-native` and choose Open, then Open in the dialog. macOS
+  keeps the exception, and you can start it normally after that
+  ([Apple, macOS 14 guide](https://support.apple.com/guide/mac-help/open-a-mac-app-from-an-unidentified-developer-mh40616/14.0/mac/14.0)).
+- **macOS 15 Sequoia and later.** Apple removed the Control-click override.
+  Try to open the file once and let macOS refuse, then open System Settings >
+  Privacy & Security, scroll to the Security section and click "Open Anyway"
+  (offered for about an hour after the refusal), enter your password, and
+  click Open when the warning appears again
+  ([Apple, Open a Mac app from an unidentified developer](https://support.apple.com/guide/mac-help/mh40616/mac);
+  [Apple, Safely open apps on your Mac](https://support.apple.com/en-us/102445)).
+- **From Terminal, any version.** Remove the quarantine mark from every file in
+  the unpacked folder, then start the game from it:
+
+  ```
+  xattr -dr com.apple.quarantine pokeemerald-native-...-macos-x86_64
+  cd pokeemerald-native-...-macos-x86_64 && ./pokeemerald-native
+  ```
+
+  This is how people usually do it; Apple does not document it. It is also the
+  safest way here, because the Open and Open Anyway steps apply to one file,
+  and macOS may ask again for each library in the folder (not tried).
+  Extracting the tarball with `tar` in Terminal never marks the files, so
+  there is nothing to remove.
+
+Apple's pages describe apps; this is a plain program and the same Gatekeeper
+rules should apply, but that is untried here too. Overriding Gatekeeper is
+your decision: do it only for a build you trust. Apple's own advice is to
+prefer the App Store.
+
+Your save and settings are in
+`~/Library/Application Support/pokeemerald-expansion-native/pokeemerald-native/`
+([below](#where-the-files-live)).
 
 ## Keys
 
@@ -293,6 +353,7 @@ directory, whatever folder you start the game from:
 |---|---|
 | Linux | `~/.local/share/pokeemerald-expansion-native/pokeemerald-native/` (`$XDG_DATA_HOME/...` if you set that variable) |
 | Windows | `%APPDATA%\pokeemerald-expansion-native\pokeemerald-native\`, that is `C:\Users\YOU\AppData\Roaming\pokeemerald-expansion-native\pokeemerald-native\` |
+| macOS | `~/Library/Application Support/pokeemerald-expansion-native/pokeemerald-native/` |
 
 The game makes the directory the first time it starts.
 `pokeemerald-native --keys` prints which directory is in use and the path of

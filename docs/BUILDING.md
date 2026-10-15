@@ -8,10 +8,12 @@ It installs nothing:
 ```
 tools/build-native.sh --os linux      # build/native64/pokeemerald-native
 tools/build-native.sh --os windows    # build/native64-windows/pokeemerald-native.exe
+tools/build-native.sh --os macos      # build/native64/pokeemerald-native, run on a Mac
 ```
 
-macOS: built on a Mac with one make command and Homebrew's tools (below,
-"macOS"); the script does not cover it yet. To play the result, see
+macOS: run on a Mac, after the Homebrew line of "macOS" below; the script
+checks that line's packages and the PATH line, and has not run on a Mac yet.
+To play the result, see
 [RUNNING.md](RUNNING.md); the rest of this page is every variant and the
 gates.
 
@@ -579,8 +581,17 @@ branch; `Makefile.native`):
   data is (`platform/build_glue/overworld_scripts.py`).
 
 The executable loads SDL2 from Homebrew (`otool -L
-build/native64/pokeemerald-native`) and the system's libraries; nothing else
-is bundled yet. The unit tests (`make -C platform test BITS=64`: the portable
+build/native64/pokeemerald-native`) and the system's libraries; the release
+archive bundles the SDL libraries (below).
+
+`tools/build-native.sh --os macos` runs the make above after checking the
+Mac: Darwin, GNU make 4 or later, coreutils' `readlink -f`, `stdbuf`, `nproc`,
+`sha256sum`, `md5sum` and `timeout`, `pkg-config` with `sdl2` and `libpng`,
+`x86_64-elf-as`, `clang`, `python3`, `git`. It names what is missing and
+installs nothing. In an arm64 process (Apple silicon) it stops and says that an
+x86_64 Homebrew under Rosetta is needed (`arch -x86_64 tools/build-native.sh
+--os macos`), which is unverified. The script has not run on a Mac; its Linux
+and Windows paths are unchanged. The unit tests (`make -C platform test BITS=64`: the portable
 ones, `test/posix/` and `test/darwin/`), ThreadSanitizer (`make -C platform
 tsan`), the suite (`make -f Makefile.native -j"$(nproc)" check BITS=64`, and
 `SANITIZE=1`), the replays (`tests/smoke/run.sh`,
@@ -610,15 +621,26 @@ rest: the game and the suite start only after the unit tests pass.
 
 ## The release workflow
 
-`.github/workflows/release.yml` (by hand only) builds the Linux 64-bit tarball
-and the Windows 64-bit zip, with the same make commands as above (the Windows
+`.github/workflows/release.yml` (by hand only) builds the Linux 64-bit tarball,
+the Windows 64-bit zip and the macOS x86_64 tarball (job `macos`, on
+`macos-15-intel`, set up as `macos.yml` is), with the same make commands as above (the Windows
 steps are `.github/actions/windows-cross-setup`, after
-`.github/actions/native-setup`), writes `SHA256SUMS.txt` and attests both
+`.github/actions/native-setup`), writes `SHA256SUMS.txt` and attests the
 archives (`gh attestation verify <file> --repo <owner>/<repo>`; GitHub offers
 attestations to a user-owned repository only once it is public, so while this
-one is private that step fails after the files are uploaded). Each archive
-holds the executable, `LICENSE`, `RUNNING.md` and a short `README.txt`; the
-Windows zip also holds `SDL2.dll` and SDL2's licence. The files stay on the run
+one is private that step fails after the files are uploaded). Each
+archive holds the executable, `LICENSE`, `RUNNING.md` and a short `README.txt`; the
+Windows zip also holds `SDL2.dll` and SDL2's licence. The macOS tarball is
+unsigned and not notarized (Gatekeeper steps: `RUNNING.md`, "macOS"). It is a
+tarball because `tar` keeps the executable bit and Archive Utility opens it.
+`.github/release/bundle-macos.sh` copies in the dylibs: sdl2-compat's
+`libSDL2-2.0.0.dylib` and SDL3's, as `libSDL3.dylib`, the name sdl2-compat
+opens with `dlopen` from `@loader_path` (it does not link it), with their
+licences; it rewrites every install name to `@executable_path`, signs the
+copies ad hoc because the rewrite breaks any signature (no identity, no
+notarization), and fails if `otool -L` of anything still names a Homebrew path.
+The job then runs the unpacked archive with `DYLD_PRINT_LIBRARIES` and fails
+if a library loads from Homebrew. None of this has run on a Mac. The files stay on the run
 as artifacts for 14 days. The run creates a GitHub release only with the
 `publish` input and a `tag`, and no public release is made without the
 owner's explicit instruction (`docs/DECISIONS.md`, "Why no public release").

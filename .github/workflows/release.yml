@@ -1,5 +1,5 @@
-# The release pipeline: the Linux 64-bit tarball and the Windows 64-bit zip,
-# their SHA-256 sums and build-provenance attestations, kept on the run as
+# The release pipeline: the Linux 64-bit tarball, the Windows 64-bit zip and
+# the macOS x86_64 tarball, their SHA-256 sums and build-provenance attestations, kept on the run as
 # artifacts. By hand only.
 #
 # THE OWNER'S RULE: no public release and no tag without the owner's explicit
@@ -13,7 +13,9 @@
 #   check-inputs   the tag, validated before anything else runs
 #   linux          the 64-bit build and tarball
 #   windows        the MinGW-w64 cross-build (as windows.yml) and zip
-#   checksums      SHA256SUMS.txt and the attestations, over both archives
+#   macos          the macOS build (as macos.yml, on macos-15-intel only) and
+#                  tarball: unsigned, SDL's dylibs bundled
+#   checksums      SHA256SUMS.txt and the attestations, over the archives
 #   publish        only with `publish`: the GitHub release
 #
 # Verify a download with `gh attestation verify <file> --repo <owner>/<repo>`
@@ -155,9 +157,91 @@ jobs:
           if-no-files-found: error
           retention-days: 1
 
+  macos:
+    name: macOS x86_64 tarball (unsigned)
+    needs: check-inputs
+    runs-on: macos-15-intel
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    env:
+      HOMEBREW_NO_AUTO_UPDATE: 1
+      HOMEBREW_NO_INSTALL_CLEANUP: 1
+      HOMEBREW_NO_INSTALLED_DEPENDENTS_CHECK: 1
+      HOMEBREW_NO_ANALYTICS: 1
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/macos-setup
+        with:
+          ccache-name: release-macos
+
+      - name: Build (docs/BUILDING.md, "macOS"; tools/build-native.sh --os macos runs the same make)
+        run: make -f Makefile.native -j"$(nproc)" native BITS=64
+
+      # A tarball, not a zip, like the Linux archive: tar keeps the
+      # executable bit, and Archive Utility opens it with a double click. The
+      # file is not signed with an identity and not notarized (no Apple
+      # Developer account); RUNNING.md tells the player how to open it past
+      # Gatekeeper. bundle-macos.sh copies the SDL libraries in, rewrites
+      # their install names to @executable_path and signs them ad hoc (the
+      # rewrite breaks any signature they had), and fails if anything still
+      # names a Homebrew path.
+      - name: Package
+        run: |
+          set -euo pipefail
+          name="pokeemerald-native-${GITHUB_SHA::10}-macos-x86_64"
+          mkdir -p "dist/$name"
+          cp build/native64/pokeemerald-native LICENSE docs/RUNNING.md .github/release/README.txt "dist/$name/"
+          .github/release/bundle-macos.sh "dist/$name/pokeemerald-native" "dist/$name"
+          file "dist/$name/pokeemerald-native"
+          ls -l "dist/$name"
+          # --no-mac-metadata: no AppleDouble files or extended attributes
+          # (the build machine's, not the player's) in the archive.
+          tar --uid 0 --gid 0 --numeric-owner --no-mac-metadata -C dist -czf "dist/$name.tar.gz" "$name"
+          rm -r "dist/$name"
+          ls -l dist
+
+      # The archive as a player gets it, started from an empty folder with
+      # DYLD_PRINT_LIBRARIES: every library the process loads, SDL3 (opened
+      # by sdl2-compat with dlopen) included, must come from the system or
+      # from the folder, none from Homebrew. SDL's dummy drivers run it with
+      # no screen.
+      - name: Run the archive as it is (nothing from Homebrew may load)
+        env:
+          SDL_VIDEODRIVER: dummy
+          SDL_AUDIODRIVER: dummy
+        run: |
+          set -euo pipefail
+          check="$RUNNER_TEMP/archive-check"
+          mkdir "$check"
+          tar -C "$check" -xzf dist/*.tar.gz
+          cd "$check"/pokeemerald-native-*
+          here=$PWD
+          DYLD_PRINT_LIBRARIES=1 ./pokeemerald-native --headless --silent --unthrottled --frames 60 --data-dir "$RUNNER_TEMP/archive-data" 2> "$RUNNER_TEMP/dyld.txt"
+          grep -i 'libSDL' "$RUNNER_TEMP/dyld.txt"
+          grep -q "$here/libSDL2-2.0.0.dylib" "$RUNNER_TEMP/dyld.txt"
+          grep -q "$here/libSDL3.dylib" "$RUNNER_TEMP/dyld.txt"
+          if grep -e '/usr/local/' -e '/opt/homebrew/' "$RUNNER_TEMP/dyld.txt"; then
+            echo "release: the archive's executable loaded a library from Homebrew" >&2
+            exit 1
+          fi
+
+      - name: ccache statistics
+        if: always()
+        run: ccache -s
+
+      - name: Upload the tarball
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-archive
+          path: dist/*.tar.gz
+          if-no-files-found: error
+          retention-days: 1
+
   checksums:
     name: Checksums and attestations
-    needs: [linux, windows]
+    needs: [linux, windows, macos]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -173,6 +257,11 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: windows-archive
+          path: dist
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: macos-archive
           path: dist
 
       - name: SHA256SUMS.txt
@@ -226,7 +315,7 @@ jobs:
           cat > notes.md <<NOTES
           Built from commit $GITHUB_SHA by the release workflow, run $GITHUB_RUN_ID.
 
-          Files: the Linux x86-64 tarball, the Windows x86-64 zip, and SHA256SUMS.txt.
+          Files: the Linux x86-64 tarball, the Windows x86-64 zip, the macOS x86_64 tarball, and SHA256SUMS.txt.
 
           Verify a download:
 
@@ -236,5 +325,8 @@ jobs:
           Requirements: Linux needs SDL2 2.0 installed (libsdl2-2.0-0), not bundled.
           Windows needs Windows 10 version 1903 or later, 64-bit; the executable is
           not signed, so SmartScreen warns: More info, then Run anyway.
+          macOS needs an Intel Mac or an Apple-silicon Mac with Rosetta 2; the
+          executable is not signed or notarized, so Gatekeeper blocks it until
+          you allow it (RUNNING.md, "macOS"). SDL is bundled.
           NOTES
           gh release create "$TAG" --target "$GITHUB_SHA" --title "$TAG" --notes-file notes.md dist/*.tar.gz dist/*.zip dist/SHA256SUMS.txt

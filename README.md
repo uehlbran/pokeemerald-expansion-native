@@ -61,7 +61,8 @@ Verified by an automated gate (the gates and their commands are in
 Not working or not verified:
 
 - macOS (x86_64, built on a Mac with Homebrew's tools; an Apple-silicon Mac
-  runs it under Rosetta 2): the port is written, with its own layout, host
+  runs it under Rosetta 2; a release-workflow archive and a one-command build
+  script exist, equally unrun): the port is written, with its own layout, host
   layer, clang build and CI workflow (docs/BUILDING.md, "macOS"), and its
   clang build passes both replays and the suite on Linux, plain and
   sanitized, but nothing of it has run on a Mac beyond two probes: the macOS
@@ -79,7 +80,7 @@ Not working or not verified:
 
 There is no release: nothing built is published, so you build the game. To
 play, [docs/RUNNING.md](docs/RUNNING.md) has the keys, the options and
-the files the game writes, for Linux and Windows. To build,
+the files the game writes, for Linux, Windows and macOS. To build,
 [docs/BUILDING.md](docs/BUILDING.md) has the prerequisites (Ubuntu packages,
 including the 32-bit SDL2 libraries) and every variant. One command builds
 the 64-bit game for an operating system, and prints where the executable is:
@@ -87,6 +88,7 @@ the 64-bit game for an operating system, and prints where the executable is:
 ```
 tools/build-native.sh --os linux      # build/native64/pokeemerald-native
 tools/build-native.sh --os windows    # build/native64-windows/pokeemerald-native.exe
+tools/build-native.sh --os macos      # build/native64/pokeemerald-native, on a Mac
 ```
 
 The commands of the 32-bit build, the unit tests and the suite:
