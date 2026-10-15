@@ -53,6 +53,9 @@
 name: macos
 
 on:
+  # Runs the workflow on work/macos before the file is on main; removed when the branch merges.
+  push:
+    branches: [work/macos]
   schedule:
     - cron: '17 6 * * *'
   workflow_dispatch:
