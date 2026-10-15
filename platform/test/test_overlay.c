@@ -384,6 +384,22 @@ PTEST(the_b_that_closes_the_overlay_in_the_same_poll_is_not_the_games)
     overlay_shutdown();
 }
 
+/* Opened and closed within one poll, with no read between: the overlay was never shown to a read, but
+ * the B that closed it must still not reach the game. */
+PTEST(an_overlay_opened_and_closed_within_one_poll_still_latches_the_b)
+{
+    start(NULL, 0);
+    const struct controller_edge y = pressed_edge(CONTROLLER_OVERLAY);
+    const struct controller_edge close = pressed_edge(CONTROLLER_OVERLAY_CLOSE);
+    (void)overlay_handle_controller(&y);
+    (void)overlay_handle_controller(&close);
+    PT_ASSERT_EQ_U32(overlay_game_keys(0x0002u), 0u);
+    PT_ASSERT_EQ_U32(overlay_game_keys(0x0002u), 0u); /* B still down */
+    PT_ASSERT_EQ_U32(overlay_game_keys(0u), 0u);
+    PT_ASSERT_EQ_U32(overlay_game_keys(0x0002u), 0x0002u);
+    overlay_shutdown();
+}
+
 PTEST(a_hidden_overlay_never_shown_latches_nothing)
 {
     start(NULL, 0);
