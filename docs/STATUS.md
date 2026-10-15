@@ -677,13 +677,30 @@ passed everything with the new Windows-side tests (host_file's seek and
 close, the WAV header rewrite). The A/B evidence is outside the
 repository (see "Needs the owner"); nobody has listened to it yet.
 
-**In flight.** The settings
-task (the owner's rulings from the Windows check and the two
-adjustments): branch work/settings, an Opus worker; the per-user data
-directory with portable mode and `--data-dir`, `settings.ini` rebinding
-the keys, the F1 overlay with Quit, `--keys` and `--version`, the gates
-and the players' page updated (in review; the author is fixing the
-review's findings). Then fast-forward (added by the owner 2026-10-15),
+**Finished, the settings task** (the owner's rulings from the Windows
+check and the two adjustments). Merged at 626715683b: the save, the
+clock file and `settings.ini` live in the per-user directory
+(`~/.local/share/pokeemerald-expansion-native/pokeemerald-native/` on
+Linux, `%APPDATA%\pokeemerald-expansion-native\pokeemerald-native\` on
+Windows), portable mode when `settings.ini` sits beside the executable,
+`--data-dir` for the gates, explicit `--save` and `--rtc-offset` still
+winning; `settings.ini` rebinds the ten buttons and the scale; the F1
+overlay (an own bitmap font, drawn over the frame, never into it) shows
+the version, the paths and the keys and Q quits by the window-close
+path while the game reads every button released; `--keys` and
+`--version`; host_file gained read and is_directory; the player module
+assembles the paths and help. Reviewed with mutation testing (thirteen
+mutants; the two survivors got their tests; eight findings fixed); the
+orchestrator's full gate green on the branch, the per-user directory
+never created by any gate; docs/RUNNING.md rewritten. Not yet seen in a
+real window: the overlay's picture and F1/Q live (the owner's next
+hands-on check; `--keys` prints the paths).
+
+**In flight.** The full gate on main after the settings merge, then the
+push and a Windows runner dispatch (the new Windows-side tests:
+host_file read and is_directory, the player module, test_frame's dummy
+window, the smoke's `--keys`, `--version`, non-ASCII `--data-dir` and
+portable-mode runs). Then fast-forward (added by the owner 2026-10-15),
 the console-window removal, macOS x86_64, Steam Deck, and the Apple
 silicon feasibility spike (PLAN.md items (g) to (i)).
 (2) Done and merged (5cc507a482): the documentation pass and the release
@@ -816,7 +833,7 @@ Nothing yet; nothing exists to be broken.
 | sdlout (video, audio, frame_pacer) | Sonnet | Sonnet |
 | audio-rate (ruling 1: 32768 Hz, FIFO upsampling, --audio-dump) | Opus | Sonnet |
 | release-docs (docs pass, RUNNING.md, release.yml, build script) | Sonnet | Sonnet |
-| settings (data directory, settings.ini, F1 overlay, --keys) | Opus | in flight |
+| settings (data directory, settings.ini, F1 overlay, --keys) | Opus | Sonnet |
 | interrupt | Opus | Sonnet |
 | psg | Opus | Sonnet |
 | save (flash, save_file) | Opus | Sonnet |
