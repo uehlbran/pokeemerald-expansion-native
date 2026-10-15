@@ -2596,8 +2596,8 @@ What the check does not read is reviewed by a person. It does not read `run:`
 steps: a step that uploads anything from a shell command (`gh`, `curl`, `git
 push`, a script a step calls) is a human-review matter, and it can only arrive
 from a collaborator's push or from a fork pull request whose run was approved
-after reading it (the repository's setting that approves every fork pull
-request's workflow run first). Nor does it read caches: a cache holds compiled
+after reading it, which depends on the repository's setting that holds fork pull
+request runs for approval (a setting, not something the tree enforces). Nor does it read caches: a cache holds compiled
 objects, converted assets and ccache data, never a linked game, test runner or
 archive, and a new cache path is checked for that when it is added. `make -C platform
 glue-test` runs the self-test and then the check on the real tree, so the
@@ -2607,8 +2607,9 @@ rule is stated at the top of each workflow, pointing here and naming the
 check.
 
 Amended 2026-10-15 (the review before the repository went public): the check
-was first extended to scan `run:` steps and the cache paths, and the extension
-was cut back to the structure above. A scanner for shell text in build glue has
+scanned `run:` commands, which the review kept extending, and had gained a
+cache-path rule in the same review; both were removed, leaving the structure
+above. A scanner for shell text in build glue has
 no finished state: every spelling it catches (quoted, attached, nested in a
 string, named by an expansion, in a script) is followed by another, each fix
 added more code than the rule it served, and it produced false positives on

@@ -350,6 +350,8 @@ def self_test():
     expect("bad: exclusion", "native.yml", workflow(["out/**/*.txt", "!out/example.txt"]), "denylist")
     expect("bad: expression", "native.yml", workflow(["out/${{ matrix.name }}.txt"]), "expression")
     expect("bad: one bad line among good ones", "native.yml", workflow(good + ["out/example.exe"]), ".exe")
+    expect("bad: an empty path", "native.yml", step_workflow('uses: actions/upload-artifact@v4\nwith:\n  path: ""'),
+           "no path")
     expect("bad: no path", "native.yml",
            step_workflow("uses: actions/upload-artifact@v4\nwith:\n  name: x"), "no path")
     # The upload actions: each with its own input.

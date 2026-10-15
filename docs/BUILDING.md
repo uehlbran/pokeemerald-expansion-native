@@ -549,5 +549,6 @@ licence. `platform/build_glue/check_workflow_uploads.py` fails the platform
 gate if any workflow's upload step could match more than text, frame images,
 saves and clock files (release.yml's archives excepted under `publish`), or if
 a workflow uses an action that is not on its allowlist. It reads the steps'
-structure only: a `run:` command that uploads is for the reviewer. No public release is made without an
-explicit decision to publish (`docs/DECISIONS.md`, "Why no public release").
+structure only: a `run:` command that uploads is for the reviewer. No public
+release is made without an explicit decision to publish (`docs/DECISIONS.md`,
+"Why no public release").

@@ -19,13 +19,13 @@
 # artifacts, for one day, to the jobs that make the release, and the last job
 # deletes them. platform/build_glue/check_workflow_uploads.py fails the gate
 # if an archive upload here is not conditioned on `publish`, and for any
-# other upload that could match more than text.
-# The checker reads the steps' structure only; a `run:` step that uploads
-# anything is for the reviewer of the change (docs/DECISIONS.md, same entry).
-# Without `publish` no job
+# other upload that could match more than text. Without `publish` no job
 # needs the cleanup, so it runs only with it. A finished publish run cannot
 # re-run a single failed job (its archives are deleted): use "re-run all
 # jobs".
+# The checker reads the steps' structure only; a `run:` step that uploads
+# anything is for the reviewer of the change, since it arrives only by a
+# collaborator's push or an approved fork pull request run (same entry).
 #
 #   check-inputs   the tag, validated before anything else runs
 #   linux          the 64-bit build, the tarball, its check
