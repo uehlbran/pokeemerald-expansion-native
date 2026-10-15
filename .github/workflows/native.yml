@@ -3,8 +3,10 @@
 # an archive of either, or a save, data file or output directory with
 # expansion's assets or a binary in it; a public repository's artifacts are
 # downloadable by any logged-in GitHub user. This file uploads, from a failed
-# job only, logs and text outputs chosen by an explicit list of file patterns,
-# one per line. platform/build_glue/check_workflow_uploads.py fails the gate
+# job only, the gates' outputs: text and logs, frame images (.ppm, .png) and
+# the save and clock files (.sav, .rtc) of the save gates, by an explicit list
+# of file patterns, one per line (a frame image and a save are not a playable
+# build). platform/build_glue/check_workflow_uploads.py fails the gate
 # (the per-push job below runs it) if an upload could match anything else.
 # Caches hold compiled objects, converted assets and ccache data, never a
 # linked game (same entry).
@@ -113,6 +115,10 @@ jobs:
           path: |
             out/**/*.txt
             out/**/*.log
+            out/**/*.ppm
+            out/**/*.png
+            out/**/*.sav
+            out/**/*.rtc
             out/**/*.diff
             out/**/*.replay
             out/**/*.all
@@ -215,6 +221,10 @@ jobs:
           path: |
             out/**/*.txt
             out/**/*.log
+            out/**/*.ppm
+            out/**/*.png
+            out/**/*.sav
+            out/**/*.rtc
             out/**/*.diff
             out/**/*.replay
             out/**/*.all
@@ -255,6 +265,10 @@ jobs:
           path: |
             out/**/*.txt
             out/**/*.log
+            out/**/*.ppm
+            out/**/*.png
+            out/**/*.sav
+            out/**/*.rtc
             out/**/*.diff
             out/**/*.replay
             out/**/*.all
@@ -305,6 +319,10 @@ jobs:
           path: |
             out/**/*.txt
             out/**/*.log
+            out/**/*.ppm
+            out/**/*.png
+            out/**/*.sav
+            out/**/*.rtc
             out/**/*.diff
             out/**/*.replay
             out/**/*.all
@@ -353,6 +371,10 @@ jobs:
           path: |
             out/**/*.txt
             out/**/*.log
+            out/**/*.ppm
+            out/**/*.png
+            out/**/*.sav
+            out/**/*.rtc
             out/**/*.diff
             out/**/*.replay
             out/**/*.all
@@ -409,6 +431,10 @@ jobs:
           path: |
             out/**/*.txt
             out/**/*.log
+            out/**/*.ppm
+            out/**/*.png
+            out/**/*.sav
+            out/**/*.rtc
             out/**/*.diff
             out/**/*.replay
             out/**/*.all

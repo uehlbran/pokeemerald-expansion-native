@@ -1,10 +1,12 @@
 # NO WORKFLOW UPLOADS THE GAME, EVER (docs/DECISIONS.md, "No workflow uploads
 # the game"): no artifact, at any retention, holds the game, the test runner,
-# an archive of either, or a save, data file or output directory with
-# expansion's assets or a binary in it. A public repository's artifacts are
-# downloadable by any logged-in GitHub user. This file uploads text only: the
-# Linux suite's log, the Windows suite's log, and on a failed job logs and text
-# outputs chosen by an explicit list of file patterns. platform/build_glue/
+# an archive of either, or a data file or output directory with expansion's
+# assets or a binary in it. A public repository's artifacts are downloadable
+# by any logged-in GitHub user. This file uploads the Linux suite's log, the
+# Windows suite's log, and on a failed job the gates' outputs: text and logs,
+# frame images (.ppm, .png) and the save and clock files (.sav, .rtc) of the
+# save gates, chosen by an explicit list of file patterns (a frame image and a
+# save are not a playable build). platform/build_glue/
 # check_workflow_uploads.py fails the gate if an upload could match anything
 # else. Caches may hold compiled objects, converted assets and ccache data,
 # never a linked game or test runner (same entry).
@@ -33,8 +35,15 @@
 #                 job (the workspace and WSL's home): nothing is passed
 #   compare       the Windows suite's log against Linux's, test by test
 #
-# The WSL builds run in WSL's own file system (the copy of the tree in ~/work),
-# not under /mnt, which is slow for 28,000 files; the caches of the converted
+# WSL 2 and the Linux file system, on purpose. The job asks for WSL 2
+# explicitly and FAILS if it does not get it (a step checks the kernel); it
+# never falls back to WSL 1, because the Linux game maps fixed addresses and
+# restarts through /proc/self/exe, and a verdict on it under WSL 1's syscall
+# translation layer would say nothing about Linux. The tree is fetched inside
+# WSL into ~/work (exactly ${{ github.sha }}, with the job's token) and built
+# and run there, never under /mnt (9p, slow for 28,000 files, and not Linux
+# file semantics); the Windows checkout serves the Windows steps only, and the
+# Windows executables are copied out to it to be run. The caches of the converted
 # assets, the compiler and SDL2 live in the workspace, where actions/cache
 # reaches them, and are copied into WSL before the builds and back after.
 # "Re-run failed jobs" works: no job needs a build from another.
@@ -149,13 +158,12 @@ jobs:
         run: git config --global core.autocrlf false
       - uses: actions/checkout@v4
 
-      # WSL 2, the action's default, which its README lists as available on
-      # the Windows images; if a runner refuses it, `wsl-version: 1` is the
-      # change (everything below works on both; the Linux game's fixed
-      # mappings are the thing to look at under WSL 1). The action is pinned
-      # to the commit of v6.1.0.
+      # WSL 2, explicitly (its README lists it as available on the Windows
+      # images); the next step fails the job if it is not WSL 2. No fallback
+      # to WSL 1 (see the header). The action is pinned to the commit of v7.2.0 (node24); its default distribution changed in
+      # v7, so the distribution is named.
       - name: WSL (Ubuntu 24.04)
-        uses: Vampire/setup-wsl@887f39deb6c0976365e546926fe66f41b77d65ff
+        uses: Vampire/setup-wsl@4c48163d9f981914dd8caa0fc335fe19cca5bff4
         with:
           distribution: Ubuntu-24.04
           wsl-version: 2
@@ -181,6 +189,15 @@ jobs:
           path: wsl-cache/sdl2-mingw
           key: sdl2-mingw-wsl-${{ hashFiles('Makefile.native') }}
 
+      - name: WSL 2 or fail
+        shell: wsl-bash {0}
+        run: |
+          uname -r
+          if ! grep -q 'microsoft-standard-WSL2' /proc/sys/kernel/osrelease; then
+            echo "::error::this is not WSL 2 ($(cat /proc/sys/kernel/osrelease)); the Linux game is not judged under WSL 1"
+            exit 1
+          fi
+
       # The packages of the Windows cross-build (docs/BUILDING.md, the native
       # and the Windows lines; the 32-bit headers are for the layout checks,
       # which compile a probe at both widths), as the Linux jobs installed them.
@@ -202,26 +219,37 @@ jobs:
           export CCACHE_DIR="$HOME/.cache/ccache" CCACHE_MAXSIZE=2G
           ENV
 
-      # The tree in WSL's file system, from the checkout's HEAD (the exact
-      # files, LF endings, modes), with its .git for `git describe`; the
-      # caches copied in. Converted assets are made newer than the sources.
-      - name: WSL, the tree and the caches
+      # The tree, fetched in WSL into its own file system: exactly this run's
+      # commit, with the job's token (read-only, contents: read). Then the
+      # caches are copied in from the workspace; converted assets are made
+      # newer than the sources.
+      - name: WSL, the tree (fetched here) and the caches
         shell: wsl-bash {0}
+        env:
+          WSLENV: GITHUB_WORKSPACE/p:GIT_TOKEN:REPO_URL:COMMIT
+          GIT_TOKEN: ${{ github.token }}
+          REPO_URL: ${{ github.server_url }}/${{ github.repository }}
+          COMMIT: ${{ github.sha }}
         run: |
           . "$HOME/wsl-env.sh"
           ws="$GITHUB_WORKSPACE"
           rm -rf "$HOME/work"
           mkdir -p "$HOME/work" "$CCACHE_DIR"
-          git -c safe.directory='*' -C "$ws" archive HEAD | tar -x -C "$HOME/work"
-          cp -dR --preserve=timestamps "$ws/.git" "$HOME/work/.git"
-          git -C "$HOME/work" update-index -q --refresh || true
-          git -C "$HOME/work" describe --always --dirty --match 'v[0-9]*'
-          mkdir -p "$HOME/work/build"
+          cd "$HOME/work"
+          git init -q .
+          git remote add origin "$REPO_URL"
+          auth=$(printf 'x-access-token:%s' "$GIT_TOKEN" | base64 -w0)
+          # The token goes with this one command (-c), never into .git/config.
+          git -c http.extraHeader="Authorization: Basic $auth" fetch -q --depth 1 origin "$COMMIT"
+          git checkout -q FETCH_HEAD
+          test "$(git rev-parse HEAD)" = "$COMMIT"
+          git describe --always --dirty --match 'v[0-9]*'
+          mkdir -p build
           if [ -d "$ws/wsl-cache/ccache" ]; then cp -dR --preserve=timestamps "$ws/wsl-cache/ccache/." "$CCACHE_DIR/"; fi
-          if [ -d "$ws/wsl-cache/sdl2-mingw" ]; then cp -dR --preserve=timestamps "$ws/wsl-cache/sdl2-mingw" "$HOME/work/build/sdl2-mingw"; fi
+          if [ -d "$ws/wsl-cache/sdl2-mingw" ]; then cp -dR --preserve=timestamps "$ws/wsl-cache/sdl2-mingw" build/sdl2-mingw; fi
           if [ -d "$ws/build/assets-native" ]; then
-            cp -dR --preserve=timestamps "$ws/build/assets-native" "$HOME/work/build/assets-native"
-            find "$HOME/work/build/assets-native" -exec touch -d "@$(date +%s)" {} +
+            cp -dR --preserve=timestamps "$ws/build/assets-native" build/assets-native
+            find build/assets-native -exec touch -d "@$(date +%s)" {} +
           fi
           ccache --zero-stats
           nproc
@@ -368,7 +396,8 @@ jobs:
           tests/smoke/run_cross_os.sh back build/native64/pokeemerald-native out/cross-os/save/work/from out/cross-os/load/work/again out/cross-os/back
 
       # The WSL steps' text outputs, beside the Windows steps' in out/ (the
-      # patterns of the failure upload below take text only).
+      # patterns of the failure upload below take text, frame images, saves and
+      # clock files).
       - name: WSL, copy the text outputs to the workspace
         if: ${{ !cancelled() && steps.built.outcome == 'success' }}
         shell: wsl-bash {0}
@@ -377,7 +406,7 @@ jobs:
           cd "$HOME/work"
           mkdir -p "$ws/out/wsl"
           if [ -d out ]; then
-            find out -type f \( -name '*.txt' -o -name '*.log' -o -name '*.diff' -o -name '*.replay' -o -name '*.all' -o -name '*.known-patterns' \) -print0 | tar --null -T - -cf - | tar --no-same-owner --no-same-permissions -x -C "$ws/out/wsl"
+            find out -type f \( -name '*.txt' -o -name '*.log' -o -name '*.ppm' -o -name '*.png' -o -name '*.sav' -o -name '*.rtc' -o -name '*.diff' -o -name '*.replay' -o -name '*.all' -o -name '*.known-patterns' \) -print0 | tar --null -T - -cf - | tar --no-same-owner --no-same-permissions -x -C "$ws/out/wsl"
           fi
 
       # The Windows suite's log: the one result the comparison needs.
@@ -399,6 +428,10 @@ jobs:
             platform/build/64-windows/test/*.log
             out/**/*.txt
             out/**/*.log
+            out/**/*.ppm
+            out/**/*.png
+            out/**/*.sav
+            out/**/*.rtc
             out/**/*.diff
             out/**/*.replay
             out/**/*.all

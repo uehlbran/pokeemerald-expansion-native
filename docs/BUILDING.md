@@ -527,6 +527,6 @@ once it is public, so while this one is private that step fails) and create
 the GitHub release. Each archive holds the executable, `LICENSE`, `RUNNING.md`
 and a short `README.txt`; the Windows zip also holds `SDL2.dll` and SDL2's
 licence. `platform/build_glue/check_workflow_uploads.py` fails the platform
-gate if any workflow's upload could match more than text, release.yml's
+gate if any workflow's upload could match more than text, frame images, saves and clock files, release.yml's
 archives excepted under `publish`. No public release is made without the
 owner's explicit instruction (`docs/DECISIONS.md`, "Why no public release").
