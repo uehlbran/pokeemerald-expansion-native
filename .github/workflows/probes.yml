@@ -1,15 +1,23 @@
-# Milestone 8 loader probes (research/probes/README.md). Manual trigger only:
-#   gh workflow run probes.yml --ref work/m8-probes
+# Milestone 8 loader and toolchain probes (research/probes/README.md). Manual
+# trigger only, one probe a run:
+#   gh workflow run probes.yml --ref <branch> -f probe=m2
 name: probes
 
 on:
   workflow_dispatch:
+    inputs:
+      probe:
+        description: "w1-m0: the loader probes W1 and M0; m2: the macOS link and toolchain probe"
+        type: choice
+        options: [w1-m0, m2]
+        default: w1-m0
 
 permissions:
   contents: read
 
 jobs:
   windows-layout:
+    if: inputs.probe == 'w1-m0'
     runs-on: windows-latest
     timeout-minutes: 25
     defaults:
@@ -32,6 +40,7 @@ jobs:
           path: research/probes/windows_layout/out/*.txt
 
   macos-layout:
+    if: inputs.probe == 'w1-m0'
     runs-on: macos-15-intel
     timeout-minutes: 25
     steps:
@@ -49,6 +58,7 @@ jobs:
           path: research/probes/macos_layout/out/*.txt
 
   macos-arm64-layout:
+    if: inputs.probe == 'w1-m0'
     runs-on: macos-latest
     timeout-minutes: 25
     continue-on-error: true
@@ -65,3 +75,18 @@ jobs:
         with:
           name: probe-macos-arm64-layout
           path: research/probes/macos_layout/out/*.txt
+
+  macos-link:
+    if: inputs.probe == 'm2'
+    runs-on: macos-15-intel
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Probe M2 (the macOS link and toolchain)
+        run: bash research/probes/macos_link/build.sh
+      - name: Upload the output
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: probe-macos-link
+          path: research/probes/macos_link/out/report.txt
