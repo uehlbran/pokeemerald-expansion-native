@@ -72,6 +72,14 @@ Files that only we have (`platform/`, `tests/`, `Makefile.native`,
 `docs/`) cannot conflict unless upstream added the same path; if it did,
 decide per file.
 
+Under `.github/`, this project's files win over upstream's on an upgrade:
+the issue forms and `config.yml` under `ISSUE_TEMPLATE/`, `pull_request_template.md`,
+the workflows `native.yml`, `windows.yml` and `release.yml`, `actions/` and
+`release/`. Keep ours in a conflict, and move upstream's new text into a note
+only if it says something about the game that our files should too. The
+upstream workflows we kept inert (`build.yml`, `labels.yml`) are merged as
+the whole-file table says.
+
 ## 3. Every row of `UPSTREAM_MODIFICATIONS.md`
 
 For each row of "Source modifications", in table order:
