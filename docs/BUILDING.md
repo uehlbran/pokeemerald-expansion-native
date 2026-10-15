@@ -53,7 +53,7 @@ test results for 1.17.1 are in `docs/research/gba-baseline-1.17.1.md`.
 ```
 make -f Makefile.native -j$(nproc) native BITS=32        # build/native32/pokeemerald-native
 ./build/native32/pokeemerald-native                       # windowed, scale 3
-./build/native32/pokeemerald-native --help                # options: --headless --silent --unthrottled --frames N --screenshot F --save PATH --rtc-offset PATH --scale N --replay SCRIPT --out DIR --rtc-fixed EPOCH
+./build/native32/pokeemerald-native --help                # options: --headless --silent --unthrottled --frames N --screenshot F --save PATH --rtc-offset PATH --scale N --replay SCRIPT --out DIR --rtc-fixed EPOCH --audio-dump PATH
 ```
 
 Variants: `TEST=1` builds `build/native32-test/pokeemerald-native-test`

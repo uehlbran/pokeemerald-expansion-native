@@ -6,16 +6,18 @@
  * SOUNDCNT_X, "Max Output Levels"). The scale follows psg.c's "OUTPUT SCALE" so the two
  * FIFOs and the PSG fit int16_t together.
  *
- * DC removal: y[n] = x[n] - x[n-1] + R * y[n-1], R = 32604 / 32768
- * (about 0.995), a first-order high-pass whose corner, fs * (1 - R) / 2pi, is
- * about 11 Hz at the engine's 13379 Hz, below anything the game plays, as the
- * GBA's output capacitor is. Integer arithmetic, rounding toward zero.
+ * DC removal: y[n] = x[n] - x[n-1] + R * y[n-1], R = 32701 / 32768
+ * (about 0.998), a first-order high-pass whose corner, fs * (1 - R) / 2pi,
+ * is 32768 * (67 / 32768) / 2pi, about 11 Hz, at the output's 32768 Hz
+ * (frame.h), below anything the game plays, as the GBA's output capacitor
+ * is. (At the 13379 Hz the output used to run at, R was 32604 / 32768: the
+ * same corner.) Integer arithmetic, rounding toward zero.
  */
 #include "sound_mix.h"
 
 #include <stdbool.h>
 
-#define DC_FILTER_POLE_NUMERATOR 32604
+#define DC_FILTER_POLE_NUMERATOR 32701
 #define DC_FILTER_POLE_DENOMINATOR 32768
 
 /* The output channels, indexes into struct sound_mix_state and a frame. */

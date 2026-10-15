@@ -37,6 +37,7 @@
 #include "host_thread.h"
 
 _Static_assert(sizeof(time_t) >= 8, "host_posix.c needs a 64-bit time_t (_TIME_BITS=64)");
+_Static_assert(sizeof(off_t) == sizeof(int64_t), "host_file_seek needs a 64-bit off_t (_FILE_OFFSET_BITS=64)");
 
 /* POSIX: the environment, which the application declares. */
 extern char **environ;
@@ -289,6 +290,23 @@ int host_file_write_all(int descriptor, const void *bytes, size_t size)
         size -= (size_t)written;
     }
     return 0;
+}
+
+int host_file_seek(int descriptor, uint64_t offset)
+{
+    if (offset > (uint64_t)INT64_MAX) {
+        errno = EINVAL;
+        return -1;
+    }
+    const off_t target = (off_t)offset;
+    return lseek(descriptor, target, SEEK_SET) == target ? 0 : -1;
+}
+
+/* Linux and macOS release the descriptor even when close reports an error,
+ * so it is never retried (close(2)). */
+int host_file_close(int descriptor)
+{
+    return close(descriptor);
 }
 
 /* errno is saved and put back: a handler that changed it would change what

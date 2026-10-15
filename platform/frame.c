@@ -14,6 +14,7 @@
 #include <stdio.h>
 
 #include "audio.h"
+#include "audio_dump.h"
 #include "dma.h"
 #include "flash.h"
 #include "frame_pacer.h"
@@ -27,6 +28,7 @@
 #include "ppu.h"
 #include "psg.h"
 #include "save_file.h"
+#include "sound_grid.h"
 #include "sound_mix.h"
 #include "timer.h"
 #include "video.h"
@@ -52,16 +54,19 @@ static struct {
      * wait before retrying a failed store. */
     bool save_pending;
     uint32_t save_retry_wait;
-    /* Sound. */
+    /* Sound. The grid is the one count of output samples: the PSG is asked
+     * for this many and the FIFOs are read at the same points. */
     uint32_t audio_frames_queued;
+    struct sound_grid grid;
     struct sound_mix_state mix;
-    bool sound_rate_mismatch; /* the engine's frame size differed from the output's */
     bool reported_render_error;
 } frame;
 
 static uint16_t pixels[VIDEO_PIXEL_COUNT];
-static int16_t psg_samples[FRAME_AUDIO_SAMPLES_PER_FRAME * FRAME_AUDIO_CHANNELS];
-static int16_t mixed_samples[FRAME_AUDIO_SAMPLES_PER_FRAME * FRAME_AUDIO_CHANNELS];
+static int8_t fifo_a_samples[SOUND_GRID_MAX_SAMPLES_PER_FRAME];
+static int8_t fifo_b_samples[SOUND_GRID_MAX_SAMPLES_PER_FRAME];
+static int16_t psg_samples[SOUND_GRID_MAX_SAMPLES_PER_FRAME * FRAME_AUDIO_CHANNELS];
+static int16_t mixed_samples[SOUND_GRID_MAX_SAMPLES_PER_FRAME * FRAME_AUDIO_CHANNELS];
 
 static uint16_t io_read(uint32_t offset)
 {
@@ -162,34 +167,34 @@ static void run_vblank(void)
     raise_and_dispatch(lcd_status_begin_line(LCD_LINE_GAME_LOGIC));
 }
 
-/* The FIFO samples to mix this frame: the m4a engine's ring frame, or none
- * when the engine is not running or mixes a different number of samples a
- * frame than the output plays (a mode other than Emerald's 13379 Hz), whose
- * samples would come out at the wrong pitch and length: then the FIFOs are
- * silent, reported once, and the PSG still plays. */
-static bool fifo_frame(struct m4a_output_frame *fifo)
+int frame_start_psg(void)
 {
-    if (!m4a_output_current_frame(fifo))
-        return false;
-    if (fifo->samples == FRAME_AUDIO_SAMPLES_PER_FRAME)
-        return true;
-    if (!frame.sound_rate_mismatch) {
-        (void)fprintf(stderr,
-                      "frame: the sound engine mixes %zu samples a frame (%u Hz), the output plays %u (%u Hz); "
-                      "its Direct Sound is left silent (reported once)\n",
-                      fifo->samples, m4a_output_sample_rate(), FRAME_AUDIO_SAMPLES_PER_FRAME,
-                      FRAME_AUDIO_SAMPLE_RATE_HZ);
-        frame.sound_rate_mismatch = true;
+    if (psg_init(FRAME_AUDIO_SAMPLE_RATE_HZ) != PSG_OK) {
+        (void)fprintf(stderr, "frame: psg_init(%u) failed\n", FRAME_AUDIO_SAMPLE_RATE_HZ);
+        return -1;
     }
-    return false;
+    return 0;
+}
+
+/* The FIFOs' samples on this frame's grid points, or false when the engine
+ * is not running. Any rate the engine mixes at plays: its frame spans the
+ * video frame's cycles whatever its sample count. */
+static bool hold_fifos(const struct sound_grid_frame *grid)
+{
+    struct m4a_output_frame fifo;
+    if (!m4a_output_current_frame(&fifo))
+        return false;
+    sound_grid_hold_fifo(grid, fifo.fifo_a, fifo.samples, fifo_a_samples);
+    sound_grid_hold_fifo(grid, fifo.fifo_b, fifo.samples, fifo_b_samples);
+    return true;
 }
 
 static void mix_sound(void)
 {
-    struct m4a_output_frame fifo;
-    bool has_fifo = fifo_frame(&fifo);
-    if (psg_generate(psg_samples, FRAME_AUDIO_SAMPLES_PER_FRAME) != FRAME_AUDIO_SAMPLES_PER_FRAME) {
-        (void)fprintf(stderr, "frame: psg_generate did not produce %u samples\n", FRAME_AUDIO_SAMPLES_PER_FRAME);
+    const struct sound_grid_frame grid = sound_grid_next_frame(&frame.grid);
+    const bool has_fifo = hold_fifos(&grid);
+    if (psg_generate(psg_samples, grid.samples) != grid.samples) {
+        (void)fprintf(stderr, "frame: psg_generate did not produce %zu samples\n", grid.samples);
         fail();
         return;
     }
@@ -197,22 +202,20 @@ static void mix_sound(void)
         .soundcnt_h = io_read(GBA_SOUNDCNT_H_OFFSET),
         .soundcnt_x = io_read(GBA_SOUNDCNT_X_OFFSET),
     };
-    sound_mix(&frame.mix, &registers, has_fifo ? fifo.fifo_a : NULL, has_fifo ? fifo.fifo_b : NULL, psg_samples,
-              mixed_samples, FRAME_AUDIO_SAMPLES_PER_FRAME);
-    if (audio_queue(mixed_samples, FRAME_AUDIO_SAMPLES_PER_FRAME) != 0) {
+    sound_mix(&frame.mix, &registers, has_fifo ? fifo_a_samples : NULL, has_fifo ? fifo_b_samples : NULL, psg_samples,
+              mixed_samples, grid.samples);
+    if (audio_queue(mixed_samples, grid.samples) != 0) {
         (void)fprintf(stderr, "frame: audio_queue failed\n");
         fail();
         return;
     }
+    /* A failed write is reported and ends the recording, not the game; the
+     * exit status says so (audio_dump.h). */
+    (void)audio_dump_append(mixed_samples, grid.samples);
     if (++frame.audio_frames_queued == FRAME_AUDIO_PREROLL_FRAMES && audio_set_paused(false) != 0) {
         (void)fprintf(stderr, "frame: audio_set_paused(false) failed\n");
         fail();
     }
-}
-
-bool frame_sound_rate_mismatch(void)
-{
-    return frame.sound_rate_mismatch;
 }
 
 /* video_poll_events' callback: controller hot-plug. A controller that cannot

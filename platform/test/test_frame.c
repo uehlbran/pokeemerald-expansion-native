@@ -12,7 +12,7 @@
  * installed in a table laid out like expansion's gIntrTable record what
  * VCOUNT and DISPSTAT read when the interrupt controller calls them.
  */
-// deps: lcd_status.c gba_memmap.c interrupt.c timer.c dma.c transfer_bounds.c ppu.c ppu_bg.c ppu_obj.c ppu_window.c ppu_blend.c psg.c psg_channel.c psg_square.c psg_wave.c psg_noise.c audio.c video.c input.c flash.c save_file.c frame_pacer.c game_hooks.c debug_channel.c m4a_output.c sound_mix.c
+// deps: lcd_status.c gba_memmap.c interrupt.c timer.c dma.c transfer_bounds.c ppu.c ppu_bg.c ppu_obj.c ppu_window.c ppu_blend.c psg.c psg_channel.c psg_square.c psg_wave.c psg_noise.c audio.c video.c input.c flash.c save_file.c frame_pacer.c game_hooks.c debug_channel.c m4a_output.c sound_mix.c audio_dump.c sound_grid.c
 #include <setjmp.h>
 #include <stdbool.h>
 #include <stdint.h>
@@ -25,6 +25,7 @@
 #include <gba/m4a_internal.h>
 
 #include "audio.h"
+#include "audio_dump.h"
 #include "dma.h"
 #include "test_support.h"
 #include "flash.h"
@@ -164,7 +165,7 @@ static bool start(uint32_t frame_limit, const char *screenshot_path, const char 
     event_count = 0;
     if (gba_memmap_init() != GBA_MEMMAP_OK || transfer_bounds_init() != 0
         || interrupt_init(table, INTERRUPT_TABLE_LENGTH) != INTERRUPT_OK || timer_init(interrupt_raise) != TIMER_OK
-        || dma_init(interrupt_raise) != DMA_OK || ppu_init() != PPU_OK || psg_init(FRAME_AUDIO_SAMPLE_RATE_HZ) != PSG_OK
+        || dma_init(interrupt_raise) != DMA_OK || ppu_init() != PPU_OK || frame_start_psg() != 0
         || audio_init(FRAME_AUDIO_SAMPLE_RATE_HZ, AUDIO_SILENT) != 0 || video_init(&video) != 0
         || input_init(INPUT_SOURCE_SCRIPT) != 0 || save_file_init(save_path) != SAVE_FILE_OK
         || frame_pacer_init(FRAME_PACER_UNTHROTTLED) != 0 || frame_init(&config) != 0)
@@ -788,6 +789,21 @@ PTEST(a_game_pak_interrupt_stops_the_loop_with_a_failure)
 
 /* --- frame_run: sound --------------------------------------------------- */
 
+/* The output grid (sound_grid.h): 280896 cycles a frame, 512 a sample, so
+ * the first frame holds 548 samples and carries 320 cycles, and the second,
+ * from 320, holds 549. */
+#define FIRST_FRAME_SAMPLES 548u
+#define SECOND_FRAME_SAMPLES 549u
+
+/* GBATEK "GBA Sound Channel 2 - Tone" and "GBA Sound Control Registers". */
+#define SOUND2CNT_L_OFFSET UINT32_C(0x068)
+#define SOUND2CNT_H_OFFSET UINT32_C(0x06C)
+#define SOUNDCNT_X_MASTER_ENABLE UINT16_C(0x0080)
+#define SOUNDCNT_X_SOUND_2_ON UINT16_C(0x0002)
+/* SOUNDCNT_H as src/m4a.c SoundInit leaves it: FIFO A right, B left, both
+ * at 100% (bits 2, 3, 8, 13). */
+#define SOUNDCNT_H_A_RIGHT_B_LEFT_FULL UINT16_C(0x210C)
+
 static struct SoundInfo engine;
 
 /* A running m4a engine, as SampleFreqSet leaves it for `samples` a frame. */
@@ -802,40 +818,138 @@ static void install_engine(s32 samples)
     SOUND_INFO_PTR = &engine;
 }
 
-PTEST(each_frame_queues_one_frame_of_sound)
+/* A scratch WAV path for a recording of the frames a test runs. */
+struct recording {
+    char directory[TSUP_PATH_SIZE];
+    char path[TSUP_PATH_SIZE];
+};
+
+static bool start_recording(struct recording *r)
+{
+    return tsup_make_temp_directory(r->directory, sizeof r->directory, "test_frame")
+           && snprintf(r->path, sizeof r->path, "%s/sound.wav", r->directory) < (int)sizeof r->path
+           && audio_dump_start(r->path, FRAME_AUDIO_SAMPLE_RATE_HZ) == 0;
+}
+
+/* Finishes the recording and reads its first stereo frame (left, right);
+ * returns the file's size, or -1. */
+static intmax_t finish_recording(const struct recording *r, int16_t first[2])
+{
+    intmax_t size = -1;
+    FILE *file = NULL;
+    if (audio_dump_finish() == 0)
+        file = fopen(r->path, "rb");
+    if (file != NULL) {
+        uint8_t bytes[AUDIO_DUMP_HEADER_BYTES + AUDIO_DUMP_BYTES_PER_FRAME];
+        if (fread(bytes, 1, sizeof bytes, file) == sizeof bytes) {
+            first[0] = (int16_t)(uint16_t)(bytes[AUDIO_DUMP_HEADER_BYTES] | bytes[AUDIO_DUMP_HEADER_BYTES + 1] << 8);
+            first[1] = (int16_t)(uint16_t)(bytes[AUDIO_DUMP_HEADER_BYTES + 2]
+                                           | bytes[AUDIO_DUMP_HEADER_BYTES + 3] << 8);
+        }
+        (void)fclose(file);
+        size = tsup_file_size(r->path);
+    }
+    (void)tsup_remove_tree(r->directory);
+    return size;
+}
+
+PTEST(each_frame_queues_its_samples_on_the_32768_hz_grid)
 {
     PT_ASSERT(start(0, NULL, NULL));
-    install_engine(FRAME_AUDIO_SAMPLES_PER_FRAME);
+    install_engine(224); /* Emerald's SOUND_MODE_FREQ_13379 */
     PT_ASSERT_EQ_INT(frame_run(), FRAME_CONTINUE);
+    PT_ASSERT(audio_total_frames() == FIRST_FRAME_SAMPLES);
     PT_ASSERT_EQ_INT(frame_run(), FRAME_CONTINUE);
-    PT_ASSERT(audio_total_frames() == UINT64_C(2) * FRAME_AUDIO_SAMPLES_PER_FRAME);
-    PT_ASSERT(!frame_sound_rate_mismatch());
+    PT_ASSERT(audio_total_frames() == FIRST_FRAME_SAMPLES + SECOND_FRAME_SAMPLES);
     SOUND_INFO_PTR = NULL;
     stop();
 }
 
-PTEST(an_engine_at_another_rate_is_left_out)
+PTEST(the_psg_runs_one_frame_of_cycles_a_frame)
 {
-    /* SOUND_MODE_FREQ_05734: 96 samples a frame. The output still plays its
-     * 224 a frame (the PSG), without the engine's samples. */
+    /* Channel 2 with its length enabled and 64 - 59 = 5 ticks: the frame
+     * sequencer, started when the PSG powers on in the first frame, clocks
+     * lengths at 32768, 98304, 163840, 229376 and 294912 cycles (Pan Docs
+     * "Audio Details"), so the channel stops at 294912: after the first
+     * frame's 548 samples (280576 cycles) it plays, after the second's 1097
+     * (561664) it does not. A PSG off the grid (another rate) runs another
+     * number of cycles for the same samples. */
     PT_ASSERT(start(0, NULL, NULL));
-    install_engine(96);
+    SOUND_INFO_PTR = NULL;
+    *io(GBA_SOUNDCNT_X_OFFSET) = SOUNDCNT_X_MASTER_ENABLE;
+    *io(SOUND2CNT_L_OFFSET) = UINT16_C(0xF0BB); /* NR22 volume 15, no envelope; NR21 duty 50%, length 59 */
+    *io(SOUND2CNT_H_OFFSET) = UINT16_C(0xC700); /* NR24 trigger, length enable, frequency 700h */
     PT_ASSERT_EQ_INT(frame_run(), FRAME_CONTINUE);
-    PT_ASSERT(frame_sound_rate_mismatch());
-    PT_ASSERT_EQ_INT(frame_run(), FRAME_CONTINUE); /* reported once, still left out */
-    PT_ASSERT(audio_total_frames() == UINT64_C(2) * FRAME_AUDIO_SAMPLES_PER_FRAME);
+    const bool on_after_first = (*io(GBA_SOUNDCNT_X_OFFSET) & SOUNDCNT_X_SOUND_2_ON) != 0;
+    PT_ASSERT_EQ_INT(frame_run(), FRAME_CONTINUE);
+    const bool on_after_second = (*io(GBA_SOUNDCNT_X_OFFSET) & SOUNDCNT_X_SOUND_2_ON) != 0;
+    stop();
+    PT_ASSERT(on_after_first);
+    PT_ASSERT(!on_after_second);
+}
+
+/* Runs one frame with the engine at `samples` a frame, its whole ring
+ * holding a in FIFO A's half and b in FIFO B's, routed as SoundInit routes
+ * them, and returns the first stereo frame recorded. */
+static bool first_output_with_engine(s32 samples, s8 a, s8 b, int16_t first[2], intmax_t *size)
+{
+    struct recording r;
+    if (!start(0, NULL, NULL) || !start_recording(&r))
+        return false;
+    install_engine(samples);
+    memset(engine.pcmBuffer, (u8)a, PCM_DMA_BUF_SIZE);
+    memset(&engine.pcmBuffer[PCM_DMA_BUF_SIZE], (u8)b, PCM_DMA_BUF_SIZE);
+    *io(GBA_SOUNDCNT_X_OFFSET) = SOUNDCNT_X_MASTER_ENABLE;
+    *io(GBA_SOUNDCNT_H_OFFSET) = SOUNDCNT_H_A_RIGHT_B_LEFT_FULL;
+    const bool ran = frame_run() == FRAME_CONTINUE;
+    *size = finish_recording(&r, first);
+    SOUND_INFO_PTR = NULL;
+    stop();
+    return ran;
+}
+
+PTEST(the_engines_frame_plays_at_its_own_rate_and_at_any_other)
+{
+    /* Emerald's 224 samples a frame, and SOUND_MODE_FREQ_05734's 96, which
+     * the output used to leave silent: both are read on the grid, the
+     * FIFO's value at 100% is 64 per unit (sound_mix.h), and the DC filter
+     * passes the first sample of a step unchanged. Both fill the frame's 548
+     * samples. */
+    static const s32 rates[] = {224, 96};
+    for (size_t i = 0; i < sizeof rates / sizeof rates[0]; i++) {
+        int16_t first[2] = {0, 0};
+        intmax_t size = 0;
+        PT_ASSERT(first_output_with_engine(rates[i], 10, -3, first, &size));
+        PT_ASSERT_EQ_INT(first[0], -3 * 64); /* B, left */
+        PT_ASSERT_EQ_INT(first[1], 10 * 64); /* A, right */
+        PT_ASSERT(size == (intmax_t)(AUDIO_DUMP_HEADER_BYTES + FIRST_FRAME_SAMPLES * AUDIO_DUMP_BYTES_PER_FRAME));
+    }
+}
+
+PTEST(the_audio_dump_records_every_frame_queued)
+{
+    struct recording r;
+    PT_ASSERT(start(0, NULL, NULL));
+    PT_ASSERT(start_recording(&r));
+    install_engine(224);
+    PT_ASSERT_EQ_INT(frame_run(), FRAME_CONTINUE);
+    PT_ASSERT_EQ_INT(frame_run(), FRAME_CONTINUE);
+    const uint64_t queued = audio_total_frames();
+    int16_t first[2];
+    const intmax_t size = finish_recording(&r, first);
+    SOUND_INFO_PTR = NULL;
+    stop();
+    PT_ASSERT(queued == FIRST_FRAME_SAMPLES + SECOND_FRAME_SAMPLES);
+    PT_ASSERT(size == (intmax_t)(AUDIO_DUMP_HEADER_BYTES + queued * AUDIO_DUMP_BYTES_PER_FRAME));
+}
+
+PTEST(no_engine_plays_the_psg_alone)
+{
+    PT_ASSERT(start(0, NULL, NULL));
+    SOUND_INFO_PTR = NULL;
+    PT_ASSERT_EQ_INT(frame_run(), FRAME_CONTINUE);
+    PT_ASSERT(audio_total_frames() == FIRST_FRAME_SAMPLES);
     PT_ASSERT_EQ_INT(frame_exit_status(), 0);
-    SOUND_INFO_PTR = NULL;
-    stop();
-}
-
-PTEST(no_engine_is_not_a_rate_mismatch)
-{
-    PT_ASSERT(start(0, NULL, NULL));
-    SOUND_INFO_PTR = NULL;
-    PT_ASSERT_EQ_INT(frame_run(), FRAME_CONTINUE);
-    PT_ASSERT(!frame_sound_rate_mismatch());
-    PT_ASSERT(audio_total_frames() == FRAME_AUDIO_SAMPLES_PER_FRAME);
     stop();
 }
 

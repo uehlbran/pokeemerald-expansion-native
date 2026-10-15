@@ -1,8 +1,9 @@
 /*
  * audio.c: the speaker, via SDL2's queue API.
  *
- * Real hardware: the sound mixer's output is a continuous stream at the
- * sample rate set by the sound engine, consumed in real time.
+ * Real hardware: the sound mixer's output is a continuous stream at the PWM
+ * stage's sampling rate (32768 Hz by default, GBATEK SOUNDBIAS), consumed in
+ * real time; frame.h says what rate the platform opens the device at.
  * Here: a push model, SDL_OpenAudioDevice (not the legacy SDL_OpenAudio)
  * with no callback, and SDL_QueueAudio once per frame, as the reference
  * ports do (docs/research/); the ports' pitfalls avoided here are the

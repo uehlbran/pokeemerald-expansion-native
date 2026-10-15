@@ -44,6 +44,7 @@
 
 #include "arm_division.h"
 #include "audio.h"
+#include "audio_dump.h"
 #include "bios.h"
 #include "crash_reboot.h"
 #include "crt0.h"
@@ -169,10 +170,11 @@ static int start_ppu(const struct options *o)
     (void)o;
     return ppu_init();
 }
+/* On the output grid, which frame owns (frame_start_psg). */
 static int start_psg(const struct options *o)
 {
     (void)o;
-    return psg_init(FRAME_AUDIO_SAMPLE_RATE_HZ);
+    return frame_start_psg();
 }
 /* main is this program's own, not SDL's SDL_main (SDL_MAIN_HANDLED on
  * Windows, where SDL would otherwise take main), so SDL is told before any of
@@ -187,6 +189,13 @@ static int start_sdl(const struct options *o)
 static int start_audio(const struct options *o)
 {
     return audio_init(FRAME_AUDIO_SAMPLE_RATE_HZ, o->silent ? AUDIO_SILENT : AUDIO_DEVICE);
+}
+/* --audio-dump: what the frame loop queues, at the rate the device plays. */
+static int start_audio_dump(const struct options *o)
+{
+    if (o->audio_dump_path == NULL)
+        return 0;
+    return audio_dump_start(o->audio_dump_path, FRAME_AUDIO_SAMPLE_RATE_HZ);
 }
 
 /* --rtc-fixed: the clock's base time (fixed_clock.h); the source reads the
@@ -346,6 +355,7 @@ static const struct module_step module_steps[] = {
     {"psg", start_psg, psg_shutdown},
     {"sdl", start_sdl, SDL_Quit},
     {"audio", start_audio, audio_shutdown},
+    {"audio_dump", start_audio_dump, audio_dump_shutdown},
     {"video", start_video, video_shutdown},
     {"input", start_input, input_shutdown},
     {"rtc", start_rtc, rtc_shutdown},
@@ -413,8 +423,8 @@ static void run_frame(void)
  *     reference points) and psg (channel state);
  * then run_game re-enters AgbMain, as crt0 does. Never restarted: flash and
  * save_file (a cartridge keeps its save across a reset; flash_init would
- * erase it), rtc (the clock runs on), and video, audio and input (the host
- * side). */
+ * erase it), rtc (the clock runs on), and video, audio, the audio dump and
+ * input (the host side). */
 static int restart_after_soft_reset(const struct options *options)
 {
     RegisterRamReset(MAIN_CRT0_RESET_FLAGS);
@@ -506,6 +516,8 @@ int main(int argc, char **argv)
 
     status = run_game(&options);
     if (frame_flush_save() != 0 && status == MAIN_EXIT_OK)
+        status = MAIN_EXIT_FAILURE;
+    if (audio_dump_finish() != 0 && status == MAIN_EXIT_OK)
         status = MAIN_EXIT_FAILURE;
     if (!options.test_runner) /* stdout is the hydra's */
         (void)printf("main: %u frames\n", frame_count());

@@ -73,6 +73,10 @@ Reason: the test suite, the replay and the RTC all count emulated time;
 matching the hardware removes a class of divergence from the GBA
 reference. Vsync is not used for pacing.
 
+Amendment 2026-10-14: audio no longer runs at the engine's rate but at the
+GBA's 32768 Hz PWM grid, the engine's frame read on it (the owner's ruling
+(1); the amendment to "PSG trigger, wave-bank and output-scale rules").
+
 ## 2026-10-08: One guard macro, PLATFORM_NATIVE
 
 Every modification of an expansion file is under `PLATFORM_NATIVE`,
@@ -253,13 +257,37 @@ must remove DC after summing, as the GBA's output capacitor did. The PSG
 is generated at the output rate with point sampling and an exact cycle
 remainder, never at m4a's 13379 Hz mixer rate, which would alias badly.
 
-Amendment 2026-10-14: the shipped build does run the PSG at m4a's 13379 Hz
-(`FRAME_AUDIO_SAMPLE_RATE_HZ`), so that the 224-sample FIFO frame mixes
-sample for sample with the PSG output. Point sampling at that rate aliases
-the square and noise channels (platform/psg.c, "RESAMPLING"), which is
-accepted for now. Whether to run the device and the PSG at the GBA's
-32768 Hz PWM grid instead, upsampling the FIFO frame, is an open decision
-for the owner; the rate has not been changed.
+Amendment 2026-10-14: until the owner's ruling (1) of the same day the
+shipped build ran the PSG at m4a's 13379 Hz (`FRAME_AUDIO_SAMPLE_RATE_HZ`),
+so that the 224-sample FIFO frame mixed sample for sample with the PSG
+output. The corrected reasoning: at 13379 Hz the square and noise channels
+alias into the audible band. A square wave's odd harmonics fall off only as
+1/k and the noise channel clocks at up to 524288 Hz, so every component
+above 6689.5 Hz folds back below it as a tone the GBA never plays.
+What ships now, by the ruling: the device and the PSG run at 32768 Hz, the
+grid GBATEK's PWM stage samples on by default (SOUNDBIAS, "Resampling to
+32.768kHz"), one sample every 512 cycles. One accountant counts each frame's
+samples on that grid, 548 or 549 with the remaining cycles carried
+(`platform/sound_grid.h`), and the PSG is asked for exactly that many, so it
+is point-sampled where the PWM stage samples it and folds only what the
+hardware folds at that setting: the square and wave channels' frequencies
+are 131072 / (2048 - n) and 65536 / (2048 - n) Hz, so their periods are
+whole numbers of quarter samples on this grid and their folded harmonics
+land on harmonics (or quarter-harmonics), not between them as at 13379 Hz.
+The FIFO frame is read on the same grid by
+zero-order hold on cycle time: each engine sample held for its timer
+interval (1254 cycles for 224 a frame) and taken at the last cycle of each
+output sample's span, which is what the FIFO's DAC and the PWM stage do. So
+the engine's other rates (SampleFreqSet's table) play too, where the old
+path left them silent. The DC filter's pole moves with the rate (32701/32768,
+the same 11 Hz corner). The A/B recordings of the opening replay, the old
+path against this one, are the ruling's evidence; they hold the game's music
+and are kept outside the repository. Not followed: Emerald itself selects
+the next SOUNDBIAS mode, 8 bits at 65536 Hz (`src/m4a.c`: m4aSoundInit asks
+for SOUND_MODE_DA_BIT_8 and SoundInit writes SOUNDBIAS_H bits 6-7 = 1), so
+the console this game runs on samples every 256 cycles; the grid is one
+constant (`SOUND_GRID_RATE_HZ`), and moving it to 65536 Hz is the owner's
+call.
 
 ## 2026-10-08: UBSan shift-base is disabled for expansion's objects only
 

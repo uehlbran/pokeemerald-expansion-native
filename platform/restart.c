@@ -10,6 +10,7 @@
 #include <string.h>
 
 #include "host_process.h"
+#include "options.h"
 
 /* The two arguments --resume-at LINE are always appended; room for them is
  * kept when the others are added. */
@@ -33,12 +34,13 @@ int restart_build_args(int argc, char *const *argv, uint32_t resume_line, int64_
     for (int i = 0; i < argc; i++) {
         const bool is_resume = i > 0 && strcmp(argv[i], RESTART_OPTION_RESUME_AT) == 0;
         const bool is_epoch = i > 0 && strcmp(argv[i], RESTART_OPTION_RTC_FIXED) == 0;
-        if ((is_resume || is_epoch) && i + 1 >= argc) {
+        const bool is_dump = i > 0 && strcmp(argv[i], OPTIONS_AUDIO_DUMP) == 0;
+        if ((is_resume || is_epoch || is_dump) && i + 1 >= argc) {
             (void)fprintf(stderr, "restart: %s has no value\n", argv[i]);
             return -1;
         }
-        if (is_resume) {
-            i++; /* dropped with its value; the new one is appended below */
+        if (is_resume || is_dump) {
+            i++; /* dropped with its value; a new --resume-at is appended below */
             continue;
         }
         bool pushed = push(out, &count, argv[i]);

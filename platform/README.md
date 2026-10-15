@@ -430,14 +430,20 @@ make -f Makefile.native -j$(nproc) native TEST=1        # build/native32-test/po
 make -f Makefile.native -j$(nproc) native SANITIZE=1    # build/native32-san/, ASan and UBSan throughout
 ./build/native32/pokeemerald-native [--headless] [--silent] [--save PATH] [--rtc-offset PATH]
         [--scale N] [--unthrottled] [--frames N] [--screenshot PATH]
-        [--replay SCRIPT [--out DIR]] [--rtc-fixed EPOCH] [--test-runner] [--help]
+        [--replay SCRIPT [--out DIR]] [--rtc-fixed EPOCH] [--audio-dump PATH] [--test-runner] [--help]
 make -f Makefile.native -j32 check [SANITIZE=1] [TESTS=filter]   # expansion's suite, below
 ```
 
 The defaults are `pokeemerald.sav` and `pokeemerald.rtc` in the current
 directory, scale 3, paced to 59.7275 Hz, no frame limit. `--frames N` ends
 the game after N frames with status 0 (the gates use it with `--headless
---silent --unthrottled`); `--screenshot` writes the last frame as a PPM.
+--silent --unthrottled`); `--screenshot` writes the last frame as a PPM;
+`--audio-dump` writes every frame of sound the loop mixes to a WAV file
+(`audio_dump`), with or without a device, until the game ends or a replay's
+`restart`. The header's sizes are written when the game exits; after a
+crash the samples are there but the sizes are 0, which `sox --ignore-length`
+reads. A full disk stops the recording, not the game, and the exit status
+is then 1.
 Headless, the keypad reads no keys. A save file this build cannot use
 (corrupt, or written with another struct layout) stops `main` before the
 game starts, so it is never overwritten.
@@ -463,9 +469,12 @@ with their H-Blank DMA and interrupts, the timers, V-Blank, sound, present,
 input, the save, pacing. `lcd_status` owns `VCOUNT` and `DISPSTAT`'s status
 bits; `VCOUNT` reads 161 between frames (`docs/ARCHITECTURE.md`, "The
 frame"). `m4a_output` finds the frame of the m4a engine's PCM ring the FIFO
-DMAs would play; `sound_mix` routes the two FIFOs and the PSG as
-`SOUNDCNT_H` says, at `psg.c`'s scale, and removes the DC offset the GBA's
-output capacitor removes.
+DMAs would play; `sound_grid` counts each frame's samples on the GBA's
+32768 Hz output grid (548 or 549) and reads the FIFO frame on it, at
+whatever rate the engine mixes; the PSG is generated on the same grid;
+`sound_mix` routes the two FIFOs and the PSG as `SOUNDCNT_H` says, at
+`psg.c`'s scale, and removes the DC offset the GBA's output capacitor
+removes.
 
 ## What the game links from its assembly files
 

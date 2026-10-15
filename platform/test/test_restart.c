@@ -32,6 +32,18 @@ PTEST(replaces_an_earlier_resume_at_and_its_value)
     PT_ASSERT(args.argv[4] == NULL);
 }
 
+PTEST(leaves_out_the_audio_dump_and_its_path)
+{
+    char *const argv[] = {"game", "--audio-dump", "a.wav", "--silent", "--audio-dump", "b.wav"};
+    struct restart_args args;
+    PT_ASSERT_EQ_INT(restart_build_args(6, argv, 9, 0, &args), 0);
+    PT_ASSERT_EQ_STR(args.argv[0], "game");
+    PT_ASSERT_EQ_STR(args.argv[1], "--silent");
+    PT_ASSERT_EQ_STR(args.argv[2], "--resume-at");
+    PT_ASSERT_EQ_STR(args.argv[3], "9");
+    PT_ASSERT(args.argv[4] == NULL);
+}
+
 PTEST(advances_the_fixed_clock)
 {
     char *const argv[] = {"game", "--rtc-fixed", "1700000000", "--silent"};
@@ -55,9 +67,11 @@ PTEST(an_option_without_its_value_is_an_error)
 {
     char *const resume_only[] = {"game", "--resume-at"};
     char *const epoch_only[] = {"game", "--rtc-fixed"};
+    char *const dump_only[] = {"game", "--audio-dump"};
     struct restart_args args;
     PT_ASSERT_EQ_INT(restart_build_args(2, resume_only, 1, 0, &args), -1);
     PT_ASSERT_EQ_INT(restart_build_args(2, epoch_only, 1, 0, &args), -1);
+    PT_ASSERT_EQ_INT(restart_build_args(2, dump_only, 1, 0, &args), -1);
 }
 
 PTEST(too_many_arguments_are_an_error)

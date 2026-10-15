@@ -100,8 +100,10 @@ order:
    runs the sound engine and the DMA3 queue and flushes the buffered GPU
    registers).
 4. Line 161 starts, with its V-Counter match, dispatch.
-5. Mix one frame of audio (the m4a ring frame the FIFO DMAs play, the PSG,
-   `SOUNDCNT_H` routing, DC removal) and queue it.
+5. Mix one frame of audio on the 32768 Hz output grid (548 or 549 samples:
+   the m4a ring frame the FIFO DMAs play, read on the grid, the PSG,
+   `SOUNDCNT_H` routing, DC removal) and queue it; with `--audio-dump`,
+   record it too.
 6. Present the frame; poll SDL events; run the step hook if one is set
    (`frame_set_step_hook`; the replay driver is its one user); write
    `REG_KEYINPUT`.
@@ -155,6 +157,7 @@ returned to the caller (`main` decides what to do; modules never call
 | `video` | the LCD panel, via SDL | n/a | yes (SDL dummy drivers; the pixel format and sizes, not the picture) |
 | `psg`, `psg_channel`, `psg_square`, `psg_wave`, `psg_noise` | the four Game Boy sound channels (shared through `psg_internal.h`) | GBA Sound Controller, Sound Channels 1 to 4 | yes |
 | `audio` | the speaker, via SDL | n/a | yes (SDL dummy drivers; the queue sizes, not the sound) |
+| `audio_dump` | nothing: the sound output recorded to a WAV file, `--audio-dump` | n/a | yes |
 | `frame_pacer` | the LCD's frame period: holds the loop to 59.7275 Hz | LCD Dimensions and Timings | yes (`test_frame_pacer.c`) |
 | `m4a/` | the ARM sound engine `src/m4a_1.s`, in C | n/a (game code) | yes, and a differential test against the ARM original under qemu-arm, run by hand (`platform/m4a/README.md`) |
 | `flash` | the 1 Mbit flash chip's driver entry | GBA Cart Backup Flash ROM | yes |
@@ -167,6 +170,7 @@ returned to the caller (`main` decides what to do; modules never call
 | `lcd_status` | the LCD controller's timing registers, `VCOUNT` and `DISPSTAT` | LCD I/O Interrupts and Status | yes (through `test_frame`) |
 | `m4a_output` | the sound FIFO DMAs, reading the m4a engine's PCM ring | GBA Sound Channel A and B - DMA Sound | yes |
 | `sound_mix` | the sound mixer and output capacitor | GBA Sound Control Registers | yes |
+| `sound_grid` | the PWM stage's sampling grid (32768 Hz), and the FIFOs' DACs as it samples them | GBA Sound Control Registers (SOUNDBIAS), GBA Sound Channel A and B - DMA Sound | yes |
 | `frame` | a frame of hardware time, in order (above) | LCD Dimensions and Timings | yes (headless, with the real modules) |
 | `game_hooks` | the game's control-flow assembly (test runner jumps, the battle runner's stack, delay loops) | n/a (game code) | yes |
 | `crt0`, `rom_header`, `gcn_multiboot`, `decompress_asm` | the `src/*.s` the native build does not assemble | n/a (game code) | yes |

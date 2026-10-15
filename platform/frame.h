@@ -26,10 +26,12 @@
  *  4. Line 161 starts (LCD_LINE_GAME_LOGIC), with its V-Counter match and
  *     dispatch; VCOUNT stays 161 while the game runs until the next frame,
  *     so SetGpuReg writes through (lcd_status.h).
- *  5. Sound: the frame of the m4a engine's ring the FIFO DMAs play
- *     (m4a_output; silent if the engine runs at another rate) and as many
- *     PSG samples (psg_generate), mixed (sound_mix) and queued
- *     (audio_queue).
+ *  5. Sound: the frame's samples on the output grid (sound_grid: the GBA's
+ *     32768 Hz, 548 or 549 a frame): the frame of the m4a engine's ring the
+ *     FIFO DMAs play (m4a_output), at whatever rate the engine mixes, read
+ *     on the grid by zero-order hold, and as many PSG samples
+ *     (psg_generate), mixed (sound_mix), queued (audio_queue) and, with
+ *     --audio-dump, recorded (audio_dump).
  *  6. The panel shows the frame (video_present); SDL's events are polled
  *     (video_poll_events, each passed to input_handle_event; a quit ends the
  *     loop after this frame); the step hook, if one is set, runs (below);
@@ -54,13 +56,15 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-/* The m4a engine's rate as expansion sets it: m4aSoundInit selects
- * SOUND_MODE_FREQ_13379, 224 samples per frame, and SampleFreqSet (src/m4a.c)
- * computes pcmFreq = (597275 * 224 + 5000) / 10000 = 13379 Hz. main opens
- * the audio device and the PSG at this rate (DECISIONS.md "Frame rate is the
- * GBA's"). */
-#define FRAME_AUDIO_SAMPLE_RATE_HZ 13379u
-#define FRAME_AUDIO_SAMPLES_PER_FRAME 224u
+#include "sound_grid.h"
+
+/* The output's rate: the grid the GBA's PWM stage samples the PSG and the
+ * FIFOs on (sound_grid.h; GBATEK SOUNDBIAS, "Resampling to 32.768kHz"), not
+ * the m4a engine's mixing rate (13379 Hz in Emerald, 224 samples a frame),
+ * whose frame is read on this grid. The device and the PSG run at it, one
+ * accountant counting the samples of each frame (frame_run, step 5;
+ * docs/DECISIONS.md, the owner's ruling (1) of 2026-10-14). */
+#define FRAME_AUDIO_SAMPLE_RATE_HZ SOUND_GRID_RATE_HZ
 
 /* Output channels: the mix is interleaved left, right (GBATEK "GBA Sound
  * Controller": the PSG and the FIFOs mix to a stereo output). */
@@ -139,10 +143,12 @@ int frame_exit_status(void);
  * or -1 if the store failed (reported). */
 int frame_flush_save(void);
 
-/* True once the m4a engine has mixed a frame of another size than
- * FRAME_AUDIO_SAMPLES_PER_FRAME (another sample rate); its Direct Sound is
- * then left out of the mix rather than played at the wrong pitch. */
-bool frame_sound_rate_mismatch(void);
+/* Starts the PSG on the output grid (psg_init at FRAME_AUDIO_SAMPLE_RATE_HZ):
+ * at that rate each of its samples is exactly one 512-cycle span, so the
+ * count frame_run asks it for keeps it on the grid the FIFOs are read on.
+ * main's start step for the PSG, at power-on and after a soft reset. Returns
+ * 0, or -1 (reported). */
+int frame_start_psg(void);
 
 /* The frame buffer: VIDEO_PIXEL_COUNT BGR555 pixels, row-major. */
 const uint16_t *frame_pixels(void);

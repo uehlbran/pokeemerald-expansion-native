@@ -2,9 +2,10 @@
  * test_host_file.c: durable replacement, locks, directories and the local
  * time (host_file.h), on real files in a fresh scratch directory per test
  * (host_file_fixture.h). A replacement leaves the new contents and no source;
- * a failed one leaves the old; a lock keeps out every other open of its file
- * until it is released; a missing directory is created, once; the local time
- * follows TZ, past 2038 at both widths. What takes a file descriptor or a
+ * a failed one leaves the old; a seek moves where the next write lands, and a
+ * closed descriptor stays closed; a lock keeps out every other open of its
+ * file until it is released; a missing directory is created, once; the local
+ * time follows TZ, past 2038 at both widths. What else takes a descriptor or a
  * POSIX permission (the syncs, the umask) is in posix/test_host_file_posix.c;
  * a lock held by another process, in the save lock's tests
  * (posix/test_save_lock_posix.c, windows/test_save_lock_windows.c).
@@ -70,6 +71,60 @@ PTEST(a_replacement_from_a_missing_file_fails_and_leaves_the_target)
     PT_ASSERT_EQ_INT(error, ENOENT);
     PT_ASSERT(old_contents);
     PT_ASSERT(removed);
+}
+
+/* --- host_file_seek and host_file_close ------------------------------------------ */
+
+PTEST(a_seek_moves_where_the_next_write_lands)
+{
+    struct scratch scratch;
+    if (!scratch_create(&scratch))
+        PT_FAIL("cannot create a scratch directory");
+    const int descriptor = host_file_open(scratch.path, O_WRONLY | O_CREAT | O_TRUNC);
+    const bool written = descriptor >= 0 && host_file_write_all(descriptor, "abcdef", 6u) == 0;
+    const int moved = host_file_seek(descriptor, 2u);
+    const bool overwritten = host_file_write_all(descriptor, "XY", 2u) == 0;
+    const int moved_to_start = host_file_seek(descriptor, 0u);
+    const bool overwritten_first = host_file_write_all(descriptor, "Z", 1u) == 0;
+    const int too_far = host_file_seek(descriptor, (uint64_t)INT64_MAX + 1u);
+    const int too_far_error = errno;
+    const int closed = host_file_close(descriptor);
+    const bool as_expected = strcmp(read_text(scratch.path), "ZbXYef") == 0;
+    const bool removed = scratch_remove(&scratch);
+    PT_ASSERT(written);
+    PT_ASSERT_EQ_INT(moved, 0);
+    PT_ASSERT(overwritten);
+    PT_ASSERT_EQ_INT(moved_to_start, 0);
+    PT_ASSERT(overwritten_first);
+    PT_ASSERT_EQ_INT(too_far, -1);
+    PT_ASSERT_EQ_INT(too_far_error, EINVAL);
+    PT_ASSERT_EQ_INT(closed, 0);
+    PT_ASSERT(as_expected);
+    PT_ASSERT(removed);
+}
+
+PTEST(a_closed_descriptor_cannot_be_sought_written_or_closed_again)
+{
+    struct scratch scratch;
+    if (!scratch_create(&scratch))
+        PT_FAIL("cannot create a scratch directory");
+    const int descriptor = host_file_open(scratch.path, O_WRONLY | O_CREAT | O_TRUNC);
+    const int closed = descriptor >= 0 ? host_file_close(descriptor) : -2;
+    const int again = host_file_close(descriptor);
+    const int again_error = errno;
+    const int sought = host_file_seek(descriptor, 0u);
+    const int sought_error = errno;
+    const int written = host_file_write_all(descriptor, "x", 1u);
+    const bool removed = scratch_remove(&scratch);
+    PT_ASSERT_EQ_INT(closed, 0);
+    PT_ASSERT_EQ_INT(again, -1);
+    PT_ASSERT_EQ_INT(again_error, EBADF);
+    PT_ASSERT_EQ_INT(sought, -1);
+    PT_ASSERT_EQ_INT(sought_error, EBADF);
+    PT_ASSERT_EQ_INT(written, -1);
+    PT_ASSERT(removed);
+    PT_ASSERT_EQ_INT(host_file_close(-1), -1);
+    PT_ASSERT_EQ_INT(errno, EBADF);
 }
 
 /* --- host_file_take_lock and host_file_release_lock ---------------------------------- */
