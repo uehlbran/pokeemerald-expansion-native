@@ -482,7 +482,8 @@ static void print_problem(const struct settings_problem *problem, const char *pa
                       problem->text);
         break;
     case SETTINGS_RESERVED_KEY:
-        (void)fprintf(out, "'%s' opens the help overlay and cannot be a button's or fast-forward's key", problem->text);
+        (void)fprintf(out, "'%s' opens the help overlay and cannot be a button's, fast-forward's or the fullscreen key",
+                      problem->text);
         break;
     case SETTINGS_BAD_SPEED:
         (void)fprintf(out, "the fast-forward speed '%s' is not 2, 3, 4 or " UNLIMITED_VALUE, problem->text);

@@ -101,8 +101,8 @@ a small window (`--scale 1` or 2) the last ones may not fit, and
 `pokeemerald-native --keys` prints them all.
 F1 again closes it (the controller's Y shows and hides it, B closes it). While
 it is shown the game keeps running but receives no key and no controller
-button, so nothing you press reaches the game; a button still down when it
-closes stays released until you let go of it.
+button, so nothing you press reaches the game; a button still down when it closes
+(the B that closed it, say) stays released until you let go of it.
 
 Q, or the controller's X, while the overlay is shown, quits the game, as
 closing the window does.
@@ -170,7 +170,7 @@ Nothing needs installing, and the system partition stays untouched.
    and unpack it there if it is a tarball (`tar xzf`).
 2. Open Steam in Desktop Mode, Games > Add a Non-Steam Game to My Library >
    Browse, set the file filter to All files, and pick `pokeemerald-native.sh`
-   from that folder (the script starts the game from its own folder). Add it.
+   from that folder (the script runs the game with the bundled SDL2). Add it.
 3. Optionally rename it in its Properties. No launch options are needed.
    Return to Game Mode: it is in the library under Non-Steam.
 
@@ -187,18 +187,23 @@ Your save is in the per-user data directory like anywhere on Linux:
 Put a `settings.ini` beside the executable instead if you want the folder to
 carry everything ([portable mode](#where-the-files-live)).
 
-The package is the executable, the launcher script, the licence and these
-pages. It does not carry SDL2: SteamOS is Arch-based and is expected to
-have `libSDL2-2.0.so.0` in its image (not checked on a Deck yet), and the
-executable needs glibc 2.34 at most
-(the highest `GLIBC_` version in `objdump -T`; the release job builds on
-Ubuntu 24.04, the same toolchain as this measurement). The Deck is on a far
-newer glibc: a SteamOS 3.8 Deck reports 2.41
-([report](https://forum.godotengine.org/t/steam-deck-cant-launch-linux-build-due-to-outdated-glibc-version-build-targeting-newer-glibc-version/143218)).
-If the game does not start from Steam, run `./pokeemerald-native.sh` in
-Konsole to see the message; "libSDL2-2.0.so.0: cannot open shared object file"
-means installing SDL2 (`sudo pacman -S sdl2` after `sudo steamos-readonly
-disable`).
+The package is the executable, the launcher script `pokeemerald-native.sh`,
+the SDL2 library the executable was linked against (`libSDL2-2.0.so.0`, with
+its licence as `SDL2-LICENSE.txt`), the project's licence and these pages. The
+launcher puts its own folder first in `LD_LIBRARY_PATH`, so it runs the game
+with the bundled SDL2; the executable started directly uses the system's.
+It leaves the working directory alone, so relative paths in options mean what
+you typed. The bundled SDL2 was measured to need glibc 2.38 (the highest
+`GLIBC_` version in `objdump -T`; the executable itself needs 2.34) and 17
+system libraries besides glibc and libm: libasound, libpulse, libsamplerate,
+libX11, libXext, libXcursor, libXi, libXfixes, libXrandr, libXss, libdrm,
+libgbm, libwayland-egl, libwayland-client, libwayland-cursor, libxkbcommon and
+libdecor. A SteamOS 3.8 Deck reports glibc 2.41
+([report](https://forum.godotengine.org/t/steam-deck-cant-launch-linux-build-due-to-outdated-glibc-version-build-targeting-newer-glibc-version/143218)),
+so the floor is met; I found no source for the glibc or the libraries of older
+SteamOS releases, and none of this has been tried on a Deck. If the game does
+not start from Steam, run `./pokeemerald-native.sh` in Konsole to see the
+loader's message.
 
 ## The settings file
 

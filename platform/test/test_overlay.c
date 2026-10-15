@@ -76,8 +76,10 @@ PTEST(f1_shows_and_hides_it_and_the_game_reads_no_button_while_shown)
     PT_ASSERT_EQ_U32(overlay_game_keys(0x0001), 0u);
     PT_ASSERT_EQ_INT(overlay_handle_event(&f1), OVERLAY_CONTINUE);
     PT_ASSERT(!overlay_shown());
-    /* 0x0001 was held when it hid: it stays released until let go. */
-    PT_ASSERT_EQ_U32(overlay_game_keys(0x0009), 0x0008u);
+    /* Held at the first read after it hid: released until let go. */
+    PT_ASSERT_EQ_U32(overlay_game_keys(0x0009), 0u);
+    PT_ASSERT_EQ_U32(overlay_game_keys(0x0008), 0u);
+    PT_ASSERT_EQ_U32(overlay_game_keys(0x0001), 0x0001u);
     overlay_shutdown();
 }
 
@@ -361,6 +363,32 @@ PTEST(a_button_held_when_the_overlay_hides_stays_released_until_let_go)
     PT_ASSERT_EQ_U32(overlay_game_keys(0x0002u | 0x0010u), 0x0010u); /* a new button passes */
     PT_ASSERT_EQ_U32(overlay_game_keys(0x0010u), 0x0010u);
     PT_ASSERT_EQ_U32(overlay_game_keys(0x0002u | 0x0010u), 0x0002u | 0x0010u); /* let go, pressed anew */
+    overlay_shutdown();
+}
+
+/* The frame loop's order: a shown frame with nothing held, then one poll that carries B down,
+ * closes the overlay and reads the keys. The game must not see that B. */
+PTEST(the_b_that_closes_the_overlay_in_the_same_poll_is_not_the_games)
+{
+    start(NULL, 0);
+    const struct controller_edge y = pressed_edge(CONTROLLER_OVERLAY);
+    const struct controller_edge close = pressed_edge(CONTROLLER_OVERLAY_CLOSE);
+    (void)overlay_handle_controller(&y);
+    PT_ASSERT_EQ_U32(overlay_game_keys(0u), 0u);
+    (void)overlay_handle_controller(&close);
+    PT_ASSERT(!overlay_shown());
+    PT_ASSERT_EQ_U32(overlay_game_keys(0x0002u), 0u); /* the first read after it hid */
+    PT_ASSERT_EQ_U32(overlay_game_keys(0x0002u), 0u); /* B still down */
+    PT_ASSERT_EQ_U32(overlay_game_keys(0u), 0u);
+    PT_ASSERT_EQ_U32(overlay_game_keys(0x0002u), 0x0002u); /* a new press is the game's */
+    overlay_shutdown();
+}
+
+PTEST(a_hidden_overlay_never_shown_latches_nothing)
+{
+    start(NULL, 0);
+    PT_ASSERT_EQ_U32(overlay_game_keys(0x0002u), 0x0002u);
+    PT_ASSERT_EQ_U32(overlay_game_keys(0x0002u), 0x0002u);
     overlay_shutdown();
 }
 

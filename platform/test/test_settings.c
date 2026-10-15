@@ -519,8 +519,8 @@ PTEST(the_report_names_each_kind_of_problem_and_those_not_kept)
     (void)fclose(out);
     PT_ASSERT(strstr(said, "settings: f.ini:1: 'x' is not a 'setting = value' line; the line is ignored\n") != NULL);
     PT_ASSERT(strstr(said, "settings: f.ini:2: 'nokey' is not a key name SDL knows") != NULL);
-    PT_ASSERT(strstr(said, "settings: f.ini:3: 'F1' opens the help overlay and cannot be a button's or "
-                           "fast-forward's key; the line is ignored\n")
+    PT_ASSERT(strstr(said, "settings: f.ini:3: 'F1' opens the help overlay and cannot be a button's, "
+                           "fast-forward's or the fullscreen key; the line is ignored\n")
               != NULL);
     PT_ASSERT(strstr(said, "settings: f.ini:4: the fast-forward speed '9' is not 2, 3, 4 or unlimited; the line is "
                            "ignored\n")

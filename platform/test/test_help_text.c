@@ -47,16 +47,16 @@ PTEST(the_defaults_per_user_line_for_line)
         "Clock: /home/p/.local/share/pen/app/pokeemerald.rtc",
         "Settings: /home/p/.local/share/pen/app/settings.ini (not there: the defaults)",
         "Keyboard:",
-        "  A       Z",
-        "  B       X",
-        "  Select  Backspace",
-        "  Start   Return",
-        "  Right   Right",
-        "  Left    Left",
-        "  Up      Up",
-        "  Down    Down",
-        "  R       S",
-        "  L       A",
+        "  A          Z",
+        "  B          X",
+        "  Select     Backspace",
+        "  Start      Return",
+        "  Right      Right",
+        "  Left       Left",
+        "  Up         Up",
+        "  Down       Down",
+        "  R          S",
+        "  L          A",
         "  Fullscreen F11",
         "Controller:",
         "  GBA buttons: A, B, Back (Select), Start, the shoulders (L, R), the D-pad or the left stick",
@@ -67,10 +67,10 @@ PTEST(the_defaults_per_user_line_for_line)
         "  Overlay quit         X",
         "  Fullscreen           Left trigger",
         "Fast-forward:",
-        "  Hold    Tab",
-        "  Toggle  Shift+Tab",
-        "  Speed   2x",
-        "  Sound   sped up",
+        "  Hold       Tab",
+        "  Toggle     Shift+Tab",
+        "  Speed      2x",
+        "  Sound      sped up",
     };
     const struct input_keymap keymap = input_default_keymap();
     const struct controller_bindings pad = controller_default_bindings();
@@ -114,8 +114,8 @@ PTEST(the_keys_in_force_and_a_settings_file_found_portable)
     memset(&collected, 0, sizeof collected);
     help_text_write(&info, collect, &collected);
     PT_ASSERT_EQ_STR(collected.lines[0], "pokeemerald-native unknown");
-    PT_ASSERT_EQ_STR(collected.lines[6], "  A       Space");
-    PT_ASSERT_EQ_STR(collected.lines[15], "  L       Left Shift");
+    PT_ASSERT_EQ_STR(collected.lines[6], "  A          Space");
+    PT_ASSERT_EQ_STR(collected.lines[15], "  L          Left Shift");
     PT_ASSERT_EQ_STR(collected.lines[16], "  Fullscreen F12");
     PT_ASSERT_EQ_STR(collected.lines[1], "Data directory (portable): C:\\Games\\pen\\");
     PT_ASSERT_EQ_STR(collected.lines[4], "Settings: C:\\Games\\pen\\settings.ini");
@@ -182,17 +182,17 @@ PTEST(fast_forwards_keys_speed_and_sound_as_set)
         .speed = 4u,
         .audio = FASTFORWARD_AUDIO_MUTE,
     };
-    static const char *const four[] = {"Fast-forward:", "  Hold    Space", "  Toggle  Ctrl+Alt+F", "  Speed   4x",
-                                       "  Sound   muted"};
+    static const char *const four[] = {"Fast-forward:", "  Hold       Space", "  Toggle     Ctrl+Alt+F",
+                                       "  Speed      4x", "  Sound      muted"};
     check_fast_forward(&fast_forward, four);
     fast_forward.speed = FASTFORWARD_UNLIMITED;
     fast_forward.audio = FASTFORWARD_AUDIO_PLAY;
-    static const char *const unlimited[] = {"Fast-forward:", "  Hold    Space", "  Toggle  Ctrl+Alt+F",
-                                            "  Speed   unlimited", "  Sound   sped up"};
+    static const char *const unlimited[] = {"Fast-forward:", "  Hold       Space", "  Toggle     Ctrl+Alt+F",
+                                            "  Speed      unlimited", "  Sound      sped up"};
     check_fast_forward(&fast_forward, unlimited);
     fast_forward.speed = 3u;
-    static const char *const three[] = {"Fast-forward:", "  Hold    Space", "  Toggle  Ctrl+Alt+F", "  Speed   3x",
-                                        "  Sound   sped up"};
+    static const char *const three[] = {"Fast-forward:", "  Hold       Space", "  Toggle     Ctrl+Alt+F",
+                                        "  Speed      3x", "  Sound      sped up"};
     check_fast_forward(&fast_forward, three);
 }
 

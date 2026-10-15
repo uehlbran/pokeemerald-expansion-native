@@ -21,6 +21,7 @@ static struct {
     bool enabled;
     bool shown;
     bool hint_for_pad;
+    bool shown_at_last_read;
     uint16_t held_through; /* the buttons held since the overlay was shown */
     overlay_text_writer write_text;
 } overlay;
@@ -109,10 +110,18 @@ bool overlay_hint_for_pad(void)
 
 uint16_t overlay_game_keys(uint16_t keys)
 {
+    /* The frame loop closes the overlay and reads the keys in one poll, so
+     * the buttons held at the first read after it hid are the ones that
+     * closed it (or were held under it): latched whether or not a read saw
+     * them while it was shown. */
+    const bool just_hidden = overlay.shown_at_last_read && !overlay.shown;
+    overlay.shown_at_last_read = overlay.shown;
     if (overlay.shown) {
         overlay.held_through = keys;
         return 0;
     }
+    if (just_hidden)
+        overlay.held_through = keys;
     overlay.held_through &= keys;
     return (uint16_t)(keys & ~overlay.held_through);
 }

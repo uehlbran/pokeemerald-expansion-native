@@ -12,8 +12,9 @@
  * every button released (overlay_game_keys, which input.c applies to
  * KEYINPUT, from the keyboard, a controller or a script alike), so that
  * nothing pressed to read it or to quit reaches the game; a button still
- * held when it hides stays released until it is let go, so that the B that
- * closed it from a controller does not back the game out of a menu next.
+ * held at the first read after it hides stays released until it is let go,
+ * so that the B that closed it from a controller does not back the game out
+ * of a menu next (the loop closes it and reads in one poll).
  * Q then ends the
  * game the way closing the window does (frame.c), by the normal exit path:
  * the game's own save, if one is pending, is stored as at any exit, and the

@@ -1415,6 +1415,53 @@ PTEST(f11_and_the_left_trigger_toggle_fullscreen_once_per_press)
     PT_ASSERT(by_pad);
 }
 
+/* The real loop closes the overlay and reads the keys in one poll. */
+PTEST(the_b_that_closes_the_overlay_is_not_read_by_the_game_until_it_is_let_go)
+{
+    PT_ASSERT(start_player());
+    PT_ASSERT(run_frames(1));
+    bool pushed = push_pad_button(SDL_CONTROLLERBUTTONDOWN, SDL_CONTROLLER_BUTTON_Y);
+    PT_ASSERT(run_frames(1)); /* shown, nothing held */
+    input_script_set(INPUT_KEY_B);
+    pushed = push_pad_button(SDL_CONTROLLERBUTTONDOWN, SDL_CONTROLLER_BUTTON_B) && pushed;
+    PT_ASSERT(run_frames(1));
+    const bool hidden = !overlay_shown();
+    const uint16_t at_close = *io(KEYINPUT_OFFSET);
+    PT_ASSERT(run_frames(1));
+    const uint16_t still_down = *io(KEYINPUT_OFFSET);
+    input_script_set(0);
+    PT_ASSERT(run_frames(1));
+    input_script_set(INPUT_KEY_B);
+    PT_ASSERT(run_frames(1));
+    const uint16_t pressed_again = *io(KEYINPUT_OFFSET);
+    stop();
+    PT_ASSERT(pushed && hidden);
+    PT_ASSERT_EQ_U32(at_close, KEYINPUT_NONE);
+    PT_ASSERT_EQ_U32(still_down, KEYINPUT_NONE);
+    PT_ASSERT_EQ_U32(pressed_again, KEYINPUT_NONE & ~INPUT_KEY_B);
+}
+
+/* The trigger let go is a release, not a second press. */
+PTEST(letting_go_of_the_fullscreen_button_does_not_toggle_again)
+{
+    PT_ASSERT(start_player());
+    bool pushed = push_pad_trigger(SDL_CONTROLLER_AXIS_TRIGGERLEFT, 32767);
+    bool ran = run_frames(1);
+    const bool pulled = video_is_fullscreen();
+    pushed = push_pad_trigger(SDL_CONTROLLER_AXIS_TRIGGERLEFT, 0) && pushed;
+    ran = run_frames(1) && ran;
+    const bool after_release = video_is_fullscreen();
+    pushed = push_pad_button(SDL_CONTROLLERBUTTONDOWN, SDL_CONTROLLER_BUTTON_Y) && pushed; /* unrelated edges too */
+    pushed = push_pad_button(SDL_CONTROLLERBUTTONUP, SDL_CONTROLLER_BUTTON_Y) && pushed;
+    ran = run_frames(1) && ran;
+    const bool after_others = video_is_fullscreen();
+    stop();
+    PT_ASSERT(pushed && ran);
+    PT_ASSERT(pulled);
+    PT_ASSERT(after_release);
+    PT_ASSERT(after_others);
+}
+
 PTEST(a_fullscreen_key_not_started_does_nothing)
 {
     PT_ASSERT(start_windowed());

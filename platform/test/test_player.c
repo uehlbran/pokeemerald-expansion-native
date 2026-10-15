@@ -207,10 +207,10 @@ PTEST(keys_prints_the_lines_the_overlay_is_given)
     PT_ASSERT_EQ_INT(status, 0);
     PT_ASSERT_EQ_STR(printed, given.text);
     PT_ASSERT(strncmp(printed, expected_start, strlen(expected_start)) == 0);
-    PT_ASSERT(strstr(printed, "\nKeyboard:\n  A       Z\n") != NULL);
+    PT_ASSERT(strstr(printed, "\nKeyboard:\n  A          Z\n") != NULL);
     PT_ASSERT(strstr(printed, "\n  Fullscreen F11\nController:\n  GBA buttons: ") != NULL);
     PT_ASSERT(strstr(printed, "\n  Overlay quit         X\n") != NULL);
-    PT_ASSERT(strstr(printed, "\nFast-forward:\n  Hold    Tab\n  Toggle  Shift+Tab\n  Speed   2x\n") != NULL);
+    PT_ASSERT(strstr(printed, "\nFast-forward:\n  Hold       Tab\n  Toggle     Shift+Tab\n  Speed      2x\n") != NULL);
 }
 
 /* player_starts_fullscreen for a run in a scratch data directory whose settings file holds

@@ -428,7 +428,7 @@ platform/test_runner/compare_suite_results.sh suite-linux64.log suite-windows.lo
 - `run_windows_tests.sh` runs every test executable as `make -C platform
   test` does on Linux (each to its end; a failure if it exits non-zero or its
   output has no "N passed, 0 failed"; its output and its standard error kept
-  beside it) and ends with "all 85 Windows test executables passed". Each
+  beside it) and ends with "all 87 Windows test executables passed". Each
   runs from a copy under its own name, deleted when it ends: an executable of
   this layout costs about 1 GiB of the system's commit charge from its first
   start until its file is deleted (the image's 1 GiB, gaps included, is

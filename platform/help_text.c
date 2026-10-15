@@ -7,8 +7,8 @@
 
 #include "version.h"
 
-/* The button column's width: "Select" and a space ("Toggle" too). */
-#define BUTTON_COLUMN_WIDTH 7
+/* The button column's width: "Fullscreen" and a space. */
+#define BUTTON_COLUMN_WIDTH 10
 
 /* The function column's width: "Fast-forward toggle" and a space. */
 #define FUNCTION_COLUMN_WIDTH 20

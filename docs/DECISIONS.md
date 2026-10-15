@@ -2079,10 +2079,12 @@ removal and the window losing focus release what it held, and
 `fastforward_handle_controller` ends the hold whenever no controller holds
 its control.
 
-**One behaviour change outside the Deck.** A button still held when the overlay
-hides stays released until it is let go (`overlay_game_keys`): the B that
-closes the overlay would otherwise reach the game on the next frame and back
-it out of a menu. It applies to the keyboard and scripts alike (the overlay
+**One behaviour change outside the Deck.** A button held at the first read
+after the overlay hides stays released until it is let go (`overlay_game_keys`):
+the frame loop closes the overlay and reads the keys in one poll, so the B
+that closes it would otherwise reach the game and back it out of a menu (a
+first version latched only keys seen while shown, which the loop never gives;
+review caught it). It applies to the keyboard and scripts alike (the overlay
 never exists in replays).
 
 **Fullscreen.** `SteamDeck` in the environment set to exactly `1` is a Deck
@@ -2098,28 +2100,29 @@ Fullscreen and the controller start only for runs with a player at the
 keyboard (`player_at_keyboard`), so `SteamDeck=1` changes nothing in a
 replay, a gate or the test runner (checked below).
 
-**The package.** The Linux tarball gains `pokeemerald-native.sh`, which
-changes into its own folder and executes the game, so Steam's "Add a
-Non-Steam Game" and a file manager start it the same way from anywhere in the
-home directory (the game itself finds its portable `settings.ini` beside the
-executable). SDL2 is **not** bundled. Reasoning: SteamOS is Arch-based, where
-SDL2 is an ordinary package, so `libSDL2-2.0.so.0` is expected in its image,
-but I could not check that without a Deck, and the one search I made found no
-source that states it, so it is item 1 of the owner's
-checklist; a bundled SDL2 built on the CI image would drag in its audio and
-video backends' libraries (it opens them with dlopen, but links libasound,
-libpulse, libX11 and more) for a library the Deck very probably has, and the
-Windows zip's SDL2.dll case differs because Windows has none. If the check
-fails, bundling is a small change (copy the library next to the executable and
-add `LD_LIBRARY_PATH` to the launcher). glibc: `objdump -T` on the 64-bit
-build (Ubuntu 24.04, glibc 2.39, the same image as the release job's
-`ubuntu-latest`) gives a highest requirement of `GLIBC_2.34`
-(`pthread_create` and `__libc_start_main` moved into libc in 2.34). A SteamOS
-3.8 Deck reports glibc 2.41 (Godot forum report,
-https://forum.godotengine.org/t/steam-deck-cant-launch-linux-build-due-to-outdated-glibc-version-build-targeting-newer-glibc-version/143218);
-I found no source for the glibc of older SteamOS 3 releases, which are
-replaced by Valve's automatic updates; 2.34 is met on the current one, and the
-CI image is unchanged.
+**The package.** The owner's item (h) asks for a self-contained package
+(binary, SDL2, licences, launcher script), so the Linux tarball now holds the
+executable, `pokeemerald-native.sh`, `libSDL2-2.0.so.0` (the file the release
+job's executable resolves, copied under its soname with `cp --dereference`,
+from Ubuntu 24.04's libsdl2-2.0-0), its zlib licence as `SDL2-LICENSE.txt`
+(Ubuntu's `copyright` file, as the Windows zip carries SDL2's licence), the
+project `LICENSE` and the pages. The launcher puts its own folder first in
+`LD_LIBRARY_PATH`, so an executable started directly still uses the system's
+SDL2 and the launcher uses the bundled one, and it does not change the working
+directory, so relative `--replay`, `--save`, `--data-dir` and `--out` mean
+what the caller typed (portable mode finds `settings.ini` through
+`SDL_GetBasePath`, not the working directory). Measured on the build image
+(`objdump -T`, `objdump -p`): the executable needs glibc 2.34
+(`pthread_create` and `__libc_start_main` moved into libc in 2.34); the bundled
+SDL2 needs 2.38 and, besides glibc and libm, 17 libraries from the system
+(libasound, libpulse, libsamplerate, libX11, libXext, libXcursor, libXi,
+libXfixes, libXrandr, libXss, libdrm, libgbm, libwayland-egl,
+libwayland-client, libwayland-cursor, libxkbcommon, libdecor). The floor
+rises from 2.34 to 2.38 by bundling; a SteamOS 3.8 Deck reports glibc 2.41
+(https://forum.godotengine.org/t/steam-deck-cant-launch-linux-build-due-to-outdated-glibc-version-build-targeting-newer-glibc-version/143218),
+which meets it; I found no source for older SteamOS releases or for the
+system libraries on a Deck, which the checklist covers. The CI image is
+unchanged: the requirement is met on the current Deck.
 
 **Tests, and the order.** The code was written before its tests, against the
 night's test-first rule; to show the tests are not decoration, every new test
@@ -2137,11 +2140,17 @@ threshold inverted: `a_trigger_is_pressed_past_its_threshold_and_released_below_
 and eight more; the toggle firing on every frame the button is held:
 `a_button_already_held_or_released_twice_is_no_edge`, `a_held_toggle_button_flips_once`,
 `the_trigger_let_go_ends_the_hold_and_the_stick_click_toggles_once`) and 49
-others, one per behaviour. The harness is the scratchpad's `mutate.py`.
+others, one per behaviour. The review then found two gaps and each got a
+test that fails first: the latch (`the_b_that_closes_the_overlay_in_the_same_poll_is_not_the_games`,
+fails against the first version, and the loop-order frame test
+`the_b_that_closes_the_overlay_is_not_read_by_the_game_until_it_is_let_go`) and
+the fullscreen button firing on release too
+(`letting_go_of_the_fullscreen_button_does_not_toggle_again`). The harness is the scratchpad's `mutate.py`.
 
 **Only the owner can check, on a Deck** (the list is in the report of this
-task; RUNNING.md "Steam Deck" is the procedure): that SteamOS has SDL2 and runs
-the binary; that the game starts fullscreen in Game Mode at 1280x800 with the
+task; RUNNING.md "Steam Deck" is the procedure): that the launcher starts the
+game with the bundled SDL2 (`LD_DEBUG=libs` shows it) and the system libraries
+the SDL2 needs are there; that the game starts fullscreen in Game Mode at 1280x800 with the
 picture at 5x, black bars; that the right trigger, the stick click, Y, B, X and
 the left trigger do what the table says on the real Steam Input layout for a
 non-Steam game; that unplugging a controller (a Bluetooth pad turned off) while
