@@ -650,8 +650,9 @@ PTEST(q_with_the_overlay_hidden_does_not_end_the_game)
     PT_ASSERT(start_windowed());
     const bool pushed = push_key(SDL_SCANCODE_Q, SDLK_q);
     const enum frame_result first = frame_run();
-    const bool pushed_again = push_key(SDL_SCANCODE_F1, SDLK_F1) && push_key(SDL_SCANCODE_F1, SDLK_F1)
-                              && push_key(SDL_SCANCODE_Q, SDLK_q);
+    const bool opened = push_key(SDL_SCANCODE_F1, SDLK_F1);
+    const bool closed = push_key(SDL_SCANCODE_F1, SDLK_F1);
+    const bool pushed_again = opened && closed && push_key(SDL_SCANCODE_Q, SDLK_q);
     const enum frame_result second = frame_run();
     const bool shown = overlay_shown();
     stop();

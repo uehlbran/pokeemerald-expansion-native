@@ -90,8 +90,10 @@ static void add_problem(struct settings *settings, uint32_t line, enum settings_
         problem->kind = kind;
         for (size_t i = 0; i < length; i++) {
             const char byte = text.text[i];
-            const bool printable = byte >= PROBLEM_TEXT_FIRST && byte <= PROBLEM_TEXT_LAST;
-            problem->text[i] = printable ? byte : PROBLEM_TEXT_REPLACEMENT;
+            if (byte >= PROBLEM_TEXT_FIRST && byte <= PROBLEM_TEXT_LAST)
+                problem->text[i] = byte;
+            else
+                problem->text[i] = PROBLEM_TEXT_REPLACEMENT;
         }
         problem->text[length] = '\0';
     }

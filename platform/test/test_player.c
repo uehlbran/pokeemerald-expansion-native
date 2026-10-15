@@ -21,8 +21,8 @@ static unsigned host_calls;
 
 static bool no_directory(char *out, size_t size)
 {
-    (void)out;
-    (void)size;
+    if (size > 0)
+        out[0] = '\0';
     host_calls++;
     (void)fprintf(stderr, "test host: no directory\n");
     return false;
