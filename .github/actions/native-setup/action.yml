@@ -25,7 +25,7 @@ runs:
         I386: ${{ inputs.i386 }}
         LINT_TOOLS: ${{ inputs.lint-tools }}
       run: |
-        packages="build-essential gcc-multilib g++-multilib libc6-dev-i386 pkg-config git python3 libpng-dev libsdl2-dev ccache"
+        packages="build-essential gcc-multilib g++-multilib libc6-dev-i386 pkg-config git python3 libpng-dev libsdl2-dev ccache python3-yaml"
         if [ "$LINT_TOOLS" = true ]; then
           packages="$packages clang clang-format clang-tidy cppcheck"
         fi

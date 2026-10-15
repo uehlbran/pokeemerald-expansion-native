@@ -395,15 +395,21 @@ sanitizers), and so is `BITS=32`.
 
 Nothing built this way runs on the build machine. What runs it is the Windows
 workflow, `.github/workflows/windows.yml` (nightly at 05:17 UTC, and by hand,
-`gh workflow run windows.yml`): three Linux jobs side by side cross-build the
-game and the unit tests (and play the Linux half of the cross-OS save gate),
-cross-build the test runner, and run the suite on the Linux 64-bit build; a
-Windows job (`windows-latest`, Git Bash and the image's MSYS2) runs everything
-below on what they built; a last Linux job compares. The same by hand, on a
-64-bit Windows 10 1903 or later with Git for Windows and, for the suite, MSYS2
-at `C:\msys64`, from a checkout made with `core.autocrlf false` (the scripts
-and the expectations are compared byte for byte) holding the build's outputs
-where the build left them:
+`gh workflow run windows.yml`). Its `windows` job (`windows-latest`) builds
+the game itself and uploads no build: it installs WSL (Ubuntu 24.04, by
+`Vampire/setup-wsl`) and the cross-build's packages there, runs the Linux
+64-bit build, the cross-OS save gate's first stage, and the three Windows
+cross-builds of this section (the game, the unit tests, the TEST=1 test
+runner) in WSL's own file system with the commands above, copies the `.exe`s
+to the Windows file system, runs everything below with Git Bash, pwsh and the
+image's MSYS2, and runs the gate's last stage in WSL again. A Linux job runs
+the suite on the Linux 64-bit build and a last Linux job compares the two
+suites' logs; those logs are the only results the jobs pass, since no workflow
+uploads the game (`docs/DECISIONS.md`, "No workflow uploads the game"). The
+same by hand, on a 64-bit Windows 10 1903 or later with Git for Windows and,
+for the suite, MSYS2 at `C:\msys64`, from a checkout made with `core.autocrlf
+false` (the scripts and the expectations are compared byte for byte) holding
+the build's outputs where the build left them:
 
 ```
 # Git Bash
@@ -666,14 +672,19 @@ between jobs.
 the Windows 64-bit zip and the macOS x86_64 tarball (job `macos`, on
 `macos-15-intel`, set up as `macos.yml` is), with the same make commands as above (the Windows
 steps are `.github/actions/windows-cross-setup`, after
-`.github/actions/native-setup`), writes `SHA256SUMS.txt` and attests the
-archives (`gh attestation verify <file> --repo <owner>/<repo>`; GitHub offers
-attestations to a user-owned repository only once it is public, so while this
-one is private that step fails after the files are uploaded). Each
-archive holds the executable, `LICENSE`, `RUNNING.md` and a short `README.txt`; the
-Windows zip also holds `SDL2.dll` and SDL2's licence. The macOS tarball is
-unsigned and not notarized (Gatekeeper steps: `RUNNING.md`, "macOS"). It is a
-tarball because `tar` keeps the executable bit and Archive Utility opens it.
+`.github/actions/native-setup`), checks each archive (its contents, a headless
+start of the Linux and the macOS executables, the Windows executable's PE
+format) and prints its SHA-256. A run without the `publish` input uploads
+nothing at all: no artifact, no release. With `publish` and a `tag` the
+archives go to the later jobs as one-day artifacts, which a last job deletes;
+those jobs write `SHA256SUMS.txt`, attest the archives (`gh attestation verify
+<file> --repo <owner>/<repo>`; GitHub offers attestations to a user-owned
+repository only once it is public, so while this one is private that step
+fails) and create the GitHub release. Each archive holds the executable,
+`LICENSE`, `RUNNING.md` and a short `README.txt`; the Windows zip also holds
+`SDL2.dll` and SDL2's licence. The macOS tarball is unsigned and not notarized
+(Gatekeeper steps: `RUNNING.md`, "macOS"). It is a tarball because `tar` keeps
+the executable bit and Archive Utility opens it.
 `.github/release/bundle-macos.sh` copies in the dylibs: sdl2-compat's
 `libSDL2-2.0.0.dylib` and SDL3's, as `libSDL3.dylib`, the name sdl2-compat
 opens with `dlopen` from `@loader_path` (it does not link it), with their
@@ -681,7 +692,8 @@ licences; it rewrites every install name to `@executable_path`, signs the
 copies ad hoc because the rewrite breaks any signature (no identity, no
 notarization), and fails if `otool -L` of anything still names a Homebrew path.
 The job then runs the unpacked archive with `DYLD_PRINT_LIBRARIES` and fails
-if a library loads from Homebrew. None of this has run on a Mac. The files stay on the run
-as artifacts for 14 days. The run creates a GitHub release only with the
-`publish` input and a `tag`, and no public release is made without the
+if a library loads from Homebrew. None of the macOS job has run on a Mac.
+`platform/build_glue/check_workflow_uploads.py` fails the platform
+gate if any workflow's upload could match more than text, frame images, saves and clock files, release.yml's
+archives excepted under `publish`. No public release is made without the
 owner's explicit instruction (`docs/DECISIONS.md`, "Why no public release").

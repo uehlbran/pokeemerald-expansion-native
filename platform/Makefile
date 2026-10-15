@@ -493,6 +493,7 @@ glue-test:
 	@set -e; for script in $(GLUE_SCRIPTS); do \
 		echo "python3 -I $$script --self-test"; python3 -I $$script --self-test; \
 	done
+	@echo "python3 -I build_glue/check_workflow_uploads.py --root .."; python3 -I build_glue/check_workflow_uploads.py --root ..
 
 .PHONY: glue-test
 

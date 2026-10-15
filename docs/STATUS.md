@@ -151,6 +151,16 @@ public (source only; the visibility switch is the owner's): CI artifacts
 that never hold the game beyond a run, the internal notes out of the
 tracked tree, and a checklist for after the switch.
 
+**Before the repository goes public** (2026-10-15 morning): the artifact
+rule is merged as "no workflow uploads the game, ever" (merge 6d60d17ec0). The no-upload property is verified by inspection (two reviews
+of every upload step) and by the checker (platform/build_glue/
+check_workflow_uploads.py, run in glue-test and in the per-push tier). The
+Windows job's pass (WSL 2, the build and the cross-OS round trip in one job)
+is proven only by the first run after the repository is public, which the
+owner triggers by flipping visibility; a red Windows job at that point is a
+fix to make, not a leak. Also merged: the GBA suite build fixed (test/malloc.c,
+since cdbec96d50) and run by the gate and the nightly.
+
 **Needs the owner.** (0) FIRST, blocking: GitHub Actions starts no job
 on this account since about 03:40 MDT on 2026-10-15 (09:40 UTC). Every run
 since then ends in seconds with "The job was not started because recent

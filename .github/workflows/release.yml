@@ -13,13 +13,17 @@
 # archives for the jobs after it and creates a GitHub release at the built
 # commit; nobody but the owner sets it.
 #
-# Artifacts (docs/DECISIONS.md, "CI artifacts never hold the game beyond a
-# run"): no artifact may hold the game or any part of it beyond the run, and a
-# public repository's artifacts are public. The archives are uploaded only
-# with `publish`, for one day, and the last job, `cleanup`, deletes every
-# artifact of the run (it keeps none); the release is the publication. A
-# finished run cannot re-run a single failed job (its archives are deleted):
-# use "re-run all jobs".
+# NO WORKFLOW UPLOADS THE GAME, EVER (docs/DECISIONS.md, "No workflow uploads
+# the game"), and this file is the one place where the rule has an exception,
+# because a release is the publication: a run WITHOUT `publish` uploads
+# nothing at all (no artifact, no release). With `publish` the archives go as
+# artifacts, for one day, to the jobs that make the release, and the last job
+# deletes them. platform/build_glue/check_workflow_uploads.py fails the gate
+# if an archive upload here is not conditioned on `publish`, and for any
+# other upload that could match more than text. Without `publish` no job
+# needs the cleanup, so it runs only with it. A finished publish run cannot
+# re-run a single failed job (its archives are deleted): use "re-run all
+# jobs".
 #
 #   check-inputs   the tag, validated before anything else runs
 #   linux          the 64-bit build, the tarball, its check
@@ -28,7 +32,7 @@
 #                  tarball (unsigned, SDL's dylibs bundled), its check
 #   checksums      only with `publish`: SHA256SUMS.txt and the attestations
 #   publish        only with `publish`: the GitHub release
-#   cleanup        always, last: deletes the run's artifacts
+#   cleanup        only with `publish`, last: deletes the run's artifacts
 #
 # Verify a download with `gh attestation verify <file> --repo <owner>/<repo>`
 # and `sha256sum --check SHA256SUMS.txt`.
@@ -413,12 +417,13 @@ jobs:
           NOTES
           gh release create "$TAG" --target "$GITHUB_SHA" --title "$TAG" --notes-file notes.md dist/*.tar.gz dist/*.zip dist/SHA256SUMS.txt
 
-  # The last job: deletes every artifact of this run, whether or not the
-  # release was made (the release holds the files; the run keeps none). It
-  # fails if one cannot be deleted or one is left.
+  # The last job, with `publish` only (without it nothing was uploaded):
+  # deletes every artifact of this run, whether or not the release was made
+  # (the release holds the files; the run keeps none). It fails if one cannot
+  # be deleted or one is left.
   cleanup:
     name: Delete the archives from the run
-    if: always()
+    if: ${{ always() && inputs.publish }}
     needs: [check-inputs, linux, windows, macos, checksums, publish]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
