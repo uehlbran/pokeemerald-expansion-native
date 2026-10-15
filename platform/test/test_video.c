@@ -325,7 +325,7 @@ PTEST(ppm_to_unwritable_path_fails)
 }
 
 /* The dummy driver only records the fullscreen flag: a real driver's refusal and the window after toggling
- * back are checked by hand (docs/STATUS.md, "Needs the owner"). */
+ * back are checked by hand on a real display. */
 PTEST(a_window_starts_fullscreen_when_asked_and_toggles_both_ways)
 {
     use_dummy_driver();

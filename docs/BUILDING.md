@@ -267,14 +267,14 @@ replay's outputs; the sanitized replays are run with
 
 | Gate | What it checks | Command |
 |---|---|---|
-| (a) | the native build from a clean clone with the prerequisites above (before a milestone is declared done) | `make -f Makefile.native -j"$(nproc)" native BITS=32`, then `BITS=64` |
+| (a) | the native build from a clean clone with the prerequisites above (before a release or a large change is declared done) | `make -f Makefile.native -j"$(nproc)" native BITS=32`, then `BITS=64` |
 | platform | style, lint, the sanitized unit tests at both widths, ThreadSanitizer, the tools and glue self-tests | `make -C platform gate` |
 | (b) | expansion's test suite on the native build equals the GBA baseline, per test, but for the nine benchmarks (assumption failures by decision); the same at both widths | `make -f Makefile.native -j32 check BITS=32`, `BITS=64`, and each with `SANITIZE=1` |
 | (c) | the GBA target builds, its ROM is unchanged (sha1 `e2d4600d4e7b1269ac50c28bc96ece2b758ded9e` for 1.17.1) and its suite equals the baseline | `make -j"$(nproc)"`, `sha1sum pokeemerald.gba`, `make -j"$(nproc)" check` |
 | (d) | the opening, replayed: dumps and screenshots match, at both widths, plain and sanitized | `tests/smoke/run.sh build/native32/pokeemerald-native out/`, likewise `native32-san`, `native64`, `native64-san` |
 | (e) | expansion's debug menu driven natively, the same four builds | `tests/smoke/run_debug_menu.sh build/native32/pokeemerald-native out/`, likewise the other three |
 | (f) | the unit tests, both replays and the suite are clean under AddressSanitizer and UndefinedBehaviorSanitizer at both widths | (platform) `make -C platform test BITS=32`, `BITS=64`; the sanitized runs of (b), (d) and (e) |
-| (g) | the status record, `docs/STATUS.md`, is current | none |
+| (g) | the documents that quote results (README, BUILDING, ARCHITECTURE, `platform/test_runner/SUITE-LOG.md`) match what the gates produce | none |
 | (h) | a save written by one width loads in the other, both directions | `tests/smoke/run_cross_width.sh build/native32/pokeemerald-native build/native64/pokeemerald-native out/`, and the two builds swapped |
 
 `tests/smoke/README.md` has the replays' and the cross-width gate's details,
@@ -285,11 +285,11 @@ which gates a given change must pass.
 
 The Windows executable is x86-64 only and is built on Linux with MinGW-w64
 (`TARGET_OS=windows`, `platform/target.mk`); the build machine needs nothing
-Windows. i686 is not attempted (`research/m8-inventory.md` 2.3). Nothing built
+Windows. i686 is not attempted (it would prefix every C symbol with an underscore; `DECISIONS.md`, "The ports share a thin host layer"). Nothing built
 this way can be run on the build machine without Wine, which is not part of
 the project: what is checked here is the link and the file it writes. The unit
 tests, a start-up smoke, both replays, expansion's suite and the cross-OS save
-gate run on a Windows runner (below), and the owner verified the build by
+gate run on a Windows runner (below), and the build was run by
 hand on 2026-10-14: boot, the opening, the first battle, a save and its
 reload.
 
@@ -517,5 +517,5 @@ one is private that step fails after the files are uploaded). Each archive
 holds the executable, `LICENSE`, `RUNNING.md` and a short `README.txt`; the
 Windows zip also holds `SDL2.dll` and SDL2's licence. The files stay on the run
 as artifacts for 14 days. The run creates a GitHub release only with the
-`publish` input and a `tag`, and no public release is made without the
-owner's explicit instruction (`docs/DECISIONS.md`, "Why no public release").
+`publish` input and a `tag`, and no public release is made without an
+explicit decision to publish (`docs/DECISIONS.md`, "Why no public release").

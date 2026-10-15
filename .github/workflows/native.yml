@@ -56,7 +56,7 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'push' }}
 
 env:
-  # The GBA ROM this repository's main must produce (docs/STATUS.md, gate c).
+  # The GBA ROM this repository's main must produce (docs/BUILDING.md, gate (c)).
   ROM_SHA1: e2d4600d4e7b1269ac50c28bc96ece2b758ded9e
   # The replays and the suite run headless.
   SDL_VIDEODRIVER: dummy

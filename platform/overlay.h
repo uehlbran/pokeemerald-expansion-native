@@ -6,7 +6,8 @@
  * directory and the files), under the line OVERLAY_HINT, and it is where
  * the player quits: Quit is
  * the platform's, not a patch to the game's Start menu (docs/DECISIONS.md,
- * the owner's adjustments to the tasks from the Windows check).
+ * "Quit lives in the F1 overlay; the default file locations are the per-user
+ * directory").
  *
  * F1 shows it and hides it. While it is shown the game runs on but reads
  * every button released (overlay_game_keys, which input.c applies to

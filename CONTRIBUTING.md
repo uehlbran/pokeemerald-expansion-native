@@ -80,8 +80,8 @@ Rules 1 to 4 below are from it; rule 5 is from the policy at the top of
 
 A change is merged when all of these pass. `docs/BUILDING.md`, "Gates", is
 the list of gates (a to h) with the command for each. Gate (a) is
-milestone-level: a native build from a clean clone with the documented
-prerequisites, run before a milestone is declared done. Gate (h), the
+release-level: a native build from a clean clone with the documented
+prerequisites, run before a release or a large change is declared done. Gate (h), the
 cross-width save round trip (`tests/smoke/run_cross_width.sh`), is run by
 a change to the save format, `platform/save_*` or `SaveBlock1`.
 
@@ -189,7 +189,7 @@ decision says why that approach.
 ## Upstream
 
 Do not file issues or pull requests upstream from this repository's work
-without the repository owner's decision. The seven reports already filed
+without the maintainers' decision. The seven reports already filed
 were closed by rh-hideout; they are linked from the rows of
 `docs/UPSTREAM_MODIFICATIONS.md` that say "Reported upstream". Bugs we find in
 expansion are fixed under guards here and recorded in that file.
@@ -202,7 +202,7 @@ expansion are fixed under guards here and recorded in that file.
 - A ROM, a save from a cartridge, or anything extracted from a cartridge.
   Everything builds from the source and assets in the repository.
 - Assets (graphics, audio, text) that are not already expansion's. This
-  is the owner's rule from the project brief: no ROM and no assets are
+  is the project's rule: no ROM and no assets are
   distributed.
 - Code copied from emulators or from the reference ports, in whole or in
   part.

@@ -15,8 +15,8 @@ tools/build-native.sh --os linux      # build/native64/pokeemerald-native
 tools/build-native.sh --os windows    # build/native64-windows/pokeemerald-native.exe, built on Linux
 ```
 
-The Windows executable is cross-built on Linux (WSL2 is fine). The owner can
-also get archives for testing from a run of the repository's "release"
+The Windows executable is cross-built on Linux (WSL2 is fine). Archives for testing can
+also be had from a run of the repository's "release"
 workflow, which publishes nothing unless told to; their README.txt and this
 page are inside. macOS is not started: there is no build for it.
 

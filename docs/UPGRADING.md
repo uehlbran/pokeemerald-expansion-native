@@ -22,7 +22,7 @@ Paths such as `../pen-worktrees` are relative to the main checkout.
 - The GBA build is the reference for everything. The native gates compare
   against a GBA baseline of the new tag, not the old one.
 - Nothing is called upgraded until the gates in step 8 are green and
-  `STATUS.md` says so.
+  recorded in the commit message and, for a decision, in `DECISIONS.md`.
 
 ## 1. Prepare
 
@@ -81,8 +81,7 @@ For each row of "Source modifications", in table order:
 2. Did upstream fix the site? Where the row has a "Reported upstream" link
    (`grep -o 'issues/[0-9]*' docs/UPSTREAM_MODIFICATIONS.md`), look at the
    issue and at the tag's source for the fixed code. Seven issues were
-   filed (rh-hideout #10892 to #10898) and closed by the maintainer (`STATUS.md`,
-   "Upstream issues"); check whether the code was fixed independently. A row without a link may be fixed
+   filed (rh-hideout #10892 to #10898) and closed by the maintainer (the rows marked "Reported upstream" in `UPSTREAM_MODIFICATIONS.md`); check whether the code was fixed independently. A row without a link may be fixed
    too, so read the diff for every row, not just the linked ones.
 3. If the site is fixed: delete the guarded block, keep upstream's code,
    remove the row. Policy: a row leaves the table when its modification
@@ -154,7 +153,7 @@ Write `docs/research/gba-baseline-<tag>.md` in the form of
 (PASSED, KNOWN_FAILING, EXPECT_FAILING, TO_DO, TOTAL) and the exit code.
 It must agree with the reference build in the worktree from step 1;
 if it does not, the guards changed what the GBA tests do. Update the
-totals quoted in `README.md`, `ARCHITECTURE.md`, `STATUS.md`, `BUILDING.md`,
+totals quoted in `README.md`, `ARCHITECTURE.md`, `BUILDING.md`,
 `platform/test_runner/SUITE-LOG.md`'s header and this file when the new
 baseline is the one to compare against (`git grep -n 5862` finds them).
 
@@ -343,7 +342,7 @@ follow the host ABI").
 
 ## 11. Finish
 
-- Update `docs/STATUS.md` with what was verified by which gate, the date,
+- Record in the upgrade's commit message what was verified by which gate, the date,
   and the new tag.
 - Update the README's and `BUILDING.md`'s pin and any 1.17.1 references:
   `git grep -n '1\.17\.1'`.

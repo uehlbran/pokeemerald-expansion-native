@@ -79,7 +79,7 @@ at 32 MiB (the plain build already used 28 MiB of it, TEST=1 26 MiB, and the
 sanitized build only fit with outline AddressSanitizer checks and its
 read-only data moved out of the window), and a 64-bit build cannot run code
 from a mirror. The executable is linked at 0x40000000 again. The fix is
-work/replay's untagging (src/script.c, src/scrcmd.c, include/script.h,
+the script-tag untagging (src/script.c, src/scrcmd.c, include/script.h,
 platform/script_tag.h), which works on both widths; until main has it,
 this class stays open here (run 10: 95 tests, all `RUN_OVERWORLD_SCRIPT`
 and script tests).
@@ -173,8 +173,8 @@ run compared with it test by test.
 | 7 | 5862 | 5405 | 18 | 9 | 421 | 0 | 0 | 9 assumption failures (class 8); one garbled test name (class 7) |
 | 8 | 5862 | 5405 | 18 | 9 | 421 | 0 | 0 | 9 assumption failures; per test equal to the GBA baseline but for those 9 |
 | 9 | 5862 | 5405 | 18 | 9 | 421 | 0 | 0 | as run 8, after the GLYPH_COPY and mega-indicator palette fixes |
-| 10 | 5862 | 5310 | 18 | 9 | 421 | 95 | 1 | linked at 0x40000000 again, without the ROM mirror: class 4 reopened until work/replay's untagging is merged |
-| 11 | 5862 | 5405 | 18 | 9 | 421 | 0 | 0 | after merging main (work/replay's script-tag untagging): class 4 closed; per test equal to the GBA baseline but for the 9 benchmarks; 44 s |
+| 10 | 5862 | 5310 | 18 | 9 | 421 | 95 | 1 | linked at 0x40000000 again, without the ROM mirror: class 4 reopened until the script-tag untagging is merged |
+| 11 | 5862 | 5405 | 18 | 9 | 421 | 0 | 0 | after merging main (the script-tag untagging): class 4 closed; per test equal to the GBA baseline but for the 9 benchmarks; 44 s |
 | SANITIZE=1 | 5862 | 5402 | 18 | 9 | 421 | 3 | 1 | the sanitized run below, before the palettes were padded: 3 CRASH (fatal AddressSanitizer reports), 9 assumption failures; 78 s |
 | SANITIZE=1 | 5862 | 5405 | 18 | 9 | 421 | 0 | 0 | eight battle-animation palettes padded; per test the GBA baseline but for the 9 benchmarks; 76 s |
 
@@ -199,7 +199,7 @@ run compared with it test by test.
   leaves IE alone (commented at the jump site and in game_hooks.h).
 - `arm_division` reports every divide error it passes on (one line with
   the program counter) and refuses 66h/67h-prefixed forms. Since
-  milestone 7 it decodes x86-64 too (arm_division.h).
+  the 64-bit work it decodes x86-64 too (arm_division.h).
 
 ## The timeout, end to end
 

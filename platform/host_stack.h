@@ -13,7 +13,7 @@
  * Win64 ABI (fibers cannot run on a stack of the caller's choosing), which
  * widens the thread's stack limits (NT_TIB) to hold both stacks while the
  * entry runs, so that the system's exception dispatch walks from the entry's
- * frames to the caller's (research/m8-inventory.md, 1.2 row 11).
+ * frames to the caller's (the Windows counterpart of the Linux stack switch).
  * Single-threaded, not reentrant.
  */
 #ifndef PLATFORM_HOST_STACK_H

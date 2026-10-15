@@ -1,5 +1,4 @@
-# The Windows runner (milestone 8, tasks W8 and W9; docs/PLAN.md "Milestone 8
-# plan"; docs/BUILDING.md, "Running it on Windows"). Nothing built for Windows
+# The Windows runner (docs/BUILDING.md, "Running it on Windows"). Nothing built for Windows
 # runs on the Linux build machine, so Linux jobs cross-build with MinGW-w64
 # (docs/BUILDING.md, "Windows (cross-build from Linux)") and one Windows job
 # runs what they built:

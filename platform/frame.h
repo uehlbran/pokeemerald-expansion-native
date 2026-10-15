@@ -79,7 +79,8 @@
  * the m4a engine's mixing rate (13379 Hz in Emerald, 224 samples a frame),
  * whose frame is read on this grid. The device and the PSG run at it, one
  * accountant counting the samples of each frame (frame_run, step 5;
- * docs/DECISIONS.md, the owner's ruling (1) of 2026-10-14). */
+ * docs/DECISIONS.md, decision (1) of "Decisions on an independent review's
+ * open questions"). */
 #define FRAME_AUDIO_SAMPLE_RATE_HZ SOUND_GRID_RATE_HZ
 
 /* Output channels: the mix is interleaved left, right (GBATEK "GBA Sound

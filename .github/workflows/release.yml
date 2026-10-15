@@ -1,16 +1,16 @@
 # The release pipeline: the Linux 64-bit tarball and the Windows 64-bit zip,
 # their SHA-256 sums and build-provenance attestations. By hand only.
 #
-# THE OWNER'S RULE: no public release and no tag without the owner's explicit
-# instruction. A built executable contains the complete game's assets, so a
+# THE RULE: no public release and no tag without an explicit decision to
+# publish. A built executable contains the complete game's assets, so a
 # public release is legally the same as distributing a ROM, which this project
 # does not do (docs/DECISIONS.md, "Why no public release"). The default is
 # therefore `publish: false`: each archive is built and checked in its own job
 # (its contents listed and compared with what it must hold, the Linux
 # executable started headless, the SHA-256 printed in the log), and NOTHING is
 # uploaded or created. `publish: true` with a `tag` uploads the archives for
-# the jobs after it and creates a GitHub release at the built commit; nobody
-# but the owner sets it.
+# the jobs after it and creates a GitHub release at the built commit; it is
+# set only on that decision.
 #
 # Artifacts (docs/DECISIONS.md, "CI artifacts never hold the game beyond a
 # run"): no artifact may hold the game or any part of it beyond the run, and a
@@ -33,15 +33,15 @@
 # NOTE: actions/attest-build-provenance works in a private repository only on
 # GitHub Enterprise Cloud (its README); on a user-owned private repository the
 # step fails with "Feature not available for user-owned private repositories"
-# (run 38660260570, 2026-10-15). It runs on the publish path only, which the
-# owner takes once the repository is public, where it works unchanged.
+# (run 38660260570, 2026-10-15). It runs on the publish path only, which is
+# taken once the repository is public, where it works unchanged.
 name: release
 
 on:
   workflow_dispatch:
     inputs:
       publish:
-        description: 'Create a GitHub release (needs the owner''s explicit instruction)'
+        description: 'Create a GitHub release (needs an explicit decision to publish)'
         type: boolean
         default: false
       tag:
