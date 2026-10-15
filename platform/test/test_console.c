@@ -19,6 +19,7 @@
 #include <string.h>
 #ifndef _WIN32
 #include <sys/stat.h>
+#include <unistd.h>
 #endif
 
 /* --- the mode ------------------------------------------------------------------- */
@@ -424,9 +425,13 @@ PTEST(the_streams_and_a_handlers_raw_write_continue_each_other)
 #ifndef _WIN32
 /* The log is made with no permission bits (umask), which the stream that made it may still write, so the
  * second open, to append, is refused: freopen has by then closed the stream, which must be left on the
- * null device and not closed. */
+ * null device and not closed. Root opens a file whatever its mode, so the open succeeds and the test would
+ * fail for a reason that is not console.c's; the precondition is checked first and names it. */
 PTEST(a_log_that_cannot_be_reopened_leaves_the_stream_usable)
 {
+    if (geteuid() == 0)
+        PT_FAIL("needs a non-root user: root opens a mode-000 log whatever its permission bits, so the append "
+                "this test relies on being refused cannot be provoked (run the tests as an ordinary user)");
     struct scene scene;
     PT_ASSERT(make_scene(&scene));
     struct options o = windowed();

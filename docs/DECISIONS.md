@@ -24,6 +24,16 @@ cannot license. We do not copy code from the reference ports: two of them
 credit GPL and MPL emulators as sources for their BIOS and renderer, so
 their code cannot be relicensed MIT by us.
 
+Amended 2026-10-15 (the review before the repository went public): the scope
+list in LICENSE named only part of what this project added, so it gained
+`docs/RUNNING.md` (every release archive carries it next to LICENSE),
+`tools/build-native.sh`, the three workflows native.yml, windows.yml and
+release.yml, the actions under `.github/actions/`, the files under
+`.github/release/`, `.clang-format`, `.clang-tidy` and the five files added
+under `test/` (the modified upstream files there are covered by the sentence on
+modifications, through docs/UPSTREAM_MODIFICATIONS.md, which also gained the
+rows for the mdBook stubs under `docs/` that it had missed).
+
 ## 2026-10-08: Memory model mirrors the GBA address space
 
 The platform maps EWRAM, IWRAM, I/O, palette, VRAM, OAM and flash at their
@@ -2561,18 +2571,33 @@ fail, as do directories and names without an extension. The exceptions are exact
 `--self-test` runs good and bad workflows: each allowed class (text, log,
 frame image, save, clock) passes, and each rejected class fails (executable,
 shared library, object, archive, other binary, directory, no extension, and
-the pattern rules above), one case per extension. Beyond the path lines it fails any action whose
-name (compared lowercased, so `Actions/Upload-Artifact` is seen) says
-upload, release, publish, deploy, asset or artifact and is not on its short
-list of known ones (checkout, cache, download-artifact,
-attest-build-provenance, configure-pages, deploy-pages, setup-wsl and
-upstream's two label actions); `docker://` steps; external reusable
+the pattern rules above), one case per extension. Beyond the path lines it fails `docker://` steps; external reusable
 workflows (job or step); and, in any `run:` text, `gh release
-upload/edit`, `gh api` writes and uploads, `curl` with an upload flag, `git
-push`, `docker push` and the like. The one command allowed is release.yml's
-`gh release create`, in a step or job whose `if` requires `inputs.publish`.
-A third-party action whose name says none of those words is not caught; the
-list of `uses:` in the tree is short and read at review. `make -C platform
+upload/edit`, `gh api` writes and uploads (including `-f` and `--raw-field`,
+which make the request a POST), `curl` with an upload flag (including
+`--json`), `git push`, `docker push` and the like. The one command allowed is
+release.yml's `gh release create`, in a step or job whose `if` requires
+`inputs.publish`. Amended 2026-10-15 (the review before the repository went
+public), four sentences. Third-party actions are no longer judged by words in
+their names: every non-local `uses:` must be on an allowlist (`ALLOWED_ACTIONS`:
+checkout, download-artifact, attest-build-provenance, configure-pages,
+deploy-pages, setup-wsl and upstream's two label actions, with the two upload
+actions and `actions/cache` checked by their own rules), so adding an action
+is a change to that list, which is the review point. Every `uses: ./<path>`
+is resolved against the repository root and the action file it names
+(`action.yml` or `action.yaml`) is checked like the rest, so a composite
+action anywhere in the tree is read and a reference to a file that is not
+there fails. The `path` lines of `actions/cache` (and its save and restore
+forms) may name compiled objects, converted assets and ccache data, never a
+linked game or test runner: a line that is, holds or could hold (as a parent,
+a child or by a wildcard) `build/native*`, `build/*windows*`, `platform/build`
+or `dist`, or ends in a binary or archive extension, fails; today's caches
+pass (the host build tools `tools/*/<tool>`, `~/.cache/ccache`,
+`wsl-cache/ccache`, `build/assets-native`, `build/sdl2-mingw` and
+`wsl-cache/sdl2-mingw` lie outside those directories and have no such
+extension). What the scripts and make targets that a `run:` step calls do
+is not checked; reading them stays a review duty, as it is for any change to
+those files. `make -C platform
 glue-test` runs the self-test and then the check on the real tree, so the
 platform gate and the local pre-merge gate fail on a bad upload; it also
 runs as a step of native.yml's per-push
