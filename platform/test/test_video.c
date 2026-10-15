@@ -1,8 +1,10 @@
+// deps: overlay.c font.c
 /*
  * Tests of video. They run with SDL's dummy video driver (set with setenv
  * before the first SDL call, so no display is needed). The pixel format is
  * asserted from SDL's own mask table against GBATEK "LCD Color Settings"
- * (bits 0-4 red, 5-9 green, 10-14 blue). Rendering itself is not asserted.
+ * (bits 0-4 red, 5-9 green, 10-14 blue). Rendering itself is not asserted;
+ * the overlay's pixels are test_overlay.c's.
  */
 #include <stdio.h>
 #include <stdlib.h>
@@ -10,6 +12,7 @@
 
 #include <SDL.h>
 
+#include "overlay.h"
 #include "ptest.h"
 #include "test_support.h"
 #include "video.h"
@@ -111,6 +114,42 @@ PTEST(events_reach_the_callback_with_ctx_and_quit_returns_false)
     PT_ASSERT(!null_callback_quit);
     PT_ASSERT_EQ_INT(log.user_events, 1);
     PT_ASSERT_EQ_INT(log.quit_events, 1);
+}
+
+static void two_lines(overlay_line_sink sink, void *context)
+{
+    sink("pokeemerald-native test", context);
+    sink("Save: test.sav", context);
+}
+
+/* The overlay's texture is made and drawn at init, copied over the frame while shown, and the
+ * frame buffer, which the screenshots are written from, is the same after either present. */
+PTEST(the_overlay_is_presented_over_the_frame_and_never_written_into_it)
+{
+    use_dummy_driver();
+    struct video_config cfg = windowed_config();
+    static uint16_t before[LCD_WIDTH * LCD_HEIGHT];
+    for (size_t i = 0; i < LCD_WIDTH * LCD_HEIGHT; i++)
+        frame_buffer[i] = (uint16_t)(i & 0x7FFFu);
+    memcpy(before, frame_buffer, sizeof before);
+    SDL_Event f1;
+    SDL_zero(f1);
+    f1.type = SDL_KEYDOWN;
+    f1.key.keysym.scancode = SDL_SCANCODE_F1;
+    PT_ASSERT_EQ_INT(overlay_init(two_lines), 0);
+    const int init = video_init(&cfg);
+    (void)overlay_handle_event(&f1);
+    const bool shown = overlay_shown();
+    const int present_shown = video_present(frame_buffer);
+    (void)overlay_handle_event(&f1);
+    const int present_hidden = video_present(frame_buffer);
+    video_shutdown();
+    overlay_shutdown();
+    PT_ASSERT_EQ_INT(init, 0);
+    PT_ASSERT(shown);
+    PT_ASSERT_EQ_INT(present_shown, 0);
+    PT_ASSERT_EQ_INT(present_hidden, 0);
+    PT_ASSERT_MEM_EQ(frame_buffer, before, sizeof before);
 }
 
 PTEST(headless_presents_without_a_window)

@@ -380,6 +380,11 @@ reported as pressed, unfiltered.
 | R | S | right shoulder |
 | Up/Down/Left/Right | arrow keys | D-pad, or left stick beyond `INPUT_STICK_DEADZONE` (16000) |
 
+The keyboard column is the default keymap (`input_buttons`); `main` passes
+`input_init` the one the settings file makes (`settings`, below). While the
+F1 overlay is shown, KEYINPUT reads every button released, whatever the
+source (`overlay_game_keys`).
+
 `test_input.c` sets `SDL_VIDEODRIVER=dummy` itself. SDL's dummy driver cannot
 put a key into `SDL_GetKeyboardState` (a pushed `SDL_KEYDOWN` is only queued),
 so key translation is tested through the pure `input_keyboard_to_keys` and
@@ -428,14 +433,16 @@ values are worked by hand from GBATEK; where GBATEK leaves a behaviour open,
 make -f Makefile.native -j$(nproc) native               # build/native32/pokeemerald-native
 make -f Makefile.native -j$(nproc) native TEST=1        # build/native32-test/pokeemerald-native-test
 make -f Makefile.native -j$(nproc) native SANITIZE=1    # build/native32-san/, ASan and UBSan throughout
-./build/native32/pokeemerald-native [--headless] [--silent] [--save PATH] [--rtc-offset PATH]
+./build/native32/pokeemerald-native [--headless] [--silent] [--data-dir DIR] [--save PATH] [--rtc-offset PATH]
         [--scale N] [--unthrottled] [--frames N] [--screenshot PATH]
-        [--replay SCRIPT [--out DIR]] [--rtc-fixed EPOCH] [--audio-dump PATH] [--test-runner] [--help]
+        [--replay SCRIPT [--out DIR]] [--rtc-fixed EPOCH] [--audio-dump PATH] [--test-runner]
+        [--keys] [--version] [--help]
 make -f Makefile.native -j32 check [SANITIZE=1] [TESTS=filter]   # expansion's suite, below
 ```
 
-The defaults are `pokeemerald.sav` and `pokeemerald.rtc` in the current
-directory, scale 3, paced to 59.7275 Hz, no frame limit. `--frames N` ends
+The defaults are `pokeemerald.sav` and `pokeemerald.rtc` in the data
+directory (below), the settings file's scale or 3, paced to 59.7275 Hz, no
+frame limit. `--frames N` ends
 the game after N frames with status 0 (the gates use it with `--headless
 --silent --unthrottled`); `--screenshot` writes the last frame as a PPM;
 `--audio-dump` writes every frame of sound the loop mixes to a WAV file
@@ -475,6 +482,42 @@ whatever rate the engine mixes; the PSG is generated on the same grid;
 `sound_mix` routes the two FIFOs and the PSG as `SOUNDCNT_H` says, at
 `psg.c`'s scale, and removes the DC offset the GBA's output capacitor
 removes.
+
+## The player's files, the settings and the help overlay (`data_dir`, `settings`, `help_text`, `overlay`, `font`, `version`)
+
+What a player sees of the platform itself; `docs/RUNNING.md` is the player's
+account, `docs/DECISIONS.md` ("The settings file, the data directory and the
+F1 overlay") the reasons.
+
+- `data_dir` finds the data directory and the paths in it before any module
+  starts (`main`'s `find_player_files`): `--data-dir`, else the executable's
+  directory if `settings.ini` is there (portable), else SDL's per-user
+  directory (`SDL_GetPrefPath("pokeemerald-expansion-native",
+  "pokeemerald-native")`); `--save` and `--rtc-offset` win for their file. It
+  looks only when a file needs it, so a headless run given both paths (every
+  gate) never asks SDL for the per-user directory, which SDL would make. The
+  rule is `data_dir_resolve`, tested (`test/test_data_dir.c`) with a host of
+  the test's own in place of SDL's two calls; `test/linux/test_data_dir_linux.c`
+  checks SDL's answers through `XDG_DATA_HOME` and `/proc/self/exe`.
+- `settings` reads `settings.ini` (`key = value`, `#` comments; the buttons by
+  SDL's key names, and `scale`): `settings_parse` is pure, text in and
+  settings out with each bad line's number and kind, and `settings_load`
+  reads the file through `host_file.h` and reports. The keymap it makes is
+  `input`'s, whose fixed table is now the defaults it starts from.
+- `help_text` writes the lines `--keys` prints and the overlay shows.
+- `overlay` is the F1 overlay: F1 shows and hides it, Q quits while it is
+  shown (`frame.c` ends the loop as for a closed window), and
+  `overlay_game_keys` makes KEYINPUT read every button released meanwhile
+  (`input.c`). It is started only for a window played from the keyboard
+  (never headless, in test-runner mode or for a replay), and `overlay_draw`
+  lays out its text in a canvas; `video.c` owns the texture and copies it
+  over the frame, never into the frame buffer.
+- `font` is a 5x7 bitmap font of printable ASCII in 6x8 cells
+  (`font_glyphs.h`, drawn for this project) and draws text into a 32-bit
+  pixel buffer, clipped to it; `test/test_font.c` checks glyphs against
+  pictures written out in the test, pixel by pixel.
+- `version` is the build's `git describe` (`Makefile.native` defines it for
+  `version.c` alone, so ccache keeps the other objects).
 
 ## What the game links from its assembly files
 

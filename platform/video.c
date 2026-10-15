@@ -12,6 +12,13 @@
  * If a renderer cannot sample it natively, SDL converts inside
  * SDL_UpdateTexture; that costs speed, never correctness.
  *
+ * The help overlay (overlay.h), when main has started it, is a second
+ * texture of the window's own size at the chosen scale, 32-bit ARGB so that
+ * its background can be translucent, drawn once at init (overlay_draw) and
+ * copied over the frame at each present while it is shown. It covers the
+ * same logical 240x160, so it scales and letterboxes with the frame. The
+ * frame buffer itself is never touched.
+ *
  * Presenting is not vsynced: frame_pacer owns timing, so a 60 Hz display
  * does not force 60 Hz. References: the ports in docs/research/ (read for
  * pitfalls only: unchecked SDL calls, missing cleanup); code is ours.
@@ -24,6 +31,9 @@
 #include <string.h>
 
 #include <SDL.h>
+
+#include "font.h"
+#include "overlay.h"
 
 #define MODULE "video"
 #define TEXTURE_PITCH ((int)(VIDEO_WIDTH * sizeof(uint16_t)))
@@ -39,6 +49,11 @@
 #define PPM_MAGIC "P6"
 #define PPM_MAX_VALUE 255
 
+/* The overlay's texture: 32-bit ARGB, one uint32_t a pixel (overlay.h's
+ * colours). */
+#define OVERLAY_TEXTURE_FORMAT SDL_PIXELFORMAT_ARGB8888
+#define OVERLAY_BYTES_PER_PIXEL ((int)sizeof(uint32_t))
+
 static struct {
     bool initialised;
     bool headless;
@@ -46,12 +61,45 @@ static struct {
     SDL_Window *window;
     SDL_Renderer *renderer;
     SDL_Texture *texture;
+    SDL_Texture *overlay; /* NULL unless the overlay is started */
 } state;
 
 static int sdl_error(const char *call)
 {
     (void)fprintf(stderr, MODULE ": %s failed: %s\n", call, SDL_GetError());
     return -1;
+}
+
+/* The overlay's texture, its pixels drawn by overlay_draw. */
+static int create_overlay(int scale)
+{
+    const int width = (int)VIDEO_WIDTH * scale;
+    const int height = (int)VIDEO_HEIGHT * scale;
+    state.overlay = SDL_CreateTexture(state.renderer, OVERLAY_TEXTURE_FORMAT, SDL_TEXTUREACCESS_STREAMING, width,
+                                      height);
+    if (state.overlay == NULL)
+        return sdl_error("SDL_CreateTexture(overlay)");
+    if (SDL_SetTextureBlendMode(state.overlay, SDL_BLENDMODE_BLEND) != 0)
+        return sdl_error("SDL_SetTextureBlendMode(overlay)");
+    void *pixels = NULL;
+    int pitch = 0;
+    if (SDL_LockTexture(state.overlay, NULL, &pixels, &pitch) != 0)
+        return sdl_error("SDL_LockTexture(overlay)");
+    if (pitch < width * OVERLAY_BYTES_PER_PIXEL || pitch % OVERLAY_BYTES_PER_PIXEL != 0) {
+        SDL_UnlockTexture(state.overlay);
+        (void)fprintf(stderr, MODULE ": SDL_LockTexture(overlay) gave a pitch of %d bytes for %d pixels\n", pitch,
+                      width);
+        return -1;
+    }
+    const struct font_canvas canvas = {
+        .pixels = pixels,
+        .width = (size_t)width,
+        .height = (size_t)height,
+        .stride = (size_t)(pitch / OVERLAY_BYTES_PER_PIXEL),
+    };
+    overlay_draw(&canvas);
+    SDL_UnlockTexture(state.overlay); /* returns void */
+    return 0;
 }
 
 static int create_window_objects(const struct video_config *cfg)
@@ -72,7 +120,7 @@ static int create_window_objects(const struct video_config *cfg)
                                       (int)VIDEO_WIDTH, (int)VIDEO_HEIGHT);
     if (state.texture == NULL)
         return sdl_error("SDL_CreateTexture");
-    return 0;
+    return overlay_enabled() ? create_overlay(cfg->scale) : 0;
 }
 
 int video_init(const struct video_config *cfg)
@@ -115,6 +163,8 @@ int video_present(const uint16_t *frame)
         return sdl_error("SDL_RenderClear");
     if (SDL_RenderCopy(state.renderer, state.texture, NULL, NULL) != 0)
         return sdl_error("SDL_RenderCopy");
+    if (state.overlay != NULL && overlay_shown() && SDL_RenderCopy(state.renderer, state.overlay, NULL, NULL) != 0)
+        return sdl_error("SDL_RenderCopy(overlay)");
     SDL_RenderPresent(state.renderer); /* returns void */
     return 0;
 }
@@ -136,6 +186,8 @@ bool video_poll_events(void (*on_event)(const union SDL_Event *event, void *ctx)
 
 void video_shutdown(void)
 {
+    if (state.overlay != NULL)
+        SDL_DestroyTexture(state.overlay);
     if (state.texture != NULL)
         SDL_DestroyTexture(state.texture);
     if (state.renderer != NULL)
@@ -144,6 +196,7 @@ void video_shutdown(void)
         SDL_DestroyWindow(state.window);
     if (state.owns_video_subsystem)
         SDL_QuitSubSystem(SDL_INIT_VIDEO);
+    state.overlay = NULL;
     state.texture = NULL;
     state.renderer = NULL;
     state.window = NULL;

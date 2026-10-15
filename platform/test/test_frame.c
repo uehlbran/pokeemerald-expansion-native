@@ -12,7 +12,7 @@
  * installed in a table laid out like expansion's gIntrTable record what
  * VCOUNT and DISPSTAT read when the interrupt controller calls them.
  */
-// deps: lcd_status.c gba_memmap.c interrupt.c timer.c dma.c transfer_bounds.c ppu.c ppu_bg.c ppu_obj.c ppu_window.c ppu_blend.c psg.c psg_channel.c psg_square.c psg_wave.c psg_noise.c audio.c video.c input.c flash.c save_file.c frame_pacer.c game_hooks.c debug_channel.c m4a_output.c sound_mix.c audio_dump.c sound_grid.c
+// deps: lcd_status.c gba_memmap.c interrupt.c timer.c dma.c transfer_bounds.c ppu.c ppu_bg.c ppu_obj.c ppu_window.c ppu_blend.c psg.c psg_channel.c psg_square.c psg_wave.c psg_noise.c audio.c video.c input.c overlay.c font.c flash.c save_file.c frame_pacer.c game_hooks.c debug_channel.c m4a_output.c sound_mix.c audio_dump.c sound_grid.c
 #include <setjmp.h>
 #include <stdbool.h>
 #include <stdint.h>
@@ -167,7 +167,7 @@ static bool start(uint32_t frame_limit, const char *screenshot_path, const char 
         || interrupt_init(table, INTERRUPT_TABLE_LENGTH) != INTERRUPT_OK || timer_init(interrupt_raise) != TIMER_OK
         || dma_init(interrupt_raise) != DMA_OK || ppu_init() != PPU_OK || frame_start_psg() != 0
         || audio_init(FRAME_AUDIO_SAMPLE_RATE_HZ, AUDIO_SILENT) != 0 || video_init(&video) != 0
-        || input_init(INPUT_SOURCE_SCRIPT) != 0 || save_file_init(save_path) != SAVE_FILE_OK
+        || input_init(INPUT_SOURCE_SCRIPT, NULL) != 0 || save_file_init(save_path) != SAVE_FILE_OK
         || frame_pacer_init(FRAME_PACER_UNTHROTTLED) != 0 || frame_init(&config) != 0)
         return false;
     flash_init();

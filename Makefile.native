@@ -488,6 +488,18 @@ else
   NATIVE_LINK_SANITIZERS :=
 endif
 
+# The version the executable reports (--version, --keys, the F1 overlay;
+# platform/version.h): `git describe` of this tree, matching only a release
+# tag of this project's own (v<number>...), since the history also carries
+# expansion's tags (expansion/1.10.0, 1.11.0), which would name the build
+# after an expansion release it is not; else the abbreviated commit, with
+# "-dirty" for changed files; "unknown" without git. Only the characters a tag
+# or a hash can have are kept, since the value becomes a C string. Passed to
+# platform/Makefile, which defines it for version.c alone, so that ccache
+# keeps hitting on every other object (the C pipeline's notes above); a
+# recursive variable, so git runs only when the library is built.
+NATIVE_VERSION = $(or $(shell git describe --always --dirty --match 'v[0-9]*' 2>/dev/null | tr -cd 'A-Za-z0-9._+-'),unknown)
+
 NATIVE_LINKER_SCRIPTS := platform/$(REGIONS_LD_NAME) platform/$(GAME_LD_NAME)
 NATIVE_LDFLAGS := -m$(BITS) $(GBA_LAYOUT_LDFLAGS) \
                   $(NATIVE_LINKER_SCRIPTS:%=-Wl,-T,%) \
@@ -540,7 +552,7 @@ check-palette-padding:
 # Always asks platform/Makefile, which knows the library's own prerequisites
 # and leaves it untouched when it is up to date.
 platform-lib: $(if $(filter windows,$(TARGET_OS)),sdl2-mingw)
-	$(MAKE) -C platform lib $(PLATFORM_LIB_ARGS)
+	$(MAKE) -C platform lib $(PLATFORM_LIB_ARGS) PLATFORM_VERSION=$(NATIVE_VERSION)
 
 $(PLATFORM_LIB) $(PLATFORM_GAPS): platform-lib ;
 
