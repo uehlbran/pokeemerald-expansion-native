@@ -87,7 +87,7 @@ else
     need_command clang clang
 fi
 if [ ${#missing[@]} -gt 0 ]; then
-    echo "build-native: missing prerequisites (docs/BUILDING.md has the apt-get lines):" >&2
+    echo "build-native: missing prerequisites (docs/GETTING-STARTED.md has the install line; docs/BUILDING.md has every apt-get line):" >&2
     printf '  %s\n' "${missing[@]}" >&2
     exit 1
 fi

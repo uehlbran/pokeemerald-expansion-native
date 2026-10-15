@@ -13,17 +13,17 @@ you build it from this repository, and no build is published.
 
 ## Get started
 
-You build the game yourself; no download exists. New to this? [Every step is explained](docs/GETTING-STARTED.md).
+You build the game yourself; no download exists.
 
 **Windows 10 or 11**
 
-1. In PowerShell, opened as administrator, install Ubuntu, then restart:
+1. In PowerShell, opened as administrator, install Ubuntu, then restart if the text says to:
 
    ```
    wsl --install -d Ubuntu-24.04
    ```
 
-2. In the Ubuntu window that opens, install what the build needs:
+2. In the Ubuntu window that opens (from the Start menu, if none does), install what the build needs. The first time, it asks for a new user name and a password; the password stays invisible as you type:
 
    ```
    sudo apt update
@@ -92,7 +92,7 @@ Every step explained: [docs/GETTING-STARTED.md](docs/GETTING-STARTED.md#linux-ub
 
 **macOS**: not yet; in progress on the branch `work/macos`.
 
-Keys: arrows for the D-pad, Z for A, X for B, A for L, S for R, Return for
+Keys: arrows for the D-pad, Z for A, X for B, A for L, S for R, Enter for
 Start, Backspace for Select. F1 opens a help overlay, F11 toggles fullscreen,
 Tab held is fast-forward. [docs/RUNNING.md](docs/RUNNING.md) has the settings
 file, the controller and where the save is.
