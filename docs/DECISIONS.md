@@ -2169,9 +2169,10 @@ conversions; division), both prototyped and measured here, and links the
 window as one image, which three runner probes must confirm; it costs about 7
 to 9 worker tasks (about 1,500 new lines on top of work/macos), and I recommend
 the Linux half now, as a bounded experiment with a stop gate, and the arm64
-half only if macOS is to stay supported after 2027. The mechanism is proven here on
-expansion's own headers and idioms and on the compiled IR of every src/*.c, not
-yet on the whole running game, which is the first step of the plan.
+half only if macOS is to stay supported after 2027. The mechanism is proven
+here on expansion's own headers and idioms and on the compiled IR of every
+src/*.c, not yet on the whole running game, which is the first step of the
+plan.
 
 Everything below was measured on this machine on 2026-10-15 unless it names a
 run. The probes are on branch work/spike (commits 7a968e0964 and 4e4399105a, and
@@ -2223,7 +2224,8 @@ runner.** XNU's source (apple-oss-distributions/xnu, main at f6217f891a,
   0x02000000 and 0x04000000 fails with ENOMEM under the default page zero
   (A:302-306). A binary linked with `-pagezero_size 0x1000` (rounded up to
   0x4000, A:308) is killed at start, status 137, in 100 of 100 runs (A:412).
-  In runs 37923542701 and 37925659422 every fixed-address layout link was
+  In the second iteration (runs 37923542701 and 37925659422,
+  research/probes/README.md) every arm64 fixed-address layout link was
   refused ("-no_pie ignored for arm64"; the debug page's 0x04FFF000 is not on a
   16 KiB page), and `mapfixed` succeeded in 0 of 100 runs.
 - What the same source allows: the same layout 4 GiB higher. That is the
