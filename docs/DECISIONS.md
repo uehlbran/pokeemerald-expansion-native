@@ -3062,3 +3062,53 @@ that `cp --preserve=timestamps` and `tar` onto the Windows file system do
 not trip on ownership, that the `again/` directory's save reaches the last
 stage intact, that a run by hand and the nightly share the caches as
 intended, and that the token's fetch of `${{ github.sha }}` works (a scheduled or manual run on a fork-less private or public repository; if the fetch of a bare SHA is refused, fetch the branch and check out the SHA).
+
+## 2026-10-15: Five expansion tests are known-failing natively: their expectations are wrong, as the captured values show
+
+With the capture replay ("Clang builds the game as GCC does" above, and
+`platform/test_runner/SUITE-LOG.md`, class 11) five of expansion's tests
+fail natively that pass on the GBA and on main. They are marked
+`KNOWN_FAILING` natively, each with its reason in a comment, and are
+upstream test bugs, not a fault of the port or of the replay. The evidence:
+on scratch copies of main (66d48c9d7a) and of this branch, the battle runner
+printed every capture as the battle made it and each test's THEN printed its
+comparisons. The battle's values are identical on main natively at 64 and
+32 bits, on main's GBA build (the test ROM under mgba-rom-test-hydra) and on
+the branch at both widths. On main and on the GBA every one of these THENs
+compares zeros: THEN's call runs the variables' initialisers again over the
+values the battle wrote, so the tests pass whatever the battle does. With
+the expectation corrected, each holds on the battle's values.
+
+- "Lash Out damage is only boosted on the turn that Intimidate switches in"
+  (`test/battle/move_effect/lash_out.c:53`): the battle gives 54, 72 and 36
+  over the three turns; `EXPECT_EQ(damage[0], damage[2])` forgets that
+  Intimidate's -1 Attack lasts (36 = 54 x 2/3, unboosted, which is what the
+  test means to show).
+- "Lash Out damage is boosted on turn 1 by switch in abilities"
+  (`lash_out.c:85`): 36 then 36 after Intimidate, 88 then 88 after
+  Supersweet Syrup; the test wants turn 2 to be 1.33 and 2 times turn 1,
+  which no reading of the mechanic gives. Expansion clears `lashOutAffected`
+  with the other per-turn values after the battle-start events
+  (`TurnValuesCleanUp` at `FIRST_TURN_EVENTS_END`), so turn 1 is not
+  boosted and the turns are equal; Showdown keeps a battle-start drop for
+  turn 1 (its `endTurn()` skips the reset of `statsLoweredThisTurn` when it
+  makes turn 1), which would make turn 1 twice turn 2. Which of the two the
+  cartridge does is upstream's question; the GBA build behaves as the native
+  one.
+- "Lash Out damage is boosted by Cotton Down activation in doubles"
+  (`lash_out.c:119`): 150 on turn 1 (Cotton Down's drop that turn), 76 on
+  turn 2; `EXPECT_MUL_EQ`'s operands are the wrong way round.
+- "Shell Bell recovers 1/8 of HP from after the last hit from all hits of a
+  multi hit move" (`test/battle/hold_effect/shell_bell.c:10`): five hits of
+  11 and a recovery of 6 (55 / 8); the test sums the hits in SCENE (line
+  25), before the battle has captured any, and compares an eighth of 0.
+- "Shell Bell does not activate on Future Sight if the original user is on
+  the field", the second test of that name (`shell_bell.c:175`): Dragon
+  Rage's 40 heals 5, Shell Bell's 1/8 (`holdEffectParam` 8, pinned by "Shell
+  Bell restores 1/8 HP of damage dealt" at line 119); the test expects a
+  quarter (`Q_4_12(-0.25)`).
+
+Correcting them would change expansion's tests, which stay upstream's; the
+native results differ from main's in these five as recorded. Nothing is
+reported upstream. The table in SUITE-LOG class 11 has every value, the
+assertion as it fails and the expectation that holds.

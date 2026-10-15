@@ -10,9 +10,14 @@ ASSUMPTIONS
 SINGLE_BATTLE_TEST("Shell Bell recovers 1/8 of HP from after the last hit from all hits of a multi hit move")
 {
 #if PLATFORM_NATIVE
-    // On the GBA THEN's call sets this test's captured variables to their
-    // initial values again, so its THEN compares those; natively the captures
-    // reach THEN, and it fails (platform/test_runner/SUITE-LOG.md, class 11).
+    // Known failing natively: an upstream test bug. SCENE sums the hits
+    // (totalDamage += multiHitDamage[i]) before the battle has captured any,
+    // so THEN compares an eighth of nothing (0) with the recovery (6). The
+    // five hits are 11 each and 55 / 8 is the 6 the item restores, the same
+    // on the GBA.
+    // On the GBA, and natively without the capture replay, THEN's call runs
+    // the initialiser again over the captured values and compares zeros
+    // (platform/test_runner/SUITE-LOG.md, class 11, has the measurements).
     KNOWN_FAILING;
 #endif
 #line 12
@@ -182,9 +187,13 @@ SINGLE_BATTLE_TEST("Shell Bell does not activate on Future Sight if the original
 SINGLE_BATTLE_TEST("Shell Bell does not activate on Future Sight if the original user is on the field")
 {
 #if PLATFORM_NATIVE
-    // On the GBA THEN's call sets this test's captured variables to their
-    // initial values again, so its THEN compares those; natively the captures
-    // reach THEN, and it fails (platform/test_runner/SUITE-LOG.md, class 11).
+    // Known failing natively: an upstream test bug. THEN wants a quarter of
+    // the damage back (Q_4_12(-0.25)); Shell Bell restores an eighth
+    // (holdEffectParam 8, as "Shell Bell restores 1/8 HP of damage dealt"
+    // pins): Dragon Rage's 40 heals 5, the same on the GBA.
+    // On the GBA, and natively without the capture replay, THEN's call runs
+    // the initialiser again over the captured values and compares zeros
+    // (platform/test_runner/SUITE-LOG.md, class 11, has the measurements).
     KNOWN_FAILING;
 #endif
 #line 177

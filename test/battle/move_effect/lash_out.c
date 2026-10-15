@@ -53,9 +53,13 @@ SINGLE_BATTLE_TEST("Lash Out damage is boosted if the user's stats are dropped t
 SINGLE_BATTLE_TEST("Lash Out damage is only boosted on the turn that Intimidate switches in")
 {
 #if PLATFORM_NATIVE
-    // On the GBA THEN's call sets this test's captured variables to their
-    // initial values again, so its THEN compares those; natively the captures
-    // reach THEN, and it fails (platform/test_runner/SUITE-LOG.md, class 11).
+    // Known failing natively: an upstream test bug. EXPECT_EQ(damage[0],
+    // damage[2]) ignores that Intimidate's Attack drop lasts: the battle gives
+    // 54 on turn 1, 72 on turn 2 (power doubled at -1 Attack, 54 x 4/3) and
+    // 36 on turn 3 (-1 Attack, no boost, 54 x 2/3), the same on the GBA.
+    // On the GBA, and natively without the capture replay, THEN's call runs
+    // the initialiser again over the captured values and compares zeros
+    // (platform/test_runner/SUITE-LOG.md, class 11, has the measurements).
     KNOWN_FAILING;
 #endif
 #line 55
@@ -92,9 +96,15 @@ SINGLE_BATTLE_TEST("Lash Out damage is only boosted on the turn that Intimidate 
 SINGLE_BATTLE_TEST("Lash Out damage is boosted on turn 1 by switch in abilities")
 {
 #if PLATFORM_NATIVE
-    // On the GBA THEN's call sets this test's captured variables to their
-    // initial values again, so its THEN compares those; natively the captures
-    // reach THEN, and it fails (platform/test_runner/SUITE-LOG.md, class 11).
+    // Known failing natively: an upstream test bug. The comparisons hold
+    // under no reading of the mechanic: the battle gives 36 then 36 after
+    // Intimidate and 88 then 88 after Supersweet Syrup (no turn-1 boost:
+    // TurnValuesCleanUp clears lashOutAffected after the battle-start
+    // events), the same on the GBA; the test wants turn 2 to be 1.33 and 2
+    // times turn 1, where a boosted turn 1 would be twice turn 2.
+    // On the GBA, and natively without the capture replay, THEN's call runs
+    // the initialiser again over the captured values and compares zeros
+    // (platform/test_runner/SUITE-LOG.md, class 11, has the measurements).
     KNOWN_FAILING;
 #endif
 #line 87
@@ -133,9 +143,13 @@ SINGLE_BATTLE_TEST("Lash Out damage is boosted on turn 1 by switch in abilities"
 DOUBLE_BATTLE_TEST("Lash Out damage is boosted by Cotton Down activation in doubles")
 {
 #if PLATFORM_NATIVE
-    // On the GBA THEN's call sets this test's captured variables to their
-    // initial values again, so its THEN compares those; natively the captures
-    // reach THEN, and it fails (platform/test_runner/SUITE-LOG.md, class 11).
+    // Known failing natively: an upstream test bug, EXPECT_MUL_EQ's operands
+    // the wrong way round. Cotton Down's Speed drop boosts turn 1 (150), not
+    // turn 2 (76), the same on the GBA; the test wants turn 2 to be twice
+    // turn 1 (EXPECT_MUL_EQ(damage[1], UQ_4_12(2.00), damage[0]) holds).
+    // On the GBA, and natively without the capture replay, THEN's call runs
+    // the initialiser again over the captured values and compares zeros
+    // (platform/test_runner/SUITE-LOG.md, class 11, has the measurements).
     KNOWN_FAILING;
 #endif
 #line 121

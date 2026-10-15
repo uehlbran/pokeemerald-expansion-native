@@ -217,18 +217,37 @@ compared with the maximum HP; the capture replay is what delivers it, so
 removing the replay's write fails them.
 
 The other five are KNOWN_FAILING natively (a guarded `KNOWN_FAILING;` in
-each), so the native suite's results differ from the GBA baseline in these
-5 as in the 9 benchmarks. Each was re-derived from the test and the values
-the replay delivers; the values are the battle's, the tests' expectations
-are wrong:
+each, its comment giving the reason), so the native suite's results differ
+from the GBA baseline in these 5 as in the 9 benchmarks. Each is an upstream
+test bug: the battle's values are right, the test's expectation is not.
 
-| Test | File | Native failure | Why |
+How that was established (2026-10-15, on scratch copies of main 66d48c9d7a
+and of this branch, not committed): the battle runner printed every HP
+capture as the battle made it (`CAPTURE line N: damage D`), and each test's
+THEN printed its comparisons with both sides instead of failing. Main was run
+natively at 64 and at 32 bits and as the GBA build (`make check`, the test
+ROM under mgba-rom-test-hydra); the branch natively at both widths. The
+battle's values are the same in all five runs, capture by capture (17 in the
+Lash Out tests, 8 in the Shell Bell ones). On main, natively and on the GBA,
+every THEN compared zeros: THEN's call runs `s16 damage[N] = {0}` (and
+Shell Bell's `totalDamage = 0`, `shellBellRecovery = 0`) again over the
+slots the battle wrote, so `EXPECT_EQ(0, 0)` and `EXPECT_MUL_EQ(0, m, 0)`
+pass whatever the battle did. On the branch THEN compares the battle's
+values. With the expectation corrected as the last column says, each holds
+on those values (checked on the branch's copy).
+
+| Test (upstream file:line) | The battle's values (all five runs) | Upstream's assertion, on the branch | Why it is wrong; the expectation that holds |
 |---|---|---|---|
-| "Shell Bell recovers 1/8 of HP from after the last hit from all hits of a multi hit move" | `test/battle/hold_effect/shell_bell.c` | `EXPECT_EQ(0, 6)` | SCENE sums the hits' captured damage before the battle has captured any (`totalDamage` stays 0, in the first run and in the replay, whose sum runs before CloseScene writes the captures); the recovery does arrive |
-| "Shell Bell does not activate on Future Sight if the original user is on the field" (the second of two tests of that name, line 175) | `shell_bell.c` | `EXPECT_MUL_EQ(40, 0.75, -5)` | the captured heal is -5 for 40 damage, the item's 1/8; the test expects another fraction |
-| "Lash Out damage is only boosted on the turn that Intimidate switches in" (parameter 1 of 2) | `test/battle/move_effect/lash_out.c` | `EXPECT_EQ(54, 36)` | 54 then 36 is Intimidate's attack drop, which the test does not allow for |
-| "Lash Out damage is boosted on turn 1 by switch in abilities" (2 of 4, Intimidate) | `lash_out.c` | `EXPECT_MUL_EQ(36, 1.33, 36)` | the same attack drop |
-| "Lash Out damage is boosted by Cotton Down activation in doubles" (2 of 2) | `lash_out.c` | `EXPECT_MUL_EQ(150, 2.0, 76)` | 150 then 76 is the boost on turn 1; the check's operands are the wrong way round |
+| "Lash Out damage is only boosted on the turn that Intimidate switches in" (`test/battle/move_effect/lash_out.c:53`; THEN at :80-81) | Lash Out param: turn 1 54, turn 2 72, turn 3 36; Splash param: 54, -, 36 | `EXPECT_EQ(damage[0], damage[2])`: 54 vs 36, both params | Intimidate's -1 Attack lasts after turn 2, so turn 3 is turn 1 at -1 Attack (54 x 2/3 = 36), unboosted, as the test name says; the test forgets the drop. `EXPECT_MUL_EQ(damage[0], UQ_4_12(0.667), damage[2])` holds; its second check (turn 2 = 54 x 1.33 = 72) already holds |
+| "Lash Out damage is boosted on turn 1 by switch in abilities" (`lash_out.c:85`; THEN at :109-115) | Blaze 54, 54; Intimidate 36, 36; Regenerator 88, 88; Supersweet Syrup 88, 88 | `EXPECT_MUL_EQ(damage[0], UQ_4_12(1.33), damage[1])`: 36 x 1.33 = 47 vs 36; `EXPECT_MUL_EQ(damage[0], UQ_4_12(2.00), damage[1])`: 176 vs 88 | No reading of the mechanic gives turn 2 = 1.33 or 2 times turn 1. Expansion clears `lashOutAffected` with the other per-turn values after the battle-start events (`src/battle_main.c`, `FIRST_TURN_EVENTS_END`, `TurnValuesCleanUp`), so the battle-start drop does not boost turn 1 and both turns are equal: `EXPECT_EQ(damage[0], damage[1])` holds. Showdown keeps a battle-start drop for turn 1 (`sim/battle.ts` `endTurn()` skips the reset of `statsLoweredThisTurn` when it makes turn 1; `data/moves.ts` `lashout` doubles on that flag; checked at its commit 3a766f2cfb), which would make turn 1 twice turn 2 (`EXPECT_MUL_EQ(damage[1], UQ_4_12(2.00), damage[0])`, which fails on these values). That expansion's turn 1 is not boosted is upstream's game behaviour, the GBA's too, not this port's |
+| "Lash Out damage is boosted by Cotton Down activation in doubles" (`lash_out.c:119`; THEN at :143-147) | Regenerator 76, 76; Cotton Down 150, 76 | `EXPECT_MUL_EQ(damage[0], UQ_4_12(2.00), damage[1])`: 300 vs 76 | Cotton Down lowers the attacker's Speed on turn 1, when Lash Out is boosted (150 = 2 x 76 within rounding); the operands are the wrong way round (copied from the first test of the file, whose boosted turn is the second). `EXPECT_MUL_EQ(damage[1], UQ_4_12(2.00), damage[0])`: 152 vs 150, holds |
+| "Shell Bell recovers 1/8 of HP from after the last hit from all hits of a multi hit move" (`test/battle/hold_effect/shell_bell.c:10`; SCENE sum at :25, THEN at :29) | five hits of 11, then the recovery 6 (-6) | `EXPECT_EQ(totalDamage / 8, -1 * shellBellRecovery)`: 0 vs 6 | `totalDamage += multiHitDamage[i]` is in SCENE, which runs before the battle (and, natively, again before the replay writes the captures), so it sums nothing; the sum belongs in THEN. 55 / 8 = 6, the item's recovery: the sum of `multiHitDamage[0..4]` / 8 vs 6 holds. (On main and the GBA THEN even sees the five 11s, `multiHitDamage` having no initialiser, but `totalDamage` and `shellBellRecovery` are 0 again) |
+| "Shell Bell does not activate on Future Sight if the original user is on the field", the second test of that name (`shell_bell.c:175`; THEN at :197) | Dragon Rage 40, Shell Bell -5 | `EXPECT_MUL_EQ(damage, Q_4_12(-0.25), healed)`: -10 vs -5 | Shell Bell restores 1/8 of the damage dealt (`holdEffectParam` 8, `TryShellBell` divides by it; "Shell Bell restores 1/8 HP of damage dealt" (`shell_bell.c:119`) pins 1/8 with Seismic Toss's 16 healing 2, and passes everywhere); the test expects a quarter. `EXPECT_MUL_EQ(damage, Q_4_12(-0.125), healed)`: -5 vs -5, holds |
+
+The replay is not the cause: the capture-replay self-tests and Lash Out's
+first test (`lash_out.c:4`, whose `s16 damage[2]` has no initialiser, so it
+compares the battle's values on the GBA too) pass on every build with the
+same mechanic and values (76, then 100 or 150 after a drop that turn).
 
 For upstream: a capture into a variable with an initialiser is lost on the
 GBA, so these tests check nothing; once captures reach THEN, five fail on
