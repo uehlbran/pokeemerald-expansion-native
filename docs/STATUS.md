@@ -68,9 +68,7 @@ both widths (the 24-step ledger at the end of this block).
   (h) specifies, a missing test, the docs.
 
 **In flight.** macOS x86_64 (M2 to M5) on `macos-15-intel`, Opus, on
-work/macos. The Windows runner on main at 8e6ac8d0fb (run 38709681302) and
-the release workflow with publish off (run 38709729818, to check the new
-Linux package). Then the Apple-silicon spike (task i) and a final review. DECISIONS.md has the macOS runner dates (x86_64 macOS runners end
+work/macos. Then the Apple-silicon spike (task i) and a final review. DECISIONS.md has the macOS runner dates (x86_64 macOS runners end
 in fall 2027) and what they change for the Apple-silicon question.
 
 **Broke and fixed.** The per-push CI run on main after the settings
@@ -134,7 +132,8 @@ check that the directory is unchanged by them instead of absent.
 | The same 24 steps (the per-user directory unchanged by the gate) | 41b10a1617 (console removal) | green, the same totals |
 | Windows runner | 41b10a1617 | run 38697083593 green; the per-push Linux run 38697084840 green |
 | The same 24 steps | 8e6ac8d0fb (Steam Deck) | green, the same totals |
-| Windows runner | 8e6ac8d0fb | run 38709681302 in progress |
+| Windows runner | 8e6ac8d0fb | run 38709681302 green; per-push Linux 38709682041 green |
+| Release workflow, publish off | 8e6ac8d0fb | run 38709729818: both archives built and their sums verify; the Linux tarball holds the executable, the launcher, libSDL2-2.0.so.0, SDL2-LICENSE.txt, LICENSE, README.txt, RUNNING.md, and run through the launcher from `/` it loads the bundled SDL2 and prints its version; the attestation step fails as on every run while the repository is private (nothing published, no tag) |
 
 
 **NOTE ON RELEASES (for the owner, at the owner's request).** A built
