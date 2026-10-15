@@ -36,7 +36,7 @@ static struct {
     char state_hex[CRASH_REBOOT_STATE_HEX_LENGTH + 1];
     /* The persistent bytes when the process started (zero, or restored). */
     uint8_t started_with[CRASH_REBOOT_PERSISTENT_SIZE];
-} reboot;
+} reboot_context; /* not "reboot": macOS's <unistd.h> declares reboot(int) */
 
 static const volatile uint8_t *persistent_bytes(void)
 {
@@ -144,7 +144,7 @@ static bool state_changed_since_start(void)
 {
     const volatile uint8_t *bytes = persistent_bytes();
     for (size_t i = 0; i < CRASH_REBOOT_PERSISTENT_SIZE; i++) {
-        if (bytes[i] != reboot.started_with[i])
+        if (bytes[i] != reboot_context.started_with[i])
             return true;
     }
     return false;
@@ -154,10 +154,10 @@ static void encode_state(void)
 {
     const volatile uint8_t *bytes = persistent_bytes();
     for (size_t i = 0; i < CRASH_REBOOT_PERSISTENT_SIZE; i++) {
-        reboot.state_hex[2 * i] = hex_digits[bytes[i] >> HEX_DIGIT_BITS];
-        reboot.state_hex[2 * i + 1] = hex_digits[bytes[i] & HEX_DIGIT_MASK];
+        reboot_context.state_hex[2 * i] = hex_digits[bytes[i] >> HEX_DIGIT_BITS];
+        reboot_context.state_hex[2 * i + 1] = hex_digits[bytes[i] & HEX_DIGIT_MASK];
     }
-    reboot.state_hex[CRASH_REBOOT_STATE_HEX_LENGTH] = '\0';
+    reboot_context.state_hex[CRASH_REBOOT_STATE_HEX_LENGTH] = '\0';
 }
 
 /* The crash handler. When it returns, host_fault lets the fault end the
@@ -174,14 +174,14 @@ static void on_crash(const struct host_fault *fault)
     encode_state();
     if (!host_process_restart_is_handler_safe()) {
         report_add(&report, ending_for_the_parent);
-        report_add(&report, reboot.state_hex);
+        report_add(&report, reboot_context.state_hex);
         report_add(&report, "\n");
         report_write(&report);
         host_process_end(CRASH_REBOOT_EXIT_CODE);
     }
     report_add(&report, rebooting_text);
     report_write(&report);
-    (void)host_process_restart(reboot.args);
+    (void)host_process_restart(reboot_context.args);
     report.length = 0;
     report_add(&report, restart_failed_text);
     report_write(&report);
@@ -200,12 +200,12 @@ static bool build_args(int argc, char *const argv[])
         }
         if (count + CRASH_REBOOT_APPENDED_ARGS >= CRASH_REBOOT_MAX_ARGS)
             return false;
-        reboot.args[count++] = argv[i];
+        reboot_context.args[count++] = argv[i];
     }
-    memcpy(reboot.option, CRASH_REBOOT_OPTION, sizeof reboot.option);
-    reboot.args[count++] = reboot.option;
-    reboot.args[count++] = reboot.state_hex;
-    reboot.args[count] = NULL;
+    memcpy(reboot_context.option, CRASH_REBOOT_OPTION, sizeof reboot_context.option);
+    reboot_context.args[count++] = reboot_context.option;
+    reboot_context.args[count++] = reboot_context.state_hex;
+    reboot_context.args[count] = NULL;
     return true;
 }
 
@@ -219,7 +219,7 @@ int crash_reboot_init(int argc, char *const argv[])
     }
     const volatile uint8_t *bytes = persistent_bytes();
     for (size_t i = 0; i < CRASH_REBOOT_PERSISTENT_SIZE; i++)
-        reboot.started_with[i] = bytes[i];
+        reboot_context.started_with[i] = bytes[i];
     report_file = host_file_for_handler(fileno(stderr));
     if (host_fault_install_crash(on_crash) != 0)
         return CRASH_REBOOT_ERR_SIGNAL;
@@ -253,7 +253,7 @@ int crash_reboot_restore(const char *state_hex)
     volatile uint8_t *region = (volatile uint8_t *)(uintptr_t)CRASH_REBOOT_PERSISTENT_ADDRESS;
     for (size_t i = 0; i < CRASH_REBOOT_PERSISTENT_SIZE; i++)
         region[i] = bytes[i];
-    memcpy(reboot.started_with, bytes, sizeof bytes);
+    memcpy(reboot_context.started_with, bytes, sizeof bytes);
     return CRASH_REBOOT_OK;
 }
 
