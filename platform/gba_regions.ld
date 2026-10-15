@@ -164,7 +164,11 @@ ASSERT(etext < 0x42000000, "the code reaches 0x42000000: platform/script_tag.h's
  * (GBA_SANITIZED_LAYOUT_LDFLAGS); elsewhere it is 0 and the data follows the
  * read-only data, ending below 0x42000000. The ASSERTs fail a link whose
  * writable data meets either window; check_pe_layout.py and
- * check_macho_layout.py refuse the same in the other formats. */
+ * check_macho_layout.py refuse the same in the other formats. The plain
+ * builds' margin below 0x42000000 is a few MiB (docs/ARCHITECTURE.md has the
+ * measured ends): growth of the read-only or the writable data past it fails
+ * every plain link here, naming gba_writable_data_floor, and the remedy is
+ * the sanitized builds' layout for every build, the floor at 0x43000000. */
 PROVIDE(gba_writable_data_floor = 0);
 SECTIONS
 {

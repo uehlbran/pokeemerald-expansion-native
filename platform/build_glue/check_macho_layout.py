@@ -38,7 +38,13 @@ unless:
   * in __DATA the game's zero-initialised data (__game_bss) comes right
     before COMMON_DATA's (__game_common), nothing between them, so that
     game_bss_start to game_bss_end holds both and keeps the GBA's order
-    (gba_game.ld says why).
+    (gba_game.ld says why);
+  * in __DATA no writable data starts below __data: host_macos.c's
+    host_image_writable is __data's start to the segment's end, so the
+    game's __game_data, __game_bss and __game_common, and the program's
+    __bss and __common, must lie past __data's start (ld64 orders the
+    names it knows by its own table, and probe M2 saw only the order among
+    the branch's own sections).
 
 The addresses and sizes are GBATEK's ("GBA Memory Map"), written out again on
 purpose: this checks the link, not gba_regions.macho.s against itself.
@@ -220,6 +226,11 @@ def check_iwram(segment):
     return problems
 
 
+# The writable sections of __DATA that host_image_writable's span, __data's
+# start to the segment's end, must hold.
+WRITABLE_PAST_DATA = ("__game_data", "__game_bss", "__game_common", "__bss", "__common")
+
+
 def check_game_data(segments):
     data = next((segment for segment in segments if segment.name == "__DATA"), None)
     if data is None:
@@ -227,11 +238,20 @@ def check_game_data(segments):
     names = [section.name for section in data.sections]
     if "__game_bss" not in names or "__game_common" not in names:
         return []
+    problems = []
     bss = names.index("__game_bss")
     if names.index("__game_common") != bss + 1:
-        return ["__DATA's __game_common does not follow __game_bss (%s): gba_game.o must be linked first"
-                % ", ".join(names)]
-    return []
+        problems.append("__DATA's __game_common does not follow __game_bss (%s): gba_game.o must be linked first"
+                        % ", ".join(names))
+    start = next((section.address for section in data.sections if section.name == "__data"), None)
+    if start is None:
+        problems.append("__DATA has no __data, where host_image_writable's span starts (host_macos.c)")
+        return problems
+    for section in data.sections:
+        if section.name in WRITABLE_PAST_DATA and section.address < start:
+            problems.append("__DATA,%s starts at 0x%x, below __data's 0x%x: host_image_writable (host_macos.c) "
+                            "would leave it out" % (section.name, section.address, start))
+    return problems
 
 
 def check(path, data):
@@ -267,8 +287,9 @@ def good_segments():
                 ("__TEXT", IMAGE_BASE, 0x31C000, [("__text", IMAGE_BASE + 0x1000, 0x300000, S_ATTR_PURE_INSTRUCTIONS),
                                                   ("__const", IMAGE_BASE + 0x301000, 0x1B000, 0)], VM_PROT_READ),
                 ("__DATA", IMAGE_BASE + 0x31C000, 0x40000,
-                 [("__data", IMAGE_BASE + 0x31C000, 0x10), ("__game_bss", IMAGE_BASE + 0x31D000, 0x100),
-                  ("__game_common", IMAGE_BASE + 0x31D100, 0x40), ("__bss", IMAGE_BASE + 0x31D140, 0x10)])]
+                 [("__data", IMAGE_BASE + 0x31C000, 0x10), ("__game_data", IMAGE_BASE + 0x31C010, 0x20),
+                  ("__game_bss", IMAGE_BASE + 0x31D000, 0x100), ("__game_common", IMAGE_BASE + 0x31D100, 0x40),
+                  ("__bss", IMAGE_BASE + 0x31D140, 0x10)])]
     for region in REGIONS:
         if region.segment == "__GBA_EWRAM":
             sections = [("__ewram_init", region.address, 4), ("__ewram_data", region.address + 0x10, 0x38000),
@@ -368,9 +389,22 @@ def self_test():
     expect("the persistent state first", pack_executable(replaced(good, "__GBA_IWRAM", sections=persistent_first)),
            ["does not start with __iwram", "__persistent is at 0x3000000"])
     data = next(segment for segment in good if segment[0] == "__DATA")
-    apart = [data[3][0], data[3][1], data[3][3], data[3][2]]
+    apart = [data[3][0], data[3][1], data[3][2], data[3][4], data[3][3]]
     expect("COMMON_DATA apart from the game's bss", pack_executable(replaced(good, "__DATA", sections=apart)),
            ["__game_common does not follow __game_bss"])
+    game_data_first = [("__game_data", IMAGE_BASE + 0x31C000, 0x20), ("__data", IMAGE_BASE + 0x31C020, 0x10)] \
+        + data[3][2:]
+    expect("the game's initialised data before __data",
+           pack_executable(replaced(good, "__DATA", sections=game_data_first)),
+           ["__DATA,__game_data starts at 0x4031c000, below __data's 0x4031c020"])
+    bss_first = [("__bss", IMAGE_BASE + 0x31C000, 0x10), ("__common", IMAGE_BASE + 0x31C010, 0x10)] \
+        + [(name, address + 0x20, size) for name, address, size in data[3][:4]]
+    expect("the program's zero-filled data before __data",
+           pack_executable(replaced(good, "__DATA", sections=bss_first)),
+           ["__DATA,__bss starts at 0x4031c000, below __data's", "__DATA,__common starts at 0x4031c010"])
+    no_data = data[3][1:]
+    expect("no __data", pack_executable(replaced(good, "__DATA", sections=no_data)),
+           ["__DATA has no __data"])
     expect("no __DATA", pack_executable([segment for segment in good if segment[0] != "__DATA"]), ["no __DATA"])
     try:
         check("self-test", b"\x7fELF" + bytes(60))

@@ -21,6 +21,25 @@ char gBss[BSS_SIZE];
 int main(void) { return gConstant[0] + gData[0] + gBss[0]; }
 C
 failures=0
+# writable_in_a_window FILE: prints each writable PT_LOAD of the image
+# (0x40000000 and up) that meets a window, and succeeds if one does. The hex
+# is bash's to read (awk's strtonum is gawk's alone; mawk has none).
+writable_in_a_window() {
+    local type offset address physical file_size size flags rest start end window found=1
+    while read -r type offset address physical file_size size flags rest; do
+        [ "$type" = LOAD ] && [[ "$flags" == *W* ]] || continue
+        start=$((address))
+        end=$((start + size))
+        [ "$start" -ge $((0x40000000)) ] || continue
+        for ((window = 0x42000000; window < 0x100000000; window += 0x10000000)); do
+            if [ "$start" -lt $((window + 0x1000000)) ] && [ "$end" -gt "$window" ]; then
+                printf '0x%x-0x%x meets 0x%x\n' "$start" "$end" "$window"
+                found=0
+            fi
+        done
+    done < <(readelf -lW "$1")
+    return "$found"
+}
 # expect BITS links|refused READ_ONLY_AT BSS_SIZE [FLAGS...]: the link's outcome, and
 # for a link, that its writable data is out of every window.
 expect() {
@@ -43,12 +62,7 @@ expect() {
     fi
     if [ "$outcome" = linked ]; then
         # Every writable PT_LOAD of the image (0x40000000 and up) clear of the windows.
-        if ! readelf -lW "$tmp/t" | awk '$1 == "LOAD" && $7 ~ /W/ {
-                start = strtonum($3); end = start + strtonum($6)
-                if (start < 0x40000000) next
-                for (w = 0x42000000; w < 0x100000000; w += 0x10000000)
-                    if (start < w + 0x1000000 && end > w) { printf "0x%x-0x%x meets 0x%x\n", start, end, w; bad = 1 }
-            } END { exit bad }'; then
+        if writable_in_a_window "$tmp/t"; then
             echo "FAILED: -m$bits, read-only data at $rodata: linked with writable data in a window" >&2
             failures=$((failures + 1))
             return

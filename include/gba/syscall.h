@@ -38,6 +38,7 @@ void CpuSet(const void *src, void *dest, u32 control);
         CpuSet(src, dest, control); \
     } while (0)
 #elif MODERN
+#line 31
 // NOTE: Assumes 16-bit CpuSets unless control is a constant and has
 // CPU_SET_32BIT set.
 #define CpuSet(src, dest, control) \
@@ -48,6 +49,7 @@ void CpuSet(const void *src, void *dest, u32 control);
         CpuSet(src, dest, control); \
     } while (0)
 #endif
+#line 41
 
 #define CPU_FAST_SET_SRC_FIXED 0x01000000
 
@@ -60,6 +62,7 @@ void CpuFastSet(const void *src, void *dest, u32 control);
 // largest member, so they would reject calls that are correct on the GBA;
 // natively CpuFastSet is the plain function, which accepts 2-aligned addresses.
 #elif MODERN
+#line 47
 #define CpuFastSet(src, dest, control) \
     do \
     { \
@@ -68,6 +71,7 @@ void CpuFastSet(const void *src, void *dest, u32 control);
         CpuFastSet(src, dest, control); \
     } while (0)
 #endif
+#line 55
 
 void BgAffineSet(struct BgAffineSrcData *src, struct BgAffineDstData *dest, s32 count);
 

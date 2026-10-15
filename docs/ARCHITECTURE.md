@@ -53,7 +53,16 @@ where an address's bits 24-27 read as EWRAM's and expansion would take a
 buffer for EWRAM (`src/librfu_rfu.c`): the plain builds' data ends below
 0x42000000, the sanitized builds' starts at 0x43000000 (`gba_regions.ld`,
 `gba_writable_data_floor`; `-segaddr __DATA` on macOS), and every link check
-refuses data in such a window.
+refuses data in such a window. The plain builds' margin is a few MiB:
+measured on 2026-10-15 (GCC), the 64-bit game's data ends at 0x41DA1A18,
+2.37 MiB below 0x42000000 (clang's at 2.33 MiB), the 32-bit game's 3.17 MiB
+below, the test runners' 4.9 and 4.7 MiB, the Windows game's image near
+0x41D7E000, 2.5 MiB below. Growth of the read-only data or of the writable
+data (which follows it) past that fails every such link, plain Linux's with
+`gba_regions.ld`'s ASSERT naming `gba_writable_data_floor`, Windows' and
+macOS's with their layout checks; the remedy is the sanitized builds' layout
+for every build, the writable data from 0x43000000, which the sanitized
+builds already pass the replays and the suite with.
 
 On Windows (a cross-build from Linux with MinGW-w64, x86-64 only) the regions
 are sections of the PE image, because a PE section's address is an offset above

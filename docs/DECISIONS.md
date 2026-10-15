@@ -2372,8 +2372,10 @@ GCC's on Linux in four ways, each handled where it arises:
   `gba_writable_data_floor` on Linux, `-segaddr __DATA` on macOS), and every
   link check refuses writable data in such a window (`gba_regions.ld`'s
   ASSERTs, `check_pe_layout.py`, `check_macho_layout.py`). The plain builds
-  are unchanged: their data ends near 0x41E00000, and the checks will say
-  when it grows into the window.
+  are unchanged: their data ends 2.37 MiB below 0x42000000 at the least
+  (the 64-bit game; `docs/ARCHITECTURE.md` has each build's), the checks
+  fail the link when it grows into the window, and the remedy then is the
+  sanitized builds' layout for every build.
 - **Spellings**: clang takes AddressSanitizer's call threshold as a back-end
   option and has `-fsanitize-address-use-after-return=never` where GCC 13
   has a `--param` (`Makefile.native`).

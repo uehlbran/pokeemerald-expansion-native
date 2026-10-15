@@ -21,6 +21,7 @@
         CPU_FILL_UNCHECKED(value, dest, size, bit); \
     } while (0)
 #elif MODERN
+#line 13
 #define CPU_FILL(value, dest, size, bit) \
     do \
     { \
@@ -28,8 +29,10 @@
         CPU_FILL_UNCHECKED(value, dest, size, bit); \
     } while (0)
 #else
+#line 20
 #define CPU_FILL(value, dest, size, bit) CPU_FILL_UNCHECKED(value, dest, size, bit)
 #endif
+#line 22
 
 #define CpuFill16(value, dest, size) CPU_FILL(value, dest, size, 16)
 #define CpuFill32(value, dest, size) CPU_FILL(value, dest, size, 32)
@@ -45,6 +48,7 @@
         CPU_COPY_UNCHECKED(src, dest, size, bit); \
     } while (0)
 #elif MODERN
+#line 29
 #define CPU_COPY(src, dest, size, bit) \
     do \
     { \
@@ -53,8 +57,10 @@
         CPU_COPY_UNCHECKED(src, dest, size, bit); \
     } while (0)
 #else
+#line 37
 #define CPU_COPY(src, dest, size, bit) CPU_COPY_UNCHECKED(src, dest, size, bit)
 #endif
+#line 39
 
 #define CpuCopy16(src, dest, size) CPU_COPY(src, dest, size, 16)
 #define CpuCopy32(src, dest, size) CPU_COPY(src, dest, size, 32)
@@ -122,6 +128,7 @@
                   (void *)(uintptr_t)(dest), (u32)(control));               \
 }
 #else
+#line 93
 #define DmaSetUnchecked(dmaNum, src, dest, control) \
 {                                                 \
     vu32 *dmaRegs = (vu32 *)REG_ADDR_DMA##dmaNum; \
@@ -131,6 +138,7 @@
     dmaRegs[2];                                   \
 }
 #endif
+#line 101
 
 #if PLATFORM_NATIVE
 // NOTE: Assumes 16-bit DMAs.
@@ -142,6 +150,7 @@
         DmaSetUnchecked(dmaNum, src, dest, control); \
     } while (0)
 #elif MODERN
+#line 103
 // NOTE: Assumes 16-bit DMAs.
 #define DmaSet(dmaNum, src, dest, control) \
     do \
@@ -151,9 +160,11 @@
         DmaSetUnchecked(dmaNum, src, dest, control); \
     } while (0)
 #else
+#line 112
 #define DmaSet(dmaNum, src, dest, control) \
     DmaSetUnchecked(dmaNum, src, dest, control)
 #endif
+#line 115
 
 #define DMA_FILL_UNCHECKED(dmaNum, value, dest, size, bit)                                    \
 {                                                                                             \
@@ -173,6 +184,7 @@
         DMA_FILL_UNCHECKED(dmaNum, value, dest, size, bit); \
     } while (0)
 #elif MODERN
+#line 127
 #define DMA_FILL(dmaNum, value, dest, size, bit) \
     do \
     { \
@@ -180,8 +192,10 @@
         DMA_FILL_UNCHECKED(dmaNum, value, dest, size, bit); \
     } while (0)
 #else
+#line 134
 #define DMA_FILL(dmaNum, value, dest, size, bit) DMA_FILL_UNCHECKED(dmaNum, value, dest, size, bit)
 #endif
+#line 136
 
 #define DmaFill16(dmaNum, value, dest, size) DMA_FILL(dmaNum, value, dest, size, 16)
 #define DmaFill32(dmaNum, value, dest, size) DMA_FILL(dmaNum, value, dest, size, 32)
@@ -206,6 +220,7 @@
         DMA_CLEAR_UNCHECKED(dmaNum, dest, size, bit); \
     } while (0)
 #elif MODERN
+#line 153
 #define DMA_CLEAR(dmaNum, dest, size, bit) \
     do \
     { \
@@ -213,8 +228,10 @@
         DMA_CLEAR_UNCHECKED(dmaNum, dest, size, bit); \
     } while (0)
 #else
+#line 160
 #define DMA_CLEAR(dmaNum, dest, size, bit) DMA_CLEAR_UNCHECKED(dmaNum, dest, size, bit)
 #endif
+#line 162
 
 #define DmaClear16(dmaNum, dest, size) DMA_CLEAR(dmaNum, dest, size, 16)
 #define DmaClear32(dmaNum, dest, size) DMA_CLEAR(dmaNum, dest, size, 32)
@@ -235,6 +252,7 @@
         DMA_COPY_UNCHECKED(dmaNum, src, dest, size, bit); \
     } while (0)
 #elif MODERN
+#line 174
 #define DMA_COPY(dmaNum, src, dest, size, bit) \
     do \
     { \
@@ -243,8 +261,10 @@
         DMA_COPY_UNCHECKED(dmaNum, src, dest, size, bit); \
     } while (0)
 #else
+#line 182
 #define DMA_COPY(dmaNum, src, dest, size, bit) DMA_COPY_UNCHECKED(dmaNum, src, dest, size, bit)
 #endif
+#line 184
 
 #define DmaCopy16(dmaNum, src, dest, size) DMA_COPY(dmaNum, src, dest, size, 16)
 #define DmaCopy32(dmaNum, src, dest, size) DMA_COPY(dmaNum, src, dest, size, 32)
@@ -337,6 +357,7 @@
     dma_stop(dmaNum);   \
 }
 #else
+#line 269
 #define DmaStop(dmaNum)                                         \
 {                                                               \
     vu16 *dmaRegs = (vu16 *)REG_ADDR_DMA##dmaNum;               \
@@ -345,6 +366,7 @@
     dmaRegs[5];                                                 \
 }
 #endif
+#line 276
 
 #define IntrEnable(flags)                                       \
 {                                                               \
