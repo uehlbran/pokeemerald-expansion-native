@@ -5,7 +5,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        This repository is source only. No ROM, no executable and no build of the game is distributed here, and none may be attached to an issue: no ROM, no game files. A save file or a screenshot is fine.
+        This repository is source only; nothing built is distributed here. Do not attach a ROM or any game file. A save file or a screenshot is fine.
 
         You build the game yourself; [docs/BUILDING.md](https://github.com/uehlbran/pokeemerald-expansion-native/blob/main/docs/BUILDING.md) says how.
 
@@ -49,7 +49,7 @@ body:
     id: version
     attributes:
       label: Output of `pokeemerald-native --version`
-      description: The commit the game was built from, for example `a554c4080f`. Run it in a terminal or command prompt (started from Explorer, the output goes to `pokeemerald.log` in the data directory instead). It ends in `-dirty` if the build had uncommitted changes, and is `unknown` for a build made without git.
+      description: The commit the game was built from, ten hex digits (like `0123456789`). Run it in a terminal or command prompt. Started from Explorer, it writes to `pokeemerald.log` in the data directory instead. The commit ends in `-dirty` if the build had uncommitted changes, and is `unknown` for a build made without git.
     validations:
       required: true
   - type: textarea

@@ -5,4 +5,4 @@ contact_links:
     about: Engine and game bugs belong to pokeemerald-expansion, not to this repository.
   - name: Where is the download?
     url: https://github.com/uehlbran/pokeemerald-expansion-native#faq
-    about: This repository distributes no builds and provides no ROMs. The README's FAQ ("Where is the download?") says why, and the README says how to build the game from source.
+    about: Nothing is distributed here. The README's FAQ says why, and the README says how to build it.

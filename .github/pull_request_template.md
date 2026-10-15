@@ -6,12 +6,12 @@
 ## Gates run
 <!-- Tick what you ran. The list and the command for each are in
 https://github.com/uehlbran/pokeemerald-expansion-native/blob/main/docs/BUILDING.md#gates -->
-- [ ] Platform unit tests, both widths
-- [ ] Replays, plain and sanitized
-- [ ] Expansion's suite against the GBA baseline
-- [ ] GBA ROM unchanged
-- [ ] Format and lint
-- [ ] Documents updated (gate (g))
+- [ ] platform (`make -C platform gate`: format, lint, unit tests at both widths)
+- [ ] (d) and (e), the replays
+- [ ] (b), expansion's suite against the GBA baseline
+- [ ] (c), the GBA ROM unchanged
+- [ ] (f), the sanitizers
+- [ ] (h), the cross-width save round trip, if the save format changed
 
 Results, or why a gate does not apply:
 

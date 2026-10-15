@@ -20,7 +20,9 @@ rules apply to any contribution, however it was written.
 
 ## Building
 
-`docs/BUILDING.md` has the prerequisites and every command. In short:
+`docs/BUILDING.md` has the prerequisites and every command. The README's
+quick start builds the 64-bit executable with `tools/build-native.sh --os linux`.
+The 32-bit build and the unit tests are:
 
 ```
 make -f Makefile.native -j"$(nproc)" native BITS=32
