@@ -41,8 +41,8 @@
  * one's low bits; the signed value itself differs (0x7FFF where the GBA has
  * INT32_MAX). The one such division by zero a gate reaches tests its
  * remainder for zero (src/battle_anim_electric.c,
- * AnimSparkElectricityFlashing; docs/DECISIONS.md, "Clang's narrow
- * divisions"). Anything it cannot decode (see
+ * AnimSparkElectricityFlashing; docs/DECISIONS.md, "Clang builds the game
+ * as GCC does"). Anything it cannot decode (see
  * decode() in arm_division.c) and any other SIGFPE is reported with its
  * program counter on one line of stderr and passed to the handler installed
  * before (the crash reboot in test-runner mode), or kills the process as

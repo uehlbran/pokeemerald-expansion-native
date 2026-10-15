@@ -11,7 +11,8 @@ the macros (space-separated macro arguments, expressions it does not take as
 absolute), the scripts' C names (ScrCmd_createmon) would need Mach-O's
 underscore, and the converted data writes its constants local
 (elf_to_flat.py). So the scripts are assembled as the data is
-(docs/DECISIONS.md, "The data on a Mac"): this script reads the test
+(docs/DECISIONS.md, "The data on a Mac is assembled there with GNU as and
+converted"): this script reads the test
 object's preprocessed C (after the C filter) and
 
   * writes the two file-scope blocks overworld_script.h adds (its .set

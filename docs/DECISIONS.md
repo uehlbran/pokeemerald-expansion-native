@@ -2155,3 +2155,251 @@ picture at 5x, black bars; that the right trigger, the stick click, Y, B, X and
 the left trigger do what the table says on the real Steam Input layout for a
 non-Steam game; that unplugging a controller (a Bluetooth pad turned off) while
 the trigger is held ends fast-forward; the save's path; sound.
+
+## 2026-10-15: The macOS executable's layout: segments placed by the link, the scripts' names from section bounds, the order by the order of the objects
+
+ld64 has no linker scripts, and the native memory model needs what
+`gba_regions.ld` and `gba_game.ld` give on Linux: each GBA region at its
+address, mapped by the kernel before any code runs; names for the regions'
+bounds and the soft reset's brackets; the regions' sections in a fixed order;
+an image at 0x40000000 below the script tag's 0x42000000. Probe M0 showed ld64
+builds such an image and macOS loads it unslid (100 of 100 starts), and probe
+M2 answered how the rest can be said (`research/probes/README.md`). The
+choices:
+
+- **Each region a segment, placed with `-segaddr`**, its section declared
+  zero-filled in `platform/gba_regions.macho.s`, in a non-PIE image
+  (`-no_pie`, `-image_base 0x40000000`) with a one-page `__PAGEZERO` (the
+  default 4 GiB one covers the GBA's addresses) and no chained fixups (with
+  them ld64 ignores the image base). The alternative, mapping the regions at
+  run time with `mmap`, is what the platform does only for what the image
+  cannot hold; a segment is in place before the first instruction, as a
+  `NOLOAD` section is on Linux, and needs no code. ld64 warns that `-no_pie`
+  and a small `__PAGEZERO` are deprecated; both still work for x86_64, and
+  arm64 is not built.
+- **The scripts' names are ld64's own bounds**, `section$start$SEG$SECT` and
+  `segment$end$SEG`, aliased to the platform's names by two `-alias_list`
+  files (`platform/gba_regions.macho.aliases`,
+  `platform/gba_game.macho.aliases`), which stand where the two scripts stand
+  on the link line (`GBA_LINKER_SCRIPT_FLAG`, `platform/target.mk`). The
+  absolute values the scripts define (`gNumMusicPlayers`, `gMaxLines`,
+  `__rom_end`) and `--defsym`'s `gba_game_objects_linked` are `.set` symbols
+  in `platform/gba_game.macho.s`. The alternative, the platform finding the
+  bounds itself through `getsectiondata` at run time, would change
+  `host_linked.c`'s interface for one OS.
+- **The order of sections comes from the order of objects.** ld64 lays out a
+  segment's sections as it first meets each with something in it (probe M2:
+  an empty declaration does not count), so the regions' object is linked
+  first, the game's brackets' second, and EWRAM's end marker last
+  (`platform/gba_regions_end.macho.s`, a byte aligned to 256 KiB that lands on
+  0x02040000 while EWRAM's data fits, after a byte of its own so that an
+  executable with no EWRAM variable, most unit tests, still has the marker
+  there and not at 0x02000000); the test runner's own tests come first
+  in the test table because `test/test_test_runner.o` is linked before the
+  other test objects (`Makefile.native`, `NATIVE_LINK_OBJS`).
+- **The soft reset's brackets are sections, not paths.** `gba_game.ld`
+  selects the game's variables by the object's path, which ld64 cannot; on
+  macOS the C filter puts every game object's variables in
+  `__DATA,__game_data` and `__DATA,__game_bss` with `#pragma clang section`,
+  and the converted data names its sections the same, so the brackets are
+  those sections' bounds.
+- **What the scripts' ASSERTs check, a script checks after the link**:
+  `platform/build_glue/check_macho_layout.py` reads every macOS executable,
+  the unit tests included, and fails the link if the image is PIE, has
+  chained fixups or a large `__PAGEZERO`, if `__TEXT` is not at 0x40000000 or
+  reaches 0x42000000, or if any region is not at its address with its size,
+  its sections in order.
+
+## 2026-10-15: The stack switch on macOS is the platform's own assembly, not ucontext
+
+The battle runner calls the game on a stack of its own (`host_stack.h`).
+Linux switches with `makecontext` and `swapcontext`. On macOS
+`<ucontext.h>` refuses to compile without `_XOPEN_SOURCE`, and with it every
+call is "deprecated: first deprecated in macOS 10.6", an error under the
+platform's `-Werror` (probe M2); `docs/C-RULES.md` lets no warning be
+silenced, and a deprecated interface on a platform with Rosetta's horizon is
+no foundation. The alternatives: `sigaltstack` with a signal to enter the
+stack (the GNU Pth trick), which needs a signal handler and a `setjmp`
+across it and is harder to reason about under AddressSanitizer; or a
+thread per call, which changes the battle runner's single-threaded model.
+`platform/host_macos_stack.c` has two small System V routines instead, as
+Windows has its own (`host_windows_stack.c`): one saves the callee-saved
+registers, MXCSR's and the x87 control word on the caller's stack, moves RSP
+to the new stack's top and calls the entry; the other comes back to the same
+restore from inside the entry, for `host_stack_leave`. RBP stays the frame
+pointer of the caller's frame, and the call frame information names it, so
+an unwinder walks from the entry back to the caller. AddressSanitizer's
+fiber annotations (`__sanitizer_start_switch_fiber`) are made around both
+switches, as on Linux.
+
+## 2026-10-15: The watchdog on macOS waits a relative time on the monotonic clock
+
+The test time limit's watchdog (`host_thread.h`) waits for a deadline on a
+condition variable. Linux makes the condition's clock `CLOCK_MONOTONIC` with
+`pthread_condattr_setclock`, which macOS does not have: its absolute waits
+are on the wall clock, and a wall clock stepped back would hold a test past
+its limit, stepped forward end it early. The wait is therefore
+`pthread_cond_timedwait_relative_np`, macOS's relative wait, with what is left
+of the deadline on `CLOCK_MONOTONIC` computed before each wait and again
+after every wake-up (`host_condition_wait_until`, `platform/host_macos.c`).
+The kernel measures the relative time on its own monotonic clock, so a step
+of the wall clock can move neither the deadline (never read from it) nor the
+wait. Probe M2 measured it: a 300 ms deadline ended at 300 ms after three
+wake-ups, clean under ThreadSanitizer. The alternative, polling with a short
+sleep, wakes the process for nothing and is less precise.
+
+## 2026-10-15: Saves on macOS are flushed to the disk with F_FULLFSYNC
+
+`docs/C-RULES.md` asks for a crash-safe save: the new file is written, made
+durable, renamed over the old one, and the directory made durable. On macOS
+`fsync` hands the data to the drive, which may keep it in its volatile cache
+(fsync(2) says so and offers `F_FULLFSYNC`), so a power loss after the game
+reported the save written could lose it. `host_file_flush` on macOS is
+`fcntl(F_FULLFSYNC)`, for the file and for its directory, and falls back to
+`fsync` where the file system refuses it (some network and FAT volumes),
+which is then the best the system offers. The cost, measured on the
+runner's APFS volume (probe M2): 4.5 to 24 ms for the 128 KiB save against
+under 1 ms for `fsync`, 3.5 to 4.3 ms for the directory, once per save. The
+alternative, plain `fsync`, is what Linux's `fsync` already gives on Linux
+but not what it means on macOS.
+
+## 2026-10-15: The game's files on a Mac are in ~/Library/Application Support
+
+`data_dir.h`'s rule needs no change for macOS: SDL's per-user directory,
+`SDL_GetPrefPath("pokeemerald-expansion-native", "pokeemerald-native")`, is
+`~/Library/Application Support/pokeemerald-expansion-native/pokeemerald-native/`
+there, the place Apple's File System Programming Guide gives an
+application's own files, and portable mode is the executable's directory
+(`SDL_GetBasePath`). The alternatives were `~/Documents` (visible and synced
+to iCloud, wrong for a save the game owns) and the XDG directories Linux
+uses (not where a Mac user looks). Two things are left to the packaging
+task: in an `.app` bundle `SDL_GetBasePath` names the bundle's `Resources`
+folder, which is inside the signed bundle, so portable mode should not be
+offered there; and the gates pass `--save` and `--rtc-offset`, so no gate
+reads the per-user directory on a Mac (the owner's hand check does).
+
+## 2026-10-15: The data on a Mac is assembled there with GNU as and converted
+
+Expansion's data is GNU as text that clang's assembler refuses ("The data for
+Windows and macOS is assembled on Linux and converted" above). For Windows
+the Linux tree's objects are converted on Linux. A Mac build cannot reach a
+Linux tree, and the macOS build has to work from a fresh clone on the Mac. So
+the Mac runs the same steps: Homebrew's `x86_64-elf-binutils` is GNU as for
+ELF (the same assembler, 2.47 on the runner, against Ubuntu's 2.42), the data
+objects are assembled with the same filter and flags, checked by the same
+relocation and battle script checks, converted to Mach-O listings, assembled
+by clang and compared with the ELF objects (`check-flat`) before the link.
+Measured on Linux: clang's preprocessor (`clang -E`, the Mac's `CPP`) gives
+the data the same text but for line markers, and the 14 data objects it
+feeds assemble identically; the trainer headers through `-traditional-cpp`
+are identical too.
+
+The struct layout check is left out on a Mac: it compares the layouts a
+probe prints when built and run at 32 and at 64 bits, and macOS runs no
+32-bit program. Its 64-bit half is kept another way: CI builds the probe on
+the Mac with the Mac's clang and diffs its output with the Linux build's
+(`macos.yml`, compare), so a struct laid out differently by clang on macOS
+fails there; the 32-bit half is the Linux gate's.
+
+The test runner build adds the tests' event scripts
+(`include/test/overworld_script.h`), inline assembly in the same dialect that
+also names C functions without Mach-O's underscore and the data's constants
+(`ITEM_POTION`, `SPECIAL_*`), which the converted data writes local. On macOS
+they leave the C before clang compiles it (`overworld_scripts.py`), are
+assembled by GNU as with the same macros, and are converted and compared as
+the data is, every word that names a data constant given that constant's
+value from a table of every global absolute symbol of the data objects, at
+every width (`elf_to_flat.py --absolutes`), as GNU ld resolves them on Linux.
+The alternative, defining the constants with `.set` before the scripts, would
+change what GNU as's `.if` and `.ifdef` see in the event macros compared with
+Linux, where they are undefined at assembly time.
+
+## 2026-10-15: The sanitizers on macOS
+
+The macOS build is built with Apple's clang, whose sanitizers differ from
+GCC's on Linux in four ways, each handled where it arises:
+
+- **No LeakSanitizer.** AddressSanitizer for x86_64 macOS aborts at start-up
+  with `detect_leaks=1` ("detect_leaks is not supported on this platform",
+  probe M2). The unit tests run with `detect_leaks=0` there
+  (`platform/Makefile`, `SANITIZER_ENV`); every leak they could show is
+  caught by the same tests on Linux.
+- **Two UndefinedBehaviorSanitizer checks GCC does not make are off for
+  expansion's objects**: `function` (a call through a pointer of another
+  function type, which expansion makes in many places and the GBA's calling
+  convention makes work) and `pointer-overflow`, whose C form reports a zero
+  offset applied to a null pointer (C2y defines it; `src/save.c` does it at
+  boot). The sanitized replays of a clang build on Linux reported exactly
+  those, at 8 sites, and nothing else; with them off they pass as GCC's do.
+  The cost: clang's pointer-overflow check of real overflows is off for the
+  game's code on macOS; GCC's runs on Linux every night. The platform
+  library keeps every check on every OS.
+- **Section variables.** GCC's AddressSanitizer leaves a variable with a
+  section of its own unpadded; clang's pads it with redzones, which would
+  overflow EWRAM's 256 KiB and break the test table's array. The C filter
+  adds `no_sanitize("address")` to those variables
+  (`c_filter_macho.sed`), so they are laid out as with GCC.
+- **Spellings**: clang takes AddressSanitizer's call threshold as a back-end
+  option and has `-fsanitize-address-use-after-return=never` where GCC 13
+  has a `--param` (`Makefile.native`).
+
+ThreadSanitizer runs the unit tests on macOS as on Linux.
+
+## 2026-10-15: Clang builds the game as GCC does: three code-generation choices made explicit
+
+The macOS build's compiler is clang. Built with clang on Linux, the game
+passed both replays at once, but the suite differed from GCC's in 6 of 5,875
+results; each difference was a choice clang makes where GCC makes another,
+and each is now made explicitly (`Makefile.native`, with the reason where the
+flag is):
+
+- **Clang's narrow divisions by zero get libgcc's rule at their width.**
+  Clang compiles a C division whose operands it knows fit 8 or 16 bits to an
+  8- or 16-bit DIV or IDIV (23 sites in the game, against 9 in GCC's build,
+  where GCC widens to 32 bits). By zero the decoder refused them, and 4
+  tests crashed. `platform/arm_division.c` now decodes them and writes
+  libgcc's rule at the instruction's width (all ones or zero, the most
+  positive or negative value by the sign, zero), which keeps what a program
+  can ask of the result, its sign and whether it is zero; the one such
+  division a gate reaches only tests its remainder for zero.
+- **Clang's 64-bit-to-32-bit division tuning is off**
+  (`-idivq-to-divl`): it would divide two 64-bit values that fit 32 bits
+  with a 32-bit DIV, which by zero gets the 32-bit rule where the GBA's code
+  calls the 64-bit `__udivdi3`.
+- **LICM's scalar promotion is off for the test objects**
+  (`-mllvm -disable-licm-promotion`): the battle tests' functions run once per
+  phase, and a local one phase hands the runner is read by a later call from
+  the same stack slot; clang kept a loop's stores to such a local in a
+  register and stored it once at the loop's exit, over what the runner had
+  written ("Beat Up's damage doesn't consider STAB", 2 results). `-O0` for
+  the test objects fixed those and changed which stale values two other
+  tests read; the one transformation off keeps `-O2`'s otherwise.
+
+With the three, the clang-built Linux suite equals GCC's in all 5,875 results.
+
+## 2026-10-15: On macOS a SIGFPE sent by kill looks like a divide error
+
+Linux tells a divide error from a SIGFPE another process sent by `si_code`
+(`FPE_INTDIV` against `SI_USER`), and arm_division passes the sent one on.
+macOS gives `FPE_INTDIV` for both, and for `raise` (probe M2: `SI_USER` never
+seen), so a handler cannot tell them apart. arm_division then treats a
+SIGFPE that arrives while the program counter is at a division by zero as
+that division, completes it with libgcc's rule and goes on; a SIGFPE sent
+anywhere else is passed on as undecodable, as before. The one case that
+differs from Linux needs a process to send SIGFPE to the game at the moment
+it is about to divide by zero, which no player and no tool does;
+`platform/test/darwin/test_arm_division_darwin.c` pins the behaviour.
+Alternatives: reading the instruction's operand to check that the divisor is
+zero is already what the decoder does, so nothing more can be learned from
+the fault; ignoring every SIGFPE that is not decodable is the current rule.
+
+## 2026-10-15: Paths on macOS keep the 4096-byte limit; the long-path tests are Linux's
+
+`HOST_FILE_PATH_SIZE` is 4096, Linux's `PATH_MAX`. macOS's `PATH_MAX` is
+1024, and its file calls refuse a longer path (`ENAMETOOLONG`), so a save path
+between the two limits is accepted by the platform and refused by the system
+with a message naming it. The limit stays one number on every OS: the buffers
+are sized by it, and a path the system refuses fails loudly at the first
+open. The tests that pad a path to 4096 bytes with repeated slashes and
+expect it to work (`test_rtc_linux.c`) are therefore Linux's; the refusal of
+a path over the platform's limit is portable and runs everywhere.

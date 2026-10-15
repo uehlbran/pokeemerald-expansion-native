@@ -60,8 +60,12 @@ Verified by an automated gate (the gates and their commands are in
 
 Not working or not verified:
 
-- macOS: not started. Linux (built under WSL2 Ubuntu 24.04) and Windows
-  are the platforms.
+- macOS (x86_64, built on a Mac with Homebrew's tools; an Apple-silicon Mac
+  runs it under Rosetta 2): the port is written, with its own layout, host
+  layer, clang build and CI workflow (docs/BUILDING.md, "macOS"), and its
+  clang build passes both replays and the suite on Linux, but it has not yet
+  been built or run on a Mac: the macOS workflow's first runs were not
+  started (GitHub refused the account's jobs for billing).
 - GBA save interchange: native saves use the host's struct layout and are
   not GBA `.sav` files.
 - Nothing past Birch's lab in play, the windowed path with a real display

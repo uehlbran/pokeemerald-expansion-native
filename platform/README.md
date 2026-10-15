@@ -23,19 +23,25 @@ LeakSanitizer and UndefinedBehaviorSanitizer. `make test` runs every test
 binary, prints its output, and fails if any binary exits non-zero, prints
 a sanitizer report, or ends without ptest's `N passed, 0 failed` line (a
 binary that exits early passes no test). The 32-bit build needs the i386 C library and sanitizer
-runtimes (`gcc-multilib`). The tests run on Linux (the region
-layout needs GNU ld and a non-PIE ELF executable, see below; `HOST_OS`,
-`host.mk`, default `uname -s`, accepts `Linux` only), and cross-build for
-Windows with `TARGET_OS=windows BITS=64` and MinGW-w64 (`target.mk`; the `lib`,
-`test` and `lint` goals accept it, `tsan` and the sanitizers do not). The
-Windows binaries run on Windows through `test_runner/run_windows_tests.sh`
-(`docs/BUILDING.md`, "Windows (cross-build from Linux)"). macOS is not
-attempted.
+runtimes (`gcc-multilib`). The tests run on Linux and on macOS (`HOST_OS`,
+`host.mk`, default `uname -s`, accepts `Linux` and `Darwin`): on a Mac with
+the Mac's clang, 64-bit only, `make -C platform test BITS=64` and `make -C
+platform tsan`, without LeakSanitizer, which Apple's AddressSanitizer does
+not have (`docs/BUILDING.md`, "macOS"). They cross-build for Windows with
+`TARGET_OS=windows BITS=64` and MinGW-w64 (`target.mk`; the `lib`, `test` and
+`lint` goals accept it, `tsan` and the sanitizers do not). The Windows
+binaries run on Windows through `test_runner/run_windows_tests.sh`
+(`docs/BUILDING.md`, "Windows (cross-build from Linux)").
 
 Every test binary is linked with `gba_regions.ld`, `gba_game.ld` and
 `-no-pie -Wl,-Ttext-segment=0x40000000`, so the GBA memory regions exist in
-it (see below). A native executable that uses the platform layer must be
-linked the same way; `Makefile.native` does (next section).
+it (see below); on macOS with the layout objects first and last
+(`gba_regions.macho.s`, `gba_game.macho.s`, `gba_regions_end.macho.s`), the
+alias lists (`gba_regions.macho.aliases`, `gba_game.macho.aliases`) and the
+link flags `target.mk` gives, and each is checked by
+`build_glue/check_macho_layout.py`. A native executable that uses the
+platform layer must be linked the same way; `Makefile.native` does (next
+section).
 
 ## Adding a module and its tests
 
@@ -74,13 +80,14 @@ when `HOST_OS` (`host.mk`) lists the directory in `HOST_TEST_DIRS`:
 | Directory | Built for | Holds |
 |---|---|---|
 | `test/posix/` | Linux, macOS | `fork` and `waitpid`, signals, pipes, `setrlimit`, permissions, the descriptor syncs; `posix/support.c` implements `test_support.h`, and `posix/posix_support.h` adds `psup_run_child` (a forked child with no core file and an alarm), `psup_exit_code`, `psup_terminating_signal` and `psup_read_within` (a pipe read that gives up) |
-| `test/linux/` | Linux | what only Linux and glibc say of the process: `pthread_getattr_np`, the linker's `__executable_start` |
+| `test/linux/` | Linux | what only Linux and glibc say of the process: `pthread_getattr_np`, the linker's `__executable_start`, `/proc`'s list of threads, `setfsuid`, `/dev/full`, Linux's system call numbers, a path as long as Linux's `PATH_MAX` |
+| `test/darwin/` | macOS | what only macOS says of the process: `_NSGetExecutablePath`, the Mach-O header at 0x40000000 and `__DATA,__const`, `pthread_get_stackaddr_np`, the battle runner's stack at 0x01800000, the task's threads (`task_threads`), a SIGFPE sent by `kill` (`FPE_INTDIV` there) with macOS's system call numbers |
 | `test/windows/` | Windows (cross-built on Linux, run on Windows) | where faults go (the vectored handler, the crash filter, a stack overflow), the crash reboot's report and exit code for the parent that starts the program again, the restart through a waited child, the stack switch's limits, registers and dispatch, the binary and uninherited files, the UTF-8 code page the manifest gives (argv, a save through a non-ASCII path); `windows/support.c` implements `test_support.h`, and `windows/windows_support.h` adds `wsup_run_child` (this executable again as a child that runs one named body, with a time limit), `wsup_child_name` and `wsup_end` |
 
 A test has one place: its name is in one file, the portable part when it can
 run everywhere. A fixture two parts share is a header beside them
 (`save_file_fixture.h`, `host_file_fixture.h`, `debug_channel_fixture.h`,
-`crash_reboot_fixture.h`, `host_fault_fixture.h`). A port adds a directory
+`crash_reboot_fixture.h`, `host_fault_fixture.h`, `arm_division_fixture.h`). A port adds a directory
 (`test/windows/`, `test/darwin/`), its `support.c`, and its values in
 `host.mk`; it edits no existing test. A port that lacks a test's OS part runs
 the portable part only, so the binary count is lower there, not a skipped
@@ -182,7 +189,9 @@ executable itself starts at 0x40000000, above every region. At 0x01800000
 `game_hooks` runs the battle test runner's functions on, low enough for the
 runner's 27-bit address fields; on Windows `gba_regions.pe.ld` puts it at
 0x01801000, since the image's headers take 0x01800000, and the regions are
-sections of the image (`docs/ARCHITECTURE.md`, "The memory model").
+sections of the image; on macOS `gba_regions.macho.s` puts it at 0x01800000
+too, each region a segment of the image at its address (`docs/ARCHITECTURE.md`,
+"The memory model").
 
 ## The host layer (`host_*`)
 
@@ -191,26 +200,30 @@ that no module makes an OS call of its own (`docs/ARCHITECTURE.md`, "The
 host layer", has the design and the users). The sources are chosen by
 `TARGET_OS` (`target.mk`, through `host.mk`, included by this Makefile,
 `m4a/Makefile` and `Makefile.native`). Linux: `host_posix.c`, what Linux and
-macOS share, and `host_linux.c`, the rest; `host_internal.h` is what they
-share. Windows: `host_windows.c` (memory, image, files, process),
+macOS share, and `host_linux.c`, the rest; macOS: `host_posix.c` and
+`host_macos.c` (registers, the executable's path, memory, image and stack
+bounds, the flush, the monotonic wait) and `host_macos_stack.c` (the stack
+switch); `host_internal.h` is what the POSIX sources share. Windows:
+`host_windows.c` (memory, image, files, process),
 `host_windows_console.c` (the streams and the parent's console),
 `host_windows_fault.c`, `host_windows_stack.c` and `host_windows_thread.c`.
-Both: `host_linked.c`, where the linker scripts put the regions. Each header
+All three: `host_linked.c`, where the linker scripts (on macOS the alias
+lists) put the regions. Each header
 says what it stands in for and what it wraps, and has its test; the Windows
 sources are linted with `make -C platform lint TARGET_OS=windows BITS=64` and
 their tests are cross-built (`make -C platform test TARGET_OS=windows
 BITS=64`) and run on Windows (`test_runner/run_windows_tests.sh`).
 
-| Header | Gives | Linux (source) | Windows (source) | Test |
-|---|---|---|---|---|
-| `host_memory.h` | `host_memory_region` and `host_memory_call_stack`: where the link put each GBA region and the battle runner's stack; `host_memory_map_fixed`/`unmap_fixed`: a page at an exact address, never over a mapping | `gba_regions.ld`'s symbols (`host_linked.c`), `mmap` with `MAP_FIXED_NOREPLACE` (`host_linux.c`) | `gba_regions.pe.ld`'s symbols (`host_linked.c`), `VirtualAlloc` at a multiple of 64 KiB, `VirtualFree` of the whole mapping | `test_host_memory.c` |
-| `host_fault.h` | the divide-error handler (passes what it does not complete to the one installed before) and the crash handler (on a 64 KiB alternate stack; the fault ends the process when it returns), each with install and uninstall; the fault's number, address, and registers: PC, accumulator and data by name, the general ones by ModRM number | `sigaction`, `sigaltstack`, `pthread_sigmask`, `raise` (`host_posix.c`); `uc_mcontext.gregs` (`host_linux.c`) | a vectored exception handler called first, for `EXCEPTION_INT_DIVIDE_BY_ZERO` and `_OVERFLOW` only; the unhandled-exception filter; `SetThreadStackGuarantee` for a stack overflow; `SetErrorMode` (no dialogs); the `CONTEXT` by offset (`host_windows_fault.c`) | `test_host_fault.c`, `posix/`, `windows/test_host_fault_windows.c` |
-| `host_process.h` | `host_process_executable_path`; `host_process_restart`: this executable again with the same standard handles, and whether a crash handler may call it; `host_process_end`: the process ended at once with a status | `readlink` of `/proc/self/exe` (`host_linux.c`), `execve`, async-signal-safe, so a handler may; `_exit` (`host_posix.c`) | `GetModuleFileNameW` converted to UTF-8; `CreateProcessW` of a child, a wait, `TerminateProcess` with its status, which no handler may call (it allocates); `TerminateProcess` | `test_host_process.c`, `posix/`, `windows/test_host_process_windows.c` |
-| `host_image.h` | the executable's image and its writable part, whether an address is in a read-only segment, the main thread's whole stack | `__executable_start`, `__data_start`, `_end`, `getauxval(AT_PHDR)`, `pthread_getattr_np` (`host_linux.c`) | `__text_start__`, `__data_start__`, `__bss_end__` (the writable sections linked last, `gba_game.pe.ld`), `VirtualQuery`, `GetCurrentThreadStackLimits` (2 MiB) | `test_host_image.c`, `linux/` |
-| `host_stack.h` | `host_stack_run`: a function on a given stack, at the same depth each call; `host_stack_leave`: back to the caller early | `ucontext`, AddressSanitizer's fiber annotations (`host_linux.c`) | a Win64 switch in assembly with unwind information, the `NT_TIB` stack limits widened over both stacks (`host_windows_stack.c`) | `test_host_stack.c`, `windows/test_host_stack_windows.c` |
-| `host_console.h` | `host_console_stream_kind`: what standard output or error is (none, a pipe, a file, a console this process writes to); `host_console_attach_parent`: join the parent's console and reopen the missing streams on it; `host_console_discard_stream`: a stream to the null device; `host_console_share_stream`: one stream a duplicate of another (one file, one offset) | every stream is reported as a console and nothing is attached (`host_posix.c`) | `GetStdHandle`, `GetFileType`, `GetConsoleMode` (the null device is a character device but not a console); `AttachConsole(ATTACH_PARENT_PROCESS)`, `freopen("CONOUT$")`, `FreeConsole` on failure (`host_windows_console.c`) | `test_console.c` (the decision, through a fake), `windows/test_host_console_windows.c` (children with pipes, files, the null device, no handles, with and without a console) |
-| `host_file.h` | `host_file_open` (not inherited; binary on Windows), `host_file_read` (up to a count, 0 at the end), `host_file_write_all` (every byte) and `host_file_for_handler` (resolves a descriptor at install time) and `host_file_write_from_handler` (the same for a fault handler, errno left alone, nothing of the C runtime on Windows), `host_file_sync`, `host_file_replace` (atomic; on Windows, on NTFS), `host_file_sync_directory_of`, `host_file_make_directory`, `host_file_is_directory`, `host_file_local_time`; failures are -1 with `errno`, reported by the caller | `open` with `O_CLOEXEC`, `read` (retried on `EINTR`), `write`, `fsync`, `rename`, `open` of the directory and `fsync`, `mkdir(path, 0777)`, `stat`, `localtime_r` with a 64-bit `time_t` (`host_posix.c`) | `_open` with `_O_NOINHERIT` and `_O_BINARY`, `ReadFile`, `WriteFile` and `FlushFileBuffers` on the descriptor's handle, `MoveFileExW` with `MOVEFILE_REPLACE_EXISTING` and `MOVEFILE_WRITE_THROUGH`, no directory sync (the length only), `CreateDirectoryW`, `GetFileAttributesW`, `_localtime64_s` | `test_host_file.c`, `posix/`, `windows/test_host_file_windows.c` |
-| `host_thread.h` | the test time limit's watchdog: a thread that stores `true` in an atomic flag once its deadline passes | a `pthread` on a condition variable (`host_posix.c`) | a thread on an event with a timeout, joined by a wait on its handle (`host_windows_thread.c`) | `test_host_thread.c`, `posix/`, `linux/` |
+| Header | Gives | Linux (source) | macOS (source) | Windows (source) | Test |
+|---|---|---|---|---|---|
+| `host_memory.h` | `host_memory_region` and `host_memory_call_stack`: where the link put each GBA region and the battle runner's stack; `host_memory_map_fixed`/`unmap_fixed`: a page at an exact address, never over a mapping | `gba_regions.ld`'s symbols (`host_linked.c`), `mmap` with `MAP_FIXED_NOREPLACE` (`host_linux.c`) | the alias lists' names (`host_linked.c`), `mmap` with the address as a hint, undone and refused if the kernel moved it (`host_macos.c`) | `gba_regions.pe.ld`'s symbols (`host_linked.c`), `VirtualAlloc` at a multiple of 64 KiB, `VirtualFree` of the whole mapping | `test_host_memory.c`, `darwin/` |
+| `host_fault.h` | the divide-error handler (passes what it does not complete to the one installed before) and the crash handler (on a 64 KiB alternate stack; the fault ends the process when it returns), each with install and uninstall; the fault's number, address, and registers: PC, accumulator and data by name, the general ones by ModRM number | `sigaction`, `sigaltstack`, `pthread_sigmask`, `raise` (`host_posix.c`); `uc_mcontext.gregs` (`host_linux.c`) | as Linux (`host_posix.c`); `uc_mcontext->__ss`'s named fields (`host_macos.c`); a SIGFPE from `kill` carries `FPE_INTDIV` too | a vectored exception handler called first, for `EXCEPTION_INT_DIVIDE_BY_ZERO` and `_OVERFLOW` only; the unhandled-exception filter; `SetThreadStackGuarantee` for a stack overflow; `SetErrorMode` (no dialogs); the `CONTEXT` by offset (`host_windows_fault.c`) | `test_host_fault.c`, `posix/`, `windows/test_host_fault_windows.c` |
+| `host_process.h` | `host_process_executable_path`; `host_process_restart`: this executable again with the same standard handles, and whether a crash handler may call it; `host_process_end`: the process ended at once with a status | `readlink` of `/proc/self/exe` (`host_linux.c`), `execve`, async-signal-safe, so a handler may; `_exit` (`host_posix.c`) | `_NSGetExecutablePath`, read once by a constructor so that a handler only reads a buffer (`host_macos.c`); `execve`, `_exit` (`host_posix.c`) | `GetModuleFileNameW` converted to UTF-8; `CreateProcessW` of a child, a wait, `TerminateProcess` with its status, which no handler may call (it allocates); `TerminateProcess` | `test_host_process.c`, `posix/`, `windows/test_host_process_windows.c`, `darwin/` |
+| `host_image.h` | the executable's image and its writable part, whether an address is in a read-only segment, the main thread's whole stack | `__executable_start`, `__data_start`, `_end`, `getauxval(AT_PHDR)`, `pthread_getattr_np` (`host_linux.c`) | `_mh_execute_header`, ld64's `section$start$__DATA$__data` and `segment$end$__DATA`, the image's load commands (`__DATA,__const` counts as read-only), `pthread_get_stackaddr_np` and `_stacksize_np` (`host_macos.c`) | `__text_start__`, `__data_start__`, `__bss_end__` (the writable sections linked last, `gba_game.pe.ld`), `VirtualQuery`, `GetCurrentThreadStackLimits` (2 MiB) | `test_host_image.c`, `linux/`, `darwin/` |
+| `host_stack.h` | `host_stack_run`: a function on a given stack, at the same depth each call; `host_stack_leave`: back to the caller early | `ucontext`, AddressSanitizer's fiber annotations (`host_linux.c`) | a System V switch in assembly, AddressSanitizer's fiber annotations (`host_macos_stack.c`) | a Win64 switch in assembly with unwind information, the `NT_TIB` stack limits widened over both stacks (`host_windows_stack.c`) | `test_host_stack.c`, `windows/test_host_stack_windows.c` |
+| `host_console.h` | `host_console_stream_kind`: what standard output or error is (none, a pipe, a file, a console this process writes to); `host_console_attach_parent`: join the parent's console and reopen the missing streams on it; `host_console_discard_stream`: a stream to the null device; `host_console_share_stream`: one stream a duplicate of another (one file, one offset) | every stream is reported as a console and nothing is attached (`host_posix.c`) | as Linux (`host_posix.c`) | `GetStdHandle`, `GetFileType`, `GetConsoleMode` (the null device is a character device but not a console); `AttachConsole(ATTACH_PARENT_PROCESS)`, `freopen("CONOUT$")`, `FreeConsole` on failure (`host_windows_console.c`) | `test_console.c` (the decision, through a fake), `windows/test_host_console_windows.c` (children with pipes, files, the null device, no handles, with and without a console) |
+| `host_file.h` | `host_file_open` (not inherited; binary on Windows), `host_file_read` (up to a count, 0 at the end), `host_file_write_all` (every byte) and `host_file_for_handler` (resolves a descriptor at install time) and `host_file_write_from_handler` (the same for a fault handler, errno left alone, nothing of the C runtime on Windows), `host_file_sync`, `host_file_replace` (atomic; on Windows, on NTFS), `host_file_sync_directory_of`, `host_file_make_directory`, `host_file_is_directory`, `host_file_local_time`; failures are -1 with `errno`, reported by the caller | `open` with `O_CLOEXEC`, `read` (retried on `EINTR`), `write`, `fsync`, `rename`, `open` of the directory and `fsync`, `mkdir(path, 0777)`, `stat`, `localtime_r` with a 64-bit `time_t` (`host_posix.c`) | as Linux, but `fcntl(F_FULLFSYNC)` where Linux calls `fsync`, for the file and the directory (`host_macos.c`) | `_open` with `_O_NOINHERIT` and `_O_BINARY`, `ReadFile`, `WriteFile` and `FlushFileBuffers` on the descriptor's handle, `MoveFileExW` with `MOVEFILE_REPLACE_EXISTING` and `MOVEFILE_WRITE_THROUGH`, no directory sync (the length only), `CreateDirectoryW`, `GetFileAttributesW`, `_localtime64_s` | `test_host_file.c`, `posix/`, `windows/test_host_file_windows.c` |
+| `host_thread.h` | the test time limit's watchdog: a thread that stores `true` in an atomic flag once its deadline passes | a `pthread` on a condition variable (`host_posix.c`) | a `pthread` on a condition variable, waited with `pthread_cond_timedwait_relative_np` for what is left on `CLOCK_MONOTONIC` (`host_posix.c`, `host_macos.c`) | a thread on an event with a timeout, joined by a wait on its handle (`host_windows_thread.c`) | `test_host_thread.c`, `posix/`, `linux/`, `darwin/` |
 
 ## The flash chip (`flash`) and the save file (`save_file`)
 

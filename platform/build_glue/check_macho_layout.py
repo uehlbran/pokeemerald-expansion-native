@@ -22,8 +22,9 @@ unless:
   * every GBA region, and the battle runner's stack, is a segment at its GBA
     address, readable and writable, of the region's size in whole pages;
     EWRAM's marker section (__ewram_end, gba_regions_end.macho.s) starts at
-    EWRAM's end, 0x02040000, after EWRAM_INIT's and EWRAM_DATA's sections, so
-    that they fit EWRAM (gba_regions.ld's ASSERT); IWRAM's 0x7F00 bytes come
+    EWRAM's end, 0x02040000, after EWRAM_INIT's and EWRAM_DATA's sections and
+    the byte that keeps EWRAM from being empty, so that they fit EWRAM
+    (gba_regions.ld's ASSERT); IWRAM's 0x7F00 bytes come
     first and the test runner's persistent state, if linked, at 0x03007F00;
   * in __DATA the game's zero-initialised data (__game_bss) comes right
     before COMMON_DATA's (__game_common), nothing between them, so that
@@ -246,7 +247,7 @@ def good_segments():
     for region in REGIONS:
         if region.segment == "__GBA_EWRAM":
             sections = [("__ewram_init", region.address, 4), ("__ewram_data", region.address + 0x10, 0x38000),
-                        (EWRAM_MARKER, EWRAM_END, 1)]
+                        ("__ewram_pad", region.address + 0x38010, 1), (EWRAM_MARKER, EWRAM_END, 1)]
             segments.append((region.segment, region.address, region.size + PAGE, sections))
         elif region.segment == "__GBA_IWRAM":
             sections = [(IWRAM_BELOW_PERSISTENT, region.address, 0x7F00), (IWRAM_PERSISTENT, PERSISTENT_ADDRESS, 0x8)]
@@ -291,10 +292,14 @@ def self_test():
     overflowing = [("__ewram_init", 0x02000000, 4), ("__ewram_data", 0x02000010, 0x40000), (EWRAM_MARKER, 0x02080000, 1)]
     expect("EWRAM_DATA past EWRAM", pack_executable(replaced(good, "__GBA_EWRAM", size=0x81000, sections=overflowing)),
            ["__GBA_EWRAM is at", "EWRAM_INIT and EWRAM_DATA are larger"])
-    marker_first = [ewram[3][2], ewram[3][0], ewram[3][1]]
+    marker_first = [ewram[3][3], ewram[3][0], ewram[3][1], ewram[3][2]]
     expect("the marker first", pack_executable(replaced(good, "__GBA_EWRAM", sections=marker_first)),
            ["is not its last section"])
-    expect("no marker", pack_executable(replaced(good, "__GBA_EWRAM", sections=ewram[3][:2])), ["no __ewram_end"])
+    expect("no marker", pack_executable(replaced(good, "__GBA_EWRAM", sections=ewram[3][:3])), ["no __ewram_end"])
+    nothing_but_the_pad = [("__ewram_init", 0x02000000, 0), ("__ewram_data", 0x02000000, 0),
+                           ("__ewram_pad", 0x02000000, 1), (EWRAM_MARKER, EWRAM_END, 1)]
+    expect("no EWRAM variable at all", pack_executable(replaced(good, "__GBA_EWRAM", sections=nothing_but_the_pad)),
+           [])
     persistent_first = [(IWRAM_PERSISTENT, 0x03000000, 0x8), (IWRAM_BELOW_PERSISTENT, 0x03001000, 0x7F00)]
     expect("the persistent state first", pack_executable(replaced(good, "__GBA_IWRAM", sections=persistent_first)),
            ["does not start with __iwram", "__persistent is at 0x3000000"])

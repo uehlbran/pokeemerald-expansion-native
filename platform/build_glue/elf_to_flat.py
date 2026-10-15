@@ -4,8 +4,9 @@ Stands in for nothing on the GBA: it is build glue. Expansion's data is
 assembler text only GNU as reads, so the ports to macOS and Windows link the
 objects GNU as assembles for the 64-bit build and the Linux build checks
 (docs/DECISIONS.md, "The data for Windows and macOS is assembled on Linux
-and converted", and "The data on a Mac": there the same steps run on the
-Mac), and on macOS also the event scripts of the test objects
+and converted", and "The data on a Mac is assembled there with GNU as and
+converted": there the same steps run on the Mac), and on macOS also the
+event scripts of the test objects
 (Makefile.native, OVERWORLD_SCRIPT on macOS): this
 script reads one of them (elf_object.py) and writes a flat listing, sections,
 labels and words with nothing left to evaluate, that clang assembles for the

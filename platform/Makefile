@@ -173,8 +173,9 @@ LAYOUT_OBJS := $(LAYOUT_FIRST_OBJS) $(LAYOUT_LAST_OBJS)
 # Apple's AddressSanitizer for x86_64 macOS has no LeakSanitizer: with
 # detect_leaks=1 it aborts at start-up ("detect_leaks is not supported on
 # this platform", probe M2, research/probes/README.md), so on macOS the leak
-# check is left out, the one sanitizer difference (docs/DECISIONS.md, "The
-# sanitizers on macOS"); every leak the tests could show is checked on Linux.
+# check is left out, the unit tests' one sanitizer difference
+# (docs/DECISIONS.md, "The sanitizers on macOS"); every leak the tests could
+# show is checked on Linux.
 override SANITIZER_ENV := ASAN_OPTIONS=detect_leaks=1 LSAN_OPTIONS= UBSAN_OPTIONS=print_stacktrace=1
 ifeq ($(TARGET_OS),Darwin)
 override SANITIZER_ENV := ASAN_OPTIONS=detect_leaks=0 UBSAN_OPTIONS=print_stacktrace=1

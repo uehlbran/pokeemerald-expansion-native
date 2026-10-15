@@ -10,7 +10,8 @@ tools/build-native.sh --os linux      # build/native64/pokeemerald-native
 tools/build-native.sh --os windows    # build/native64-windows/pokeemerald-native.exe
 ```
 
-macOS: not yet (no port has been started). To play the result, see
+macOS: built on a Mac with one make command and Homebrew's tools (below,
+"macOS"); the script does not cover it yet. To play the result, see
 [RUNNING.md](RUNNING.md); the rest of this page is every variant and the
 gates.
 
@@ -195,9 +196,10 @@ sanitized run compares widths with `ASAN_OPTIONS=suppress_equal_pcs=0`
 
 #### The data for macOS and Windows
 
-The macOS and Windows ports link the data this 64-bit build assembles and checks,
-converted (`docs/DECISIONS.md`, "The data for Windows and macOS is assembled on Linux
-and converted"). `data-flat` writes each 64-bit data object (`data/*.o` and the 530
+The Windows port links the data this 64-bit build assembles and checks, converted
+(`docs/DECISIONS.md`, "The data for Windows and macOS is assembled on Linux and
+converted"); the macOS build makes the same steps on the Mac ("macOS", below).
+`data-flat` writes each 64-bit data object (`data/*.o` and the 530
 songs) as a listing for the target's object format, at the object's path under
 `build/native64/flat/<target>/`, with `platform/build_glue/elf_to_flat.py`;
 `check-flat` assembles each listing with clang (the prerequisites above install it;
@@ -504,6 +506,96 @@ through `GetCommandLineW` is not needed. One assumption did not hold: the
 page at 0x01000000 is not reliably free in a Windows process, whose own
 allocations below the image end near it, so the tests' fixed page is
 0x017F0000 (`test_host_memory.c`).
+
+## macOS (built on a Mac)
+
+The macOS executable is x86_64 only (`docs/DECISIONS.md`, "macOS ships as
+x86_64 under Rosetta; arm64 is not started"): an Intel Mac runs it, and an
+Apple-silicon Mac runs it under Rosetta 2. It is built on the Mac itself, with
+Apple's clang and linker from the Command Line Tools (`xcode-select
+--install`) and these from Homebrew:
+
+```
+brew install make coreutils sdl2 libpng pkg-config x86_64-elf-binutils   # ccache too, optional
+export PATH="$(brew --prefix)/opt/coreutils/libexec/gnubin:$(brew --prefix)/opt/make/libexec/gnubin:$PATH"
+make -f Makefile.native -j"$(nproc)" native BITS=64   # build/native64/pokeemerald-native
+```
+
+GNU make (Homebrew's `make`; macOS's own is 3.81) runs the build; coreutils'
+unprefixed names first on `PATH` give the build and its scripts
+`readlink -f`, `sha256sum`, `md5sum`, `stdbuf` (the suite's hydra),
+`timeout` and `nproc` (the scripts' `sed` is POSIX, so macOS's own serves);
+`x86_64-elf-binutils` is GNU as for ELF, which assembles expansion's data
+(below); `sdl2` is Homebrew's SDL2, which since 2025 is `sdl2-compat`, SDL2's
+interface on SDL3. `BITS=64` is the only width: macOS runs no 32-bit program
+since 10.15, and `BITS=32` is an error. Apple silicon: Homebrew's arm64
+packages (`/opt/homebrew`) cannot be linked into an x86_64 executable; an
+x86_64 Homebrew in `/usr/local`, installed and run under Rosetta (`arch
+-x86_64`), provides x86_64 ones. That setup is unverified here: no
+Apple-silicon Mac or runner has built the game.
+
+What the build does differently from Linux (`platform/target.mk`, the Darwin
+branch; `Makefile.native`):
+
+- The compiler is clang (`TARGET_CC=clang`, the Mac's only one). The flags GCC
+  and clang spell differently are chosen by the compiler's family
+  (`TARGET_CC_IS_CLANG`), and a few clang transformations that would make the
+  game behave differently from the GCC build are off; each is commented where
+  it is set.
+- The data is assembled as on Linux, by GNU as for ELF (`TARGET_AS`, Homebrew's
+  `x86_64-elf-as`), with the same three checks, then written as Mach-O
+  listings and assembled by clang (`check-flat TARGET=macho-x86_64`, above),
+  each compared with its ELF object before it is linked (`docs/DECISIONS.md`,
+  "The data on a Mac is assembled there with GNU as and converted"). The
+  struct layout check needs the layouts of a 32-bit build, which a Mac cannot
+  run, and is left out; CI compares the Mac's 64-bit layouts with Linux's
+  instead (`macos.yml`).
+- The link (ld64, which has no linker scripts) places each GBA region as a
+  segment at its GBA address in a non-PIE image at 0x40000000 with a one-page
+  `__PAGEZERO`, names the linker scripts' symbols from section bounds with
+  `-alias_list` (`platform/gba_regions.macho.aliases`,
+  `platform/gba_game.macho.aliases`), and takes the regions' objects first and
+  last (`platform/gba_regions.macho.s` says why the order matters);
+  `platform/build_glue/check_macho_layout.py` checks every executable it
+  writes, the unit tests' too. `docs/ARCHITECTURE.md`, "The memory model", has
+  the layout. ld64 warns that `-no_pie` and the small `__PAGEZERO` are
+  deprecated; for x86_64 they work.
+- C's section attributes take Mach-O's names, and the game's variables are
+  put in the sections the soft reset brackets, by
+  `platform/build_glue/c_filter_macho.sed` (expansion's files are unchanged).
+- The test runner build's event scripts (`include/test/overworld_script.h`)
+  leave the C before clang compiles it and are assembled and converted as the
+  data is (`platform/build_glue/overworld_scripts.py`).
+
+The executable loads SDL2 from Homebrew (`otool -L
+build/native64/pokeemerald-native`) and the system's libraries; nothing else
+is bundled yet. The unit tests (`make -C platform test BITS=64`: the portable
+ones, `test/posix/` and `test/darwin/`), ThreadSanitizer (`make -C platform
+tsan`), the suite (`make -f Makefile.native -j"$(nproc)" check BITS=64`, and
+`SANITIZE=1`), the replays (`tests/smoke/run.sh`,
+`tests/smoke/run_debug_menu.sh`) and patchelf on a Mach-O file (`make -C
+platform tools-test BITS=64`) run on the Mac as on Linux. AddressSanitizer on
+macOS has no LeakSanitizer, so the unit tests run without the leak check there
+(`docs/DECISIONS.md`, "The sanitizers on macOS"); the Linux gate keeps it. The
+clang-tidy lint of the macOS sources needs the Mac's headers: `make -C
+platform lint-tidy BITS=64 LINT_SRCS="host_macos.c ..."` with Homebrew's
+`llvm` on `PATH` (`macos.yml` names the files).
+
+### The macOS workflow
+
+`.github/workflows/macos.yml` (nightly at 06:17 UTC, an hour after
+`windows.yml`, and by hand, `gh workflow run macos.yml`) runs on
+`macos-15-intel` only (`docs/DECISIONS.md`, "macOS CI runs on macos-15-intel
+only"): the unit tests under ASan and UBSan and under TSan, clang-tidy on the
+macOS sources and patchelf's Mach-O test; the game plain and sanitized, its
+segments and libraries (`otool`), both replays of each and the macOS stage of
+the cross-OS save gate (`tests/smoke/run_cross_os.sh load` on the save the
+Linux build wrote, then `back` on Linux); the suite plain and sanitized,
+compared test by test with the Linux 64-bit suite of the same commit
+(`platform/test_runner/compare_suite_results.sh`); and the Mac's 64-bit struct
+layouts against Linux's. Its header lists the jobs. macOS minutes count ten
+times a Linux minute, so the jobs are ordered for an early failure to stop the
+rest: the game and the suite start only after the unit tests pass.
 
 ## The release workflow
 

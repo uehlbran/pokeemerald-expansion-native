@@ -45,3 +45,14 @@
  */
         .zerofill __DATA,__game_bss,gba_game_bss_first,1,0
         .zerofill __DATA,__game_common,gba_game_common_first,1,0
+
+/*
+ * The sections whose bounds the alias list names but which an executable may
+ * have nothing in (a unit test has no test table and no game data), and
+ * __DATA's own __data, whose start host_macos.c reads: declared here, empty,
+ * so that each exists in every link. An empty declaration does not decide
+ * a section's place (probe M2), so the order above stands.
+ */
+        .section __DATA,__tests
+        .section __DATA,__game_data
+        .section __DATA,__data

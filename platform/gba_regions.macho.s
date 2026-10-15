@@ -28,9 +28,10 @@
  * expansion's section markers so. The rest of the 256 KiB stays free for
  * gHeap's neighbours and the game's fixed uses. A segment is as long as what
  * it holds, so EWRAM's end is a marker section of its own, linked last
- * (gba_regions_end.macho.s): aligned to 256 KiB, it starts at 0x02040000
- * while the two sections before it fit in EWRAM, and the region's end is its
- * start (gba_memmap_init then finds a region that is too long otherwise).
+ * (gba_regions_end.macho.s, with a byte before it so that EWRAM is never
+ * empty): aligned to 256 KiB, it starts at 0x02040000 while the sections
+ * before it fit in EWRAM, and the region's end is its start (gba_memmap_init
+ * then finds a region that is too long otherwise).
  * __ewram_init, initialised, comes before the zero-filled sections whatever
  * the order (ld64 puts a segment's zero-fill last); it is declared here only
  * so that a link without it still has its bounds.

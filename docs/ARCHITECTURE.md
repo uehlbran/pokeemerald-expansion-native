@@ -66,6 +66,38 @@ it (`platform/gba_regions.pe.ld`, `platform/gba_game.pe.ld`,
   layout, and refuses one with holes, was measured on a Windows runner
   (`research/probes/README.md`).
 
+On macOS (built on a Mac, x86_64 only) the image is at 0x40000000 as on
+Linux, and each region is a zero-filled segment of its own that the link
+places at the region's address with `-segaddr`, so the kernel maps it when it
+loads the executable (`platform/gba_regions.macho.s`, `platform/target.mk`;
+`DECISIONS.md`, "The macOS executable's layout"):
+
+| Segment | Address | Sections (in this order) |
+|---|---|---|
+| `__PAGEZERO` | 0x00000000 | one page, unmapped (the default 4 GiB one would cover the regions) |
+| `__GBA_CALLSTK` | 0x01800000 | `__stack`, the battle runner's 1 MiB |
+| `__GBA_EWRAM` | 0x02000000 | `__ewram_init` (EWRAM_INIT), `__ewram_data` (EWRAM_DATA), `__ewram_pad` (one byte, so that EWRAM is never empty), `__ewram_end`, a byte aligned to 256 KiB at 0x02040000 that marks the end |
+| `__GBA_IWRAM` | 0x03000000 | `__iwram` (0x7F00 bytes), `__persistent` at 0x03007F00 (the test runner's state) |
+| `__GBA_IO` | 0x04000000 | `__io` |
+| `__GBA_DEBUG` | 0x04FFF000 | `__mgba` |
+| `__GBA_PALETTE` | 0x05000000 | `__palette` |
+| `__GBA_VRAM` | 0x06000000 | `__vram` |
+| `__GBA_OAM` | 0x07000000 | `__oam` |
+| `__GBA_SRAM` | 0x0E000000 | `__sram` |
+| `__TEXT` | 0x40000000 | the header, the code, read-only data; must end below 0x42000000 |
+| `__DATA` | after `__TEXT` | the pointers dyld fills, `__const`, the test table `__tests`, `__data`, the game's `__game_data`, `__game_bss` and `__game_common`, and the program's own zero-filled data |
+| `__LINKEDIT` | last | the symbol tables |
+
+The image is not PIE, has no chained fixups (without them ld64 honours the
+image base) and is not slid; the regions' bounds are ld64's section and
+segment bounds under the names the platform reads (two `-alias_list` files);
+and the order of sections within a segment is the order of the objects on the
+link line, so the regions' objects come first and EWRAM's end marker last.
+`platform/build_glue/check_macho_layout.py` checks every executable the link
+writes. Mach-O keeps a constant that holds an address in the writable
+`__DATA` segment (`__DATA,__const`), where Linux's non-PIE link puts it in a
+read-only one; `host_image_is_read_only` counts that section as read-only.
+
 The executable is linked at 0x40000000 so it never overlaps a region. The
 two places where expansion takes a pointer to be in the cartridge ROM are
 guarded: the heap's allocation-site encoding (`src/malloc.c`, an offset
@@ -221,26 +253,30 @@ Windows and macOS; `DECISIONS.md`, "The ports share a thin host layer", why
 it is one layer and not `#ifdef`s in the modules. `host_thread.h` serves only
 the unit tests' time limit.
 
-| Header | Concern | Its users | Linux |
-|---|---|---|---|
-| `host_memory.h` | memory at fixed addresses: where the link put each GBA region and the battle runner's stack; pages mapped at run time | `gba_memmap`, `game_hooks`, `transfer_bounds`, the m4a tests | `gba_regions.ld`'s symbols; `mmap` with `MAP_FIXED_NOREPLACE` |
-| `host_fault.h` | hardware faults with the faulting context: the divide-error and crash handlers' install and uninstall, the registers by name and by ModRM number, the alternate stack | `arm_division`, `crash_reboot` | `sigaction`, `sigaltstack`, `pthread_sigmask`, `uc_mcontext.gregs` |
-| `host_process.h` | the executable's own file, and starting it again | `crash_reboot`, `restart`, `symbols` | `/proc/self/exe`, `readlink`, `execve` |
-| `host_image.h` | the bounds of the executable's image and of the main thread's stack; its read-only segments | `transfer_bounds`, `game_hooks` (`PlatformIsRomPointer`) | `__executable_start`, `__data_start`, `_end`, `getauxval(AT_PHDR)`, `pthread_getattr_np` |
-| `host_stack.h` | running a function on a stack of the caller's choosing | `game_hooks` (`PlatformCallWithStack`) | `ucontext`, with AddressSanitizer's fiber annotations |
-| `host_thread.h` | a one-shot deadline kept by a thread that only sets the caller's atomic flag: the unit tests' per-test time limit (`ptest.h`); the one thread in the platform (`DECISIONS.md`, "The test time limit is kept by a flag-setting thread") | `test/ptest.h` | `pthread` and a condition variable (`host_posix.c`) |
-| `host_console.h` | what the standard output and error are (a pipe, a file, a console, nothing), and attaching to the parent's console | `console` | always "given" and nothing to attach (the terminal, the pipe or the file the parent gave) |
-| `host_file.h` | opening a file the same way everywhere, writing a whole buffer (from a fault handler too), durable file replacement, an exclusive lock on a file, `mkdir` with a mode, the local time | `save_file`, `save_lock`, `rtc_offset_store`, `crash_reboot`, `arm_division`, `replay_session`, `rtc` | `open` with `O_CLOEXEC`, `write`, `fsync`, `rename`, a directory's `fsync`, `flock`, `mkdir`, `localtime_r` |
+| Header | Concern | Its users | Linux | macOS, where it differs |
+|---|---|---|---|---|
+| `host_memory.h` | memory at fixed addresses: where the link put each GBA region and the battle runner's stack; pages mapped at run time | `gba_memmap`, `game_hooks`, `transfer_bounds`, the m4a tests | `gba_regions.ld`'s symbols; `mmap` with `MAP_FIXED_NOREPLACE` | the alias lists' names; `mmap` with the address as a hint, refused if moved |
+| `host_fault.h` | hardware faults with the faulting context: the divide-error and crash handlers' install and uninstall, the registers by name and by ModRM number, the alternate stack | `arm_division`, `crash_reboot` | `sigaction`, `sigaltstack`, `pthread_sigmask`, `uc_mcontext.gregs` | `uc_mcontext->__ss`'s named fields |
+| `host_process.h` | the executable's own file, and starting it again | `crash_reboot`, `restart`, `symbols` | `/proc/self/exe`, `readlink`, `execve` | `_NSGetExecutablePath`, read once before `main` |
+| `host_image.h` | the bounds of the executable's image and of the main thread's stack; its read-only segments | `transfer_bounds`, `game_hooks` (`PlatformIsRomPointer`) | `__executable_start`, `__data_start`, `_end`, `getauxval(AT_PHDR)`, `pthread_getattr_np` | `_mh_execute_header`, ld64's `__DATA` bounds, the image's load commands, `pthread_get_stackaddr_np` |
+| `host_stack.h` | running a function on a stack of the caller's choosing | `game_hooks` (`PlatformCallWithStack`) | `ucontext`, with AddressSanitizer's fiber annotations | a System V switch in assembly (`host_macos_stack.c`), with the same annotations |
+| `host_thread.h` | a one-shot deadline kept by a thread that only sets the caller's atomic flag: the unit tests' per-test time limit (`ptest.h`); the one thread in the platform (`DECISIONS.md`, "The test time limit is kept by a flag-setting thread") | `test/ptest.h` | `pthread` and a condition variable (`host_posix.c`) | `pthread_cond_timedwait_relative_np` for what is left on `CLOCK_MONOTONIC` |
+| `host_console.h` | what the standard output and error are (a pipe, a file, a console, nothing), and attaching to the parent's console | `console` | always "given" and nothing to attach (the terminal, the pipe or the file the parent gave) | as Linux |
+| `host_file.h` | opening a file the same way everywhere, writing a whole buffer (from a fault handler too), durable file replacement, an exclusive lock on a file, `mkdir` with a mode, the local time | `save_file`, `save_lock`, `rtc_offset_store`, `crash_reboot`, `arm_division`, `replay_session`, `rtc` | `open` with `O_CLOEXEC`, `write`, `fsync`, `rename`, a directory's `fsync`, `flock`, `mkdir`, `localtime_r` | `fcntl(F_FULLFSYNC)` for the file and the directory |
 
 The sources are one per OS family: `host_posix.c` holds what Linux and macOS
 share (the signal handlers' installation and chaining, `execve`, the files,
-the watchdog thread), and `host_linux.c` the rest (`MAP_FIXED_NOREPLACE`, the
-`gregs` index table, `/proc/self/exe`, `getauxval`, `pthread_getattr_np`, the
-`ucontext` switch); `host_internal.h` is what they share. `host_linked.c`
-reads the linker scripts' region symbols for every target linked with GNU
-ld's scripts, Linux and Windows. `TARGET_OS` (`platform/target.mk`, included
-by `host.mk`, so by every Makefile) selects them: Linux, or `windows` for the
-cross-build. A port adds its sources and its value. `crt0` and `main` also use
+the watchdog thread), `host_linux.c` the rest on Linux (`MAP_FIXED_NOREPLACE`,
+the `gregs` index table, `/proc/self/exe`, `getauxval`, `pthread_getattr_np`,
+the `ucontext` switch, `fsync`, the monotonic condition), and `host_macos.c`
+and `host_macos_stack.c` the rest on macOS (the table's last column);
+`host_internal.h` is what they share, including the four calls each POSIX
+system answers its own way (the executable's path for `execve`, the flush,
+the condition's set-up and its timed wait). `host_linked.c` reads the region
+symbols the linker scripts define on Linux and Windows and the alias lists
+name on macOS. `TARGET_OS` (`platform/target.mk`, included by `host.mk`, so by
+every Makefile) selects them: Linux or Darwin (macOS), the machine building,
+or `windows` for the cross-build. A port adds its sources and its value. `crt0` and `main` also use
 the toolchain (the linker scripts' own symbols, weak references, SDL's
 `main`) but call nothing of the OS's, so they are not users.
 
@@ -275,10 +311,25 @@ the restarting process waits for, `main` releases the lock before the
 restart, and the child takes it as any start does (`DECISIONS.md`, the
 amendment to the owner's ruling (3)).
 
+macOS (`host_macos.c`, `host_macos_stack.c`) shares Linux's signals,
+`execve`, files and lock, and differs where the system does (the table's last
+column). Three differences reach behaviour. A SIGFPE sent by `kill` carries
+`FPE_INTDIV`, as a divide error does, so arm_division cannot tell the two
+apart and completes a division by zero the program counter happens to be at
+(`DECISIONS.md`, "On macOS a SIGFPE sent by kill looks like a divide error").
+A save is made durable with `F_FULLFSYNC`, which reaches the drive's cache,
+where `fsync` stops at the drive (`DECISIONS.md`, "Saves on macOS are flushed
+to the disk with F_FULLFSYNC"). And the battle runner's stack switch is a
+System V switch in assembly, as Windows' is in its ABI, because macOS's
+`ucontext` is deprecated past use (`DECISIONS.md`, "The stack switch on macOS
+is the platform's own assembly, not ucontext").
+
 The replay's function names are OS-neutral the same way: the link writes
 `<executable>.symbols`, the executable's function symbols as `nm` lists
-them (`host.mk`'s `write_symbol_map`, sorted by address), and `symbols`
-reads that map rather than the executable's own format.
+them (`host.mk`'s `write_symbol_map`, sorted by address; on Mach-O, which
+records no symbol types, the symbols of the code sections, without the
+leading underscore), and `symbols` reads that map rather than the
+executable's own format.
 
 ## The test runner
 
@@ -462,7 +513,9 @@ Each is a decision in `DECISIONS.md`; none changes the GBA build.
 plus `platform/` (`make -f Makefile.native native`, with `TEST=1` for the
 test runner build and `SANITIZE=1` for the sanitized one; `check` runs
 expansion's suite on it), linked non-PIE
-at 0x40000000 with `platform/gba_regions.ld` and `platform/gba_game.ld`. `platform/Makefile` builds the modules and their tests
+at 0x40000000 with `platform/gba_regions.ld` and `platform/gba_game.ld` (on
+Windows their PE counterparts; on macOS the layout objects, the alias lists
+and the link flags above). `platform/Makefile` builds the modules and their tests
 standalone under AddressSanitizer and UndefinedBehaviorSanitizer with
 `-std=gnu17 -Wall -Wextra -Wshadow -Wstrict-prototypes -Wconversion
 -Werror`; expansion's headers are included with `-isystem` (`-idirafter` where
