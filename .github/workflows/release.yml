@@ -24,6 +24,9 @@
 # needs the cleanup, so it runs only with it. A finished publish run cannot
 # re-run a single failed job (its archives are deleted): use "re-run all
 # jobs".
+# The checker reads the steps' structure only; a `run:` step that uploads
+# anything is for the reviewer of the change, since it arrives only by a
+# collaborator's push or an approved fork pull request run (same entry).
 #
 #   check-inputs   the tag, validated before anything else runs
 #   linux          the 64-bit build, the tarball, its check

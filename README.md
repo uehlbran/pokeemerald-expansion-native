@@ -1,154 +1,220 @@
 # pokeemerald-expansion-native
 
+[![native](https://github.com/uehlbran/pokeemerald-expansion-native/actions/workflows/native.yml/badge.svg?branch=main)](https://github.com/uehlbran/pokeemerald-expansion-native/actions/workflows/native.yml)
+[![License: MIT (scoped)](https://img.shields.io/badge/license-MIT%20%28scoped%29-blue)](LICENSE)
+
 A native PC build of [pokeemerald-expansion](https://github.com/rh-hideout/pokeemerald-expansion),
-the rh-hideout fork of the pret Emerald decompilation. The game
-logic is expansion's, pinned at `expansion/1.17.1`. This project adds a
-platform layer under `platform/` that stands in for the Game Boy
-Advance hardware (video, audio, input, timers and clock, DMA, BIOS calls,
-save flash) using SDL2, so the game compiles and runs as an ordinary
-desktop executable. No emulator, no ROM: everything builds from the
-source and assets in this repository, and nothing extracted from a
-cartridge is distributed.
+rh-hideout's fork of the Pokémon Emerald decompilation, running as an
+ordinary Linux or Windows executable. No emulator and no ROM are involved:
+you build it from this repository, and no build is published.
 
-The aim is to run expansion's engine natively, checked by the same test
-suite expansion runs on the GBA.
+![The title screen of the native build](docs/images/title-screen.png)
+![A wild battle in the native build](docs/images/battle.png)
 
-## Status
+## What this is
 
-What is verified, by automated gates unless the item says otherwise (the
-gates and their commands are in [docs/BUILDING.md](docs/BUILDING.md#gates)):
+The game code is expansion's, pinned at the tag `expansion/1.17.1`, compiled
+for x86 instead of the GBA's ARM. A platform layer under `platform/` stands
+in for the hardware and reaches the screen and the keyboard through SDL2.
 
-- The 32-bit build boots through the intro to the title screen, and
-  plays the opening from New Game through the first battle and a save, a
-  process restart and Continue (a scripted input replay, headless).
-- The same replay drives expansion's own debug menu: gives of Pokémon
-  and items, the party, summary and bag screens, trainer battles to the
-  action prompt, a save and Continue.
-- Both replays are clean under AddressSanitizer and UndefinedBehaviorSanitizer.
-- Expansion's test suite (5862 tests) runs on the native build and gives,
-  per test, the results it gives on the GBA, except nine benchmark tests,
-  which cannot run natively and are reported as assumption failures.
-- The 64-bit build (`BITS=64`) links and plays both replays to the same
-  dumps and screenshots, plain and sanitized, and runs expansion's suite with
-  the 32-bit results; a save moves between the two builds (converted on load).
-- The GBA build is unchanged and still passes its own suite.
-- Windows (x86-64 only, cross-built from Linux) runs the platform's unit
-  tests, a start-up smoke, both replays, expansion's suite (equal to
-  Linux 64-bit, test by test) and the cross-OS save gate on a Windows
-  runner, and the build was run by hand on 2026-10-14: boot,
-  the opening, the first battle, a save and its reload
-  (docs/BUILDING.md, "Windows").
-- The player's files: the save, the clock's offset and a settings file
-  (`settings.ini`, which moves the GBA buttons to other keys and sets the
-  window's scale and fast-forward) live in a per-user data directory, or
-  beside the executable in portable mode; `--keys` prints the keys and the
-  paths, and F1 shows them in an overlay over the game that also quits it
-  ([docs/RUNNING.md](docs/RUNNING.md)). Unit tests cover the rules, the
-  settings file and the overlay's picture; the Windows start-up smoke checks
-  the paths `--keys` prints, in a given and in a portable directory.
-- Steam Deck: the Linux 64-bit build with a controller binding for everything
-  the keyboard does (fast-forward, the overlay and its quit, fullscreen),
-  fullscreen by default on a Deck (`SteamDeck=1`), F11 for everyone, and a
-  tarball that runs as a non-Steam game from the home directory
-  ([docs/RUNNING.md](docs/RUNNING.md), "Steam Deck"). Unit-tested, not tried
-  on a Deck: the hand-check list is in docs/DECISIONS.md, "Steam Deck: controller functions, fullscreen and the package".
-- Fast-forward: Tab held, or Shift+Tab to switch it on and off, at 2x (3x,
-  4x or unlimited in the settings file), with the sound sped up or muted
-  and an indicator in the corner; the frame pacer alone changes, so the
-  replays and the suite are untouched. Unit-tested, the sound's queue on
-  SDL's dummy device; not yet seen or heard on a screen.
+A built executable contains the game's complete assets, which are not this
+project's to distribute, so you build it rather than download it. The
+release workflow in `.github/workflows/release.yml` packages archives only
+when run by hand, and publishes nothing unless told to. No release has been
+published.
 
-Not working or not verified:
+## What makes this port different
 
-- macOS (x86_64, built on a Mac with Homebrew's tools; an Apple-silicon Mac
-  runs it under Rosetta 2; a release-workflow archive and a one-command build
-  script exist, equally unrun): the port is written, with its own layout, host
-  layer, clang build and CI workflow (docs/BUILDING.md, "macOS"), and its
-  clang build passes both replays and the suite on Linux, plain and
-  sanitized, but none of it has run on a Mac beyond two early link and loader
-  checks: the macOS workflow's first runs were refused before any job started
-  (the account's billing). This branch (`work/macos`) waits, unmerged, for a
-  run of the full macOS gate on `macos-15-intel`; merging it is a decision for
-  the project's maintainer once that run is green.
-- GBA save interchange: native saves use the host's struct layout and are
-  not GBA `.sav` files.
-- Nothing past Birch's lab in play, the windowed path with a real display
-  and audio device (the F1 overlay included: its picture is unit-tested, not
-  seen on a screen), and most menus that neither replay opens have no gate.
-  The renderer and the sound mixer are covered by unit tests and, beyond
-  those, only by the replays' screenshots and the intro's audio.
+It carries expansion's full engine and data. Expansion's own
+test suite runs on the native build. Each of its 5,862 tests gives the result
+it gives on the GBA, except the nine benchmark tests. Those measure GBA cycle
+counts, which do not exist natively, and are reported as assumption failures.
+The game builds at 32 and 64 bits, and a save moves between the two.
+Expansion's game code is changed only under `PLATFORM_NATIVE` guards, and the
+GBA build still produces the same ROM. Every change to an upstream file, the
+build tools included, is logged with its reason in
+[docs/UPSTREAM_MODIFICATIONS.md](docs/UPSTREAM_MODIFICATIONS.md). To compare
+it with the tree, fetch upstream's tag first, then diff:
 
-## Playing and building
+```
+git fetch https://github.com/rh-hideout/pokeemerald-expansion.git tag expansion/1.17.1
+git diff --stat expansion/1.17.1
+```
 
-There is no release: nothing built is published, so you build the game. To
-play, [docs/RUNNING.md](docs/RUNNING.md) has the keys, the options and
-the files the game writes, for Linux, Windows and macOS. To build,
-[docs/BUILDING.md](docs/BUILDING.md) has the prerequisites (Ubuntu packages,
-including the 32-bit SDL2 libraries) and every variant. One command builds
-the 64-bit game for an operating system, and prints where the executable is:
+[docs/UPGRADING.md](docs/UPGRADING.md) is the runbook for moving to a newer
+expansion tag.
+
+## Platforms
+
+| Platform | Status |
+|---|---|
+| Linux x86, 32-bit | Builds, replays and suite pass; run nightly in CI |
+| Linux x86-64 | The primary build; built and replayed on every push |
+| Windows x86-64 | Cross-built from Linux; checked nightly on GitHub's Windows runner |
+| Steam Deck | The Linux x86-64 build you make yourself, [added to Steam](docs/RUNNING.md#steam-deck); not yet tried on a Deck |
+| macOS x86-64 | In progress on the branch `work/macos`, not merged; not yet run on a Mac |
+| Apple silicon | Not started |
+
+## Quick start
+
+Prerequisites: Ubuntu 24.04, native or under WSL2, with the packages in
+[docs/BUILDING.md](docs/BUILDING.md#prerequisites). The Windows executable is
+built on Linux as well.
 
 ```
 tools/build-native.sh --os linux      # build/native64/pokeemerald-native
 tools/build-native.sh --os windows    # build/native64-windows/pokeemerald-native.exe
-tools/build-native.sh --os macos      # build/native64/pokeemerald-native, on a Mac
 ```
 
-The commands of the 32-bit build, the unit tests and the suite:
+To play on Linux, run `./build/native64/pokeemerald-native` from any
+directory. On Windows, start `pokeemerald-native.exe`; the build writes
+`SDL2.dll` beside it. The save and the settings file live in a per-user data
+directory.
 
-```
-make -f Makefile.native -j"$(nproc)" native BITS=32
-./build/native32/pokeemerald-native                 # a window, scale 3
-./build/native32/pokeemerald-native --headless --silent --unthrottled --frames 9000 --screenshot title.ppm --data-dir out
-make -C platform test BITS=32                       # the platform's unit tests, sanitized
-make -f Makefile.native -j"$(nproc)" check BITS=32  # expansion's test suite on the native build
-```
+Keys: arrows for the D-pad, Z for A, X for B, A for L, S for R, Return for
+Start, Backspace for Select. F1 opens a help overlay, F11 toggles fullscreen,
+Tab held is fast-forward.
 
-Keys: arrows, Z (A), X (B), A (L), S (R), Return (Start), Backspace
-(Select), F1 for the help overlay and its quit, F11 for fullscreen, Tab held or Shift+Tab for
-fast-forward; `settings.ini` changes them and `--keys` prints them with the
-save's path. The first build converts every graphic (34 s on 32 cores). Expansion's
-own `make` and `make check` still build and test the GBA ROM, which is the
-regression reference.
+[docs/RUNNING.md](docs/RUNNING.md) has the settings file, the controller,
+the options and where the files go. The 32-bit, sanitized and test builds
+are in [docs/BUILDING.md](docs/BUILDING.md).
+
+## How it is verified
+
+A gate is a check a change must pass before it merges. The commands are in
+[docs/BUILDING.md](docs/BUILDING.md#gates); the ones below run in CI.
+
+- The platform layer's unit tests, at both widths, under AddressSanitizer
+  and UndefinedBehaviorSanitizer, with style and lint checks.
+- A scripted replay of the opening, headless: New Game through the first
+  battle, a save, a restart and Continue. The game's state and screenshots
+  are compared after every step.
+- A second replay drives expansion's debug menu: the party, bag and summary
+  screens, a trainer battle, a save and Continue.
+- Both replays at 32 and 64 bits, plain and sanitized, must produce the
+  same state and the same screenshots.
+- Expansion's suite on the native build, at both widths, plain and
+  sanitized, compared with the GBA run test by test.
+- The GBA build still produces the same ROM and passes its own suite, and
+  a save written by one width loads in the other.
+
+On every push, CI builds the 64-bit game, runs the platform layer's checks
+and plays both replays on it. Nightly, it builds the GBA ROM and checks its
+sha1 and its suite. The same night it builds the game at both widths, plain
+and sanitized, runs the replays and the suite on each, and runs the
+cross-width save check. A second nightly workflow builds for Windows and runs the unit tests, the
+replays and the suite on a Windows runner.
+
+## Design in brief
+
+The platform maps each GBA memory region at its GBA address and links the
+executable at 0x40000000, above them all. Expansion's register macros and
+fixed addresses therefore work unchanged. Register writes are plain stores;
+the layer reads them at scanline and frame boundaries and does what the
+hardware did.
+The game runs on one thread, and `VBlankIntrWait` is the frame boundary.
+Expansion's code is compiled as it is; where a hardware assumption cannot be
+isolated, the smallest guarded change is made and logged. The layer itself is
+C with unit tests written from GBATEK. The design is in
+[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and the choices, with their
+alternatives, in [docs/DECISIONS.md](docs/DECISIONS.md).
+
+## Known limitations
+
+- Hands-on play has been checked through the opening only. The suite covers
+  the engine, and most menus past the opening have no replay.
+- No save interchange with the GBA, in either direction.
+- No macOS build in this tree.
+- The executables are not signed; Windows SmartScreen warns on first start.
+
+## FAQ
+
+**Where is the download?** Nowhere, by design: see "What this is". One
+command builds it.
+
+**Do I need a ROM?** No. Nothing is read from a ROM, at build time or at run
+time.
+
+**Can I use my GBA or emulator save?** No. The native save keeps the host's
+struct layout and starts with this project's header; the game refuses a file
+without it and leaves it untouched. There is no converter yet.
+
+**Can I build my own expansion-based hack on this?** The tree is expansion's,
+so a hack goes where it would in expansion. `Makefile.native` compiles the
+same sources and converts the same assets. The differences a hack can notice
+are listed in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), "Known
+divergences from the GBA".
+
+**Which expansion version is this, and how are upgrades done?**
+`expansion/1.17.1`. The runbook moves the pin to a newer tag and re-verifies
+every guarded line against the new code. It has not been run yet.
+
+**Does it run on Apple silicon?** Not yet. The macOS build on `work/macos`
+is x86-64 and would run through Rosetta 2. An arm64 build needs a different
+memory model, because arm64 executables are always relocated at load.
+
+## Repository layout
+
+This tree is expansion's, with these additions:
+
+- `platform/`: the platform layer, its unit tests and its build glue.
+- `tests/smoke/`: the input replays and the scripts that run them.
+- `test/`: five native-only test files beside expansion's.
+- `Makefile.native` and `tools/build-native.sh`: the native build.
+- `.github/workflows/native.yml`, `windows.yml` and `release.yml`, with
+  `.github/actions/` and `.github/release/`.
+- `docs/`: this project's documents, listed below, beside upstream's.
+- `LICENSE`, `.clang-format` and `.clang-tidy`.
+
+`INSTALL.md`, `FEATURES.md`, `docs/install/`, `docs/tutorials/` and
+upstream's other pages describe the GBA build and are kept as upstream wrote
+them. Upstream's README and contribution guide are at
+`docs/upstream-README.md` and `docs/upstream-CONTRIBUTING.md`.
 
 ## Documentation
 
-- [docs/RUNNING.md](docs/RUNNING.md): for players: running the game, the
-  keys and the settings file, the F1 overlay and quitting, fast-forward,
-  where the files live (per-user or portable), the options.
-- [docs/BUILDING.md](docs/BUILDING.md): prerequisites, every build variant
-  and the gates.
-- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): the platform layer, its
-  boundary with expansion, the memory model and the frame.
-- [docs/DECISIONS.md](docs/DECISIONS.md): decisions with their alternatives.
+- [docs/RUNNING.md](docs/RUNNING.md): how to play and where the files are.
+- [docs/BUILDING.md](docs/BUILDING.md): building every variant, and the gates.
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): how the platform layer is built.
+- [docs/DECISIONS.md](docs/DECISIONS.md): each decision and its alternatives.
 - [docs/UPSTREAM_MODIFICATIONS.md](docs/UPSTREAM_MODIFICATIONS.md): every
-  change to an expansion file.
+  change to an upstream file.
 - [docs/UPGRADING.md](docs/UPGRADING.md): moving to a newer expansion tag.
-- [docs/RESEARCH.md](docs/RESEARCH.md): what we learned from GBATEK and from
-  the three earlier native ports.
+- [docs/C-RULES.md](docs/C-RULES.md): the rules the platform layer follows.
+- [docs/RESEARCH.md](docs/RESEARCH.md): what the GBA and the earlier ports
+  taught this one.
+- [docs/research/](docs/research/): the evidence behind the research page.
 - [platform/README.md](platform/README.md): the platform modules one by one.
-- [CONTRIBUTING.md](CONTRIBUTING.md): the rules, the gates, how to add a
-  module.
+- [tests/smoke/README.md](tests/smoke/README.md): the replays.
+- [CONTRIBUTING.md](CONTRIBUTING.md): how to contribute.
+- [CREDITS.md](CREDITS.md): this project's credits, then upstream's.
+- [LICENSE](LICENSE): the scoped MIT license.
+
+## Contributing
+
+Contributions to the platform layer are welcome. Read
+[CONTRIBUTING.md](CONTRIBUTING.md) first: it has the C rules, which gates a
+change must pass, and what will not be accepted. Expansion's files are
+edited only under guards, and nothing extracted from a cartridge is accepted.
+
+## Legal
+
+This project is not affiliated with or endorsed by Nintendo, Creatures Inc.,
+GAME FREAK inc. or The Pokémon Company. The decompiled game code, graphics,
+audio and text are their property and the work of the decompilation
+projects. No built game is distributed. [LICENSE](LICENSE) says exactly which
+files are this project's and under what terms.
 
 ## Credits
 
-The three earlier ports were read for structure and pitfalls (no code was
-copied):
-
-- [pokeemerald-native](https://github.com/fuddlesworth/pokeemerald-native)
-  by NTx86 and fuddlesworth.
-- [pokeemerald-multiplatform](https://github.com/gradenGnostic/pokeemerald-multiplatform)
-  by gradenGnostic and contributors, descending from Kurausukun's port.
-- [pokemon-regionalidades](https://github.com/hirata-producoes/pokemon-regionalidades)
-  by hirata-producoes, the first to merge a platform layer into
-  expansion, with a technical report that shaped our 64-bit plan.
-
-pret and RH-Hideout wrote the game code this project builds
-([pret](https://github.com/pret/pokeemerald),
-[RH-Hideout](https://github.com/rh-hideout/pokeemerald-expansion)). Full credits in [CREDITS.md](CREDITS.md).
+[pret](https://github.com/pret/pokeemerald) decompiled Pokémon Emerald, and
+[rh-hideout](https://github.com/rh-hideout/pokeemerald-expansion) and its
+contributors built expansion on it; the game is theirs. The platform layer
+uses [SDL2](https://www.libsdl.org/). Three earlier native ports were read
+for structure and pitfalls, and GBATEK and Tonc for the hardware;
+[CREDITS.md](CREDITS.md) names them.
 
 ## License
 
-The platform layer, build glue, tests and documentation this project adds
-are under the scoped MIT license in [LICENSE](LICENSE). It covers only
-those files. The decompiled game code and all Nintendo, Creatures and
-GAME FREAK material are not ours to license and are not covered.
+This project's own files are under the MIT license scoped in
+[LICENSE](LICENSE). The game code and assets are not covered.

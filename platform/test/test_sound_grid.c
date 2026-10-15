@@ -204,10 +204,10 @@ static void read_indexes(const struct sound_grid_frame *frame, size_t n, int16_t
 PTEST(every_rate_of_the_engines_table_is_read_in_order)
 {
     /* src/m4a_tables.c gPcmSamplesPerVBlankTable; each divides 280896, so the
-     * timer's interval is whole. Over eight frames (every carried value the
-     * grid takes) the reads never go back and advance by at most
+     * timer's interval is whole. Over eight frames (the carried value of the
+     * grid repeats every four, so two periods) the reads never go back and advance by at most
      * ceil(256 / interval) samples. The table's fastest, 704 samples a frame
-     * (42048 Hz), has an interval of 398 cycles, over the grid's 256: every
+     * (42048 Hz), has an interval of 399 cycles, over the grid's 256: every
      * FIFO sample is read, from 0 to the last, at every rate of the table
      * (at 32.768kHz the three fastest were coarser than the grid and lost
      * samples between two reads). */

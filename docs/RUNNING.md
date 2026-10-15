@@ -227,16 +227,25 @@ machine (`auto`, the default, is the Deck rule). A replay and a
 ## Steam Deck
 
 The Linux 64-bit build is the Deck's build: SteamOS is a Linux x86-64 system.
-Nothing needs installing, and the system partition stays untouched.
+No build is distributed, so you make the executable yourself, and none of this
+has been tried on a Deck.
 
-1. In Desktop Mode, copy the release folder (`pokeemerald-native-...-linux-x86_64`)
-   into your home directory, for example `/home/deck/Games/pokeemerald-native/`,
-   and unpack it there if it is a tarball (`tar xzf`).
-2. Open Steam in Desktop Mode, Games > Add a Non-Steam Game to My Library >
-   Browse, set the file filter to All files, and pick `pokeemerald-native.sh`
-   from that folder (the script runs the game with the bundled SDL2). Add it.
-3. Optionally rename it in its Properties. No launch options are needed.
-   Return to Game Mode: it is in the library under Non-Steam.
+1. Build it as [docs/BUILDING.md](BUILDING.md) says for Linux, either on a Linux
+   PC or on the Deck in Desktop Mode. The result is
+   `build/native64/pokeemerald-native`. The Deck needs SDL2 installed and a
+   glibc at least as new as the one the executable was built against; a build
+   on the Deck meets both.
+2. Put the executable in its own folder on the Deck, for example
+   `/home/deck/Games/pokeemerald-native/`, and make sure it is executable
+   (`chmod +x pokeemerald-native`).
+3. In Desktop Mode, open Steam, then Games > Add a Non-Steam Game to My
+   Library > Browse, set the file filter to All files, pick `pokeemerald-native`
+   from that folder and add it. No launch options are needed.
+4. Return to Game Mode: the game is in the library under Non-Steam.
+
+You do not need a launcher script. `.github/release/pokeemerald-native.sh`
+exists only to run a release archive's executable with the SDL2 library
+bundled beside it, and a build you made links the system's SDL2.
 
 The game starts fullscreen. The Steam button and the quick-access button
 belong to Steam and the game never sees them; the controller table
@@ -251,24 +260,8 @@ Your save is in the per-user data directory like anywhere on Linux:
 Put a `settings.ini` beside the executable instead if you want the folder to
 carry everything ([portable mode](#where-the-files-live)).
 
-The package is the executable, the launcher script `pokeemerald-native.sh`,
-the SDL2 library the executable was linked against (`libSDL2-2.0.so.0`, with
-its licence as `SDL2-LICENSE.txt`), the project's licence and these pages. The
-launcher puts its own folder first in `LD_LIBRARY_PATH`, so it runs the game
-with the bundled SDL2; the executable started directly uses the system's.
-It leaves the working directory alone, so relative paths in options mean what
-you typed. The bundled SDL2, from the Ubuntu 24.04 image the release builds
-on, was measured to need glibc 2.38 (the highest
-`GLIBC_` version in `objdump -T`; the executable itself needs 2.34) and 17
-system libraries besides glibc and libm: libasound, libpulse, libsamplerate,
-libX11, libXext, libXcursor, libXi, libXfixes, libXrandr, libXss, libdrm,
-libgbm, libwayland-egl, libwayland-client, libwayland-cursor, libxkbcommon and
-libdecor. A SteamOS 3.8 Deck reports glibc 2.41
-([report](https://forum.godotengine.org/t/steam-deck-cant-launch-linux-build-due-to-outdated-glibc-version-build-targeting-newer-glibc-version/143218)),
-so the floor is met; no source was found for the glibc or the libraries of older
-SteamOS releases, and none of this has been tried on a Deck. If the game does
-not start from Steam, run `./pokeemerald-native.sh` in Konsole to see the
-loader's message.
+If the game does not start from Steam, run `./pokeemerald-native` in Konsole,
+from its folder, to see the loader's message.
 
 ## The settings file
 

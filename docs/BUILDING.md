@@ -27,7 +27,7 @@ appears if a display is available (WSLg), and nothing depends on it.
 ```
 sudo dpkg --add-architecture i386
 sudo apt-get update
-sudo apt-get install -y build-essential gcc-multilib g++-multilib clang clang-format clang-tidy cppcheck pkg-config git
+sudo apt-get install -y build-essential gcc-multilib g++-multilib clang clang-format clang-tidy cppcheck pkg-config git python3-yaml
 sudo apt-get install -y libsdl2-dev libsdl2-dev:i386 libc6-dev-i386 valgrind
 sudo apt-get install -y gcc-arm-none-eabi binutils-arm-none-eabi libnewlib-arm-none-eabi libpng-dev
 ```
@@ -106,7 +106,7 @@ hydra (as `make check` runs it against mgba-rom-test; about 40 seconds on
 `TESTS=` filters as expansion's does):
 
 ```
-make -f Makefile.native -j32 check BITS=32
+make -f Makefile.native -j"$(nproc)" check BITS=32
 ```
 
 How it works: `platform/README.md`, "The test runner"; the results against
@@ -158,7 +158,7 @@ save loads in the 32-bit build the same way (`platform/README.md`;
 ```
 make -f Makefile.native -j$(nproc) native BITS=64        # build/native64/pokeemerald-native
 make -f Makefile.native -j$(nproc) native BITS=64 TEST=1 # build/native64-test/pokeemerald-native-test
-make -f Makefile.native -j32 check BITS=64                # expansion's suite
+make -f Makefile.native -j"$(nproc)" check BITS=64                # expansion's suite
 ```
 
 Before it links, the 64-bit build runs three checks that the 32-bit one has no
@@ -177,7 +177,7 @@ use for (`docs/ARCHITECTURE.md`, "The 64-bit build", says what each catches):
 
 Each runs its `--self-test` first. Together they add well under half a minute
 to a 64-bit build (the self-tests take under a second and the reference build
-a few seconds); a 64-bit build from nothing takes about 1.5 minutes with `-j32`,
+a few seconds); a 64-bit build from nothing takes about 1.5 minutes with `-j"$(nproc)"`,
 asset conversion included, and about 30 s once the assets exist. A table that
 upstream adds to the data without a rule, or a macro whose operands change, stops
 the link with the symbol or macro named; `docs/UPGRADING.md` says what to do.
@@ -210,7 +210,7 @@ listing, with the ELF one (`check_flat.py`): the bytes, each relocation's offset
 width, symbol and addend, the symbols and the alignment. Neither changes the Linux
 build; both make the 64-bit data objects and their three checks first, and `BITS`
 is 64 for them. A conversion and check of everything takes about 6 s per target with
-`-j32`. Their self-tests, in `make -C platform glue-test` and so in the gate, assemble
+`-j"$(nproc)"`. Their self-tests, in `make -C platform glue-test` and so in the gate, assemble
 small objects with GNU as and with clang, so the gate needs both.
 
 What the conversion was measured to do at expansion 1.17.1. All 544 objects
@@ -233,8 +233,8 @@ alone.
 
 
 ```
-make -f Makefile.native -j32 data-flat TARGET=macho-x86_64    # or TARGET=coff-x86_64
-make -f Makefile.native -j32 check-flat TARGET=macho-x86_64
+make -f Makefile.native -j"$(nproc)" data-flat TARGET=macho-x86_64    # or TARGET=coff-x86_64
+make -f Makefile.native -j"$(nproc)" check-flat TARGET=macho-x86_64
 ```
 
 #### The game's C and ccache
@@ -273,7 +273,7 @@ file and symbol if a short palette whose size is taken is not in the list, or a
 listed file is not short or its size is not taken: a new palette that the game sizes
 cannot be padded by accident.
 
-First build, measured on 2026-10-08 with `-j32`: about 34 s wall (10.6 minutes of CPU)
+First build, measured on 2026-10-08 with `-j"$(nproc)"`: about 34 s wall (10.6 minutes of CPU)
 for `native BITS=32` from nothing, of which converting about 21,700 asset files is
 most. `make -f Makefile.native seed-assets` first copies `build/assets/` (build the
 GBA target before) into `build/assets-native/` and deletes the copied palettes that
@@ -290,9 +290,9 @@ replay's outputs; the sanitized replays are run with
 
 | Gate | What it checks | Command |
 |---|---|---|
-| (a) | the native build from a clean clone with the prerequisites above (before a release or a large change is declared done) | `make -f Makefile.native -j"$(nproc)" native BITS=32`, then `BITS=64` |
+| (a) | the native build from a clean clone with the prerequisites above (before a release or after a large change) | `make -f Makefile.native -j"$(nproc)" native BITS=32`, then `BITS=64` |
 | platform | style, lint, the sanitized unit tests at both widths, ThreadSanitizer, the tools and glue self-tests | `make -C platform gate` |
-| (b) | expansion's test suite on the native build equals the GBA baseline, per test, but for the nine benchmarks (assumption failures by decision); the same at both widths | `make -f Makefile.native -j32 check BITS=32`, `BITS=64`, and each with `SANITIZE=1` |
+| (b) | expansion's test suite on the native build equals the GBA baseline, per test, but for the nine benchmarks (assumption failures by decision); the same at both widths | `make -f Makefile.native -j"$(nproc)" check BITS=32`, `BITS=64`, and each with `SANITIZE=1` |
 | (c) | the GBA target builds, its ROM is unchanged (sha1 `e2d4600d4e7b1269ac50c28bc96ece2b758ded9e` for 1.17.1) and its suite equals the baseline | `make -j"$(nproc)"`, `sha1sum pokeemerald.gba`, then `make -j"$(nproc)" check`, whose totals must be 5862 total, 5414 passed, 18 known failing, 9 expected failing, 421 to-do, rc 0 (`docs/research/gba-baseline-1.17.1.md`); the nightly's `gba` job runs all three. Building the ROM alone does not compile `test/`, so it cannot pass this gate |
 | (d) | the opening, replayed: dumps and screenshots match, at both widths, plain and sanitized | `tests/smoke/run.sh build/native32/pokeemerald-native out/`, likewise `native32-san`, `native64`, `native64-san` |
 | (e) | expansion's debug menu driven natively, the same four builds | `tests/smoke/run_debug_menu.sh build/native32/pokeemerald-native out/`, likewise the other three |
@@ -328,8 +328,8 @@ page fails.
 
 ```
 sudo apt-get install -y gcc-mingw-w64-x86-64 binutils-mingw-w64-x86-64 mingw-w64-tools   # windres is in binutils
-make -f Makefile.native -j32 sdl2-mingw TARGET_OS=windows BITS=64   # SDL2 for MinGW, once
-make -f Makefile.native -j32 native TARGET_OS=windows BITS=64       # build/native64-windows/pokeemerald-native.exe
+make -f Makefile.native -j"$(nproc)" sdl2-mingw TARGET_OS=windows BITS=64   # SDL2 for MinGW, once
+make -f Makefile.native -j"$(nproc)" native TARGET_OS=windows BITS=64       # build/native64-windows/pokeemerald-native.exe
 ```
 
 Or, instead of the two makes, `tools/build-native.sh --os windows`, which
@@ -395,7 +395,7 @@ not in the platform gate, which runs on Linux alone). patchelf on a PE file:
 The test runner build, for the suite on Windows:
 
 ```
-make -f Makefile.native -j32 native TARGET_OS=windows BITS=64 TEST=1   # build/native64-test-windows/pokeemerald-native-test.exe
+make -f Makefile.native -j"$(nproc)" native TARGET_OS=windows BITS=64 TEST=1   # build/native64-test-windows/pokeemerald-native-test.exe
 ```
 
 It is made as the game is, from the Linux TEST=1 data (`build/native64-test/`)
@@ -450,7 +450,7 @@ and on Linux, for the comparisons (the same commit):
 ```
 tests/smoke/run_cross_os.sh save build/native64/pokeemerald-native out/cross-os/save          # before `load`
 tests/smoke/run_cross_os.sh back build/native64/pokeemerald-native out/cross-os/save/work/from out/cross-os/load/work/again out/cross-os/back
-make -f Makefile.native -j32 check BITS=64 | tee suite-linux64.log
+make -f Makefile.native -j"$(nproc)" check BITS=64 | tee suite-linux64.log
 platform/test_runner/compare_suite_results.sh suite-linux64.log suite-windows.log
 ```
 
@@ -708,7 +708,7 @@ nothing at all: no artifact, no release. With `publish` and a `tag` the
 archives go to the later jobs as one-day artifacts, which a last job deletes;
 those jobs write `SHA256SUMS.txt`, attest the archives (`gh attestation verify
 <file> --repo <owner>/<repo>`; GitHub offers attestations to a user-owned
-repository only once it is public, so while this one is private that step
+repository only once it is public, so on a private repository that step
 fails) and create the GitHub release. Each archive holds the executable,
 `LICENSE`, `RUNNING.md` and a short `README.txt`; the Windows zip also holds
 `SDL2.dll` and SDL2's licence. The macOS tarball is unsigned and not notarized
@@ -723,6 +723,9 @@ notarization), and fails if `otool -L` of anything still names a Homebrew path.
 The job then runs the unpacked archive with `DYLD_PRINT_LIBRARIES` and fails
 if a library loads from Homebrew. None of the macOS job has run on a Mac.
 `platform/build_glue/check_workflow_uploads.py` fails the platform
-gate if any workflow's upload could match more than text, frame images, saves and clock files, release.yml's
-archives excepted under `publish`. No public release is made without an
-explicit decision to publish (`docs/DECISIONS.md`, "Why no public release").
+gate if any workflow's upload step could match more than text, frame images,
+saves and clock files (release.yml's archives excepted under `publish`), or if
+a workflow uses an action that is not on its allowlist. It reads the steps'
+structure only: a `run:` command that uploads is for the reviewer. No public
+release is made without an explicit decision to publish (`docs/DECISIONS.md`,
+"Why no public release").

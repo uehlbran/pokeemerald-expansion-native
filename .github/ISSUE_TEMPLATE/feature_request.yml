@@ -1,0 +1,36 @@
+name: Feature request
+description: Something the native build could do that it does not
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        This form is for the native build itself: the platform layer (video, audio, input, saves, the build and its tests). Features of the game (Pokemon, moves, battle rules, the story) are pokeemerald-expansion's; ask for those in [its repository](https://github.com/rh-hideout/pokeemerald-expansion/issues).
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: What you cannot do now, or what is hard to do.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: The proposal
+      description: What you would like to see instead. Alternatives you considered are welcome.
+    validations:
+      required: true
+  - type: dropdown
+    id: platform
+    attributes:
+      label: The platform it concerns
+      options:
+        - All platforms
+        - Linux
+        - Windows
+        - macOS
+        - Steam Deck
+        - The build or its tests
+        - Documentation
+    validations:
+      required: true
