@@ -1,0 +1,100 @@
+fixed    rep 0: 0.562 ns per iteration (acc 0)
+symbol   rep 0: 0.577 ns per iteration (acc 0)
+variable rep 0: 0.575 ns per iteration (acc 0)
+fixed    rep 1: 0.554 ns per iteration (acc 0)
+symbol   rep 1: 0.575 ns per iteration (acc 0)
+variable rep 1: 0.576 ns per iteration (acc 0)
+fixed    rep 2: 0.557 ns per iteration (acc 0)
+symbol   rep 2: 0.575 ns per iteration (acc 0)
+variable rep 2: 0.575 ns per iteration (acc 0)
+== x86_64-linux-gnu: function sizes (bytes)
+00000000000000d0 00000000000000bc T run_symbol
+0000000000000000 00000000000000cb T run_fixed
+0000000000000190 00000000000000cf T run_variable
+== aarch64-linux-gnu: function sizes (bytes)
+0000000000000000 0000000000000058 T run_fixed
+0000000000000058 0000000000000058 T run_symbol
+00000000000000b0 0000000000000070 T run_variable
+== aarch64 run_fixed / run_symbol / run_variable loop bodies
+
+out/iobench.aarch64-linux-gnu.o:	file format elf64-littleaarch64
+
+Disassembly of section .text:
+
+0000000000000000 <run_fixed>:
+       0:      	cbz	w0, 0x4c <run_fixed+0x4c>
+       4:      	mov	w10, #0x6               // =6
+       8:      	mov	w9, wzr
+       c:      	mov	w8, wzr
+      10:      	movk	w10, #0x400, lsl #16
+      14:      	mov	w11, #0x3f41            // =16193
+      18:      	lsr	w12, w9, #1
+      1c:      	strh	w9, [x10, #0xa]
+      20:      	strh	w12, [x10, #0xc]
+      24:      	and	w12, w9, #0x10
+      28:      	add	w9, w9, #0x1
+      2c:      	strh	w11, [x10, #0x4a]
+      30:      	cmp	w0, w9
+      34:      	strh	w12, [x10, #0x4c]
+      38:      	ldrh	w12, [x10]
+      3c:      	add	w8, w8, w12
+      40:      	b.ne	0x18 <run_fixed+0x18>
+      44:      	mov	w0, w8
+      48:      	ret
+      4c:      	mov	w8, wzr
+      50:      	mov	w0, w8
+      54:      	ret
+
+0000000000000058 <run_symbol>:
+      58:      	cbz	w0, 0xa4 <run_symbol+0x4c>
+      5c:      	mov	w9, wzr
+      60:      	mov	w8, wzr
+      64:      	mov	w10, #0x3f41            // =16193
+      68:      	adrp	x11, 0x0 <run_fixed>
+      6c:      	add	x11, x11, #0x0
+      70:      	lsr	w12, w9, #1
+      74:      	strh	w9, [x11, #0xa]
+      78:      	strh	w12, [x11, #0xc]
+      7c:      	and	w12, w9, #0x10
+      80:      	add	w9, w9, #0x1
+      84:      	strh	w10, [x11, #0x4a]
+      88:      	cmp	w0, w9
+      8c:      	strh	w12, [x11, #0x4c]
+      90:      	ldrh	w12, [x11]
+      94:      	add	w8, w8, w12
+      98:      	b.ne	0x70 <run_symbol+0x18>
+      9c:      	mov	w0, w8
+      a0:      	ret
+      a4:      	mov	w8, wzr
+      a8:      	mov	w0, w8
+      ac:      	ret
+
+00000000000000b0 <run_variable>:
+      b0:      	cbz	w0, 0x114 <run_variable+0x64>
+      b4:      	mov	w10, #0x6               // =6
+      b8:      	adrp	x11, 0x0 <run_fixed>
+      bc:      	mov	w9, wzr
+      c0:      	movk	w10, #0x400, lsl #16
+      c4:      	ldr	x11, [x11]
+      c8:      	mov	w8, wzr
+      cc:      	add	x12, x10, #0xa
+      d0:      	add	x13, x10, #0xc
+      d4:      	add	x14, x10, #0x4a
+      d8:      	add	x15, x10, #0x4c
+      dc:      	mov	w16, #0x3f41            // =16193
+      e0:      	lsr	w17, w9, #1
+      e4:      	strh	w9, [x11, x12]
+      e8:      	strh	w17, [x11, x13]
+      ec:      	and	w17, w9, #0x10
+      f0:      	add	w9, w9, #0x1
+      f4:      	strh	w16, [x11, x14]
+      f8:      	cmp	w0, w9
+      fc:      	strh	w17, [x11, x15]
+     100:      	ldrh	w17, [x11, x10]
+     104:      	add	w8, w8, w17
+     108:      	b.ne	0xe0 <run_variable+0x30>
+     10c:      	mov	w0, w8
+     110:      	ret
+     114:      	mov	w8, wzr
+     118:      	mov	w0, w8
+     11c:      	ret

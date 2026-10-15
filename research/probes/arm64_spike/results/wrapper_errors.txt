@@ -1,0 +1,123 @@
+# syntax_all.sh over the 384 src/*.c, -fPIE; errors per variant (file:line), 2026-10-15
+== wrap_symbols: 384 files, 0 failed
+== wrap_symbols_c: 384 files, 0 failed
+== wrap_variable: 384 files, 8 failed
+src/battle_dome.c:529 initializer element is not constant
+src/battle_main.c:252 initializer element is not constant
+src/battle_main.c:258 initializer element is not constant
+src/field_screen_effect.c:78 initializer element is not constant
+src/menu_specialized.c:86 initializer element is not constant
+src/overworld.c:343 initializer element is not constant
+src/pokenav_menu_handler_gfx.c:355 initializer element is not constant
+src/rayquaza_scene.c:478 initializer element is not constant
+src/tileset_anims.c:220 initializer element is not constant
+src/tileset_anims.c:221 initializer element is not constant
+src/tileset_anims.c:222 initializer element is not constant
+src/tileset_anims.c:223 initializer element is not constant
+src/tileset_anims.c:224 initializer element is not constant
+src/tileset_anims.c:225 initializer element is not constant
+src/tileset_anims.c:226 initializer element is not constant
+src/tileset_anims.c:227 initializer element is not constant
+src/tileset_anims.c:231 initializer element is not constant
+src/tileset_anims.c:232 initializer element is not constant
+src/tileset_anims.c:233 initializer element is not constant
+src/tileset_anims.c:234 initializer element is not constant
+src/tileset_anims.c:235 initializer element is not constant
+src/tileset_anims.c:236 initializer element is not constant
+src/tileset_anims.c:237 initializer element is not constant
+src/tileset_anims.c:238 initializer element is not constant
+src/tileset_anims.c:295 initializer element is not constant
+src/tileset_anims.c:296 initializer element is not constant
+src/tileset_anims.c:297 initializer element is not constant
+src/tileset_anims.c:298 initializer element is not constant
+src/tileset_anims.c:299 initializer element is not constant
+src/tileset_anims.c:300 initializer element is not constant
+src/tileset_anims.c:301 initializer element is not constant
+src/tileset_anims.c:302 initializer element is not constant
+src/tileset_anims.c:353 initializer element is not constant
+src/tileset_anims.c:354 initializer element is not constant
+src/tileset_anims.c:355 initializer element is not constant
+src/tileset_anims.c:356 initializer element is not constant
+src/tileset_anims.c:357 initializer element is not constant
+src/tileset_anims.c:358 initializer element is not constant
+src/tileset_anims.c:359 initializer element is not constant
+src/tileset_anims.c:360 initializer element is not constant
+== clang_none: 384 files, 2 failed
+/usr/include/stdio.h:195 '__malloc__' attribute takes no arguments
+/usr/include/stdio.h:229 '__malloc__' attribute takes no arguments
+/usr/include/stdio.h:266 '__malloc__' attribute takes no arguments
+/usr/include/stdio.h:300 '__malloc__' attribute takes no arguments
+/usr/include/stdio.h:309 '__malloc__' attribute takes no arguments
+/usr/include/stdio.h:315 '__malloc__' attribute takes no arguments
+/usr/include/stdio.h:321 '__malloc__' attribute takes no arguments
+/usr/include/stdio.h:904 '__malloc__' attribute takes no arguments
+src/ow_abilities.c:45 incompatible function pointer types initializing 'const bool32 (*const)(enum Species)' (aka 'const unsigned int (*const)(enum Species)') with an expression of type 'bool32 (enum Species)' (aka 'unsigned int (enum Species)') [-Wincompatible-function-pointer-types]
+src/ow_abilities.c:46 incompatible function pointer types initializing 'const bool32 (*const)(enum Species)' (aka 'const unsigned int (*const)(enum Species)') with an expression of type 'bool32 (enum Species)' (aka 'unsigned int (enum Species)') [-Wincompatible-function-pointer-types]
+src/ow_abilities.c:47 incompatible function pointer types initializing 'const bool32 (*const)(enum Species)' (aka 'const unsigned int (*const)(enum Species)') with an expression of type 'bool32 (enum Species)' (aka 'unsigned int (enum Species)') [-Wincompatible-function-pointer-types]
+src/ow_abilities.c:48 incompatible function pointer types initializing 'const bool32 (*const)(enum Species)' (aka 'const unsigned int (*const)(enum Species)') with an expression of type 'bool32 (enum Species)' (aka 'unsigned int (enum Species)') [-Wincompatible-function-pointer-types]
+src/ow_abilities.c:54 incompatible function pointer types initializing 'const bool32 (*const)(enum Species)' (aka 'const unsigned int (*const)(enum Species)') with an expression of type 'bool32 (enum Species)' (aka 'unsigned int (enum Species)') [-Wincompatible-function-pointer-types]
+src/ow_abilities.c:55 incompatible function pointer types initializing 'const bool32 (*const)(enum Species)' (aka 'const unsigned int (*const)(enum Species)') with an expression of type 'bool32 (enum Species)' (aka 'unsigned int (enum Species)') [-Wincompatible-function-pointer-types]
+src/ow_abilities.c:56 incompatible function pointer types initializing 'const bool32 (*const)(enum Species)' (aka 'const unsigned int (*const)(enum Species)') with an expression of type 'bool32 (enum Species)' (aka 'unsigned int (enum Species)') [-Wincompatible-function-pointer-types]
+src/ow_abilities.c:57 incompatible function pointer types initializing 'const bool32 (*const)(enum Species)' (aka 'const unsigned int (*const)(enum Species)') with an expression of type 'bool32 (enum Species)' (aka 'unsigned int (enum Species)') [-Wincompatible-function-pointer-types]
+== clang_symbols: 384 files, 3 failed
+/usr/include/stdio.h:195 '__malloc__' attribute takes no arguments
+/usr/include/stdio.h:229 '__malloc__' attribute takes no arguments
+/usr/include/stdio.h:266 '__malloc__' attribute takes no arguments
+/usr/include/stdio.h:300 '__malloc__' attribute takes no arguments
+/usr/include/stdio.h:309 '__malloc__' attribute takes no arguments
+/usr/include/stdio.h:315 '__malloc__' attribute takes no arguments
+/usr/include/stdio.h:321 '__malloc__' attribute takes no arguments
+/usr/include/stdio.h:904 '__malloc__' attribute takes no arguments
+src/ow_abilities.c:45 incompatible function pointer types initializing 'const bool32 (*const)(enum Species)' (aka 'const unsigned int (*const)(enum Species)') with an expression of type 'bool32 (enum Species)' (aka 'unsigned int (enum Species)') [-Wincompatible-function-pointer-types]
+src/ow_abilities.c:46 incompatible function pointer types initializing 'const bool32 (*const)(enum Species)' (aka 'const unsigned int (*const)(enum Species)') with an expression of type 'bool32 (enum Species)' (aka 'unsigned int (enum Species)') [-Wincompatible-function-pointer-types]
+src/ow_abilities.c:47 incompatible function pointer types initializing 'const bool32 (*const)(enum Species)' (aka 'const unsigned int (*const)(enum Species)') with an expression of type 'bool32 (enum Species)' (aka 'unsigned int (enum Species)') [-Wincompatible-function-pointer-types]
+src/ow_abilities.c:48 incompatible function pointer types initializing 'const bool32 (*const)(enum Species)' (aka 'const unsigned int (*const)(enum Species)') with an expression of type 'bool32 (enum Species)' (aka 'unsigned int (enum Species)') [-Wincompatible-function-pointer-types]
+src/ow_abilities.c:54 incompatible function pointer types initializing 'const bool32 (*const)(enum Species)' (aka 'const unsigned int (*const)(enum Species)') with an expression of type 'bool32 (enum Species)' (aka 'unsigned int (enum Species)') [-Wincompatible-function-pointer-types]
+src/ow_abilities.c:55 incompatible function pointer types initializing 'const bool32 (*const)(enum Species)' (aka 'const unsigned int (*const)(enum Species)') with an expression of type 'bool32 (enum Species)' (aka 'unsigned int (enum Species)') [-Wincompatible-function-pointer-types]
+src/ow_abilities.c:56 incompatible function pointer types initializing 'const bool32 (*const)(enum Species)' (aka 'const unsigned int (*const)(enum Species)') with an expression of type 'bool32 (enum Species)' (aka 'unsigned int (enum Species)') [-Wincompatible-function-pointer-types]
+src/ow_abilities.c:57 incompatible function pointer types initializing 'const bool32 (*const)(enum Species)' (aka 'const unsigned int (*const)(enum Species)') with an expression of type 'bool32 (enum Species)' (aka 'unsigned int (enum Species)') [-Wincompatible-function-pointer-types]
+src/scanline_effect.c:139 expression is not an integer constant expression
+src/scanline_effect.c:142 expression is not an integer constant expression
+src/scanline_effect.c:145 expression is not an integer constant expression
+src/scanline_effect.c:148 expression is not an integer constant expression
+src/scanline_effect.c:151 expression is not an integer constant expression
+src/scanline_effect.c:154 expression is not an integer constant expression
+src/scanline_effect.c:157 expression is not an integer constant expression
+src/scanline_effect.c:160 expression is not an integer constant expression
+== clang_variable: 384 files, 11 failed
+/usr/include/stdio.h:195 '__malloc__' attribute takes no arguments
+/usr/include/stdio.h:229 '__malloc__' attribute takes no arguments
+/usr/include/stdio.h:266 '__malloc__' attribute takes no arguments
+/usr/include/stdio.h:300 '__malloc__' attribute takes no arguments
+/usr/include/stdio.h:309 '__malloc__' attribute takes no arguments
+/usr/include/stdio.h:315 '__malloc__' attribute takes no arguments
+/usr/include/stdio.h:321 '__malloc__' attribute takes no arguments
+/usr/include/stdio.h:904 '__malloc__' attribute takes no arguments
+src/battle_dome.c:529 initializer element is not a compile-time constant
+src/battle_main.c:252 initializer element is not a compile-time constant
+src/battle_main.c:258 initializer element is not a compile-time constant
+src/field_screen_effect.c:78 initializer element is not a compile-time constant
+src/menu_specialized.c:86 initializer element is not a compile-time constant
+src/overworld.c:343 initializer element is not a compile-time constant
+src/ow_abilities.c:45 incompatible function pointer types initializing 'const bool32 (*const)(enum Species)' (aka 'const unsigned int (*const)(enum Species)') with an expression of type 'bool32 (enum Species)' (aka 'unsigned int (enum Species)') [-Wincompatible-function-pointer-types]
+src/ow_abilities.c:46 incompatible function pointer types initializing 'const bool32 (*const)(enum Species)' (aka 'const unsigned int (*const)(enum Species)') with an expression of type 'bool32 (enum Species)' (aka 'unsigned int (enum Species)') [-Wincompatible-function-pointer-types]
+src/ow_abilities.c:47 incompatible function pointer types initializing 'const bool32 (*const)(enum Species)' (aka 'const unsigned int (*const)(enum Species)') with an expression of type 'bool32 (enum Species)' (aka 'unsigned int (enum Species)') [-Wincompatible-function-pointer-types]
+src/ow_abilities.c:48 incompatible function pointer types initializing 'const bool32 (*const)(enum Species)' (aka 'const unsigned int (*const)(enum Species)') with an expression of type 'bool32 (enum Species)' (aka 'unsigned int (enum Species)') [-Wincompatible-function-pointer-types]
+src/ow_abilities.c:54 incompatible function pointer types initializing 'const bool32 (*const)(enum Species)' (aka 'const unsigned int (*const)(enum Species)') with an expression of type 'bool32 (enum Species)' (aka 'unsigned int (enum Species)') [-Wincompatible-function-pointer-types]
+src/ow_abilities.c:55 incompatible function pointer types initializing 'const bool32 (*const)(enum Species)' (aka 'const unsigned int (*const)(enum Species)') with an expression of type 'bool32 (enum Species)' (aka 'unsigned int (enum Species)') [-Wincompatible-function-pointer-types]
+src/ow_abilities.c:56 incompatible function pointer types initializing 'const bool32 (*const)(enum Species)' (aka 'const unsigned int (*const)(enum Species)') with an expression of type 'bool32 (enum Species)' (aka 'unsigned int (enum Species)') [-Wincompatible-function-pointer-types]
+src/ow_abilities.c:57 incompatible function pointer types initializing 'const bool32 (*const)(enum Species)' (aka 'const unsigned int (*const)(enum Species)') with an expression of type 'bool32 (enum Species)' (aka 'unsigned int (enum Species)') [-Wincompatible-function-pointer-types]
+src/pokenav_menu_handler_gfx.c:355 initializer element is not a compile-time constant
+src/rayquaza_scene.c:478 initializer element is not a compile-time constant
+src/scanline_effect.c:139 expression is not an integer constant expression
+src/scanline_effect.c:142 expression is not an integer constant expression
+src/scanline_effect.c:145 expression is not an integer constant expression
+src/scanline_effect.c:148 expression is not an integer constant expression
+src/scanline_effect.c:151 expression is not an integer constant expression
+src/scanline_effect.c:154 expression is not an integer constant expression
+src/scanline_effect.c:157 expression is not an integer constant expression
+src/scanline_effect.c:160 expression is not an integer constant expression
+src/tileset_anims.c:220 initializer element is not a compile-time constant
+src/tileset_anims.c:231 initializer element is not a compile-time constant
+src/tileset_anims.c:295 initializer element is not a compile-time constant
+src/tileset_anims.c:353 initializer element is not a compile-time constant

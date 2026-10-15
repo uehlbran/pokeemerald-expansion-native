@@ -1,0 +1,8 @@
+total R_X86_64_32 words: 41946
+  12394 script_data (section-relative)
+   8847 .rodata (section-relative)
+   8755 .rodata
+   8176 script_data
+   3753 .text
+     21 .gba_ewram
+of which carry the script tag (bit 25 set on a code address): 58

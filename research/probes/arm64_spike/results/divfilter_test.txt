@@ -1,0 +1,25 @@
+193 rows
+divfilter out/divtest.x86_64-linux-gnu.ll: sdiv i32 rewritten: 1
+divfilter out/divtest.x86_64-linux-gnu.ll: sdiv i64 rewritten: 1
+divfilter out/divtest.x86_64-linux-gnu.ll: srem i32 rewritten: 1
+divfilter out/divtest.x86_64-linux-gnu.ll: srem i64 rewritten: 1
+divfilter out/divtest.x86_64-linux-gnu.ll: udiv i32 rewritten: 1
+divfilter out/divtest.x86_64-linux-gnu.ll: udiv i64 rewritten: 1
+divfilter out/divtest.x86_64-linux-gnu.ll: urem i32 rewritten: 1
+divfilter out/divtest.x86_64-linux-gnu.ll: urem i64 rewritten: 1
+divfilter out/divtest.aarch64-linux-gnu.ll: sdiv i32 rewritten: 1
+divfilter out/divtest.aarch64-linux-gnu.ll: sdiv i64 rewritten: 1
+divfilter out/divtest.aarch64-linux-gnu.ll: srem i32 rewritten: 1
+divfilter out/divtest.aarch64-linux-gnu.ll: srem i64 rewritten: 1
+divfilter out/divtest.aarch64-linux-gnu.ll: udiv i32 rewritten: 1
+divfilter out/divtest.aarch64-linux-gnu.ll: udiv i64 rewritten: 1
+divfilter out/divtest.aarch64-linux-gnu.ll: urem i32 rewritten: 1
+divfilter out/divtest.aarch64-linux-gnu.ll: urem i64 rewritten: 1
++ ./out/divtest (no SIGFPE handler)
+divtest: rows=193 same=193 diff=0
+exit status 0
+AArch64 divtest.o: sdiv/udiv instructions: 0, calls to pen_*: 8
+x86_64 divtest.o: div/idiv instructions: 0
++ ./out/divtest_unfiltered (control, no filter, no handler)
+./run_test.sh: line 29: 3978998 Floating point exception./out/divtest_unfiltered
+exit status 136

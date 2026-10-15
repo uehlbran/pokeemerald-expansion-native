@@ -1,0 +1,42 @@
+# divfilter over the 384 src/*.c (expansion_ir.sh, clang 18, pre-optimisation IR), totals from out/expansion/*.log, 2026-10-15
+== x86_64
+0 no divisions
+935 sdiv i32 kept
+214 sdiv i32 rewritten
+3 sdiv i64 kept
+1 sdiv i64 rewritten
+742 srem i32 kept
+107 srem i32 rewritten
+1 srem i64 kept
+438 udiv i32 kept
+87 udiv i32 rewritten
+16 udiv i64 kept
+2 udiv i64 rewritten
+106 urem i32 kept
+13 urem i32 rewritten
+107 urem i64 kept
+files with a rewrite: 106
+== aarch64
+0 no divisions
+935 sdiv i32 kept
+214 sdiv i32 rewritten
+3 sdiv i64 kept
+1 sdiv i64 rewritten
+742 srem i32 kept
+107 srem i32 rewritten
+1 srem i64 kept
+438 udiv i32 kept
+87 udiv i32 rewritten
+16 udiv i64 kept
+2 udiv i64 rewritten
+106 urem i32 kept
+13 urem i32 rewritten
+107 urem i64 kept
+files with a rewrite: 106
+== stages that failed
+      1 STAGE clang-ir-aarch64 FAILED script
+      1 STAGE compile-filtered-aarch64 FAILED libisagbprn
+      1 STAGE compile-filtered-x86_64 FAILED libisagbprn
+      1 STAGE compile-plain-aarch64 FAILED libisagbprn
+      1 STAGE compile-plain-x86_64 FAILED libisagbprn
+== done: 384 of 384

@@ -1,0 +1,7 @@
+inttoptr of a constant: 1137 in 105 files; top: m4a 85, battle_transition 76, tileset_anims 67, ereader_helpers 59, siirtc 45
+inttoptr of another i64 value: 288 in 49 files; top: trade 38, contest 18, dma3_manager 16, cable_car 16, wallclock 8
+inttoptr of sext i32: 227 in 42 files; top: contest_ai 100, battle_interface 16, battle_anim 13, multiboot 9, field_effect 8
+inttoptr of zext i32: 123 in 34 files; top: scrcmd 43, mystery_event_script 11, debug 9, party_menu 6, easy_chat 5
+ptrtoint to i16: 30 in 13 files; top: battle_factory_screen 12, fldeff_misc 3, shop 2, m4a 2, fldeff_cut 2
+ptrtoint to i32: 117 in 51 files; top: battle_factory_screen 12, m4a 7, event_object_movement 5, sprite 4, pokemon_jump 4
+ptrtoint to i8: 1 in 1 files; top: m4a 1
