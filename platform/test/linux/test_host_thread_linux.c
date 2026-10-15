@@ -8,9 +8,13 @@
  * leaves the thread there for good; a done one, for at most a moment). Other
  * threads of the process, such as the previous test's own watchdog still on
  * its way out of the list, come and go unseen: the test never counts them. The
- * rest is in ../test_host_thread.c.
+ * rest is in ../test_host_thread.c. A stop that signals the thread and then
+ * detaches or returns early is not seen by the list, since the signalled
+ * thread leaves it within that same moment: LeakSanitizer in the gate catches
+ * it (the watchdog is never released), in all three thread test binaries.
  */
 #include <dirent.h>
+#include <errno.h>
 #include <stdatomic.h>
 #include <stdbool.h>
 #include <stdlib.h>
@@ -22,7 +26,7 @@
 
 #define TASK_DIRECTORY "/proc/self/task"
 #define MAX_TASKS 256u
-#define PAST_ONE_SECOND_MILLISECONDS 1500u
+#define EXPIRY_LIMIT_MILLISECONDS 10000u
 #define SETTLE_LIMIT_MILLISECONDS 2000u
 
 struct task_list {
@@ -38,14 +42,22 @@ static bool read_tasks(struct task_list *list)
     if (directory == NULL)
         return false;
     bool complete = true;
-    for (const struct dirent *entry = readdir(directory); entry != NULL; entry = readdir(directory)) {
+    for (;;) {
+        errno = 0;
+        const struct dirent *const entry = readdir(directory);
+        if (entry == NULL) {
+            complete = complete && errno == 0;
+            break;
+        }
         if (entry->d_name[0] == '.')
             continue;
-        if (list->count == MAX_TASKS) {
+        char *end;
+        const long id = strtol(entry->d_name, &end, 10);
+        if (*end != '\0' || id <= 0 || list->count == MAX_TASKS) { /* 0 is only_new_task's "none" */
             complete = false;
             break;
         }
-        list->ids[list->count++] = strtol(entry->d_name, NULL, 10);
+        list->ids[list->count++] = id;
     }
     return closedir(directory) == 0 && complete;
 }
@@ -105,9 +117,14 @@ static long start_watchdog(unsigned seconds, atomic_bool *expired, struct host_w
     if (!read_tasks(&before))
         return 0;
     *watchdog = host_watchdog_start(seconds, expired);
-    if (*watchdog == NULL || !read_tasks(&after))
+    if (*watchdog == NULL)
         return 0;
-    return only_new_task(&before, &after);
+    const long id = read_tasks(&after) ? only_new_task(&before, &after) : 0;
+    if (id == 0) {
+        host_watchdog_stop(*watchdog);
+        *watchdog = NULL;
+    }
+    return id;
 }
 
 PTEST(a_stopped_watchdog_leaves_no_thread)
@@ -128,7 +145,11 @@ PTEST(a_watchdog_whose_deadline_passed_leaves_no_thread_either)
     const long id = start_watchdog(1, &expired, &watchdog);
     PT_ASSERT(watchdog != NULL);
     PT_ASSERT(id > 0);
-    tsup_sleep_milliseconds(PAST_ONE_SECOND_MILLISECONDS);
+    for (unsigned waited = 0; waited < EXPIRY_LIMIT_MILLISECONDS; waited++) {
+        if (atomic_load_explicit(&expired, memory_order_relaxed))
+            break;
+        tsup_sleep_milliseconds(1);
+    }
     host_watchdog_stop(watchdog);
     PT_ASSERT(atomic_load_explicit(&expired, memory_order_relaxed));
     PT_ASSERT(task_gone(id));
