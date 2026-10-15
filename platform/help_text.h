@@ -1,6 +1,7 @@
 /*
  * help_text.h: what --keys prints and the F1 overlay shows: the version, the
- * keys, the controller's buttons, the data directory and the files.
+ * keys, the controller's buttons, fast-forward, the data directory and the
+ * files.
  *
  * Not hardware: the GBA's buttons were printed on its case. One function
  * writes the lines for both, so that the two never differ. The files come
@@ -13,6 +14,7 @@
 #include <stdbool.h>
 
 #include "data_dir.h"
+#include "fastforward.h"
 #include "input.h"
 
 /* Room for the longest line, a label and a path, with its NUL. */
@@ -21,6 +23,7 @@
 struct help_info {
     const char *version;               /* version_string() */
     const struct input_keymap *keymap; /* the keys in force */
+    const struct fastforward_settings *fast_forward;
     const struct data_paths *paths;
     bool settings_found; /* the settings file was there */
 };
@@ -37,7 +40,12 @@ typedef void (*help_text_sink)(const char *line, void *context);
  *                                  "Settings: none read" if the run reads none)
  *     Keyboard:
  *       A       Z                 (each button and its key, input_buttons' order)
- *     Controller: ... */
+ *     Controller: ...
+ *     Fast-forward:
+ *       Hold    Tab               (fastforward_key_name)
+ *       Toggle  Shift+Tab
+ *       Speed   2x                ("unlimited")
+ *       Sound   sped up           ("muted") */
 void help_text_write(const struct help_info *info, help_text_sink sink, void *context);
 
 #endif /* PLATFORM_HELP_TEXT_H */

@@ -1,7 +1,7 @@
-// deps: data_dir.c settings.c help_text.c input.c overlay.c font.c version.c
+// deps: data_dir.c settings.c help_text.c input.c overlay.c font.c version.c fastforward.c
 /*
  * test_player.c: the player's side of a run (player.c): which runs get the
- * help overlay, the files and the settings found for a run (with --data-dir
+ * help overlay and fast-forward, the files and the settings found for a run (with --data-dir
  * in a scratch directory, so that no system directory is asked for), the
  * window's scale, and the lines --keys prints and the overlay is given.
  */
@@ -35,23 +35,25 @@ static struct options windowed(void)
     return (struct options){.scale = OPTIONS_DEFAULT_SCALE};
 }
 
-PTEST(the_overlay_is_for_a_window_played_from_the_keyboard_only)
+/* The overlay and fast-forward: never in a replay, a gate or the test runner. */
+PTEST(a_player_is_at_the_keyboard_of_a_window_only)
 {
     struct options o = windowed();
-    PT_ASSERT(player_wants_overlay(&o));
+    PT_ASSERT(player_at_keyboard(&o));
     o.headless = true;
-    PT_ASSERT(!player_wants_overlay(&o));
+    PT_ASSERT(!player_at_keyboard(&o));
     o = windowed();
     o.test_runner = true;
-    PT_ASSERT(!player_wants_overlay(&o));
+    PT_ASSERT(!player_at_keyboard(&o));
     o = windowed();
     o.replay_path = "opening.replay";
-    PT_ASSERT(!player_wants_overlay(&o));
+    PT_ASSERT(!player_at_keyboard(&o));
     o = windowed();
     o.data_dir = "d";
     o.save_path = "a.sav";
     o.silent = true;
-    PT_ASSERT(player_wants_overlay(&o)); /* the files and the sound have nothing to do with it */
+    o.unthrottled = true;
+    PT_ASSERT(player_at_keyboard(&o)); /* the files, the sound and the pace have nothing to do with it */
 }
 
 /* A scratch data directory, its path joined with name in out. */
@@ -80,7 +82,7 @@ PTEST(the_files_and_the_settings_of_a_data_directory)
     PT_ASSERT(in_dir(dir, "settings.ini", settings, sizeof settings));
     PT_ASSERT(in_dir(dir, "pokeemerald.sav", save, sizeof save));
     PT_ASSERT(in_dir(dir, "pokeemerald.rtc", clock, sizeof clock));
-    PT_ASSERT(write_file(settings, "a = q\nscale = 5\n"));
+    PT_ASSERT(write_file(settings, "a = q\nscale = 5\nfast_forward_speed = 3\nfast_forward_toggle = ctrl+f\n"));
     struct options o = windowed();
     o.data_dir = dir;
     host_calls = 0;
@@ -96,6 +98,9 @@ PTEST(the_files_and_the_settings_of_a_data_directory)
     PT_ASSERT_EQ_STR(player_rtc_offset_path(), clock);
     PT_ASSERT_EQ_INT(player_keymap()->scancodes[0], SDL_SCANCODE_Q);
     PT_ASSERT_EQ_INT(player_keymap()->scancodes[1], SDL_SCANCODE_X); /* B: the default */
+    PT_ASSERT_EQ_U32(player_fast_forward()->speed, 3u);
+    PT_ASSERT_EQ_INT(player_fast_forward()->toggle.scancode, SDL_SCANCODE_F);
+    PT_ASSERT_EQ_INT(player_fast_forward()->hold.scancode, SDL_SCANCODE_TAB); /* the default */
     PT_ASSERT_EQ_INT(scale, 5);
     PT_ASSERT_EQ_INT(given_scale, 2);
 }
@@ -203,6 +208,7 @@ PTEST(keys_prints_the_lines_the_overlay_is_given)
     PT_ASSERT_EQ_STR(printed, given.text);
     PT_ASSERT(strncmp(printed, expected_start, strlen(expected_start)) == 0);
     PT_ASSERT(strstr(printed, "\nKeyboard:\n  A       Z\n") != NULL);
+    PT_ASSERT(strstr(printed, "\nFast-forward:\n  Hold    Tab\n  Toggle  Shift+Tab\n  Speed   2x\n") != NULL);
 }
 
 PTEST_MAIN()

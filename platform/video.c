@@ -17,7 +17,10 @@
  * its background can be translucent, drawn once at init (overlay_draw) and
  * copied over the frame at each present while it is shown. It covers the
  * same logical 240x160, so it scales and letterboxes with the frame. The
- * frame buffer itself is never touched.
+ * fast-forward indicator (fastforward.h), when fast-forward is started, is a
+ * third, the size of its box in LCD pixels, drawn once at init the same way
+ * and copied to its place in the logical 240x160 while it is shown, so it is
+ * as sharp as the game's own pixels. The frame buffer itself is never touched.
  *
  * Presenting is not vsynced: frame_pacer owns timing, so a 60 Hz display
  * does not force 60 Hz. References: the ports in docs/research/ (read for
@@ -32,6 +35,7 @@
 
 #include <SDL.h>
 
+#include "fastforward.h"
 #include "font.h"
 #include "overlay.h"
 
@@ -49,8 +53,8 @@
 #define PPM_MAGIC "P6"
 #define PPM_MAX_VALUE 255
 
-/* The overlay's texture: 32-bit ARGB, one uint32_t a pixel (overlay.h's
- * colours). */
+/* The overlay's and the indicator's textures: 32-bit ARGB, one uint32_t a
+ * pixel (overlay.h's colours). */
 #define OVERLAY_TEXTURE_FORMAT SDL_PIXELFORMAT_ARGB8888
 #define OVERLAY_BYTES_PER_PIXEL ((int)sizeof(uint32_t))
 
@@ -61,7 +65,9 @@ static struct {
     SDL_Window *window;
     SDL_Renderer *renderer;
     SDL_Texture *texture;
-    SDL_Texture *overlay; /* NULL unless the overlay is started */
+    SDL_Texture *overlay;   /* NULL unless the overlay is started */
+    SDL_Texture *indicator; /* NULL unless fast-forward is started */
+    SDL_Rect indicator_place;
 } state;
 
 static int sdl_error(const char *call)
@@ -70,24 +76,27 @@ static int sdl_error(const char *call)
     return -1;
 }
 
-/* The overlay's texture, its pixels drawn by overlay_draw. */
-static int create_overlay(int scale)
+/* A failed call on one of the textures drawn over the frame, named by what. */
+static int sdl_error_on(const char *call, const char *what)
 {
-    const int width = (int)VIDEO_WIDTH * scale;
-    const int height = (int)VIDEO_HEIGHT * scale;
-    state.overlay = SDL_CreateTexture(state.renderer, OVERLAY_TEXTURE_FORMAT, SDL_TEXTUREACCESS_STREAMING, width,
-                                      height);
-    if (state.overlay == NULL)
-        return sdl_error("SDL_CreateTexture(overlay)");
-    if (SDL_SetTextureBlendMode(state.overlay, SDL_BLENDMODE_BLEND) != 0)
-        return sdl_error("SDL_SetTextureBlendMode(overlay)");
+    (void)fprintf(stderr, MODULE ": %s(%s) failed: %s\n", call, what, SDL_GetError());
+    return -1;
+}
+
+/* Makes texture's pixels, width x height, what paint draws, over a
+ * translucent background; what names the texture in a report. */
+static int paint_texture(SDL_Texture *texture, int width, int height, void (*paint)(const struct font_canvas *canvas),
+                         const char *what)
+{
+    if (SDL_SetTextureBlendMode(texture, SDL_BLENDMODE_BLEND) != 0)
+        return sdl_error_on("SDL_SetTextureBlendMode", what);
     void *pixels = NULL;
     int pitch = 0;
-    if (SDL_LockTexture(state.overlay, NULL, &pixels, &pitch) != 0)
-        return sdl_error("SDL_LockTexture(overlay)");
+    if (SDL_LockTexture(texture, NULL, &pixels, &pitch) != 0)
+        return sdl_error_on("SDL_LockTexture", what);
     if (pitch < width * OVERLAY_BYTES_PER_PIXEL || pitch % OVERLAY_BYTES_PER_PIXEL != 0) {
-        SDL_UnlockTexture(state.overlay);
-        (void)fprintf(stderr, MODULE ": SDL_LockTexture(overlay) gave a pitch of %d bytes for %d pixels\n", pitch,
+        SDL_UnlockTexture(texture);
+        (void)fprintf(stderr, MODULE ": SDL_LockTexture(%s) gave a pitch of %d bytes for %d pixels\n", what, pitch,
                       width);
         return -1;
     }
@@ -97,9 +106,35 @@ static int create_overlay(int scale)
         .height = (size_t)height,
         .stride = (size_t)(pitch / OVERLAY_BYTES_PER_PIXEL),
     };
-    overlay_draw(&canvas);
-    SDL_UnlockTexture(state.overlay); /* returns void */
+    paint(&canvas);
+    SDL_UnlockTexture(texture); /* returns void */
     return 0;
+}
+
+/* The overlay's texture, the window's size, drawn by overlay_draw. */
+static int create_overlay(int scale)
+{
+    const int width = (int)VIDEO_WIDTH * scale;
+    const int height = (int)VIDEO_HEIGHT * scale;
+    state.overlay = SDL_CreateTexture(state.renderer, OVERLAY_TEXTURE_FORMAT, SDL_TEXTUREACCESS_STREAMING, width,
+                                      height);
+    if (state.overlay == NULL)
+        return sdl_error_on("SDL_CreateTexture", "overlay");
+    return paint_texture(state.overlay, width, height, overlay_draw, "overlay");
+}
+
+/* The fast-forward indicator's texture, its box in LCD pixels, drawn by
+ * fastforward_draw_indicator. */
+static int create_indicator(void)
+{
+    const struct fastforward_rect box = fastforward_indicator_box();
+    state.indicator_place = (SDL_Rect){.x = (int)box.x, .y = (int)box.y, .w = (int)box.width, .h = (int)box.height};
+    state.indicator = SDL_CreateTexture(state.renderer, OVERLAY_TEXTURE_FORMAT, SDL_TEXTUREACCESS_STREAMING,
+                                        state.indicator_place.w, state.indicator_place.h);
+    if (state.indicator == NULL)
+        return sdl_error_on("SDL_CreateTexture", "indicator");
+    return paint_texture(state.indicator, state.indicator_place.w, state.indicator_place.h, fastforward_draw_indicator,
+                         "indicator");
 }
 
 static int create_window_objects(const struct video_config *cfg)
@@ -120,7 +155,9 @@ static int create_window_objects(const struct video_config *cfg)
                                       (int)VIDEO_WIDTH, (int)VIDEO_HEIGHT);
     if (state.texture == NULL)
         return sdl_error("SDL_CreateTexture");
-    return overlay_enabled() ? create_overlay(cfg->scale) : 0;
+    if (overlay_enabled() && create_overlay(cfg->scale) != 0)
+        return -1;
+    return fastforward_enabled() ? create_indicator() : 0;
 }
 
 int video_init(const struct video_config *cfg)
@@ -163,8 +200,11 @@ int video_present(const uint16_t *frame)
         return sdl_error("SDL_RenderClear");
     if (SDL_RenderCopy(state.renderer, state.texture, NULL, NULL) != 0)
         return sdl_error("SDL_RenderCopy");
+    if (state.indicator != NULL && fastforward_indicator_shown()
+        && SDL_RenderCopy(state.renderer, state.indicator, NULL, &state.indicator_place) != 0)
+        return sdl_error_on("SDL_RenderCopy", "indicator");
     if (state.overlay != NULL && overlay_shown() && SDL_RenderCopy(state.renderer, state.overlay, NULL, NULL) != 0)
-        return sdl_error("SDL_RenderCopy(overlay)");
+        return sdl_error_on("SDL_RenderCopy", "overlay");
     SDL_RenderPresent(state.renderer); /* returns void */
     return 0;
 }
@@ -186,6 +226,8 @@ bool video_poll_events(void (*on_event)(const union SDL_Event *event, void *ctx)
 
 void video_shutdown(void)
 {
+    if (state.indicator != NULL)
+        SDL_DestroyTexture(state.indicator);
     if (state.overlay != NULL)
         SDL_DestroyTexture(state.overlay);
     if (state.texture != NULL)
@@ -196,6 +238,7 @@ void video_shutdown(void)
         SDL_DestroyWindow(state.window);
     if (state.owns_video_subsystem)
         SDL_QuitSubSystem(SDL_INIT_VIDEO);
+    state.indicator = NULL;
     state.overlay = NULL;
     state.texture = NULL;
     state.renderer = NULL;

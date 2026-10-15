@@ -16,6 +16,7 @@
 #include "audio.h"
 #include "audio_dump.h"
 #include "dma.h"
+#include "fastforward.h"
 #include "flash.h"
 #include "frame_pacer.h"
 #include "gba_irq.h"
@@ -31,6 +32,7 @@
 #include "save_file.h"
 #include "sound_grid.h"
 #include "sound_mix.h"
+#include "sound_speedup.h"
 #include "timer.h"
 #include "video.h"
 
@@ -39,6 +41,9 @@ _Static_assert(PPU_SCREEN_WIDTH == GBA_LCD_VISIBLE_DOTS && PPU_SCREEN_HEIGHT == 
                "the PPU draws the LCD's size");
 _Static_assert(VIDEO_WIDTH == GBA_LCD_VISIBLE_DOTS && VIDEO_HEIGHT == GBA_LCD_VISIBLE_LINES,
                "the panel shows the LCD's size");
+
+_Static_assert(SOUND_SPEEDUP_MAX_FACTOR == FASTFORWARD_MAX_SPEED, "every finite fast-forward speed is sped-up sound");
+_Static_assert(SOUND_SPEEDUP_CHANNELS == FRAME_AUDIO_CHANNELS, "the mix's channels are the speed-up's");
 
 #define FRAME_EXIT_STATUS_OK 0
 #define FRAME_EXIT_STATUS_FAILURE 1
@@ -60,6 +65,11 @@ static struct {
     uint32_t audio_frames_queued;
     struct sound_grid grid;
     struct sound_mix_state mix;
+    /* Fast-forward: the speed applied last (a frame_pacer multiplier), the
+     * sound's speed-up at it, and whether the sound is off. */
+    uint32_t speed;
+    struct sound_speedup speedup;
+    bool sound_muted;
     bool reported_render_error;
 } frame;
 
@@ -80,8 +90,8 @@ int frame_init(const struct frame_config *config)
         (void)fprintf(stderr, "frame: frame_init: no configuration\n");
         return -1;
     }
-    frame = (__typeof__(frame)){.config = *config, .initialised = true};
-    return 0;
+    frame = (__typeof__(frame)){.config = *config, .initialised = true, .speed = FRAME_PACER_NORMAL_SPEED};
+    return sound_speedup_start(&frame.speedup, FRAME_PACER_NORMAL_SPEED);
 }
 
 void frame_set_step_hook(frame_step_hook hook, void *context)
@@ -205,30 +215,68 @@ static void mix_sound(void)
     };
     sound_mix(&frame.mix, &registers, has_fifo ? fifo_a_samples : NULL, has_fifo ? fifo_b_samples : NULL, psg_samples,
               mixed_samples, grid.samples);
-    if (audio_queue(mixed_samples, grid.samples) != 0) {
+    if (frame.sound_muted)
+        return;
+    const size_t frames = sound_speedup_run(&frame.speedup, mixed_samples, grid.samples);
+    if (audio_queue(mixed_samples, frames) != 0) {
         (void)fprintf(stderr, "frame: audio_queue failed\n");
         fail();
         return;
     }
     /* A failed write is reported and ends the recording, not the game; the
      * exit status says so (audio_dump.h). */
-    (void)audio_dump_append(mixed_samples, grid.samples);
+    (void)audio_dump_append(mixed_samples, frames);
     if (++frame.audio_frames_queued == FRAME_AUDIO_PREROLL_FRAMES && audio_set_paused(false) != 0) {
         (void)fprintf(stderr, "frame: audio_set_paused(false) failed\n");
         fail();
     }
 }
 
-/* video_poll_events' callback: controller hot-plug, and the help overlay's
- * keys, whose Q ends the game after this frame as closing the window does.
- * A controller that cannot be opened is reported by input and play goes on
- * with the others. */
+/* The sound at a new speed (frame.h, step 5). */
+static int change_sound(uint32_t speed, bool muted)
+{
+    const bool queue_stale = frame.sound_muted || frame.speed == FRAME_PACER_UNLIMITED;
+    if ((muted || queue_stale) && audio_set_paused(true) != 0) {
+        (void)fprintf(stderr, "frame: audio_set_paused(true) failed\n");
+        return -1;
+    }
+    if (!muted && queue_stale) {
+        audio_clear();
+        frame.audio_frames_queued = 0;
+    }
+    const bool sped_up = !muted && speed != FRAME_PACER_UNLIMITED;
+    return sound_speedup_start(&frame.speedup, sped_up ? speed : FRAME_PACER_NORMAL_SPEED);
+}
+
+/* The speed for the frames from now on, as fast-forward's keys left it: the
+ * pacer's period and the sound's (frame.h, step 6). */
+static void apply_speed(void)
+{
+    const uint32_t speed = fastforward_multiplier();
+    const bool muted = fastforward_muted();
+    if (frame_pacer_set_multiplier(speed) != 0) {
+        fail();
+        return;
+    }
+    if (speed == frame.speed && muted == frame.sound_muted)
+        return;
+    if (change_sound(speed, muted) != 0)
+        fail();
+    frame.speed = speed;
+    frame.sound_muted = muted;
+}
+
+/* video_poll_events' callback: controller hot-plug, the help overlay's keys,
+ * whose Q ends the game after this frame as closing the window does, and
+ * fast-forward's. A controller that cannot be opened is reported by input
+ * and play goes on with the others. */
 static void on_sdl_event(const union SDL_Event *event, void *context)
 {
     (void)context;
     (void)input_handle_event(event);
     if (overlay_handle_event(event) == OVERLAY_QUIT)
         frame.exit_requested = true;
+    fastforward_handle_event(event);
 }
 
 static void run_step_hook(void)
@@ -257,6 +305,7 @@ static void present_and_read_keys(void)
     }
     if (!video_poll_events(on_sdl_event, NULL))
         frame.exit_requested = true;
+    apply_speed();
     run_step_hook();
     input_update_keyinput();
 }

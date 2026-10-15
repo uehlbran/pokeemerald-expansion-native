@@ -6,6 +6,8 @@
  * SDL_Delay for the bulk of the wait and spin on the performance counter for
  * the last SPIN_MARGIN_MS, because SDL_Delay may oversleep by a millisecond
  * or more. Deadlines are exact ticks via a carried remainder (see header).
+ * Fast-forward divides the period by its multiplier and nothing else: the
+ * frames the game runs are the same, closer together.
  *
  * The reference ports fix the rate at 60 Hz and let their accumulator grow
  * without bound after a stall; both are avoided here (docs/research/).
@@ -25,10 +27,15 @@
 static struct {
     bool initialised;
     bool unthrottled;
+    uint32_t multiplier;
     uint64_t counter_hz;
     uint64_t deadline;
     uint32_t remainder;
-} state;
+} state = {.multiplier = FRAME_PACER_NORMAL_SPEED};
+
+/* The remainder's unit is 1/(GBA_CPU_HZ * multiplier) tick, so it stays below
+ * that product, which must fit its uint32_t. */
+_Static_assert((uint64_t)GBA_CPU_HZ *FRAME_PACER_MAX_MULTIPLIER <= UINT32_MAX, "the remainder fits 32 bits");
 
 uint64_t frame_pacer_next_deadline(uint64_t prev_deadline, uint64_t period, uint64_t now, uint64_t max_stall)
 {
@@ -38,11 +45,32 @@ uint64_t frame_pacer_next_deadline(uint64_t prev_deadline, uint64_t period, uint
     return next;
 }
 
-uint64_t frame_pacer_period_ticks(uint64_t counter_hz, uint32_t *remainder)
+uint64_t frame_pacer_period_ticks(uint64_t counter_hz, uint32_t multiplier, uint32_t *remainder)
 {
+    const uint64_t divisor = (uint64_t)GBA_CPU_HZ * multiplier;
     uint64_t scaled = counter_hz * (uint64_t)GBA_CYCLES_PER_FRAME + *remainder;
-    *remainder = (uint32_t)(scaled % (uint64_t)GBA_CPU_HZ);
-    return scaled / (uint64_t)GBA_CPU_HZ;
+    *remainder = (uint32_t)(scaled % divisor);
+    return scaled / divisor;
+}
+
+int frame_pacer_set_multiplier(uint32_t multiplier)
+{
+    if (multiplier > FRAME_PACER_MAX_MULTIPLIER) {
+        (void)fprintf(stderr, MODULE ": frame_pacer_set_multiplier(%lu): above %u\n", (unsigned long)multiplier,
+                      FRAME_PACER_MAX_MULTIPLIER);
+        return -1;
+    }
+    if (multiplier == state.multiplier)
+        return 0;
+    state.multiplier = multiplier;
+    state.remainder = 0;
+    state.deadline = SDL_GetPerformanceCounter();
+    return 0;
+}
+
+uint32_t frame_pacer_multiplier(void)
+{
+    return state.multiplier;
 }
 
 enum frame_pacer_mode frame_pacer_mode_for(bool unthrottled)
@@ -60,6 +88,7 @@ int frame_pacer_init(enum frame_pacer_mode mode)
     }
     state.counter_hz = hz;
     state.unthrottled = mode == FRAME_PACER_UNTHROTTLED;
+    state.multiplier = FRAME_PACER_NORMAL_SPEED;
     state.remainder = 0;
     state.deadline = SDL_GetPerformanceCounter();
     state.initialised = true;
@@ -68,9 +97,9 @@ int frame_pacer_init(enum frame_pacer_mode mode)
 
 void frame_pacer_wait(void)
 {
-    if (!state.initialised || state.unthrottled)
+    if (!state.initialised || state.unthrottled || state.multiplier == FRAME_PACER_UNLIMITED)
         return;
-    uint64_t period = frame_pacer_period_ticks(state.counter_hz, &state.remainder);
+    uint64_t period = frame_pacer_period_ticks(state.counter_hz, state.multiplier, &state.remainder);
     uint64_t max_stall = state.counter_hz * FRAME_PACER_MAX_STALL_MS / MS_PER_SECOND;
     state.deadline = frame_pacer_next_deadline(state.deadline, period, SDL_GetPerformanceCounter(), max_stall);
     uint64_t spin_ticks = state.counter_hz * SPIN_MARGIN_MS / MS_PER_SECOND;
@@ -88,4 +117,5 @@ void frame_pacer_shutdown(void)
 {
     state.initialised = false;
     state.unthrottled = false;
+    state.multiplier = FRAME_PACER_NORMAL_SPEED;
 }

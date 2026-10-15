@@ -30,6 +30,7 @@ int player_find(const struct options *options, const struct data_dir_host *host)
     player.help = (struct help_info){
         .version = version_string(),
         .keymap = &player.settings.keymap,
+        .fast_forward = &player.settings.fast_forward,
         .paths = &player.paths,
         .settings_found = player.settings.found,
     };
@@ -49,6 +50,11 @@ const char *player_rtc_offset_path(void)
 const struct input_keymap *player_keymap(void)
 {
     return &player.settings.keymap;
+}
+
+const struct fastforward_settings *player_fast_forward(void)
+{
+    return &player.settings.fast_forward;
 }
 
 int player_window_scale(const struct options *options)
@@ -77,7 +83,7 @@ int player_print_keys(FILE *out)
     return 0;
 }
 
-bool player_wants_overlay(const struct options *options)
+bool player_at_keyboard(const struct options *options)
 {
     return !options->headless && !options->test_runner && options->replay_path == NULL;
 }

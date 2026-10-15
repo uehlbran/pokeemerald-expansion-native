@@ -47,7 +47,7 @@ static struct {
     uint64_t dropped_frames;
     uint64_t underruns;
     uint64_t total_frames;
-} state;
+} state = {.paused = true};
 
 static int sdl_error(const char *call)
 {
@@ -122,6 +122,11 @@ int audio_set_paused(bool paused)
         return 0;
     SDL_PauseAudioDevice(state.device, paused ? 1 : 0); /* returns void */
     return 0;
+}
+
+bool audio_paused(void)
+{
+    return state.paused;
 }
 
 int audio_queue(const int16_t *stereo, size_t frames)
