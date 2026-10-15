@@ -154,6 +154,21 @@ jobs:
           sha1sum pokeemerald.gba
           echo "$ROM_SHA1  pokeemerald.gba" | sha1sum -c -
 
+      - name: The GBA suite builds and equals the baseline (docs/research/gba-baseline-1.17.1.md)
+        run: |
+          set -o pipefail
+          make -j"$(nproc)" check 2>&1 | tee gba-check.log
+          sed 's/\x1b\[[0-9;]*m//g' gba-check.log | grep '^- Tests' | tr -s ' ' > gba-totals.txt
+          cat > gba-expected.txt <<'EOF'
+          - Tests KNOWN_FAILING: 18
+          - Tests TO_DO: 421
+          - Tests EXPECT_FAILING: 9
+          - Tests PASSED: 5414
+          - Tests TOTAL: 5862
+          EOF
+          sed -i 's/^ *//' gba-expected.txt
+          diff gba-expected.txt gba-totals.txt
+
   native32:
     name: Nightly, 32-bit build, replays, suite
     if: github.event_name != 'push'
