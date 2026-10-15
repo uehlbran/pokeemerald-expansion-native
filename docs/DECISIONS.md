@@ -2411,7 +2411,7 @@ scheduled.
 
 ## 2026-10-15: No workflow uploads the game
 
-The repository is published as source only (decided 2026-10-15, before it went public). On a public repository
+The repository is published as source only (decided 2026-10-15). On a public repository
 every workflow artifact is downloadable by any logged-in GitHub user, and a
 built executable (the game, the test runner, any archive of either)
 contains the complete game's assets, which this project never distributes
