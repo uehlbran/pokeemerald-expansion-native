@@ -554,7 +554,14 @@ decision for the project's maintainer once that run is green.
 
 The macOS executable is x86_64 only (`docs/DECISIONS.md`, "macOS ships as
 x86_64 under Rosetta; arm64 is not started"): an Intel Mac runs it, and an
-Apple-silicon Mac runs it under Rosetta 2. It is built on the Mac itself, with
+Apple-silicon Mac runs it under Rosetta 2, which macOS offers to install the
+first time. What you build on the Mac is not quarantined and starts as it
+is; a downloaded archive is unsigned, so Gatekeeper blocks it once: on macOS
+14 and earlier Control-click (right-click) `pokeemerald-native` in Finder and
+choose Open, on macOS 15 and later use System Settings > Privacy & Security >
+Open Anyway, or remove the mark with `xattr -dr com.apple.quarantine` on the
+unpacked folder (`RUNNING.md`, "macOS", has each step). It is built on the
+Mac itself, with
 Apple's clang and linker from the Command Line Tools (`xcode-select
 --install`) and these from Homebrew:
 

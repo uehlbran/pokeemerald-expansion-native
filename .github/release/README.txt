@@ -34,8 +34,7 @@ game shows the keys and the paths, and Q there quits.
            and later try to open it, then System Settings > Privacy &
            Security > Open Anyway; or in Terminal run
            xattr -dr com.apple.quarantine <this folder>. RUNNING.md has the
-           details and Apple's pages. This build has not yet been run on a Mac
-           by this project's CI.
+           details and Apple's pages.
 
 RUNNING.md has the keys, the settings file, the options and where the files
 are. LICENSE

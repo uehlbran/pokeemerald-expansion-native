@@ -55,10 +55,9 @@ Rosetta is available through macOS 27; from macOS 28 it runs only certain
 older games, so this build has a horizon (`docs/DECISIONS.md`, "macOS ships as
 x86_64 under Rosetta").
 
-**This build has not yet been run on a Mac by this project's CI.** The macOS
-workflow was written and rehearsed on Linux, and its first runs were refused
-by GitHub (billing) before any job started. Until those runs are green,
-treat everything on this page about macOS as untried.
+**This build has not yet passed this project's macOS CI** (`macos.yml` on
+GitHub's `macos-15-intel` runner); until it has, treat everything on this
+page about macOS as untried.
 
 **A build you make yourself** (`tools/build-native.sh --os macos` on the Mac)
 is not quarantined and needs none of the steps below: macOS only blocks
@@ -90,10 +89,12 @@ way fits your macOS:
   cd pokeemerald-native-...-macos-x86_64 && ./pokeemerald-native
   ```
 
-  This is how people usually do it; Apple does not document it. It is also the
-  safest way here, because the Open and Open Anyway steps apply to one file,
-  and macOS may ask again for each library in the folder (not tried).
-  Extracting the tarball with `tar` in Terminal never marks the files, so
+  `-d` deletes the attribute and `-r` does so for every file under the
+  folder, the two libraries included (`man xattr`); Apple's support pages
+  describe only the Open and Open Anyway steps. It is also the safest way
+  here, because those steps apply to one file, and macOS may ask again for
+  each library in the folder (not tried). `xattr -l pokeemerald-native`
+  shows whether a file carries the mark: no `com.apple.quarantine` line, and
   there is nothing to remove.
 
 Apple's pages describe apps; this is a plain program and the same Gatekeeper
