@@ -17,6 +17,9 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
+#ifndef _WIN32
+#include <sys/stat.h>
+#endif
 
 /* --- the mode ------------------------------------------------------------------- */
 
@@ -417,6 +420,30 @@ PTEST(the_streams_and_a_handlers_raw_write_continue_each_other)
     PT_ASSERT(wrote_raw && read);
     PT_ASSERT_EQ_STR(text, "first on err\nsecond on out\nraw on stderr's descriptor\nfourth on out\nfifth on err\n");
 }
+
+#ifndef _WIN32
+/* The log is made with no permission bits (umask), which the stream that made it may still write, so the
+ * second open, to append, is refused: freopen has by then closed the stream, which must be left on the
+ * null device and not closed. */
+PTEST(a_log_that_cannot_be_reopened_leaves_the_stream_usable)
+{
+    struct scene scene;
+    PT_ASSERT(make_scene(&scene));
+    struct options o = windowed();
+    char path[PATH_SIZE];
+    const mode_t old_mask = umask(0777);
+    const int status = console_open_log(&o, &fake_host, &scene.streams, path, sizeof path);
+    (void)umask(old_mask);
+    const int written = fprintf(scene.streams.out, "after the failure\n");
+    const int flushed = fflush(scene.streams.out);
+    const int errored = ferror(scene.streams.out);
+    PT_ASSERT(end_scene(&scene));
+    PT_ASSERT_EQ_INT(status, -1);
+    PT_ASSERT(written > 0);
+    PT_ASSERT_EQ_INT(flushed, 0);
+    PT_ASSERT_EQ_INT(errored, 0);
+}
+#endif
 
 /* A stream given is left alone: only the missing one is the log. */
 PTEST(a_stream_that_is_not_taken_keeps_its_file)

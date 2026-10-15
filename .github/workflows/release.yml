@@ -51,7 +51,7 @@ concurrency:
 jobs:
   check-inputs:
     name: Validate the inputs
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 2
     permissions: {}
     steps:
@@ -71,7 +71,7 @@ jobs:
   linux:
     name: Linux 64-bit tarball
     needs: check-inputs
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 40
     permissions:
       contents: read
@@ -116,7 +116,7 @@ jobs:
   windows:
     name: Windows 64-bit zip (cross-built)
     needs: check-inputs
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 40
     permissions:
       contents: read
@@ -158,7 +158,7 @@ jobs:
   checksums:
     name: Checksums and attestations
     needs: [linux, windows]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
       contents: read
@@ -206,7 +206,7 @@ jobs:
     name: Publish the GitHub release
     if: inputs.publish
     needs: [check-inputs, checksums]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
       contents: write

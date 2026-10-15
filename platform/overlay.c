@@ -21,8 +21,8 @@ static struct {
     bool enabled;
     bool shown;
     bool hint_for_pad;
-    bool shown_at_last_read;
-    uint16_t held_through; /* the buttons held since the overlay was shown */
+    bool hidden_since_read; /* shown went true to false since the last read of the keys */
+    uint16_t held_through;  /* the buttons held since the overlay was shown */
     overlay_text_writer write_text;
 } overlay;
 
@@ -74,6 +74,13 @@ static void note_input_device(const SDL_Event *event)
         overlay.hint_for_pad = true;
 }
 
+static void set_shown(bool shown)
+{
+    if (overlay.shown && !shown)
+        overlay.hidden_since_read = true;
+    overlay.shown = shown;
+}
+
 enum overlay_request overlay_handle_event(const union SDL_Event *event)
 {
     if (!overlay.enabled || event == NULL)
@@ -82,7 +89,7 @@ enum overlay_request overlay_handle_event(const union SDL_Event *event)
     if (event->type != SDL_KEYDOWN || event->key.repeat != 0)
         return OVERLAY_CONTINUE;
     if (event->key.keysym.scancode == OVERLAY_TOGGLE_SCANCODE) {
-        overlay.shown = !overlay.shown;
+        set_shown(!overlay.shown);
         return OVERLAY_CONTINUE;
     }
     if (overlay.shown && event->key.keysym.sym == OVERLAY_QUIT_KEYCODE)
@@ -95,9 +102,9 @@ enum overlay_request overlay_handle_controller(const struct controller_edge *edg
     if (!overlay.enabled || edge == NULL || !edge->pressed)
         return OVERLAY_CONTINUE;
     if (edge->function == CONTROLLER_OVERLAY)
-        overlay.shown = !overlay.shown;
+        set_shown(!overlay.shown);
     else if (edge->function == CONTROLLER_OVERLAY_CLOSE)
-        overlay.shown = false;
+        set_shown(false);
     else if (edge->function == CONTROLLER_QUIT && overlay.shown)
         return OVERLAY_QUIT;
     return OVERLAY_CONTINUE;
@@ -113,9 +120,10 @@ uint16_t overlay_game_keys(uint16_t keys)
     /* The frame loop closes the overlay and reads the keys in one poll, so
      * the buttons held at the first read after it hid are the ones that
      * closed it (or were held under it): latched whether or not a read saw
-     * them while it was shown. */
-    const bool just_hidden = overlay.shown_at_last_read && !overlay.shown;
-    overlay.shown_at_last_read = overlay.shown;
+     * them while it was shown, so an overlay opened and closed within one
+     * poll latches too. */
+    const bool just_hidden = overlay.hidden_since_read;
+    overlay.hidden_since_read = false;
     if (overlay.shown) {
         overlay.held_through = keys;
         return 0;
