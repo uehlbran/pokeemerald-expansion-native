@@ -2525,8 +2525,8 @@ in this order:
    alone or with a push trigger restored on the branch for the one run).
    Its jobs (`unit`, `game` and `suite` on `macos-15-intel`; `linux`,
    `linux-suite` and `compare` on `ubuntu-24.04`) must show:
-   - **unit**: 99 unit test binaries (80 portable, 14 `posix/`, 5 `darwin/`)
-     each "N passed, 0 failed" under ASan and UBSan, and 98 under TSan
+   - **unit**: 100 unit test binaries (80 portable, 15 `posix/`, 5 `darwin/`)
+     each "N passed, 0 failed" under ASan and UBSan, and 99 under TSan
      (`test_crt0` is not run under it); clang-tidy clean on the macOS
      sources; `test_patchelf_macho.sh` to its last line, including "the
      patched Mach-O executable runs and reads the patched values", and
