@@ -662,13 +662,21 @@ check"): a settings file for the keys, and no console window; the
 overworld shadows are expansion's default. With that, ruling (1) and
 macOS are unblocked.
 
-**In flight.** (1) The audio-rate task (ruling 1): branch work/audio-rate,
-an Opus worker, DONE and in review (a Sonnet reviewer with mutation
-testing in its own worktree; the orchestrator's full gate running on the
-author's); the device and the PSG at 32768 Hz, the FIFO frame upsampled
-on the cycle grid, a `--audio-dump` WAV option, and the A/B recordings as
-evidence (outside the repository, for the owner to hear; see "Needs the
-owner" for the 65536 Hz finding).
+**Finished, the audio rate (ruling 1).** Merged at f3cccaaf5e: the device
+and the PSG run at the GBA's 32768 Hz PWM grid (one sample every 512
+cycles; 548 or 549 a frame with the remainder carried), the m4a engine's
+FIFO frame is upsampled by zero-order hold on cycle time as the console's
+DAC does (every engine rate now plays), `--audio-dump PATH` records the
+output as a WAV, and host_file gained seek and close. Reviewed with
+mutation testing (eleven mutants, none survived; one medium finding, a
+full disk ended the game, fixed: the recording stops and the exit status
+says so); the orchestrator's full gate green on the branch; the replays'
+dumps and screenshots unchanged. The A/B evidence is outside the
+repository (see "Needs the owner"); nobody has listened to it yet.
+
+**In flight.** The full gate on main after the merge, then the push and a
+Windows runner dispatch for the two new Windows-side tests (host_file's
+seek and close; the WAV header rewrite).
 (2) Done and merged (5cc507a482): the documentation pass and the release
 pipeline (README and the public docs current, docs/RUNNING.md for players,
 tools/build-native.sh, release.yml; the note above has the first run).
@@ -797,7 +805,7 @@ Nothing yet; nothing exists to be broken.
 | input | Sonnet | Sonnet |
 | rtc | Sonnet | Sonnet |
 | sdlout (video, audio, frame_pacer) | Sonnet | Sonnet |
-| audio-rate (ruling 1: 32768 Hz, FIFO upsampling, --audio-dump) | Opus | in flight |
+| audio-rate (ruling 1: 32768 Hz, FIFO upsampling, --audio-dump) | Opus | Sonnet |
 | release-docs (docs pass, RUNNING.md, release.yml, build script) | Sonnet | Sonnet |
 | interrupt | Opus | Sonnet |
 | psg | Opus | Sonnet |

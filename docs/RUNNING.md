@@ -84,11 +84,15 @@ usage: pokeemerald-native [options]
   --rtc-fixed EPOCH  the clock starts at EPOCH (Unix seconds) and advances with the frame count,
                      so a replay sees the same time every run
   --resume-at LINE   (a restart adds it) continue the replay after script line LINE
+  --audio-dump PATH  also write the sound output to PATH as a WAV file (16-bit stereo at the
+                     output's rate), headless and --silent too; a replay's restart ends it; its
+                     sizes are written at exit (after a crash: sox --ignore-length reads it)
   --help             this text
 ```
 
 A player needs `--scale`, `--save`, `--rtc-offset` and `--silent`; the rest
-are for the project's tests.
+are for the project's tests (`--audio-dump` records what you hear, at the
+GBA's 32768 Hz, for comparing builds).
 
 ## The files the game writes
 
