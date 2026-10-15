@@ -166,15 +166,15 @@ windows.yml and release.yml use that label, so the release's executable
 and its bundled SDL2 would then need a newer glibc than SteamOS 3.8's 2.41
 may have. Pinning both to `ubuntu-24.04`, as native.yml already is, is in
 tonight's cleanup branch.
-(0b) The Apple-silicon decisions (DECISIONS.md, "Native Apple silicon:
-the spike's findings", "What the owner must decide"): whether macOS stays
-supported after 2027 (x86_64 macOS runners end in fall 2027 and Rosetta
-narrows after macOS 27); whether the arm64 build may rewrite expansion's
-compiled code at build time (about 2,300 conversions and 424 divisions)
-instead of some 500 guarded source edits; later, ASLR kept or a launcher
-without it; the macos-latest minutes. Recommendation: the Linux half
-(P1, 3 to 4 tasks, no runner, decides the expansion side) after work/macos
-merges, the arm64 half only if macOS is to stay after 2027.
+(0b) The Apple-silicon decisions: answered on 2026-10-15 for questions 1
+and 2 (support after 2027 decided later, the Linux half when convenient
+after work/macos merges; the build rewrites expansion's compiled code with
+the two IR filters, on two conditions: the fixed-address Linux and Windows
+builds stay as they are with their gates, and guarded expansion edits only
+for what the filters cannot see, DECISIONS.md "The arm64 build rewrites
+expansion's compiled code, on two conditions"). Still open, when the arm64
+half is decided: ASLR kept or a launcher without it (after probes A1 and
+A2), and the macos-latest minutes.
 (0c) Fast-forward toggled on stays on when the window loses focus; at
 `unlimited` that keeps a core busy while you are elsewhere. Recommended:
 clear the toggle on focus loss too (the final review's finding; your

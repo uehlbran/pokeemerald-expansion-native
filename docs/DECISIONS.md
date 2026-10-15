@@ -2460,9 +2460,8 @@ Asked one at a time on the morning of 2026-10-15, with the night's findings
    decision.
 4. **The Apple-silicon build may rewrite expansion's compiled code at build
    time** (the spike's two IR filters) instead of some 500 guarded source
-   edits: expansion's files stay untouched and upgrades stay merges; the
-   filters are build glue with their own tests and refuse what they do not
-   recognise.
+   edits, with two conditions: the entry below, "The arm64 build rewrites
+   expansion's compiled code, on two conditions", is the ruling in full.
 5. **The audio grid moves to 65536 Hz**, the rate Emerald itself selects
    (SOUNDBIAS mode 1 in `SoundInit`, the engine's "PWM rate = 65536 Hz"),
    superseding the 32768 Hz of ruling (1) of 2026-10-14, with an A/B
@@ -2474,3 +2473,50 @@ Asked one at a time on the morning of 2026-10-15, with the night's findings
    notarization is used.
 7. The stray per-user directory a review mutant created on the build
    machine was deleted with the owner's approval.
+
+## 2026-10-15: The arm64 build rewrites expansion's compiled code, on two conditions
+
+The owner's ruling on question 2 of the Apple-silicon spike ("Native Apple
+silicon: the spike's findings", "What the owner must decide"): the arm64
+build may rewrite expansion's compiled code at build time with the two IR
+filters the spike prototyped, the conversion filter (an integer made into
+a pointer gets the window base added, a pointer made into an integer
+becomes its offset) and the division filter (every division and remainder
+by a non-constant divisor calls a helper that gives libgcc's results), in
+place of guarded source edits. The reasons are the spike's: expansion's
+files stay untouched, so an upgrade stays the runbook in UPGRADING.md; the
+data converter already rewrites expansion's data words the same way; the
+filters are small, tested build glue that refuse what they do not
+recognise, so a compiler change is a build failure and never a wrong game;
+and the division results must be rewritten regardless, since arm64 has no
+divide trap and its results for a zero divisor differ from libgcc's.
+
+Two conditions are part of the ruling.
+
+First, the shipping Linux and Windows builds stay on the fixed-address
+memory model exactly as they are. The window-mode build on Linux with the
+base at 2^32 (PLAN.md, P1) is a gate for the arm64 work and a twin of the
+arm64 layout, never a replacement for the build players run or for the
+per-push and nightly gates that exist. No fixed-address code path is
+removed or made conditional in service of the window model; code the two
+models share is factored so that the fixed-address build is unaffected, and
+each model is covered by gates of its own.
+
+Second, guarded edits to expansion's files (the PLATFORM_NATIVE policy,
+`#line` preserved, a row each in UPSTREAM_MODIFICATIONS.md) stay permitted
+for the arm64 work only for what the filters structurally cannot see: a
+pointer stored through memory as a 32-bit integer, or an equivalent type
+pun, that a P1 gate exposes. Nothing else: no edit to avoid a filter rule,
+to work around a filter limitation that could be fixed in the filter, or to
+handle a pattern the filter could recognise. Each such edit's row names the
+gate failure that required it.
+
+Where they live: the filters go in platform/build_glue beside the data
+converter, each with its own tests and a rewrite rule documented in
+ARCHITECTURE.md for a reader who has never seen LLVM IR; the division
+helper's results are tested against
+platform/arm_division_libgcc/libgcc_division.txt in full, every row.
+
+This starts nothing. The answer to question 1 stands (decided later; the
+Linux half when convenient, after work/macos merges); the ruling fixes only
+how P1 is built when it is scheduled.

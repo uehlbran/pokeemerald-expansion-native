@@ -289,7 +289,13 @@ Order of work:
    (clang's aarch64 target, qemu-aarch64); DECISIONS.md "Native Apple
    silicon: the spike's findings" and the section "Native Apple silicon:
    what a port would take" at the end of this file. Four runner probes
-   (A1 to A4) remain; the owner decides.
+   (A1 to A4) remain. The owner's rulings of 2026-10-15: support after 2027
+   is decided later, the Linux half (P1) runs when convenient after
+   work/macos merges, and the build rewrites expansion's compiled code with
+   the two IR filters on two conditions (the fixed-address Linux and Windows
+   builds unchanged and gated as now; guarded expansion edits only for what
+   the filters cannot see, as a P1 gate exposes it): DECISIONS.md, "The
+   arm64 build rewrites expansion's compiled code, on two conditions".
 2. An inventory of the Windows (MinGW) and macOS ports, no code (an Opus
    worker, to the session scratchpad and summarised here): what in
    `platform/` and the build glue is Linux-specific (the regions mapped
@@ -366,6 +372,18 @@ Not started. The port goes ahead only on the owner's decision: DECISIONS.md
 "Native Apple silicon: the spike's findings" has the evidence, the four
 decisions and the recommendation. This section is the work if the answer is
 go.
+
+**Ruled 2026-10-15** (DECISIONS.md, "The arm64 build rewrites expansion's
+compiled code, on two conditions"): the filters below are the approved way.
+The window-mode build (P1c's `WINDOW=1`) is a gate and a twin of the arm64
+layout only: the Linux and Windows builds players run stay fixed-address,
+with their gates as they are, and no fixed-address path is removed or made
+conditional for the window model. Guarded edits to expansion's files only
+for a pointer kept as a 32-bit integer (or an equivalent pun) that a P1
+gate exposes, each row naming that failure. The filters live in
+platform/build_glue with their own tests, their rules in ARCHITECTURE.md for
+a reader new to LLVM IR; the division helper is tested against every row of
+libgcc_division.txt.
 
 **The design.** Every GBA address the game holds in 32 bits is an offset in a
 window at a base B of 2^32 or above. The window holds the regions and the image
