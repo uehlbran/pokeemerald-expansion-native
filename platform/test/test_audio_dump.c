@@ -17,7 +17,7 @@
 #include "ptest.h"
 #include "test_support.h"
 
-#define TEST_RATE_HZ 32768u
+#define TEST_RATE_HZ 65536u
 
 /* Larger than the module's 1024 frames per write, and not a multiple of it. */
 #define MANY_FRAMES 2500u
@@ -71,8 +71,8 @@ PTEST(the_header_counts_four_bytes_a_frame)
     uint8_t header[AUDIO_DUMP_HEADER_BYTES];
     audio_dump_header(header, TEST_RATE_HZ, 3);
     static const uint8_t riff_size[] = {48, 0, 0, 0};              /* 36 + 12 */
-    static const uint8_t rate[] = {0x00, 0x80, 0, 0};              /* 32768 */
-    static const uint8_t bytes_a_second[] = {0x00, 0x00, 0x02, 0}; /* 131072 */
+    static const uint8_t rate[] = {0x00, 0x00, 0x01, 0};           /* 65536 */
+    static const uint8_t bytes_a_second[] = {0x00, 0x00, 0x04, 0}; /* 262144 */
     static const uint8_t data_size[] = {12, 0, 0, 0};
     PT_ASSERT_MEM_EQ(&header[4], riff_size, 4);
     PT_ASSERT_MEM_EQ(&header[24], rate, 4);
