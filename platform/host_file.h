@@ -7,15 +7,16 @@
  * on the disk. Also the small C library calls that differ between hosts:
  * opening a file the same way on every OS and writing all of a buffer to it
  * (rtc_offset_store; and stderr from a fault handler, crash_reboot and
- * arm_division), the lock that keeps a second process off a save
+ * arm_division), moving back in it and closing it (the WAV recording,
+ * audio_dump), the lock that keeps a second process off a save
  * (save_lock), creating a directory (the replay's output, replay_session),
  * the local time (the clock's first setting, rtc), and the two questions of
  * a path's syntax a replay's includes ask (replay_include).
  *
- * Wraps, on POSIX (host_posix.c): open with O_CLOEXEC, write, fsync, rename,
- * fsync of the directory, flock, mkdir, localtime_r. On Windows
+ * Wraps, on POSIX (host_posix.c): open with O_CLOEXEC, write, lseek, close,
+ * fsync, rename, fsync of the directory, flock, mkdir, localtime_r. On Windows
  * (host_windows.c): _open (binary, not inherited), WriteFile,
- * FlushFileBuffers, MoveFileExW with REPLACE_EXISTING and WRITE_THROUGH
+ * SetFilePointerEx, _close, FlushFileBuffers, MoveFileExW with REPLACE_EXISTING and WRITE_THROUGH
  * (which is what makes the replacement durable there: there is no directory
  * sync), LockFileEx and UnlockFileEx, CreateDirectoryW, _localtime64_s, and
  * Windows' path syntax (Microsoft, "File path formats on Windows systems");
@@ -77,6 +78,21 @@ host_handler_file host_file_for_handler(int descriptor);
  * that nothing of the C runtime runs in the handler. Returns true if every
  * byte was written. */
 bool host_file_write_from_handler(host_handler_file file, const void *bytes, size_t size);
+
+/* Moves the open descriptor's position to offset bytes from the start of the
+ * file, where the next host_file_write_all writes (lseek with SEEK_SET;
+ * Windows: SetFilePointerEx from FILE_BEGIN on the handle host_file_write_all
+ * writes through, so the two agree). Returns 0, or -1 with errno set: EBADF
+ * for a descriptor that is not open, EINVAL for an offset above INT64_MAX
+ * (an off_t's range). */
+int host_file_seek(int descriptor, uint64_t offset);
+
+/* Closes the descriptor (close(2); Windows: _close, once the descriptor is
+ * known to be open, since the C runtime may treat closing one that is not
+ * as an invalid parameter). Returns 0, or -1 with errno set: EBADF for a
+ * descriptor that is not open, or what the close reported (EIO for a write
+ * the system had deferred); the descriptor is closed either way. */
+int host_file_close(int descriptor);
 
 /* Writes what the open file descriptor holds through to the disk. Returns 0,
  * or -1 with errno set. */

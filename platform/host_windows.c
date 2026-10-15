@@ -305,6 +305,35 @@ int host_file_write_all(int descriptor, const void *bytes, size_t size)
     return 0;
 }
 
+int host_file_seek(int descriptor, uint64_t offset)
+{
+    if (offset > (uint64_t)INT64_MAX) {
+        errno = EINVAL;
+        return -1;
+    }
+    HANDLE handle = handle_of(descriptor);
+    if (handle == INVALID_HANDLE_VALUE) {
+        errno = EBADF;
+        return -1;
+    }
+    LARGE_INTEGER distance;
+    distance.QuadPart = (LONGLONG)offset;
+    if (!SetFilePointerEx(handle, distance, NULL, FILE_BEGIN)) {
+        errno = errno_of(GetLastError());
+        return -1;
+    }
+    return 0;
+}
+
+int host_file_close(int descriptor)
+{
+    if (handle_of(descriptor) == INVALID_HANDLE_VALUE) {
+        errno = EBADF;
+        return -1;
+    }
+    return _close(descriptor);
+}
+
 host_handler_file host_file_for_handler(int descriptor)
 {
     return (host_handler_file)handle_of(descriptor);
