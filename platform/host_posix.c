@@ -171,6 +171,11 @@ static struct {
 /* The installing thread's alternate stack (sigaltstack is per thread): one
  * buffer, so no second thread could be given one without a buffer of its own. */
 static _Alignas(16) unsigned char alternate_stack[HOST_FAULT_ALTERNATE_STACK_SIZE];
+#if defined(__APPLE__)
+/* macOS's SIGSTKSZ is a constant (glibc's is sysconf's from 2.34, so Linux
+ * is not checked here). */
+_Static_assert(HOST_FAULT_ALTERNATE_STACK_SIZE >= SIGSTKSZ, "the alternate stack is smaller than macOS's SIGSTKSZ");
+#endif
 
 /* Lets the signal do what it does without the handler: kill the process.
  * Relies on the handler being installed without SA_NODEFER: the signal is

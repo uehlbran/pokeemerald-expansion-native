@@ -44,12 +44,21 @@ enum host_fault_register {
 
 /* The bytes of the alternate stack the crash handler runs on (a crash may be
  * a stack overflow), which a divide-error handler then runs on too; it is
- * the installing thread's alone (sigaltstack is per thread). Far above
- * glibc's MINSIGSTKSZ at both widths, with room for the sanitizers'
- * interceptors. Windows has no alternate stack: this many bytes at the end of
- * the installing thread's stack are kept for the handler of a stack overflow
+ * the installing thread's alone (sigaltstack is per thread). On Linux, far
+ * above glibc's MINSIGSTKSZ at both widths, with room for the sanitizers'
+ * interceptors. On macOS, the system's own SIGSTKSZ, 128 KiB (MINSIGSTKSZ is
+ * 32 KiB): nothing has measured the handler's depth there, under ASan's
+ * larger frames or TSan's signal wrapper, and an overflow of an alternate
+ * stack corrupts what lies below it without a report, so the size is the one
+ * the system recommends (host_posix.c checks it against SIGSTKSZ). Windows
+ * has no alternate stack: this many bytes at the end of the installing
+ * thread's stack are kept for the handler of a stack overflow
  * (SetThreadStackGuarantee). */
+#if defined(__APPLE__)
+#define HOST_FAULT_ALTERNATE_STACK_SIZE (128u * 1024u)
+#else
 #define HOST_FAULT_ALTERNATE_STACK_SIZE (64u * 1024u)
+#endif
 
 /* A divide-error handler: true if it completed the faulting instruction in
  * the context (execution resumes where the context's program counter now
