@@ -1,0 +1,9 @@
+records: x86_64-linux-gnu 210, arm64-apple-macos11 207
+records whose layout differs (by name):
+  same in both: 171
+  differs or only in one: struct __locale_struct
+  differs or only in one: struct __va_list_tag
+line diff of the two dumps (unnamed records included, in order): 27 lines, in the records:
+< Type: struct (unnamed at /usr/lib/llvm-18/lib/clang/18/include/__stddef_max_align_t.h:19:9)
+< Type: struct __locale_struct
+< Type: struct __va_list_tag
