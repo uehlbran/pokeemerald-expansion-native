@@ -148,6 +148,10 @@ instead of some 500 guarded source edits; later, ASLR kept or a launcher
 without it; the macos-latest minutes. Recommendation: the Linux half
 (P1, 3 to 4 tasks, no runner, decides the expansion side) after work/macos
 merges, the arm64 half only if macOS is to stay after 2027.
+(0c) Fast-forward toggled on stays on when the window loses focus; at
+`unlimited` that keeps a core busy while you are elsewhere. Recommended:
+clear the toggle on focus loss too (the final review's finding; your
+specification named only the hold). Say yes or no.
 (1) A hands-on check of fast-forward on a real
 keyboard and screen: Tab held and released, Shift+Tab on and off, the
 indicator, the sound at 2x, 3x, 4x and unlimited and with
@@ -187,6 +191,39 @@ nothing else); the reviewer's own `rm`
 was refused by its permission check, and the orchestrator does not
 redo an action a worker was refused. No gate wrote it: the gates now
 check that the directory is unchanged by them instead of absent.
+
+**The final review (Fable), first three of six.** Read-only reviewers
+with a 15-minute cap each, notes outside the repository in
+/home/uehlbran/projects/pen-review/2026-10-15/ (fable-tests.md,
+fable-docs.md, fable-merges.md); the three for the macOS branch (its code,
+its memory layout and faults, the CI and release workflows) start once that
+branch's review fixes are in, so that they read a settled branch. Findings:
+tests and gates 0 defects, 7 risks, 2 style; docs 3 defects, 3 risks, 2
+style; the smaller merges' code 0 defects, 3 risks, 4 style. Triage:
+- Fixed through the normal loop on work/fablefix (in flight): the three
+  docs defects (a stale `--keys` sample, a wrong test count, an unverified
+  SteamOS claim stated as fact), the hand-check list's pointer, the
+  `ubuntu-latest` pin to `ubuntu-24.04` in release.yml and windows.yml, the
+  console log's second open leaving stderr closed on failure, a timing test
+  with a tight bound (a CI flake waiting to happen), the missing Linux test
+  of the console modes, the overlay latch missing an open-and-close within
+  one poll, and a fullscreen test that could not tell one toggle from three.
+- Style items: one cleanup branch after it.
+- Recorded, not changed tonight: (a) a second instance empties the first
+  instance's `pokeemerald.log` before it is refused, and both then append
+  to it (accepted in the console entry of DECISIONS as the log is not
+  durable state; moving the truncation after the save lock is a small
+  change, but Windows-only and unverifiable while Actions is blocked);
+  (b) `run_windows_no_console.ps1` waits on a process id that Windows may
+  reuse, so a rare run could fail for the wrong reason (Windows-only;
+  needs a runner to verify); (c) the console-less Windows path is run end
+  to end for `--version` only (more runner coverage, same reason);
+  (d) for the owner: fast-forward toggled on at `unlimited` stays on when
+  the window loses focus, so an unfocused game keeps a core at 100% (on a
+  Deck in Desktop Mode, battery); the owner's specification releases the
+  hold on focus loss but keeps the toggle across frames; recommendation:
+  also clear the toggle on focus loss (one line), since the player cannot
+  see the indicator then. Under "Needs the owner".
 
 | Gate on main tonight | Commit | Result |
 |---|---|---|
