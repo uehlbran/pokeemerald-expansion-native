@@ -53,7 +53,7 @@ env:
 jobs:
   cross-build:
     name: Cross-build the game and the unit tests; the Linux save
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
@@ -171,7 +171,7 @@ jobs:
 
   cross-build-suite:
     name: Cross-build the test runner (TEST=1)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
@@ -246,7 +246,7 @@ jobs:
 
   linux-suite:
     name: The suite on Linux, 64-bit (the results to equal)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
@@ -442,7 +442,7 @@ jobs:
     name: Compare the suites; gate h's last stage on Linux
     needs: [cross-build, linux-suite, windows]
     if: always() && needs.cross-build.result == 'success'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4

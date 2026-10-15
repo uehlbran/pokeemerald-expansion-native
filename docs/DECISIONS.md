@@ -2147,8 +2147,8 @@ fails against the first version, and the loop-order frame test
 the fullscreen button firing on release too
 (`letting_go_of_the_fullscreen_button_does_not_toggle_again`). The harness is the scratchpad's `mutate.py`.
 
-**Only the owner can check, on a Deck** (the list is in the report of this
-task; RUNNING.md "Steam Deck" is the procedure): that the launcher starts the
+**Only the owner can check, on a Deck** (the list is in docs/STATUS.md, "Needs
+the owner" (2b); RUNNING.md "Steam Deck" is the procedure): that the launcher starts the
 game with the bundled SDL2 (`LD_DEBUG=libs` shows it) and the system libraries
 the SDL2 needs are there; that the game starts fullscreen in Game Mode at 1280x800 with the
 picture at 5x, black bars; that the right trigger, the stick click, Y, B, X and
