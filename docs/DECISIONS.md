@@ -1780,10 +1780,13 @@ events in (`fastforward_handle_event`, from `frame.c`'s event loop beside
 multiplier" out (`fastforward_active`, `fastforward_multiplier`,
 `fastforward_muted`). A key is a scancode and the modifiers held with it,
 Shift, Ctrl and Alt on either side; a press is the key's when exactly those
-are held, ignoring Caps Lock, Num Lock, GUI and AltGr and a modifier key's
-own bit (SDL sets Left Shift's bit in Left Shift's own press, so "left
-shift" alone would otherwise never match). Exact matching is what makes Tab
-and Shift+Tab two keys with no precedence rule. The settings file writes a
+are held, ignoring Caps Lock, Num Lock, GUI and SDL's Mode key (`KMOD_MODE`)
+and a modifier key's own bit (SDL sets Left Shift's bit in Left Shift's own
+press, so "left shift" alone would otherwise never match). AltGr is not
+ignored: SDL reports it as Right Alt (Left Ctrl and Right Alt on Windows),
+so Tab with AltGr held is Alt+Tab (Ctrl+Alt+Tab on Windows), not Tab.
+Exact matching is what makes Tab and Shift+Tab two keys with no precedence
+rule. The settings file writes a
 key as SDL's name after any of `shift+`, `ctrl+`, `alt+` (blanks around the
 `+`, any case and order); a name that itself holds a `+` (`Keypad +`) or
 starts with "alt" (`AltErase`) is still the key, since a modifier needs its

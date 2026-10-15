@@ -189,8 +189,29 @@ PTEST(unlimited_wait_returns_at_once_and_normal_speed_waits_again)
     PT_ASSERT(normal * 1000u >= freq * 50u); /* 3 periods: 50.2 ms */
 }
 
-/* A change restarts the schedule; setting the same speed again does not.
- * Above FRAME_PACER_MAX_MULTIPLIER is refused and keeps the speed. */
+/* A schedule behind by less than the stall limit (60 ms asleep, against 250),
+ * then a change to 2x: the schedule starts again from the change, so the next
+ * three waits take three new periods (3 x 8.37 = 25.1 ms) from it. Kept, the
+ * old deadline would leave some seven frames owed, and the three would return
+ * at once, run back to back. */
+PTEST(a_change_of_speed_restarts_the_schedule_from_now)
+{
+    PT_ASSERT_EQ_INT(frame_pacer_init(FRAME_PACER_REALTIME), 0);
+    SDL_Delay(60);
+    const uint64_t start = SDL_GetPerformanceCounter();
+    const int set = frame_pacer_set_multiplier(2u);
+    for (unsigned i = 0; i < 3; i++)
+        frame_pacer_wait();
+    const uint64_t elapsed = SDL_GetPerformanceCounter() - start;
+    frame_pacer_shutdown();
+    const uint64_t freq = SDL_GetPerformanceFrequency();
+    PT_ASSERT_EQ_INT(set, 0);
+    PT_ASSERT(elapsed * 1000u >= freq * 25u);
+}
+
+/* The multiplier reads back what was set; one above FRAME_PACER_MAX_MULTIPLIER
+ * is refused and leaves it as it was; init starts at the normal speed again.
+ * (The restart of the schedule on a change is the test above.) */
 PTEST(the_multiplier_is_checked_kept_and_reset_by_init)
 {
     PT_ASSERT_EQ_INT(frame_pacer_init(FRAME_PACER_UNTHROTTLED), 0);

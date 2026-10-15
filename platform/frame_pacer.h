@@ -67,8 +67,10 @@ void frame_pacer_shutdown(void);
  * more than max_stall past that, when the schedule restarts at now + period. */
 uint64_t frame_pacer_next_deadline(uint64_t prev_deadline, uint64_t period, uint64_t now, uint64_t max_stall);
 
-/* One frame period at multiplier times the speed (1 to
- * FRAME_PACER_MAX_MULTIPLIER) in ticks of a counter running at counter_hz.
+/* One frame period at multiplier times the speed in ticks of a counter
+ * running at counter_hz. multiplier is 1 to FRAME_PACER_MAX_MULTIPLIER, never
+ * FRAME_PACER_UNLIMITED (0), which has no period: frame_pacer_wait returns
+ * before asking for one then.
  * The period is not a whole number of ticks; *remainder (start at 0, and
  * again for another multiplier) carries the fraction, in units of
  * 1/(GBA_CPU_HZ * multiplier) tick, so n calls sum to exactly

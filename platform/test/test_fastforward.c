@@ -173,12 +173,17 @@ PTEST(a_press_is_a_key_with_exactly_its_modifiers_held_on_either_side)
     PT_ASSERT(!fastforward_key_pressed(&ctrl_alt_f, SDL_SCANCODE_F, KMOD_RCTRL));
 }
 
-PTEST(the_locks_the_gui_key_and_altgr_do_not_count)
+/* AltGr is not among them: SDL reports it as Right Alt (with Left Ctrl on Windows). */
+PTEST(the_locks_the_gui_key_and_the_mode_key_do_not_count_but_altgr_does)
 {
     const struct fastforward_key tab = {SDL_SCANCODE_TAB, 0u};
     const struct fastforward_key shift_tab = {SDL_SCANCODE_TAB, FASTFORWARD_SHIFT};
+    const struct fastforward_key ctrl_alt_tab = {SDL_SCANCODE_TAB, FASTFORWARD_CTRL | FASTFORWARD_ALT};
     PT_ASSERT(fastforward_key_pressed(&tab, SDL_SCANCODE_TAB, KMOD_CAPS | KMOD_NUM | KMOD_GUI | KMOD_MODE));
     PT_ASSERT(fastforward_key_pressed(&shift_tab, SDL_SCANCODE_TAB, KMOD_LSHIFT | KMOD_CAPS));
+    PT_ASSERT(!fastforward_key_pressed(&tab, SDL_SCANCODE_TAB, KMOD_RALT));
+    PT_ASSERT(!fastforward_key_pressed(&tab, SDL_SCANCODE_TAB, KMOD_LCTRL | KMOD_RALT));
+    PT_ASSERT(fastforward_key_pressed(&ctrl_alt_tab, SDL_SCANCODE_TAB, KMOD_LCTRL | KMOD_RALT));
 }
 
 /* SDL counts a modifier key's own press in the state it reports with it. */

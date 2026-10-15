@@ -1115,6 +1115,24 @@ PTEST(fast_forward_runs_the_same_frames_at_n_times_the_pace_with_their_sound_spe
     PT_ASSERT(sound == FIRST_FRAME_SAMPLES + (TEN_FRAMES_SAMPLES - FIRST_FRAME_SAMPLES) / 3u);
 }
 
+/* Unlimited has no n to divide the sound by: each frame's sound is queued as it is (here silent,
+ * where every block is counted; with a device, the queue's bound drops what does not fit, the
+ * test below). */
+PTEST(unlimited_queues_each_frames_sound_as_it_is)
+{
+    PT_ASSERT(start_fast_forward(FASTFORWARD_UNLIMITED, FASTFORWARD_AUDIO_PLAY));
+    const bool pushed = push_key_event(SDL_KEYDOWN, SDL_SCANCODE_TAB, KMOD_NONE);
+    const bool ran = run_frames(10);
+    const uint32_t frames = frame_count();
+    const uint32_t multiplier = frame_pacer_multiplier();
+    const uint64_t sound = audio_total_frames();
+    stop();
+    PT_ASSERT(pushed && ran);
+    PT_ASSERT_EQ_U32(frames, 10u);
+    PT_ASSERT_EQ_U32(multiplier, FRAME_PACER_UNLIMITED);
+    PT_ASSERT(sound == TEN_FRAMES_SAMPLES);
+}
+
 PTEST(without_fast_forward_started_its_keys_do_nothing)
 {
     PT_ASSERT(start_windowed());

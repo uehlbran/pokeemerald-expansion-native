@@ -16,9 +16,11 @@
  * fast-forward on and off. A key is a scancode and the modifiers held with
  * it, Shift, Ctrl and Alt on either side; a press is the key's when its
  * scancode is the key's and exactly the key's modifiers are held, not
- * counting Caps Lock, Num Lock, the GUI key and AltGr, nor a modifier key's
- * own press, so that Tab and Shift+Tab are two keys and Left Shift alone can
- * be one. Presses that repeat do nothing.
+ * counting Caps Lock, Num Lock, the GUI key and SDL's Mode key (KMOD_MODE),
+ * nor a modifier key's own press, so that Tab and Shift+Tab are two keys and
+ * Left Shift alone can be one. AltGr is not set apart: SDL reports it as
+ * Right Alt (with Left Ctrl on Windows), so it counts as Alt (and Ctrl).
+ * Presses that repeat do nothing.
  *
  * The hold ends when its scancode comes up, whatever the modifiers are by
  * then, and when the window loses the keyboard's focus, whose key-up would
