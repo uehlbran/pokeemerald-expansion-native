@@ -1,7 +1,7 @@
-# Artifacts (docs/DECISIONS.md, "CI artifacts never hold the game beyond a run"):
-# no artifact may hold the game or any part of it beyond the run, because a
-# public repository's artifacts are public. This file uploads the probes' text reports only
-# (out/*.txt); the probe executables stay on the runner, and none holds the game.
+# NO WORKFLOW UPLOADS THE GAME, EVER (docs/DECISIONS.md, "No workflow uploads
+# the game"): this file uploads the probes' text reports only (out/*.txt); the
+# probe executables stay on the runner, and none holds the game.
+# platform/build_glue/check_workflow_uploads.py checks the pattern.
 #
 # Milestone 8 loader probes (research/probes/README.md). Manual trigger only:
 #   gh workflow run probes.yml --ref work/m8-probes
