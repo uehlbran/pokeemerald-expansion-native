@@ -20,7 +20,7 @@
 #include "test_support.h"
 
 #define FULL_DEVICE "/dev/full"
-#define TEST_RATE_HZ 32768u
+#define TEST_RATE_HZ 65536u
 
 static int start_result;
 

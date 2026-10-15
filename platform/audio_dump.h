@@ -38,8 +38,8 @@
 #define AUDIO_DUMP_BYTES_PER_FRAME 4u
 
 /* The most frames a header can describe: the RIFF chunk's 32-bit size counts
- * the 36 header bytes after it and the data. At 32768 Hz that is over nine
- * hours. */
+ * the 36 header bytes after it and the data. At 65536 Hz that is over four
+ * hours (4.55). */
 #define AUDIO_DUMP_MAX_FRAMES ((UINT32_MAX - (AUDIO_DUMP_HEADER_BYTES - 8u)) / AUDIO_DUMP_BYTES_PER_FRAME)
 
 /* The highest rate a header can carry: its bytes-a-second field is 32 bits. */

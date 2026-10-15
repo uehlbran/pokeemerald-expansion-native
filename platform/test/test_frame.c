@@ -870,11 +870,11 @@ PTEST(a_game_pak_interrupt_stops_the_loop_with_a_failure)
 
 /* --- frame_run: sound --------------------------------------------------- */
 
-/* The output grid (sound_grid.h): 280896 cycles a frame, 512 a sample, so
- * the first frame holds 548 samples and carries 320 cycles, and the second,
- * from 320, holds 549. */
-#define FIRST_FRAME_SAMPLES 548u
-#define SECOND_FRAME_SAMPLES 549u
+/* The output grid (sound_grid.h): 280896 cycles a frame, 256 a sample, so
+ * the first frame holds 1097 samples and carries 64 cycles, and the second,
+ * from 64, holds 1097 too (and carries 128). */
+#define FIRST_FRAME_SAMPLES 1097u
+#define SECOND_FRAME_SAMPLES 1097u
 
 /* GBATEK "GBA Sound Channel 2 - Tone" and "GBA Sound Control Registers". */
 #define SOUND2CNT_L_OFFSET UINT32_C(0x068)
@@ -899,10 +899,14 @@ static void install_engine(s32 samples)
     SOUND_INFO_PTR = &engine;
 }
 
+/* The canonical 44-byte WAV header's sample rate field (audio_dump.h). */
+#define WAV_HEADER_RATE_OFFSET 24u
+
 /* A scratch WAV path for a recording of the frames a test runs. */
 struct recording {
     char directory[TSUP_PATH_SIZE];
     char path[TSUP_PATH_SIZE];
+    uint32_t header_rate_hz; /* the WAV header's sample rate, set by finish_recording */
 };
 
 static bool start_recording(struct recording *r)
@@ -914,7 +918,7 @@ static bool start_recording(struct recording *r)
 
 /* Finishes the recording and reads its first stereo frame (left, right);
  * returns the file's size, or -1. */
-static intmax_t finish_recording(const struct recording *r, int16_t first[2])
+static intmax_t finish_recording(struct recording *r, int16_t first[2])
 {
     intmax_t size = -1;
     FILE *file = NULL;
@@ -923,6 +927,10 @@ static intmax_t finish_recording(const struct recording *r, int16_t first[2])
     if (file != NULL) {
         uint8_t bytes[AUDIO_DUMP_HEADER_BYTES + AUDIO_DUMP_BYTES_PER_FRAME];
         if (fread(bytes, 1, sizeof bytes, file) == sizeof bytes) {
+            r->header_rate_hz = (uint32_t)bytes[WAV_HEADER_RATE_OFFSET]
+                                | (uint32_t)bytes[WAV_HEADER_RATE_OFFSET + 1] << 8
+                                | (uint32_t)bytes[WAV_HEADER_RATE_OFFSET + 2] << 16
+                                | (uint32_t)bytes[WAV_HEADER_RATE_OFFSET + 3] << 24;
             first[0] = (int16_t)(uint16_t)(bytes[AUDIO_DUMP_HEADER_BYTES] | bytes[AUDIO_DUMP_HEADER_BYTES + 1] << 8);
             first[1] = (int16_t)(uint16_t)(bytes[AUDIO_DUMP_HEADER_BYTES + 2]
                                            | bytes[AUDIO_DUMP_HEADER_BYTES + 3] << 8);
@@ -934,7 +942,7 @@ static intmax_t finish_recording(const struct recording *r, int16_t first[2])
     return size;
 }
 
-PTEST(each_frame_queues_its_samples_on_the_32768_hz_grid)
+PTEST(each_frame_queues_its_samples_on_the_65536_hz_grid)
 {
     PT_ASSERT(start(0, NULL, NULL));
     install_engine(224); /* Emerald's SOUND_MODE_FREQ_13379 */
@@ -952,7 +960,7 @@ PTEST(the_psg_runs_one_frame_of_cycles_a_frame)
      * sequencer, started when the PSG powers on in the first frame, clocks
      * lengths at 32768, 98304, 163840, 229376 and 294912 cycles (Pan Docs
      * "Audio Details"), so the channel stops at 294912: after the first
-     * frame's 548 samples (280576 cycles) it plays, after the second's 1097
+     * frame's 1097 samples (280832 cycles) it plays, after the second's 2194
      * (561664) it does not. A PSG off the grid (another rate) runs another
      * number of cycles for the same samples. */
     PT_ASSERT(start(0, NULL, NULL));
@@ -994,7 +1002,7 @@ PTEST(the_engines_frame_plays_at_its_own_rate_and_at_any_other)
     /* Emerald's 224 samples a frame, and SOUND_MODE_FREQ_05734's 96, which
      * the output used to leave silent: both are read on the grid, the
      * FIFO's value at 100% is 64 per unit (sound_mix.h), and the DC filter
-     * passes the first sample of a step unchanged. Both fill the frame's 548
+     * passes the first sample of a step unchanged. Both fill the frame's 1097
      * samples. */
     static const s32 rates[] = {224, 96};
     for (size_t i = 0; i < sizeof rates / sizeof rates[0]; i++) {
@@ -1024,6 +1032,20 @@ PTEST(the_audio_dump_records_every_frame_queued)
     PT_ASSERT(size == (intmax_t)(AUDIO_DUMP_HEADER_BYTES + queued * AUDIO_DUMP_BYTES_PER_FRAME));
 }
 
+PTEST(the_audio_dump_records_the_grids_rate_65536_hz)
+{
+    struct recording r = {.header_rate_hz = 0};
+    PT_ASSERT(start(0, NULL, NULL));
+    PT_ASSERT(start_recording(&r));
+    install_engine(224);
+    PT_ASSERT_EQ_INT(frame_run(), FRAME_CONTINUE);
+    int16_t first[2];
+    PT_ASSERT(finish_recording(&r, first) > 0);
+    SOUND_INFO_PTR = NULL;
+    stop();
+    PT_ASSERT_EQ_U32(r.header_rate_hz, 65536u);
+}
+
 PTEST(no_engine_plays_the_psg_alone)
 {
     PT_ASSERT(start(0, NULL, NULL));
@@ -1036,7 +1058,7 @@ PTEST(no_engine_plays_the_psg_alone)
 
 /* --- fast-forward -------------------------------------------------------- */
 
-/* The grid's samples in ten frames: 10 * 280896 / 512 = 5486.25. */
+/* The grid's samples in ten frames: 10 * 280896 / 256 = 10972.5. */
 #define TEN_FRAMES_SAMPLES ((uint32_t)(10u * GBA_CYCLES_PER_FRAME / SOUND_GRID_CYCLES_PER_SAMPLE))
 
 /* The queue's bound in bytes: audio_max_queued_frames of 16-bit stereo. */
@@ -1166,6 +1188,76 @@ PTEST(the_hold_ends_when_the_window_loses_the_focus_without_a_key_up)
     PT_ASSERT_EQ_U32(held, 2u);
     PT_ASSERT_EQ_U32(after, FRAME_PACER_NORMAL_SPEED);
     PT_ASSERT(!active);
+}
+
+/* The toggle ends with the focus as the hold does: on at the frame before, at the normal pace
+ * at the frame after, and switched on again by the next press once the focus is back. */
+PTEST(the_toggle_ends_when_the_window_loses_the_focus_and_switches_on_again_after)
+{
+    PT_ASSERT(start_fast_forward(2u, FASTFORWARD_AUDIO_PLAY));
+    const bool toggled = push_toggle();
+    const bool ran = run_frames(3);
+    const uint32_t on = frame_pacer_multiplier();
+    const bool lost = push_focus_lost();
+    const bool ran_lost = run_frames(1);
+    const uint32_t after = frame_pacer_multiplier();
+    const bool ran_idle = run_frames(3);
+    const uint32_t still_after = frame_pacer_multiplier();
+    const bool again = push_toggle();
+    const bool ran_again = run_frames(1);
+    const uint32_t toggled_again = frame_pacer_multiplier();
+    stop();
+    PT_ASSERT(toggled && lost && again && ran && ran_lost && ran_idle && ran_again);
+    PT_ASSERT_EQ_U32(on, 2u);
+    PT_ASSERT_EQ_U32(after, FRAME_PACER_NORMAL_SPEED);
+    PT_ASSERT_EQ_U32(still_after, FRAME_PACER_NORMAL_SPEED);
+    PT_ASSERT_EQ_U32(toggled_again, 2u);
+}
+
+/* The hold's path, unchanged by the toggle's: holding Tab again after the focus returns
+ * fast-forwards again. */
+PTEST(the_hold_fast_forwards_again_after_the_focus_returns)
+{
+    PT_ASSERT(start_fast_forward(2u, FASTFORWARD_AUDIO_PLAY));
+    const bool pressed = push_key_event(SDL_KEYDOWN, SDL_SCANCODE_TAB, KMOD_NONE);
+    const bool lost = push_focus_lost();
+    const bool ran = run_frames(1);
+    const uint32_t after_loss = frame_pacer_multiplier();
+    const bool held_again = push_key_event(SDL_KEYDOWN, SDL_SCANCODE_TAB, KMOD_NONE);
+    const bool ran_again = run_frames(1);
+    const uint32_t after_hold = frame_pacer_multiplier();
+    stop();
+    PT_ASSERT(pressed && lost && held_again && ran && ran_again);
+    PT_ASSERT_EQ_U32(after_loss, FRAME_PACER_NORMAL_SPEED);
+    PT_ASSERT_EQ_U32(after_hold, 2u);
+}
+
+/* Unlimited and muted are the two speeds whose sound is stale afterwards: the focus lost ends
+ * them as a toggle off does, the queue emptied, the device paused and playing again after the
+ * preroll. */
+PTEST(the_loss_of_the_focus_returns_the_sound_as_a_toggle_off_does)
+{
+    static const struct {
+        uint32_t speed;
+        enum fastforward_audio audio;
+    } cases[] = {{FASTFORWARD_UNLIMITED, FASTFORWARD_AUDIO_PLAY}, {2u, FASTFORWARD_AUDIO_MUTE}};
+    for (size_t i = 0; i < sizeof cases / sizeof cases[0]; i++) {
+        PT_ASSERT(start_fast_forward_playing(cases[i].speed, cases[i].audio));
+        bool ran = push_toggle() && run_frames(30);
+        const bool lost = push_focus_lost();
+        ran = run_frames(1) && ran;
+        const uint32_t multiplier = frame_pacer_multiplier();
+        const bool paused_after = audio_paused();
+        const uint32_t queued_after = audio_queued_bytes();
+        ran = run_frames(FRAME_AUDIO_PREROLL_FRAMES) && ran;
+        const bool playing_after_preroll = !audio_paused();
+        stop();
+        PT_ASSERT(lost && ran);
+        PT_ASSERT_EQ_U32(multiplier, FRAME_PACER_NORMAL_SPEED);
+        PT_ASSERT(paused_after);
+        PT_ASSERT_EQ_U32(queued_after, 0u);
+        PT_ASSERT(playing_after_preroll);
+    }
 }
 
 /* Toggled on, a hundred frames and a key-up later still on; toggled again, off. */
@@ -1345,6 +1437,28 @@ PTEST(the_trigger_let_go_ends_the_hold_and_the_stick_click_toggles_once)
     PT_ASSERT(pushed && ran);
     PT_ASSERT_EQ_U32(released, FRAME_PACER_NORMAL_SPEED);
     PT_ASSERT_EQ_U32(toggled, 2u); /* held for three frames, flipped once */
+}
+
+/* The stick click's toggle ends with the focus as the trigger's hold does, and a second click
+ * after the focus returns switches it on. */
+PTEST(the_window_losing_the_focus_ends_the_sticks_toggle_and_a_click_switches_it_on_again)
+{
+    PT_ASSERT(start_player());
+    bool pushed = push_pad_button(SDL_CONTROLLERBUTTONDOWN, SDL_CONTROLLER_BUTTON_RIGHTSTICK);
+    pushed = push_pad_button(SDL_CONTROLLERBUTTONUP, SDL_CONTROLLER_BUTTON_RIGHTSTICK) && pushed;
+    bool ran = run_frames(2);
+    const uint32_t on = frame_pacer_multiplier();
+    pushed = push_focus_lost() && pushed;
+    ran = run_frames(1) && ran;
+    const uint32_t after = frame_pacer_multiplier();
+    pushed = push_pad_button(SDL_CONTROLLERBUTTONDOWN, SDL_CONTROLLER_BUTTON_RIGHTSTICK) && pushed;
+    ran = run_frames(1) && ran;
+    const uint32_t again = frame_pacer_multiplier();
+    stop();
+    PT_ASSERT(pushed && ran);
+    PT_ASSERT_EQ_U32(on, 2u);
+    PT_ASSERT_EQ_U32(after, FRAME_PACER_NORMAL_SPEED);
+    PT_ASSERT_EQ_U32(again, 2u);
 }
 
 PTEST(the_overlay_opens_and_closes_from_the_controller_alone)

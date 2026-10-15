@@ -196,7 +196,8 @@ the window (`FF 3x`, `FF 4x` or `FF max` at the other speeds).
   pressing it does both.
 - Letting go of the hold key ends fast-forward, and so does switching to
   another window while you hold it. Fast-forward switched on with Shift+Tab
-  stays on until you press it again or quit.
+  stays on until you press it again, switch to another window or quit; after
+  you come back, Shift+Tab switches it on again.
 - While the F1 overlay is shown, the fast-forward keys do nothing (letting
   go of a held Tab still ends it). Fast-forward switched on stays on under
   the overlay, which covers the indicator.
@@ -204,9 +205,11 @@ the window (`FF 3x`, `FF 4x` or `FF max` at the other speeds).
   fast-forward.
 
 Fast-forward also works from a controller: hold the right trigger, or click
-the right stick to switch it on and off. It ends when the trigger is let go,
-when the controller is unplugged, and when the window loses focus. While the
-overlay is shown the controller's fast-forward buttons do nothing either.
+the right stick to switch it on and off. The hold ends when the trigger is
+let go, when the controller is unplugged and when the window loses focus; the
+switch ends when the window loses focus too (unplugging the controller leaves
+it on). While the overlay is shown the controller's fast-forward buttons do
+nothing either.
 
 ## Fullscreen
 
@@ -419,7 +422,7 @@ usage: pokeemerald-native [options]
 
 A player needs `--keys`, `--version`, `--scale`, `--silent` and perhaps
 `--data-dir`, `--save` and `--rtc-offset`; the rest are for the project's
-tests (`--audio-dump` records what you hear, at the GBA's 32768 Hz, for
+tests (`--audio-dump` records what you hear, at the GBA's 65536 Hz, for
 comparing builds). `--keys` prints this (here run with
 `--data-dir /home/you/pokeemerald-data` and no settings file), and the game then exits:
 

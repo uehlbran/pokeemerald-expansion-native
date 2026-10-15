@@ -216,8 +216,10 @@ void fastforward_handle_event(const union SDL_Event *event)
             fastforward.held = false;
         break;
     case SDL_WINDOWEVENT:
-        if (event->window.event == SDL_WINDOWEVENT_FOCUS_LOST)
+        if (event->window.event == SDL_WINDOWEVENT_FOCUS_LOST) {
             fastforward.held = false;
+            fastforward.toggled = false;
+        }
         break;
     default:
         break;

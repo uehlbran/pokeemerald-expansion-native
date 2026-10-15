@@ -6,19 +6,25 @@
  * SOUNDCNT_X, "Max Output Levels"). The scale follows psg.c's "OUTPUT SCALE" so the two
  * FIFOs and the PSG fit int16_t together.
  *
- * DC removal: y[n] = x[n] - x[n-1] + R * y[n-1], R = 32701 / 32768
- * (about 0.998), a first-order high-pass whose corner, fs * (1 - R) / 2pi,
- * is 32768 * (67 / 32768) / 2pi, about 11 Hz, at the output's 32768 Hz
- * (frame.h), below anything the game plays, as the GBA's output capacitor
- * is. (At the 13379 Hz the output used to run at, R was 32604 / 32768: the
- * same corner.) Integer arithmetic, rounding toward zero.
+ * DC removal: y[n] = x[n] - x[n-1] + R * y[n-1], a first-order high-pass
+ * whose corner is fc = fs * (1 - R) / 2pi. The corner is held at 67 / 2pi,
+ * about 10.7 Hz, below anything the game plays, as the GBA's output
+ * capacitor is; with R = (fs - 67) / fs that is fs * (67 / fs) / 2pi for any
+ * output rate fs (frame.h), so the pole follows the grid:
+ *   at 65536 Hz, R = 65469 / 65536 (about 0.99898, 1 - R = 67 / 65536);
+ *   at 32768 Hz it was 32701 / 32768, at 13379 Hz 32604 / 32768 (before).
+ * Integer arithmetic, rounding toward zero.
  */
 #include "sound_mix.h"
 
 #include <stdbool.h>
 
-#define DC_FILTER_POLE_NUMERATOR 32701
-#define DC_FILTER_POLE_DENOMINATOR 32768
+#include "sound_grid.h"
+
+/* 2pi * 10.66 Hz, in radians a second: the corner, as 1 - R = this / fs. */
+#define DC_FILTER_CORNER_RADIANS_PER_SECOND 67
+#define DC_FILTER_POLE_DENOMINATOR ((int64_t)SOUND_GRID_RATE_HZ)
+#define DC_FILTER_POLE_NUMERATOR (DC_FILTER_POLE_DENOMINATOR - DC_FILTER_CORNER_RADIANS_PER_SECOND)
 
 /* The output channels, indexes into struct sound_mix_state and a frame. */
 enum sound_mix_side { SOUND_MIX_LEFT = 0, SOUND_MIX_RIGHT = 1 };

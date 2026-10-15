@@ -25,11 +25,13 @@
  * The hold ends when its scancode comes up, whatever the modifiers are by
  * then, and when the window loses the keyboard's focus, whose key-up would
  * go to another window: the game cannot stay fast-forwarded by a key no
- * longer held. The toggle stays on until it is pressed again (or the game
- * ends). While the help overlay is shown (overlay.h) a press is the
- * overlay's and changes nothing; a release still ends the hold, for the same
- * reason; a toggle switched on stays on, and the game runs on fast under the
- * overlay, which hides the indicator.
+ * longer held. The toggle stays on until it is pressed again, the window
+ * loses focus (the player cannot see the indicator then, and an unwatched
+ * game would run at full speed) or the game ends; after the focus returns a
+ * press switches it on again. While the help overlay is shown (overlay.h) a
+ * press is the overlay's and changes nothing; a release still ends the hold,
+ * for the same reason; a toggle switched on stays on, and the game runs on
+ * fast under the overlay, which hides the indicator.
  *
  * A controller does the same through controller.h's two functions, hold
  * (the right trigger) and toggle (a click of the right stick), passed in as
@@ -38,7 +40,9 @@
  * a key's is; the hold ends with the release, with the controller going away
  * (SDL sends no release for a pulled cable) and with the window losing the
  * focus, because it lasts only as long as controller_held says some
- * controller holds the control.
+ * controller holds the control. The controller's toggle ends with the
+ * window's focus like the keyboard's, in the same place, since both are one
+ * state.
  *
  * The indicator, "FF 2x", "FF 3x", "FF 4x" or "FF max", is drawn in the
  * screen's top-right corner while fast-forward is on (fastforward_draw_indicator

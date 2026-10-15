@@ -66,11 +66,12 @@
  * noise channels are full of such components (a square wave's odd harmonics
  * fall off only as 1/k; the noise channel clocks at up to 524288 Hz), so high
  * notes gain inharmonic tones and edges jitter by up to one output sample.
- * The GBA itself resamples the PSG's 262.144 kHz output to its 32.768 kHz PWM
- * rate (GBATEK, "Resampling to 32.768kHz"), so at 32768 Hz, the rate the
- * platform runs it at (frame.h, sound_grid.h), this is the hardware's own
- * sampling grid, 512 cycles a sample with no remainder, and the aliasing is
- * the hardware's; at lower rates it aliases more than the hardware. A
+ * The GBA itself resamples the PSG's 262.144 kHz output to its PWM rate
+ * (GBATEK, "Resampling to 32.768kHz"; 65.536 kHz in the mode Emerald
+ * selects), so at 65536 Hz, the rate the platform runs it at (frame.h,
+ * sound_grid.h), this is the hardware's own sampling grid, 256 cycles a
+ * sample with no remainder, and the aliasing is the hardware's; at lower
+ * rates it aliases more than the hardware. A
  * band-limited synthesis (box filter or band-limited steps) can replace
  * mix_sample() later without changing the interface.
  *
