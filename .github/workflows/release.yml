@@ -37,11 +37,11 @@
 # Verify a download with `gh attestation verify <file> --repo <owner>/<repo>`
 # and `sha256sum --check SHA256SUMS.txt`.
 #
-# NOTE: actions/attest-build-provenance works in a private repository only on
-# GitHub Enterprise Cloud (its README); on a user-owned private repository the
-# step fails with "Feature not available for user-owned private repositories"
-# (run 38660260570, 2026-10-15). It runs on the publish path only, which is
-# taken once the repository is public, where it works unchanged.
+# NOTE: the attestation step works in this public repository. In a private
+# copy of it (a fork made private, a mirror) actions/attest-build-provenance
+# works only on GitHub Enterprise Cloud; on a user-owned private repository
+# the step fails with "Feature not available for user-owned private
+# repositories". It runs on the publish path only.
 name: release
 
 on:
@@ -260,7 +260,7 @@ jobs:
           retention-days: 1
 
       # The publish path only (the job is skipped without `publish`).
-      - name: Attest the archives (private repository note at the top)
+      - name: Attest the archives (public repositories; note at the top)
         uses: actions/attest-build-provenance@v4
         with:
           subject-path: |
@@ -298,7 +298,10 @@ jobs:
               sha256sum --check SHA256SUMS.txt
               gh attestation verify <file> --repo $GH_REPO
 
-          Requirements: Linux needs SDL2 2.0 installed (libsdl2-2.0-0), not bundled.
+          The Linux tarball holds the executable, pokeemerald-native.sh (starts it with the
+          SDL2 library in the same folder) and that library, libSDL2-2.0.so.0. Started
+          directly, the executable uses the SDL2 installed on the system instead
+          (libsdl2-2.0-0 on Debian and Ubuntu).
           Windows needs Windows 10 version 1903 or later, 64-bit; the executable is
           not signed, so SmartScreen warns: More info, then Run anyway.
           NOTES

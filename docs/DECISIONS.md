@@ -1525,8 +1525,9 @@ an explicit `publish` input; without it the artifacts stay on the workflow
 run for testing. No public release and no tag is created without an explicit
 decision to publish. Built and dispatched once on 2026-10-15 (run
 38660260570, publish off): the archives and sums are right; the attestation
-step fails on a user-owned private repository ("Feature not available ...
-please make this repository public") and needs no change once it is public.
+step failed then, because the repository was private ("Feature not available
+... please make this repository public"); it works now that the repository is
+public, and on a user-owned private copy it fails with that message.
 
 **Why no public release.** A built executable contains the complete game's
 assets, so a public release is legally the same as distributing a ROM,
@@ -2567,7 +2568,7 @@ derive from source files that are public in the repository anyway; and the
 legal line is a playable build, not its intermediate pieces. The one path to
 a cache is a pull-request workflow run from a fork, which the repository's
 setting "Require approval for all external contributors" closes; it
-is set before the repository goes public. The Windows job caches no tools
+was set when the repository went public. The Windows job caches no tools
 (they are built in WSL's home each run, about a minute) so that no tool
 built for one environment is restored into the other.
 

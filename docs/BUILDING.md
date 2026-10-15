@@ -544,11 +544,12 @@ its SHA-256. A run without the `publish` input uploads nothing at all: no
 artifact, no release. With `publish` and a `tag` the archives go to the later
 jobs as one-day artifacts, which a last job deletes; those jobs write
 `SHA256SUMS.txt`, attest both archives (`gh attestation verify <file> --repo
-<owner>/<repo>`; GitHub offers attestations to a user-owned repository only
-once it is public, so on a private repository that step fails) and create
+<owner>/<repo>`; the step works in this public
+repository; in a private copy of it, a user-owned one, it fails) and create
 the GitHub release. Each archive holds the executable, `LICENSE`, `RUNNING.md`
-and a short `README.txt`; the Windows zip also holds `SDL2.dll` and SDL2's
-licence. `platform/build_glue/check_workflow_uploads.py` fails the platform
+and a short `README.txt`; the Linux tarball also holds `pokeemerald-native.sh`,
+the SDL2 library it starts the game with (`libSDL2-2.0.so.0`) and
+`SDL2-LICENSE.txt`, and the Windows zip `SDL2.dll` and SDL2's licence. `platform/build_glue/check_workflow_uploads.py` fails the platform
 gate if any workflow's upload step could match more than text, frame images,
 saves and clock files (release.yml's archives excepted under `publish`), or if
 a workflow uses an action that is not on its allowlist. It reads the steps'
