@@ -8,13 +8,6 @@ ASSUMPTIONS
 
 SINGLE_BATTLE_TEST("Shed Tail creates a Substitute at the cost of 1/2 users maximum HP and switches the user out")
 {
-#if PLATFORM_NATIVE
-    // On the GBA THEN's call sets this test's captured variables to their
-    // initial values again, so its THEN compares those; natively the captures
-    // reach THEN, and it fails (platform/test_runner/SUITE-LOG.md, class 11).
-    KNOWN_FAILING;
-#endif
-#line 11
     s16 maxHP = 0;
     s16 costHP = 0;
 
@@ -25,7 +18,20 @@ SINGLE_BATTLE_TEST("Shed Tail creates a Substitute at the cost of 1/2 users maxi
     } WHEN {
         TURN { MOVE(player, MOVE_SHED_TAIL); SEND_OUT(player, 1); }
     } SCENE {
+#if PLATFORM_NATIVE
+        // This statement runs before the battle copies GIVEN's party into
+        // gParties (the party there is the previous test's, zeroed: 0) and,
+        // natively, again in THEN's call after the battle (the HP less the
+        // cost): neither is the maximum HP the test means. Natively the
+        // captured cost reaches THEN (platform/test_runner/SUITE-LOG.md,
+        // class 11), so the maximum HP is read from GIVEN's party, as the
+        // other tests of a cost do.
+        maxHP = GetMonData(&PLAYER_PARTY[0], MON_DATA_MAX_HP);
+#else
+#line 21
         maxHP = GetMonData(&gParties[B_TRAINER_PLAYER][0], MON_DATA_HP);
+#endif
+#line 22
         ANIMATION(ANIM_TYPE_MOVE, MOVE_SHED_TAIL, player);
         HP_BAR(player, captureDamage: &costHP);
         MESSAGE("Wobbuffet shed its tail to create a decoy!");

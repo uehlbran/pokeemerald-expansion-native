@@ -156,7 +156,7 @@ or a screenshot, whose images need every frame); the
 suite takes about 40 seconds on 32 cores (the GBA baseline about 2.5 to
 3 minutes under mGBA).
 
-### 11. Captures that reach THEN (7 tests): native KNOWN_FAILING (M8)
+### 11. Captures that reach THEN (7 tests): 2 corrected natively, 5 native KNOWN_FAILING (M8)
 
 A battle test's function is called for GIVEN, WHEN and SCENE, and again for
 THEN after the battle. `HP_BAR(..., captureDamage: &damage)` and the other
@@ -172,27 +172,70 @@ into that call's variable (`test/test_runner_battle.c`, "A capture";
 `docs/UPSTREAM_MODIFICATIONS.md`), so THEN reads what the battle captured,
 with GCC and with clang alike.
 
+The replay's contract (stated at SCENE in `include/test/battle.h` and at
+"A capture"): natively, when SCENE captured into a variable of the test
+function, SCENE's whole body runs a second time, in THEN's call, after the
+battle. Its queue calls must queue the same events as the first time (a
+different count, type, line or group, or a capture that now names another
+place, ends the test with ERROR before THEN). Every other statement in it
+runs again too, against the state after the battle: what it reads from
+GIVEN's recorded party (`PLAYER_PARTY`, `OPPONENT_PARTY`) is unchanged,
+what it reads from `gParties`, `gBattleMons` or any other game state is the
+battle's, and a variable that only GIVEN's or WHEN's body sets (they do not
+run in THEN's call) has the value THEN's call gives it. In 1.17.1's SCENE
+blocks, besides the queue calls, are control flow, declarations such as
+`s32 maxHP = GetMonData(&PLAYER_PARTY[0], MON_DATA_MAX_HP)`, and five
+statements that read state the battle changes: Substitute's and Shed
+Tail's `maxHP = GetMonData(&gParties[B_TRAINER_PLAYER][0], MON_DATA_HP)`
+(below), Heal Bell's two checks of `gParties` and Thrash's check of
+`opponent`, whose SCENEs capture nothing and so run once (a scan of every
+SCENE block for game state: `gParties`, `gBattle...`, the battler
+pointers, flags, variables, the RNG).
+
 On the GBA a capture into a variable with an initialiser never reaches
 THEN: THEN's call runs the initialiser again over the slot the battle wrote.
 Seven tests pass there only because of it, their THEN comparing the
-initial values (zeros); natively the captures arrive and they fail. They
-are KNOWN_FAILING natively (a guarded `KNOWN_FAILING;` in each), so the
-native suite's results differ from the GBA baseline in these 7 as in the 9
-benchmarks:
+initial values (zeros); natively the captures arrive.
+
+Two of them read the maximum HP at a moment it is not there. Substitute's
+and Shed Tail's SCENE set `maxHP` from `gParties`' current HP. SCENE's
+first run is in the first call, before `StartBattle` copies GIVEN's party
+into `gParties` (`SetVariablesForRecordedBattle`), where the party is the
+one the previous battle's teardown zeroed: it reads 0 (measured, a build
+that kept the first run's value: 0 HP, 0 maximum HP). The replay reads it
+after the battle: the HP less the cost (368 for 490). With the captured
+cost reaching THEN, either value fails the test (`EXPECT_EQ(0, 122)` with
+the first run's, `EXPECT_EQ(92, 122)` with the replay's): the replay does
+not cause the failure, a capture that arrives does, and any harness in
+which captures reach THEN (upstream's own, fixed) fails them alike. They
+are corrected natively, so that they check the cost and pass as on the GBA:
+`maxHP` comes from GIVEN's party's maximum HP (`PLAYER_PARTY[0]`,
+`MON_DATA_MAX_HP`, the form fifty other SCENE blocks use), the same in both
+runs; `#if PLATFORM_NATIVE` / `#else` / `#endif` with `#line`, the GBA's
+text unchanged. Both PASS natively, the cost (122 of 490, 245 of 490)
+compared with the maximum HP; the capture replay is what delivers it, so
+removing the replay's write fails them.
+
+The other five are KNOWN_FAILING natively (a guarded `KNOWN_FAILING;` in
+each), so the native suite's results differ from the GBA baseline in these
+5 as in the 9 benchmarks. Each was re-derived from the test and the values
+the replay delivers; the values are the battle's, the tests' expectations
+are wrong:
 
 | Test | File | Native failure | Why |
 |---|---|---|---|
-| "Substitute creates a Substitute at the cost of 1/4 users maximum HP" | `test/battle/move_effect/substitute.c` | `EXPECT_EQ(92, 122)` | SCENE reads the HP into `maxHP` (`GetMonData`); run again for THEN it reads it after the battle, less the cost |
-| "Shed Tail creates a Substitute at the cost of 1/2 users maximum HP and switches the user out" | `shed_tail.c` | `EXPECT_EQ(122, 245)` | the same, Shed Tail |
-| "Shell Bell recovers 1/8 of HP from after the last hit from all hits of a multi hit move" | `test/battle/hold_effect/shell_bell.c` | `EXPECT_EQ(0, 6)` | SCENE sums the hits' captured damage before the battle has captured any (`totalDamage` stays 0); the recovery does arrive |
-| "Shell Bell does not activate on Future Sight if the original user is on the field" (the second of two tests of that name, line 175) | `shell_bell.c` | `EXPECT_MUL_EQ(40, 0.75, -5)` | the captured heal is -5 for 40 damage, not -10: the test's expectation or the item's behaviour, upstream's to say |
-| "Lash Out damage is only boosted on the turn that Intimidate switches in" (parameter 1 of 2) | `test/battle/move_effect/lash_out.c` | `EXPECT_EQ(54, 36)` | the captured damages differ from what the test expects |
-| "Lash Out damage is boosted on turn 1 by switch in abilities" (2 of 4, Intimidate) | `lash_out.c` | `EXPECT_MUL_EQ(36, 1.33, 36)` | the same |
-| "Lash Out damage is boosted by Cotton Down activation in doubles" (2 of 2) | `lash_out.c` | `EXPECT_MUL_EQ(150, 2.0, 76)` | the same |
+| "Shell Bell recovers 1/8 of HP from after the last hit from all hits of a multi hit move" | `test/battle/hold_effect/shell_bell.c` | `EXPECT_EQ(0, 6)` | SCENE sums the hits' captured damage before the battle has captured any (`totalDamage` stays 0, in the first run and in the replay, whose sum runs before CloseScene writes the captures); the recovery does arrive |
+| "Shell Bell does not activate on Future Sight if the original user is on the field" (the second of two tests of that name, line 175) | `shell_bell.c` | `EXPECT_MUL_EQ(40, 0.75, -5)` | the captured heal is -5 for 40 damage, the item's 1/8; the test expects another fraction |
+| "Lash Out damage is only boosted on the turn that Intimidate switches in" (parameter 1 of 2) | `test/battle/move_effect/lash_out.c` | `EXPECT_EQ(54, 36)` | 54 then 36 is Intimidate's attack drop, which the test does not allow for |
+| "Lash Out damage is boosted on turn 1 by switch in abilities" (2 of 4, Intimidate) | `lash_out.c` | `EXPECT_MUL_EQ(36, 1.33, 36)` | the same attack drop |
+| "Lash Out damage is boosted by Cotton Down activation in doubles" (2 of 2) | `lash_out.c` | `EXPECT_MUL_EQ(150, 2.0, 76)` | 150 then 76 is the boost on turn 1; the check's operands are the wrong way round |
 
 An upstream report would say: a capture into a variable with an initialiser
-is lost on the GBA, so these tests check nothing (drafted here, not posted;
-upstream reports go out only with the owner's approval).
+is lost on the GBA, so these tests check nothing; once captures reach THEN,
+five fail on their expectations and two (Substitute's and Shed Tail's cost)
+on a SCENE that reads `gParties` before the battle has copied the party in,
+whose correction is the maximum HP of GIVEN's party (drafted here, not
+posted; upstream reports go out only with the owner's approval).
 
 Not a capture, and left as it is: "Dynamax: Dynamax expires after three
 turns and correctly converts HP according to Dynamax Level" reads

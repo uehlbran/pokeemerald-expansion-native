@@ -109,8 +109,10 @@ struct DoubleTestCall
 // A test function's first parameter is its own Result struct (include/test/
 // battle.h, BATTLE_TEST_ARGS_SINGLE), which the table's function types give
 // as void *; the GBA's Thumb routines below call it with no type at all.
-// Natively these two calls go through the table's types, so clang's check
-// of a call's function type is off for them (and only them).
+// Natively these two calls go through the table's types: a call through an
+// incompatible function type, which stays undefined in C (C17 6.3.2.3p8);
+// the ABI passes a pointer either way, so it works. no_sanitize("function")
+// only silences clang's report of it, for these two functions alone.
 #if defined(__clang__)
 #define CALLS_TEST_FUNCTION __attribute__((no_sanitize("function")))
 #else
@@ -172,6 +174,18 @@ static void InvokeOneVsTwoTestFunctionWithStack(void *results, u32 i, struct Bat
 // that call's variables, and CloseScene writes the kept values through them,
 // so THEN reads variables written in its own call. CloseScene then puts the
 // events of SCENE's first run back, as the battle's next trial needs them.
+//
+// What runs twice, and what is checked: SCENE's whole body, the second time
+// in THEN's call after the battle, only when it captured into the test
+// function's variables (PrepareSceneReplay). CloseScene checks that the
+// second run queued the same events (count, type, line, group, and a capture
+// to the same kind of place) and ends the test with ERROR if not, and
+// FinishSceneReplay that SCENE did run again. Nothing checks SCENE's other
+// statements: they run again against the state after the battle (a read of
+// gParties' HP gives the HP the battle left; GIVEN's PLAYER_PARTY is
+// unchanged), and a variable only GIVEN's or WHEN's body sets keeps the value
+// THEN's call gives it. A SCENE should hold queue calls and read nothing the
+// battle changes (platform/test_runner/SUITE-LOG.md, class 11).
 enum CaptureWidth
 {
     CAPTURE_U16,

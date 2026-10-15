@@ -2413,13 +2413,22 @@ were undefined behaviour in expansion's test harness, now fixed:
   runs SCENE again at the start of THEN's call, which writes it into that
   call's variable (`test/test_runner_battle.c`, "A capture";
   `include/test/battle.h`, `SCENE`), so the read is defined. Beat Up's 15
-  tests pass at clang -O2. Seven tests whose captured variables have an
-  initialiser passed on the GBA only because THEN's call reset them, and
-  fail now that the captures arrive; they are KNOWN_FAILING natively
+  tests pass at clang -O2. The replay's contract: SCENE's whole body runs
+  a second time, in THEN's call, after the battle; its queue calls must
+  queue the same events (else ERROR), and its other statements read the
+  state after the battle. Seven tests whose captured variables have an
+  initialiser passed on the GBA only because THEN's call reset them.
+  Five fail now that the captures arrive, on expectations the captured
+  values show wrong, and are KNOWN_FAILING natively. Two, Substitute's and
+  Shed Tail's cost, read the maximum HP from `gParties` in SCENE, where it
+  is 0 in SCENE's first run (the party is copied in at the battle's start)
+  and the HP less the cost in the replay; they would fail with captures
+  arriving by any means, and are corrected natively to read GIVEN's party's
+  maximum HP, so they pass, as on the GBA, and check the cost
   (`platform/test_runner/SUITE-LOG.md`, class 11).
 
 With the first two and the capture replay, the clang-built Linux suite
-equals GCC's in all 5,884 results, plain and sanitized (5,417 PASS, 25
+equals GCC's in all 5,884 results, plain and sanitized (5,419 PASS, 23
 KNOWN_FAILING, and 3 ERROR, the replay's own tests of its errors, which
 expect that result; `test/capture_replay.c` added 9 tests).
 
@@ -2512,13 +2521,13 @@ it. The runs, in this order:
      screenshots", the same sanitized with no sanitizer report; gate h's
      load stage PASS on the Linux save;
    - **suite**: the test runner's own tests (two crash on purpose and are
-     restarted), then 5,884 results (5,417 PASS, 2 CRASH, 3 ERROR (expected:
-     `test/capture_replay.c`), 7 EXPECTED_FAIL, 25 KNOWN_FAILING, 9
+     restarted), then 5,884 results (5,419 PASS, 2 CRASH, 3 ERROR (expected:
+     `test/capture_replay.c`), 7 EXPECTED_FAIL, 23 KNOWN_FAILING, 9
      ASSUMPTION_FAIL, 421 TO_DO), plain and sanitized (the harness's
-     summary counts the 3 expected ERRORs with the known failures: 28).
+     summary counts the 3 expected ERRORs with the known failures: 26).
      Against `main`'s Linux suite (5,875 results, 5,418 PASS, 18
      KNOWN_FAILING) the difference is the branch's, the same with GCC on
-     Linux: the capture replay's 9 self-tests (6 PASS, 3 ERROR) and 7 tests
+     Linux: the capture replay's 9 self-tests (6 PASS, 3 ERROR) and 5 tests
      that pass on `main` only because their captured values never reach
      THEN, now KNOWN_FAILING natively (`platform/test_runner/SUITE-LOG.md`,
      class 11); every other test's result is `main`'s. Also

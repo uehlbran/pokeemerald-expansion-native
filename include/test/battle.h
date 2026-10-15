@@ -1220,9 +1220,16 @@ void GivePlayerItem(u32 sourceLine, enum Item, u32 quantity);
 /* Scene */
 
 #if PLATFORM_NATIVE
-// THEN's call runs SCENE again when SCENE captured into the test function's
-// variables, so that THEN reads values written in its own call (see "A
-// capture" in test/test_runner_battle.c).
+// The replay's contract: when SCENE captured into a variable of the test
+// function, SCENE's whole body runs a second time, in THEN's call, after the
+// battle, so that THEN reads values written in its own call ("A capture" in
+// test/test_runner_battle.c). Its queue calls must queue the same events as
+// the first time (CloseScene ends the test with ERROR otherwise); every other
+// statement in it runs again against the state after the battle (gParties,
+// gBattleMons and the rest are the battle's; GIVEN's PLAYER_PARTY and
+// OPPONENT_PARTY are unchanged), and a variable only GIVEN's or WHEN's body
+// sets has the value THEN's call gives it. So a SCENE should hold queue
+// calls, and read nothing the battle changes.
 void OpenScene(void);
 void CloseScene(u32 sourceLine);
 #define SCENE for (OpenScene(); gBattleTestRunnerState->runScene; CloseScene(__LINE__))
