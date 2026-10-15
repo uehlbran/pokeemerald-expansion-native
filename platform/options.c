@@ -49,7 +49,8 @@ void options_print_usage(FILE *out)
         "                     so a replay sees the same time every run\n"
         "  --resume-at LINE   (a restart adds it) continue the replay after script line LINE\n"
         "  --audio-dump PATH  also write the sound output to PATH as a WAV file (16-bit stereo at the\n"
-        "                     output's rate), headless and --silent too; a replay's restart ends it\n"
+        "                     output's rate), headless and --silent too; a replay's restart ends it; its\n"
+        "                     sizes are written at exit (after a crash: sox --ignore-length reads it)\n"
         "  --help             this text\n",
         OPTIONS_DEFAULT_SAVE_PATH, OPTIONS_DEFAULT_RTC_OFFSET_PATH, OPTIONS_MAX_SCALE, OPTIONS_DEFAULT_SCALE,
         OPTIONS_DEFAULT_OUT_DIR);

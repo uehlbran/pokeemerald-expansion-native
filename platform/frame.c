@@ -209,10 +209,9 @@ static void mix_sound(void)
         fail();
         return;
     }
-    if (audio_dump_append(mixed_samples, grid.samples) != 0) {
-        fail(); /* reported; the recording asked for cannot be made */
-        return;
-    }
+    /* A failed write is reported and ends the recording, not the game; the
+     * exit status says so (audio_dump.h). */
+    (void)audio_dump_append(mixed_samples, grid.samples);
     if (++frame.audio_frames_queued == FRAME_AUDIO_PREROLL_FRAMES && audio_set_paused(false) != 0) {
         (void)fprintf(stderr, "frame: audio_set_paused(false) failed\n");
         fail();

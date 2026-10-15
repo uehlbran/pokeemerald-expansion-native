@@ -11,10 +11,10 @@
 
 #include <errno.h>
 #include <fcntl.h>
+#include <inttypes.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <string.h>
-#include <unistd.h>
 
 #include "host_file.h"
 
@@ -118,7 +118,7 @@ int audio_dump_start(const char *path, uint32_t sample_rate_hz)
     audio_dump_header(header, sample_rate_hz, 0);
     if (host_file_write_all(descriptor, header, sizeof header) != 0) {
         (void)fprintf(stderr, MODULE ": cannot write to %s: %s\n", path, strerror(errno));
-        (void)close(descriptor); /* already failing */
+        (void)host_file_close(descriptor); /* already failing */
         return -1;
     }
     dump.descriptor = descriptor;
@@ -160,11 +160,17 @@ int audio_dump_finish(void)
     int status = 0;
     uint8_t header[AUDIO_DUMP_HEADER_BYTES];
     audio_dump_header(header, dump.sample_rate_hz, dump.frames);
-    if (lseek(dump.descriptor, 0, SEEK_SET) != 0 || host_file_write_all(dump.descriptor, header, sizeof header) != 0) {
+    if (dump.failed) {
+        (void)fprintf(stderr,
+                      MODULE ": the recording in %s stopped after %" PRIu64 " stereo frames, when a write failed\n",
+                      dump.path, dump.frames);
+        status = -1;
+    }
+    if (host_file_seek(dump.descriptor, 0) != 0 || host_file_write_all(dump.descriptor, header, sizeof header) != 0) {
         (void)fprintf(stderr, MODULE ": cannot write the header of %s: %s\n", dump.path, strerror(errno));
         status = -1;
     }
-    if (close(dump.descriptor) != 0 && status == 0) {
+    if (host_file_close(dump.descriptor) != 0 && status == 0) {
         (void)fprintf(stderr, MODULE ": closing %s failed: %s\n", dump.path, strerror(errno));
         status = -1;
     }

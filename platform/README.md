@@ -440,7 +440,10 @@ the game after N frames with status 0 (the gates use it with `--headless
 --silent --unthrottled`); `--screenshot` writes the last frame as a PPM;
 `--audio-dump` writes every frame of sound the loop mixes to a WAV file
 (`audio_dump`), with or without a device, until the game ends or a replay's
-`restart`.
+`restart`. The header's sizes are written when the game exits; after a
+crash the samples are there but the sizes are 0, which `sox --ignore-length`
+reads. A full disk stops the recording, not the game, and the exit status
+is then 1.
 Headless, the keypad reads no keys. A save file this build cannot use
 (corrupt, or written with another struct layout) stops `main` before the
 game starts, so it is never overwritten.

@@ -10,7 +10,14 @@
  * Specifications 1.0", 1991, "WAVE Form Type"; the PCM format chunk) and the
  * samples little-endian, whatever the host's byte order. The header is
  * written first with no data and written again with the sizes when the
- * recording is finished.
+ * recording is finished, at the game's normal end (main). A crash, or an end
+ * that skips the finish, leaves the samples in the file and the header's
+ * sizes at 0: `sox --ignore-length` reads such a file. Nothing touches the
+ * recording from a fault handler (docs/C-RULES.md, "Concurrency").
+ *
+ * A failed write (a full disk) never stops the game: it is reported once, the
+ * recording takes nothing more, and audio_dump_finish fails, so the process
+ * ends with a nonzero status.
  *
  * The file goes through host_file.h (opened as every kept file is); it is a
  * test output, not durable state, so it is written in place, not replaced.
@@ -52,14 +59,15 @@ void audio_dump_header(uint8_t out[AUDIO_DUMP_HEADER_BYTES], uint32_t sample_rat
 int audio_dump_start(const char *path, uint32_t sample_rate_hz);
 
 /* Appends `frames` stereo frames (frames * 2 interleaved int16_t, left
- * first). Returns 0, also when no recording is started (nothing to do), or
- * -1 (reported) if the write failed; the recording then takes nothing more
- * and is finished with what was written before. */
+ * first). Returns 0, also when no recording is started or an earlier write
+ * failed (nothing to do), or -1 (reported) for the write that fails, or for
+ * no samples with frames > 0. After a failed write the recording takes
+ * nothing more; the header describes what was written before it. */
 int audio_dump_append(const int16_t *stereo, size_t frames);
 
 /* Writes the header's sizes and closes the file. Returns 0, also when no
- * recording is started, or -1 (reported) if the header could not be written
- * or the file closed. */
+ * recording is started, or -1 (reported) if a write failed while recording,
+ * or the header could not be written or the file closed. */
 int audio_dump_finish(void);
 
 /* audio_dump_finish with the result dropped (a failure is still reported):
