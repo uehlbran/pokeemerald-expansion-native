@@ -486,8 +486,6 @@ static bool box_for_log_text(const char *log_text, const char *extra_directory, 
     char path[LONG_PATH_SIZE];
     if (snprintf(dir, sizeof dir, "%s%s", scene->pref, extra_directory) >= (int)sizeof dir)
         return false;
-    if (extra_directory[0] != '\0' && !tsup_make_directory(dir))
-        return false;
     if (!write_file(dir, "pokeemerald.log", log_text))
         return false;
     if (snprintf(path, sizeof path, "%s/pokeemerald.log", dir) >= (int)sizeof path)
@@ -516,12 +514,12 @@ PTEST(the_box_shows_a_short_log_whole)
 {
     struct scene scene;
     PT_ASSERT(make_scene(&scene));
-    memset(box.text, 'Z', sizeof box.text - 1u); /* what a box left before it */
+    memset(box.text, 1, sizeof box.text - 1u); /* what a box left before it */
     const bool shown = box_for_log_text("short\n", "", &scene);
     PT_ASSERT(end_scene(&scene));
     PT_ASSERT(shown);
     PT_ASSERT(strncmp(box.text, "short\n\n\nThe log file is ", 24) == 0);
-    PT_ASSERT(strchr(box.text, 'Z') == NULL);
+    PT_ASSERT(strchr(box.text, 1) == NULL);
 }
 
 /* The cut at 1000 bytes does not leave half of a two-byte character: 999 letters, then "e acute". */
@@ -546,23 +544,29 @@ PTEST(the_box_names_a_log_path_of_over_four_hundred_bytes)
 {
     struct scene scene;
     PT_ASSERT(make_scene(&scene));
-    char deep[260];
-    deep[0] = '/';
-    memset(deep + 1, 'd', 200u);
-    deep[201] = '\0';
-    char deeper[520];
-    (void)snprintf(deeper, sizeof deeper, "%s/%s", deep, deep + 1);
-    char first[LONG_PATH_SIZE];
-    (void)snprintf(first, sizeof first, "%s%s", scene.pref, deep);
-    PT_ASSERT(tsup_make_directory(first));
+    /* Directories 60 bytes a level down to 430 bytes of path; Windows stops at MAX_PATH (260), where the
+     * path is as long as it can be there. */
+    char extra[512] = "";
+    char dir[LONG_PATH_SIZE];
+    while (strlen(scene.pref) + strlen(extra) < 430u) {
+        const size_t used = strlen(extra);
+        (void)snprintf(extra + used, sizeof extra - used, "/%.60s",
+                       "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd");
+        (void)snprintf(dir, sizeof dir, "%s%s", scene.pref, extra);
+        if (!tsup_make_directory(dir)) {
+            extra[used] = '\0';
+            break;
+        }
+    }
     static char log_text[1201];
     memset(log_text, 'e', sizeof log_text - 1u); /* a full head, so that head and path together outgrow 1400 bytes */
-    const bool shown = box_for_log_text(log_text, deeper, &scene);
+    const bool shown = box_for_log_text(log_text, extra, &scene);
+    (void)snprintf(dir, sizeof dir, "%s%s/pokeemerald.log", scene.pref, extra);
     PT_ASSERT(end_scene(&scene));
     PT_ASSERT(shown);
-    PT_ASSERT(strlen(box.text) > 400u);
     PT_ASSERT_EQ_U32((unsigned)strspn(box.text, "e"), 1000u);
-    PT_ASSERT(strstr(box.text, deeper) != NULL);
+    PT_ASSERT(strstr(box.text, dir) != NULL);
+    PT_ASSERT(strlen(box.text) > 1000u + strlen(dir));
 }
 
 PTEST_MAIN()
