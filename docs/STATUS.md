@@ -67,8 +67,24 @@ both widths (the 24-step ledger at the end of this block).
   the launcher's `cd` (broke relative paths), SDL2 bundled as your item
   (h) specifies, a missing test, the docs.
 
-**In flight.** macOS x86_64 (M2 to M5) on `macos-15-intel`, Opus, on
-work/macos. Then the Apple-silicon spike (task i) and a final review. DECISIONS.md has the macOS runner dates (x86_64 macOS runners end
+**In flight.** macOS x86_64 (M2 to M5): the Opus worker finished the
+port as far as Linux can check it (work/macos at 3e12d1f0f0, pushed,
+unmerged): the Mach-O layout (the regions as segments at their GBA
+addresses, `-no_pie -pagezero_size 0x1000 -no_fixup_chains`), the macOS
+host layer (faults, the stack switch, the watchdog's relative wait,
+F_FULLFSYNC), the clang build, the test scripts split out for Mach-O,
+patchelf for Mach-O, macos.yml (nightly 06:17 UTC and by hand). On Linux:
+every gate unchanged; a clang-built Linux game passes both replays and
+equals gcc's suite result for result, plain and sanitized. On a Mac:
+nothing beyond probes M0 and M2, because of the billing block. It merges
+only after its first runs on `macos-15-intel` are green (the ordered list
+is in its DECISIONS entry "The macOS port waits for its first runs on a
+Mac"; macos.yml must reach main or carry a push trigger once to be
+dispatched). Now in work/macos: the release archive for macOS, `tools/
+build-native.sh --os macos` and RUNNING's Gatekeeper section (Sonnet), and
+a first-pass Sonnet review of the port. The Apple-silicon spike (Opus, two
+hours, local evidence and M0's runner data) runs beside them. Then the
+final review. DECISIONS.md has the macOS runner dates (x86_64 macOS runners end
 in fall 2027) and what they change for the Apple-silicon question.
 
 **Broke and fixed.** The per-push CI run on main after the settings
@@ -990,7 +1006,8 @@ Nothing yet; nothing exists to be broken.
 | fastforward (hold and toggle keys, the pacer multiplier, audio, indicator) | Opus | Sonnet (mutation testing), orchestrator merge gate |
 | threadtest (the Linux watchdog test that failed on CI) | Sonnet | Sonnet (mutation testing), orchestrator merge gate |
 | console (no console window on Windows) | Sonnet | Sonnet (mutation testing), orchestrator merge gate |
-| macos (milestone 8, tasks M2 to M5: macOS x86_64) | Opus | in flight |
+| macos (milestone 8, tasks M2 to M5: macOS x86_64; unmerged, waits for the runner) | Opus; Sonnet for the release, script and RUNNING follow-up | Sonnet (in flight) |
+| spike (task i: native Apple silicon, report only) | Opus | orchestrator |
 | deck (task h: Steam Deck) | Sonnet | Sonnet (mutation testing), orchestrator merge gate |
 | interrupt | Opus | Sonnet |
 | psg | Opus | Sonnet |
