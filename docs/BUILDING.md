@@ -639,10 +639,9 @@ runs on a Mac").
 
 `.github/workflows/macos.yml` (nightly at 06:17 UTC, an hour after
 `windows.yml`, and by hand, `gh workflow run macos.yml`) runs on
-`macos-15-intel` (`docs/DECISIONS.md`, "macOS CI runs on macos-15-intel
-only", and its amendment for the one `rosetta` job on `macos-latest`, which
-runs the x86_64 unit tests and the opening replay under Rosetta 2 on Apple
-silicon): the unit tests under ASan and UBSan and under TSan, clang-tidy on the
+`macos-15-intel` and no other label (`docs/DECISIONS.md`, "macOS CI runs on
+macos-15-intel only"; the x86_64 build under Rosetta 2 on Apple silicon is
+the owner's check by hand): the unit tests under ASan and UBSan and under TSan, clang-tidy on the
 macOS sources and patchelf's Mach-O tests; the game plain and sanitized, its
 segments and libraries (`otool`), both replays of each and the macOS stage of
 the cross-OS save gate (`tests/smoke/run_cross_os.sh load` on the save the
@@ -651,7 +650,14 @@ compared test by test with the Linux 64-bit suite of the same commit
 (`platform/test_runner/compare_suite_results.sh`); and the Mac's 64-bit struct
 layouts against Linux's. Its header lists the jobs. macOS minutes count ten
 times a Linux minute, so the jobs are ordered for an early failure to stop the
-rest: the game and the suite start only after the unit tests pass.
+rest: the game and the suite start only after the unit tests pass. At the
+jobs' time limits a night costs up to 2,330 billed minutes on a private
+repository and nothing on a public one; the schedule fires only on the
+default branch, and whether it stays nightly is the owner's call when the
+branch merges. The Linux game it carries between jobs (`linux-build`) is kept
+one day and deleted by its last job, `cleanup`, with every other artifact
+not on that job's list of artifacts without the game (`docs/DECISIONS.md`,
+"CI artifacts never hold the game beyond a run").
 
 ## The release workflow
 

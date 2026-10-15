@@ -940,6 +940,17 @@ matters, the rebased memory model is the work to plan, with this entry
 and the inventory's section 2.5 as the starting point; nothing else in
 the port depends on the choice.
 
+Not yet shown (2026-10-15, the final review of the port): the x86_64 game on
+an Apple-silicon Mac under Rosetta 2. Probe M0 showed the layout there (61 of
+61 checks, 100 of 100 starts); the game itself has not run there. CI does
+not check it (only `macos-15-intel` runs this port's jobs: "macOS CI runs on
+macos-15-intel only"); it is on the owner's hand-check list on a Mac ("The
+macOS port waits for its first runs on a Mac", run 3): Rosetta 2, an x86_64
+Homebrew in `/usr/local`, the unit tests built and run as x86_64,
+`tools/build-native.sh --os macos` under `arch -x86_64`, and the opening
+replay, including its divisions by zero (`FPE_INTDIV` with the DIV at the
+program counter, which `test_arm_division*` and `test_host_fault*` check).
+
 ## 2026-10-14: CI runs in two tiers; the local pre-merge gate stays the full check
 
 The owner ruled that an hour of runner time on every push to main,
@@ -2034,13 +2045,17 @@ around 2027, so the native Apple-silicon question (PLAN.md item (i), the
 spike) is no longer about speed on newer Macs: it decides whether macOS stays
 supported and tested after 2027 at all. The spike's report weighs it so.
 
-Amended after the first review of the port: one job, `rosetta`, runs on
-`macos-latest` (arm64), because the x86_64 build on Apple silicon is what
-most Macs will run and nothing had shown it: an x86_64 Homebrew in
-`/usr/local` under Rosetta 2, the unit tests built and run as x86_64, the
-game built by `tools/build-native.sh --os macos` under `arch -x86_64` (what
-`docs/BUILDING.md` tells an Apple-silicon Mac to do), and the opening
-replay. Every other job stays on `macos-15-intel`.
+Amended after the first review of the port, and the amendment withdrawn at
+the final review: a job, `rosetta`, ran on `macos-latest` (arm64) to show
+the x86_64 build on Apple silicon (an x86_64 Homebrew in `/usr/local`
+under Rosetta 2, the unit tests built and run as x86_64, the game built by
+`tools/build-native.sh --os macos` under `arch -x86_64`, the opening
+replay). The owner's rule for this port is the label `macos-15-intel` and
+nothing else, and the job also installed Homebrew from the head of its
+install repository at every run, so it is gone with that install. The
+Rosetta check is the owner's, by hand on an Apple-silicon Mac ("The macOS
+port waits for its first runs on a Mac", run 3), and is noted with the
+Apple-silicon decision ("macOS ships as x86_64 under Rosetta").
 
 ## 2026-10-15: Steam Deck: controller functions, fullscreen and the package
 
@@ -2496,15 +2511,20 @@ morning after the night run", 1) leaves Actions off for now. Until then the
 branch only follows `main`, by merges (never a rebase or a force-push), with
 the full Linux gate on each merge. Merging it is the owner's call, once the
 account's billing is restored and run 1 has shown everything listed under
-it. The runs, in this order:
+it. The merge also decides the nightly: `macos.yml`'s schedule is left as
+it is (a schedule fires only on the default branch, so it starts the night
+the file reaches `main`), and at its jobs' time limits a night costs up to
+2,330 billed minutes on a private repository (the three macOS jobs' 220
+minutes at ten times, the Linux jobs' 130; 2,950 for the macOS jobs alone
+while the `rosetta` job was in it), and nothing on a public one. The runs,
+in this order:
 
 1. The full gate: `macos.yml` by hand on the branch (`gh workflow run
    macos.yml --ref work/macos`; GitHub dispatches a workflow only if its
    file is on the default branch, so `macos.yml` must reach `main` first,
    alone or with a push trigger restored on the branch for the one run).
    Its jobs (`unit`, `game` and `suite` on `macos-15-intel`; `linux`,
-   `linux-suite` and `compare` on `ubuntu-24.04`; `rosetta` on
-   `macos-latest`) must show:
+   `linux-suite`, `compare` and `cleanup` on `ubuntu-24.04`) must show:
    - **unit**: 99 unit test binaries (80 portable, 14 `posix/`, 5 `darwin/`)
      each "N passed, 0 failed" under ASan and UBSan, and 98 under TSan
      (`test_crt0` is not run under it); clang-tidy clean on the macOS
@@ -2539,22 +2559,27 @@ it. The runs, in this order:
    - **compare**: "PASS: the same 5884 tests with the same results" for the
      plain and for the sanitized suite against Linux 64-bit's; gate h's back
      stage PASS; the two 64-bit struct layouts identical.
-   - **rosetta** (macos-latest, Apple silicon): Rosetta 2 present or
-     installed, an x86_64 Homebrew in `/usr/local`; the toolchain step shows
-     `x86_64` and an x86_64 `make`; the same 99 unit test binaries "N passed,
-     0 failed", built and run as x86_64 under Rosetta 2;
-     `tools/build-native.sh --os macos` builds the game (it says the Rosetta
-     setup is unverified and goes on); the opening replay "PASS: 27 dumps, 26
-     screenshots" under Rosetta 2. Probe M0 showed the layout under
-     Rosetta 2 (61 of 61 checks, 100 of 100 starts); this is the first time
-     the game itself runs there, and its divisions by zero (`FPE_INTDIV` with
-     the DIV at the program counter, which the unit tests'
-     `test_arm_division*` and `test_host_fault*` check).
+   - **cleanup**: every artifact of the run deleted but the six without the
+     game (`macos-game`, `suite-macos`, `suite-linux64` and the three
+     failure-only ones), `linux-build` first ("CI artifacts never hold the
+     game beyond a run").
 2. The same workflow on `main` after the merge, and its nightly from then on.
 3. The owner's own Mac, Intel or Apple silicon under Rosetta: the build from a
    fresh clone with the Homebrew line of `docs/BUILDING.md`, the game in a
    window with sound, a save and its reload, and the save directory under
-   `~/Library/Application Support`.
+   `~/Library/Application Support`. On an Apple-silicon Mac this is also
+   the only check of the x86_64 build under Rosetta 2 (CI runs this port on
+   `macos-15-intel` alone): Rosetta 2 present or installed, an x86_64
+   Homebrew in `/usr/local`, `arch -x86_64 make -C platform test BITS=64`
+   with every unit test binary "N passed, 0 failed", `arch -x86_64
+   tools/build-native.sh --os macos` (it says the Rosetta setup is
+   unverified and goes on), and `arch -x86_64 tests/smoke/run.sh
+   build/native64/pokeemerald-native out/open64`, "PASS: 27 dumps, 26
+   screenshots". Probe M0 showed the layout under Rosetta 2 (61 of 61
+   checks, 100 of 100 starts); this would be the first time the game itself
+   runs there, its divisions by zero included (`FPE_INTDIV` with the DIV at
+   the program counter, which `test_arm_division*` and `test_host_fault*`
+   check).
 
 What the first run is most likely to show, from what the probes did not
 cover, the likeliest first: whether ld-prime takes `-alias_list` (the probe

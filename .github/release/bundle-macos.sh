@@ -76,7 +76,9 @@ done
 # (the references were read before any rewriting, from the copies).
 rewrite() {
     local file=$1 dep
-    for dep in $(outside_deps "$file"); do
+    # One path a line, read whole: a path with a space stays one path.
+    outside_deps "$file" | while IFS= read -r dep; do
+        [ -n "$dep" ] || continue
         install_name_tool -change "$dep" "@executable_path/$(basename "$dep")" "$file"
     done
 }

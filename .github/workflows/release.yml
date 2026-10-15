@@ -7,11 +7,11 @@
 # public release is legally the same as distributing a ROM, which this project
 # does not do (docs/DECISIONS.md, "Why no public release"). The default is
 # therefore `publish: false`: each archive is built and checked in its own job
-# (its contents listed and compared with what it must hold, the Linux
-# executable started headless, the SHA-256 printed in the log; the macOS one
-# started from its archive), and NOTHING is uploaded or created. `publish:
-# true` with a `tag` uploads the archives for the jobs after it and creates a
-# GitHub release at the built commit; nobody but the owner sets it.
+# (its contents listed and compared with what it must hold, the Linux and the
+# macOS executables started headless, the SHA-256 printed in the log), and
+# NOTHING is uploaded or created. `publish: true` with a `tag` uploads the
+# archives for the jobs after it and creates a GitHub release at the built
+# commit; nobody but the owner sets it.
 #
 # Artifacts (docs/DECISIONS.md, "CI artifacts never hold the game beyond a
 # run"): no artifact may hold the game or any part of it beyond the run, and a
@@ -261,23 +261,42 @@ jobs:
           rm -r "dist/$name"
           ls -l dist
 
-      # The archive as a player gets it, started from an empty folder with
+      # The archive's listing against what it must hold, then the archive as
+      # a player gets it, started from an empty folder with
       # DYLD_PRINT_LIBRARIES: every library the process loads, SDL3 (opened
       # by sdl2-compat with dlopen) included, must come from the system or
       # from the folder, none from Homebrew. SDL's dummy drivers run it with
-      # no screen.
-      - name: Run the archive as it is (nothing from Homebrew may load)
+      # no screen. bundle-macos.sh follows the libraries' own dependencies,
+      # so the number of files is not fixed: every file must be one of the
+      # four, a library with its licence, or a licence with its library.
+      - name: Check the tarball (contents, a headless start loading nothing from Homebrew) and print its SHA-256
         env:
           SDL_VIDEODRIVER: dummy
           SDL_AUDIODRIVER: dummy
         run: |
           set -euo pipefail
+          archive=$(ls dist/*.tar.gz)
+          [ "$(printf '%s\n' "$archive" | wc -l)" -eq 1 ]
+          base=$(basename "$archive" .tar.gz)
+          tar -tzf "$archive" | sort | tee "$RUNNER_TEMP/listing.txt"
+          for file in pokeemerald-native LICENSE RUNNING.md README.txt libSDL2-2.0.0.dylib libSDL3.dylib libSDL2-2.0.0-LICENSE.txt libSDL3-LICENSE.txt; do
+            grep -qx "$base/$file" "$RUNNER_TEMP/listing.txt" || { echo "release: $file is missing from $archive" >&2; exit 1; }
+          done
+          grep -v '/$' "$RUNNER_TEMP/listing.txt" | while read -r path; do
+            file=${path#"$base"/}
+            case "$file" in
+              pokeemerald-native|LICENSE|RUNNING.md|README.txt) ;;
+              */*) echo "release: $path is not at the top of $archive" >&2; exit 1 ;;
+              *.dylib) grep -qx "$base/${file%.dylib}-LICENSE.txt" "$RUNNER_TEMP/listing.txt" || { echo "release: $file has no licence in $archive" >&2; exit 1; } ;;
+              *-LICENSE.txt) grep -qx "$base/${file%-LICENSE.txt}.dylib" "$RUNNER_TEMP/listing.txt" || { echo "release: $file is the licence of no library in $archive" >&2; exit 1; } ;;
+              *) echo "release: $archive holds $file, which it should not" >&2; exit 1 ;;
+            esac
+          done
           check="$RUNNER_TEMP/archive-check"
           mkdir "$check"
-          tar -C "$check" -xzf dist/*.tar.gz
-          cd "$check"/pokeemerald-native-*
-          here=$PWD
-          DYLD_PRINT_LIBRARIES=1 ./pokeemerald-native --headless --silent --unthrottled --frames 60 --data-dir "$RUNNER_TEMP/archive-data" 2> "$RUNNER_TEMP/dyld.txt"
+          tar -C "$check" -xzf "$archive"
+          here="$check/$base"
+          (cd "$here" && DYLD_PRINT_LIBRARIES=1 ./pokeemerald-native --headless --silent --unthrottled --frames 60 --data-dir "$RUNNER_TEMP/archive-data") 2> "$RUNNER_TEMP/dyld.txt"
           grep -i 'libSDL' "$RUNNER_TEMP/dyld.txt"
           grep -q "$here/libSDL2-2.0.0.dylib" "$RUNNER_TEMP/dyld.txt"
           grep -q "$here/libSDL3.dylib" "$RUNNER_TEMP/dyld.txt"
@@ -285,6 +304,8 @@ jobs:
             echo "release: the archive's executable loaded a library from Homebrew" >&2
             exit 1
           fi
+          rm -rf "$check" "$RUNNER_TEMP/archive-data"
+          sha256sum -- "$archive"
 
       - name: ccache statistics
         if: always()
