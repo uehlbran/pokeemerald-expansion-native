@@ -134,6 +134,23 @@ id, the one id the list gains across the start, and requires that id
 gone after the stop (1000 runs per width under load; reviewed with
 mutants). The production code was right.
 
+**The owner's answers, morning of 2026-10-15** (DECISIONS.md, "The
+owner's rulings of the morning after the night run", and "The arm64
+build rewrites expansion's compiled code, on two conditions"): CI stays off
+for now; the fast-forward toggle is to end on focus loss and the audio grid
+to move to 65536 Hz, both recorded and NOT implemented (the owner stopped
+all new tasks; a later session); the ad-hoc signature kept; the stray
+per-user directory deleted. Apple silicon: no work of any kind (P0, P1 or
+P2) starts until the owner says so in a later session; the spike report on
+main is the end of that thread for now. work/macos: finish only what Linux
+can prove (its full Linux gate, the clang suite count explained test by
+test, the last three final reviewers and their bounded fixes), then park it
+unmerged on origin, up to date with main; merging it is the owner's call
+once CI billing is restored. Then three tasks before the repository goes
+public (source only; the visibility switch is the owner's): CI artifacts
+that never hold the game beyond a run, the internal notes out of the
+tracked tree, and a checklist for after the switch.
+
 **Needs the owner.** (0) FIRST, blocking: GitHub Actions starts no job
 on this account since about 03:40 MDT on 2026-10-15 (09:40 UTC). Every run
 since then ends in seconds with "The job was not started because recent
@@ -157,19 +174,17 @@ windows.yml and release.yml use that label, so the release's executable
 and its bundled SDL2 would then need a newer glibc than SteamOS 3.8's 2.41
 may have. Pinning both to `ubuntu-24.04`, as native.yml already is, is in
 tonight's cleanup branch.
-(0b) The Apple-silicon decisions (DECISIONS.md, "Native Apple silicon:
-the spike's findings", "What the owner must decide"): whether macOS stays
-supported after 2027 (x86_64 macOS runners end in fall 2027 and Rosetta
-narrows after macOS 27); whether the arm64 build may rewrite expansion's
-compiled code at build time (about 2,300 conversions and 424 divisions)
-instead of some 500 guarded source edits; later, ASLR kept or a launcher
-without it; the macos-latest minutes. Recommendation: the Linux half
-(P1, 3 to 4 tasks, no runner, decides the expansion side) after work/macos
-merges, the arm64 half only if macOS is to stay after 2027.
-(0c) Fast-forward toggled on stays on when the window loses focus; at
-`unlimited` that keeps a core busy while you are elsewhere. Recommended:
-clear the toggle on focus loss too (the final review's finding; your
-specification named only the hold). Say yes or no.
+(0b) The Apple-silicon decisions: answered on 2026-10-15 for questions 1
+and 2 (support after 2027 decided later and no Apple-silicon work until
+the owner says so in a later session; the build rewrites expansion's compiled code with
+the two IR filters, on two conditions: the fixed-address Linux and Windows
+builds stay as they are with their gates, and guarded expansion edits only
+for what the filters cannot see, DECISIONS.md "The arm64 build rewrites
+expansion's compiled code, on two conditions"). Still open, when the arm64
+half is decided: ASLR kept or a launcher without it (after probes A1 and
+A2), and the macos-latest minutes.
+(0c) Answered: the fast-forward toggle is to end on focus loss; not
+implemented yet (new tasks stopped); a later session.
 (1) A hands-on check of fast-forward on a real
 keyboard and screen: Tab held and released, Shift+Tab on and off, the
 indicator, the sound at 2x, 3x, 4x and unlimited and with
