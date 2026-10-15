@@ -12,7 +12,7 @@ Read this first; the sections below are the ledger behind it.
 
 ### The night of 2026-10-15 (the orchestrator's run while the owner sleeps)
 
-**Main** is at 41b10a1617 (code), pushed. Every gate is green on it at
+**Main** is at 8e6ac8d0fb (code), pushed. Every gate is green on it at
 both widths (the 24-step ledger at the end of this block).
 
 **Finished tonight.**
@@ -46,11 +46,31 @@ both widths (the 24-step ledger at the end of this block).
   subsystem, the pipes, the no-console log through a process started with
   no handles, both replays, the cross-OS save and the suite (run
   38693203706 on the branch).
+- Steam Deck (task h), merged at 8e6ac8d0fb. The controller does
+  everything the keyboard does: fast-forward held on the right trigger and
+  toggled by the right stick click, the help overlay on Y (B closes it, X
+  quits, and the hint names the controller's buttons after a controller
+  press), fullscreen on the left trigger; F11 toggles fullscreen for
+  everyone; a Deck (`SteamDeck=1`) starts fullscreen (1280x800: the
+  picture at 5x with bars), `fullscreen = auto|yes|no` in settings.ini
+  overrides it; every binding is rebindable (`pad_*` names) and listed in
+  the overlay and `--keys`. The Linux tarball is the Deck package: the
+  executable, SDL2 (`libSDL2-2.0.so.0` from the build image, with its
+  licence), a launcher script that puts its own folder first in the
+  library path, the licences and RUNNING.md, whose new Steam Deck section
+  says how to add it as a non-Steam game. Measured floors: the executable
+  needs glibc 2.34, the bundled SDL2 2.38 (SteamOS 3.8 has 2.41 by one
+  report; older SteamOS releases unmeasured). Sonnet worker; Sonnet review
+  with 20 mutants found one real bug, fixed: the B that closes the
+  overlay reached the game, because the close and the read happen in one
+  poll and the first test used a frame order the loop never has; also
+  the launcher's `cd` (broke relative paths), SDL2 bundled as your item
+  (h) specifies, a missing test, the docs.
 
 **In flight.** macOS x86_64 (M2 to M5) on `macos-15-intel`, Opus, on
-work/macos, and beside it Steam Deck (task h), Sonnet, on work/deck (the
-Deck is the Linux build, so it needs no runner and shares no code with
-macOS). Then the Apple-silicon spike (task i) and a final review. DECISIONS.md has the macOS runner dates (x86_64 macOS runners end
+work/macos. The Windows runner on main at 8e6ac8d0fb (run 38709681302) and
+the release workflow with publish off (run 38709729818, to check the new
+Linux package). Then the Apple-silicon spike (task i) and a final review. DECISIONS.md has the macOS runner dates (x86_64 macOS runners end
 in fall 2027) and what they change for the Apple-silicon question.
 
 **Broke and fixed.** The per-push CI run on main after the settings
@@ -70,8 +90,14 @@ keyboard and screen: Tab held and released, Shift+Tab on and off, the
 indicator, the sound at 2x, 3x, 4x and unlimited and with
 `fast_forward_audio = mute`, and Alt-Tab away while holding Tab (the
 game must drop back to normal speed). (2) A hands-on check of the
-console-free Windows build once it merges (double-click: no console;
-the log file; a command prompt still printing `--keys`). (3) Carried
+console-free Windows build (double-click: no console window;
+`pokeemerald.log` in `%APPDATA%\pokeemerald-expansion-native\pokeemerald-native\`;
+a command prompt still prints `--keys`; a second copy on the same save
+shows a message box naming the log). (2b) The Steam Deck checklist in
+RUNNING.md's Steam Deck section (the bundled SDL2 loads through the
+launcher; Game Mode fullscreen; every control; pulling a controller or
+switching windows while holding the right trigger ends fast-forward;
+the save's place). (3) Carried
 from before, below: the 65536 Hz audio-rate recommendation, the
 2026-10-14 Windows saves to move once, the optional installs. (4) One
 command, when convenient: `rm -r ~/.local/share/pokeemerald-expansion-native`.
@@ -91,6 +117,8 @@ check that the directory is unchanged by them instead of absent.
 | Windows runner | 6a42fd7ade | run 38682653915 green |
 | The same 24 steps (the per-user directory unchanged by the gate) | 41b10a1617 (console removal) | green, the same totals |
 | Windows runner | 41b10a1617 | run 38697083593 green; the per-push Linux run 38697084840 green |
+| The same 24 steps | 8e6ac8d0fb (Steam Deck) | green, the same totals |
+| Windows runner | 8e6ac8d0fb | run 38709681302 in progress |
 
 
 **NOTE ON RELEASES (for the owner, at the owner's request).** A built
@@ -925,7 +953,7 @@ Nothing yet; nothing exists to be broken.
 | threadtest (the Linux watchdog test that failed on CI) | Sonnet | Sonnet (mutation testing), orchestrator merge gate |
 | console (no console window on Windows) | Sonnet | Sonnet (mutation testing), orchestrator merge gate |
 | macos (milestone 8, tasks M2 to M5: macOS x86_64) | Opus | in flight |
-| deck (task h: Steam Deck) | Sonnet | in flight |
+| deck (task h: Steam Deck) | Sonnet | Sonnet (mutation testing), orchestrator merge gate |
 | interrupt | Opus | Sonnet |
 | psg | Opus | Sonnet |
 | save (flash, save_file) | Opus | Sonnet |
