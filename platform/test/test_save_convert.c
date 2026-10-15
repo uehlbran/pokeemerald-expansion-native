@@ -3,7 +3,7 @@
  * and back. The expectations are written out here, independently of the
  * module's tables: the sector format from include/save.h and src/save.c
  * (HandleWriteSector, CalculateChecksum, SAVEBLOCK_CHUNK), SaveBlock1's
- * members at both widths from the milestone 7 measurement recorded in
+ * members at both widths from the measurement made for the 64-bit work, recorded in
  * docs/DECISIONS.md ("Gate (h) is a platform-side save converter") and
  * platform/save_layout32.h and 64.h, the Enigma Berry checksum from
  * src/berry.c GetEnigmaBerryChecksum.

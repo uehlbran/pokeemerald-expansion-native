@@ -18,7 +18,7 @@ tools/build-native.sh --os windows    # build/native64-windows/pokeemerald-nativ
 The Windows executable is cross-built on Linux (WSL2 is fine). Archives for testing can
 also be had from a run of the repository's "release"
 workflow, which publishes nothing unless told to; their README.txt and this
-page are inside. macOS is not started: there is no build for it.
+page are inside. On macOS there is no build in this tree; an x86_64 port is on the branch work/macos, unmerged and not yet run on a Mac.
 
 ## Linux
 

@@ -15,8 +15,8 @@ suite expansion runs on the GBA.
 
 ## Status
 
-Verified by an automated gate (the gates and their commands are in
-[docs/BUILDING.md](docs/BUILDING.md#gates)):
+What is verified, by automated gates unless the item says otherwise (the
+gates and their commands are in [docs/BUILDING.md](docs/BUILDING.md#gates)):
 
 - The 32-bit build boots through the intro to the title screen, and
   plays the opening from New Game through the first battle and a save, a
@@ -60,7 +60,7 @@ Verified by an automated gate (the gates and their commands are in
 
 Not working or not verified:
 
-- macOS: not started. Linux (built under WSL2 Ubuntu 24.04) and Windows
+- macOS: no macOS build in this tree; an x86_64 port is on the branch work/macos, unmerged and not yet run on a Mac. Linux (built under WSL2 Ubuntu 24.04) and Windows
   are the platforms.
 - GBA save interchange: native saves use the host's struct layout and are
   not GBA `.sav` files.

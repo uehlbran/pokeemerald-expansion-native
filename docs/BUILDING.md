@@ -10,7 +10,7 @@ tools/build-native.sh --os linux      # build/native64/pokeemerald-native
 tools/build-native.sh --os windows    # build/native64-windows/pokeemerald-native.exe
 ```
 
-macOS: not yet (no port has been started). To play the result, see
+macOS: not yet (no macOS build in this tree; an x86_64 port is on the branch work/macos, unmerged and not yet run on a Mac). To play the result, see
 [RUNNING.md](RUNNING.md); the rest of this page is every variant and the
 gates.
 
@@ -208,6 +208,25 @@ build; both make the 64-bit data objects and their three checks first, and `BITS
 is 64 for them. A conversion and check of everything takes about 6 s per target with
 `-j32`. Their self-tests, in `make -C platform glue-test` and so in the gate, assemble
 small objects with GNU as and with clang, so the gate needs both.
+
+What the conversion was measured to do at expansion 1.17.1. All 544 objects
+convert, and the object clang writes from each listing equals the ELF one,
+for both targets. The listings hold 298,550 symbols against the ELF objects'
+298,581: 25 undefined symbols that no relocation names (C enum constants the
+preprocessor leaves as names) and 6 that only the 8 sixteen-bit words named
+are left out. Of the 257,908 absolute symbols (mostly local constants) all
+are written local, because 7,930 global ones are defined in more than one
+object and a Mach-O linker may refuse that; no 8- or 4-byte word names one.
+25,753 of the 61,154 address words name a section symbol in the ELF object,
+which the listing names as the label at or before the target plus an addend.
+One label lies inside a relocated word (`keysplit_piano`), written as
+`.set _keysplit_piano, . - 4`, which clang makes an `N_ALT_ENTRY` symbol on
+Mach-O. No COFF section comes near the 65,535-relocation limit (the most is
+18,123, in `event_scripts.o`'s `script_data`). Why a converter at all: the
+filtered text carries 28,982 `.size` lines, which clang rejects, and clang's
+assembler gives 18,634 errors (COFF) and 20,134 (Mach-O) on `event_scripts.s`
+alone.
+
 
 ```
 make -f Makefile.native -j32 data-flat TARGET=macho-x86_64    # or TARGET=coff-x86_64

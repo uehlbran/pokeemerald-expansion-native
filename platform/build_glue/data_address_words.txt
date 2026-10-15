@@ -32,14 +32,13 @@
 #             their table (sound/keysplit_tables.inc), inside the
 #             voicegroup before it.
 #
-# Derived from the milestone 7 inventory (section 1.5, "address words in
-# the assembled data"), which first counted the battle scripts as 4-byte
+# Derived from a measurement made before the 64-bit work, which first counted the battle scripts as 4-byte
 # bytecode. An upstream table or object that is not here fails the 64-bit
 # build until it is classified.
 #
 # Counts at expansion 1.17.1 (data/*.o and the 530 songs; TEST=0 and 1
 # alike): 61,154 address words, 19,208 of them 8 bytes and 41,946 4 bytes
-# (41,522 bytecode and the 424 key-split words). The inventory's 17,033
+# (41,522 bytecode and the 424 key-split words). That measurement's 17,033
 # and 44,121 became 17,034 and 44,120 when gScriptCmdTableEnd's word was
 # widened, then 19,208 and 41,946 with the battle scripts' 2,174 operands.
 

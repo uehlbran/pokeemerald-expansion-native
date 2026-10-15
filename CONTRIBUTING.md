@@ -78,7 +78,9 @@ Rules 1 to 4 below are from it; rule 5 is from the policy at the top of
 
 ## Gates
 
-A change is merged when all of these pass. `docs/BUILDING.md`, "Gates", is
+A change is merged when all of these pass. Documents are part of a change: a
+change that alters behaviour updates the documents describing it in the same
+branch (gate (g)). `docs/BUILDING.md`, "Gates", is
 the list of gates (a to h) with the command for each. Gate (a) is
 release-level: a native build from a clean clone with the documented
 prerequisites, run before a release or a large change is declared done. Gate (h), the
@@ -189,7 +191,7 @@ decision says why that approach.
 ## Upstream
 
 Do not file issues or pull requests upstream from this repository's work
-without the maintainers' decision. The seven reports already filed
+without this project's maintainers' decision. The seven reports already filed
 were closed by rh-hideout; they are linked from the rows of
 `docs/UPSTREAM_MODIFICATIONS.md` that say "Reported upstream". Bugs we find in
 expansion are fixed under guards here and recorded in that file.

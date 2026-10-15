@@ -581,7 +581,7 @@ comments would not have: the link fails on exactly two static assertions,
 one of which (RecordedBattleSave) has no pointer in it at all (a u64 that
 x86-64 aligns to 8); the 8-byte INTR_VECTOR store runs off the end of
 IWRAM; the assembled data holds 61,154 address words of which 17,033 must
-widen and 44,121 must not (bytecode) (the count at the inventory; after the
+widen and 44,121 must not (bytecode) (the count of the first measurement; after the
 battle scripts were found to be read through packed structs with pointer
 members it is 19,208 widened and 41,946 left); GCC's x86-64 data alignment spaces
 the test runner's `.tests` entries 64 bytes apart; tools/patchelf is
@@ -806,7 +806,7 @@ share one definition.
 
 ## 2026-10-09: The 64-bit refactoring pass keeps expansion's tools in their smallest form
 
-The pass over the build glue had rewritten the 64-bit changes to
+The refactoring pass over the build glue, before the 64-bit work was declared done, had rewritten the 64-bit changes to
 tools/patchelf and the hydra (ELF32 or ELF64 chosen by class at every
 use) into a helper layer of structs and three readers, about 75 more
 lines of difference from upstream per tool for the same behaviour. The
@@ -843,7 +843,7 @@ and the repository's Actions minutes are a budget, so
 a run per branch push would spend them on work the local
 gates already do. Windows and macOS get no CI job before the port
 exists: a `macos-latest` minute counts ten times, and a job that fails
-to build teaches nothing the inventory does not. The Linux workflow
+to build teaches nothing that reading the build does not. The Linux workflow
 goes ahead at once: a workflow file is reverted by deleting it, and
 Actions can be disabled in the repository settings at any time.
 
@@ -864,9 +864,7 @@ measured facts (every arm64 executable slid at load; 41,946 4-byte
 absolute address words in the data; the bit-25 script tag; no divide
 trap) mean the fixed-address model cannot hold there, and a rebased
 model is a project of its own that could reasonably be declined
-(x86_64 builds run on Apple silicon through Rosetta). Probes on the
-runners (W1, M0) settle the loader questions before any port code is
-written, because those facts cannot be measured here.
+(x86_64 builds run on Apple silicon through Rosetta). Loader probes (W1 on a Windows runner, M0 on a macOS runner) were run once, before any port code was written, because those facts cannot be measured on a Linux build machine; their results are recorded in this file where they matter.
 
 ## 2026-10-09: The data for Windows and macOS is assembled on Linux and converted, not re-assembled
 
@@ -874,8 +872,7 @@ Expansion's data is assembler text in GNU as's dialect (macros, `.if`
 over symbols, `::` labels with `.size` from preproc) that only GNU as
 accepts: clang's assembler, the only one on macOS, gives 20,134 errors
 on event_scripts.s alone and COFF has no 16-bit relocation for the 8
-words that need one (the inventory's measurement of the assembler). The inventory's
-two routes were per-format rules in asm_filter.py for Windows (MinGW's
+words that need one. Two routes were considered: per-format rules in asm_filter.py for Windows (MinGW's
 as is GNU as) plus a converter for macOS, or one converter for both.
 Decision: one converter for both, `platform/build_glue/`, reading the
 ELF objects the Linux 64-bit build already assembles and checks (the
@@ -905,7 +902,7 @@ Known future revisit: Apple announced (WWDC 2025) that Rosetta 2 stays
 available through macOS 27 and is then kept only for a subset of older
 software, so an x86_64-only macOS build has a horizon. When that horizon
 matters, the rebased memory model is the work to plan, with this entry
-and the inventory's memory-model section as the starting point; nothing else in
+and "Native Apple silicon: the spike's findings" as the starting point; nothing else in
 the port depends on the choice.
 
 ## 2026-10-14: CI runs in two tiers; the local pre-merge gate stays the full check
@@ -1242,8 +1239,7 @@ merged (it owns Makefile.native).
 
 Gate (b) on Windows is expansion's own suite, through expansion's own hydra
 (`tools/mgba-rom-test-hydra`), on the Windows test runner build, with the
-per-test results equal to the Linux 64-bit build's of the same commit. The
-inventory of the Windows port offered three routes: (i) the
+per-test results equal to the Linux 64-bit build's of the same commit. Three routes were considered: (i) the
 hydra built under MSYS2 on the Windows runner, (ii) the Linux hydra driving
 the Windows executable through Wine on a Linux runner, (iii) a Windows-native
 driver of our own. (i) is taken.
@@ -1949,10 +1945,9 @@ never exists in replays).
 not); a Deck starts in desktop fullscreen (`SDL_WINDOW_FULLSCREEN_DESKTOP`:
 the screen's own resolution, no mode change) under the existing logical size,
 integer scale and letterbox. F11 (rebindable, `fullscreen_toggle`) and the
-left trigger toggle it for everyone. I **added** `fullscreen = auto|yes|no`
-(auto, the default, is the Deck rule), because without it a Deck player who
-prefers a window would have to toggle on every launch, and the setting is allowed
-for that reason; it also lets a desktop player start fullscreen.
+left trigger toggle it for everyone. The setting `fullscreen = auto|yes|no`
+(auto, the default, is the Deck rule) was added because without it a Deck player who
+prefers a window would have to toggle on every launch; it also lets a desktop player start fullscreen.
 Fullscreen and the controller start only for runs with a player at the
 keyboard (`player_at_keyboard`), so `SteamDeck=1` changes nothing in a
 replay, a gate or the test runner (checked below).
@@ -1977,7 +1972,7 @@ libXfixes, libXrandr, libXss, libdrm, libgbm, libwayland-egl,
 libwayland-client, libwayland-cursor, libxkbcommon, libdecor). The floor
 rises from 2.34 to 2.38 by bundling; a SteamOS 3.8 Deck reports glibc 2.41
 (https://forum.godotengine.org/t/steam-deck-cant-launch-linux-build-due-to-outdated-glibc-version-build-targeting-newer-glibc-version/143218),
-which meets it; I found no source for older SteamOS releases or for the
+which meets it; no source was found for older SteamOS releases or for the
 system libraries on a Deck, which the checklist covers. The CI image is
 unchanged: the requirement is met on the current Deck.
 
@@ -2030,10 +2025,8 @@ src/*.c, not yet on the whole running game, which is the first step of the
 plan.
 
 Everything below was measured on this machine on 2026-10-15 unless it names a
-run. The probes are in commits 7a968e0964, 4e4399105a and b55d33ef3b (a spike branch, not in the
-main tree), in a directory `arm64_spike/` with their
-outputs in `results/`; they are not part of the tree. Runners: none
-(GitHub Actions refuses every job on this account since about 03:40 local), so
+run. The probes are in commits 7a968e0964, 4e4399105a and b55d33ef3b on the branch work/spike (not merged), in a directory `arm64_spike/` with their
+outputs in `results/`; they are not part of this tree. No runner was available, so
 the arm64 macOS facts come from probe M0's runs and from XNU's source.
 
 To reproduce, from the repository root after `make -f Makefile.native -j16
@@ -2222,8 +2215,8 @@ divisor in C (1 call in src, `librfu_rfu.c:470`).
 
 **Cost.**
 
-- P0: four runner probes, one loader-probe workflow job, under a minute each on
-  macos-latest (billed at 10x).
+- P0: four runner probes, one workflow job, under a minute each on
+  macos-latest.
 - P1 (Linux, no runner), 3 to 4 tasks: the window model on Linux x86_64 with
   B = 2^32, the twin of the arm64 layout. It covers the filters as build glue,
   expansion's C through clang, the words as offsets, the linker scripts 2^32
@@ -2268,8 +2261,8 @@ addresses would then not be window offsets, and the port stops there.
 **Recommendation.** P1 first, well before the
 2027 horizons ("macOS CI runs on macos-15-intel only" above). It needs no
 runner and no Apple hardware, and it decides the expansion side: if the replays
-and the suite pass with B = 2^32 on Linux, the code side is done. P0 when Actions
-is back (minutes). P2 only if macOS is to stay supported and tested after 2027.
+and the suite pass with B = 2^32 on Linux, the code side is done. P0 when a macOS runner
+is available (minutes). P2 only if macOS is to stay supported and tested after 2027.
 Otherwise stop here, and ship x86_64 under Rosetta until macOS 27.
 
 **Open questions.**
@@ -2282,7 +2275,7 @@ Otherwise stop here, and ship x86_64 under Rosetta until macOS 27.
    policy's preference.
 3. W-a (keeps ASLR) or W-b (the game re-spawned without ASLR), once A1 and A2
    have run.
-4. The macos-latest minutes, billed at 10x, once Actions is paid again.
+
 
 **Not settled in the time.** The whole game in the window model (P1). The
 filters' cost in frame time. Everything that needs ld64 or the arm64 loader

@@ -329,8 +329,8 @@ Compare widths that way.
 | `src/sprite.c:1076` `JumpToTopOfAnimLoop` | 2-byte read of `[-1]` of `gEclipsingOrbAnimCmds`, `gKinesisZapEnergyAnimCmds` | "Move Animations work 1", "2", "3" | same report, hidden by the suppression | upstream, both widths: the affine row's bug in the non-affine twin (reads `[animCmdIndex - 1]` before testing `animCmdIndex == 0`; both tables end with `ANIMCMD_LOOP(1)` and have no start). Either way `animCmdIndex` becomes 255 and `ContinueAnim` restarts at command 0, so the value (on the GBA 0xCDA0 and 0xC45C, the low half of the animation table's pointer) does not matter. Not fixed |
 | `src/pokemon.c:2901` `SetBoxMonData` (OT name), from `test/test_runner_battle.c:2725` `OTName_` | stack-buffer-overflow, 32 bits only | "Large exp gains are supported" | 32 bits only | the 32-bit row: `MON_DATA_OT_NAME` copies 7 bytes from `&otName`, a 4-byte pointer at 32 bits and an 8-byte one at 64, so at 64 bits the read stays inside it. The OT name is the pointer's bytes at both widths; the test only needs it to differ |
 
-No report involves a host stack address cut to 32 bits (inventory risk
-R1). The same run with ASLR off (`setarch x86_64 -R`) and
+No report involves a host stack address cut to 32 bits (the first risk
+listed before the 64-bit work). The same run with ASLR off (`setarch x86_64 -R`) and
 `ASAN_OPTIONS=detect_stack_use_after_return=1`, which moves the game's
 address-taken locals into fake frames above 4 GiB (UBSan's
 `CanPledgeComboAttackHappen` reports show them at 0x7ffff3e1df28 and

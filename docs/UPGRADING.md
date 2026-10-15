@@ -11,7 +11,7 @@ Last upgrade: none. The pin is `expansion/1.17.1`, the fork point
 Throughout, `NEW` is the new tag, for example `expansion/1.18.0`, and `OLD`
 is the current one. Where a name is used for a directory or a branch, use
 the tag without the `expansion/` prefix (`ref-1.18.0`, `upgrade/1.18.0`).
-Paths such as `../pen-worktrees` are relative to the main checkout.
+Paths such as `../worktrees` are relative to the main checkout.
 
 ## Principles
 
@@ -41,8 +41,8 @@ anything, so there is a ROM and a baseline that contain none of our
 changes:
 
 ```
-git worktree add ../pen-worktrees/ref-1.18.0 NEW
-cd ../pen-worktrees/ref-1.18.0
+git worktree add ../worktrees/ref-1.18.0 NEW
+cd ../worktrees/ref-1.18.0
 make -j"$(nproc)" && sha1sum pokeemerald.gba          # the new reference sha1
 make -j"$(nproc)" check 2>&1 | tee check.log          # the new baseline (check implies the test build)
 cd -                                                  # back to the main checkout
@@ -349,7 +349,7 @@ follow the host ABI").
 - Set the "Last upgrade" line at the top of this file: tag, date, what
   broke, what this runbook got wrong.
 - Merge `upgrade/NEW` into `main` and remove the reference worktree
-  (`git worktree remove ../pen-worktrees/ref-NEW`).
+  (`git worktree remove ../worktrees/ref-NEW`).
 
 ## Checklist: what has broken before
 
