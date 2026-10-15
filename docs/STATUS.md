@@ -134,6 +134,15 @@ id, the one id the list gains across the start, and requires that id
 gone after the stop (1000 runs per width under load; reviewed with
 mutants). The production code was right.
 
+**The owner's answers, morning of 2026-10-15** (DECISIONS.md, "The
+owner's rulings of the morning after the night run"): CI stays off for
+now (macOS stays unmerged until its runs); the fast-forward toggle ends on
+focus loss (in flight); macOS after 2027 decided later, the Linux half of
+the Apple-silicon plan after work/macos merges, with build-time filters;
+the audio grid to 65536 Hz (in flight); the ad-hoc signature kept; the
+stray per-user directory deleted. Items (0) to (0c) and (3)'s audio
+question and (4) below are answered; the hands-on checks remain.
+
 **Needs the owner.** (0) FIRST, blocking: GitHub Actions starts no job
 on this account since about 03:40 MDT on 2026-10-15 (09:40 UTC). Every run
 since then ends in seconds with "The job was not started because recent

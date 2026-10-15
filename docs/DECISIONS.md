@@ -2437,3 +2437,40 @@ filters' cost in frame time. Everything that needs ld64 or the arm64 loader
 they do not recognise, so a mismatch is a build failure and not a wrong game.
 The platform layer and SDL2 built for arm64 (there is no aarch64 sysroot
 here).
+
+## 2026-10-15: The owner's rulings of the morning after the night run
+
+Asked one at a time on the morning of 2026-10-15, with the night's findings
+(STATUS.md, "Needs the owner"):
+
+1. **CI stays off for now.** GitHub Actions refuses every job since 03:40
+   (billing); the owner leaves it so. The local gate before every merge
+   stays the full check. The macOS x86_64 branch (work/macos) stays unmerged
+   until its first runs on `macos-15-intel` are green, which needs Actions
+   back; nothing depends on it in the meantime.
+2. **Fast-forward's toggle ends on focus loss**, as the hold does: a game
+   toggled to fast-forward and left in the background would otherwise run
+   at full speed unseen (at `unlimited`, a busy core; on a Deck, the
+   battery). The owner's specification of 2026-10-15 named only the hold;
+   this extends it.
+3. **macOS after 2027: decided later.** The Linux half of the native
+   Apple-silicon plan (PLAN.md, "Native Apple silicon: what a port would
+   take", P1: the window model on Linux, no runner, no Mac) runs when
+   convenient after work/macos has merged; the arm64 half waits for a
+   decision.
+4. **The Apple-silicon build may rewrite expansion's compiled code at build
+   time** (the spike's two IR filters) instead of some 500 guarded source
+   edits: expansion's files stay untouched and upgrades stay merges; the
+   filters are build glue with their own tests and refuse what they do not
+   recognise.
+5. **The audio grid moves to 65536 Hz**, the rate Emerald itself selects
+   (SOUNDBIAS mode 1 in `SoundInit`, the engine's "PWM rate = 65536 Hz"),
+   superseding the 32768 Hz of ruling (1) of 2026-10-14, with an A/B
+   recording against the current build as the evidence.
+6. **The macOS package keeps its ad-hoc signature** (`codesign -s -`, no
+   identity, no account): the library path rewrite breaks the bundled
+   libraries' signatures and an ad-hoc one keeps them loadable; Gatekeeper
+   treats the archive as unsigned all the same, and no Developer ID or
+   notarization is used.
+7. The stray per-user directory a review mutant created on the build
+   machine was deleted with the owner's approval.
