@@ -1,12 +1,13 @@
 #include "global.h"
 #include "malloc.h"
 #include "test/test.h"
-#include "platform/game_hooks.h"
 
 // Native only: the allocation site's address is stored as an offset from
 // PlatformAllocationSiteBase in the 29 bits struct MemBlock has for it, where
 // the GBA stores the ROM address without its top bit.
 #if PLATFORM_NATIVE
+
+#include "platform/game_hooks.h"
 
 #define MAX_ENCODED_OFFSET ((1u << PLATFORM_ALLOCATION_SITE_OFFSET_BITS) - 1)
 
