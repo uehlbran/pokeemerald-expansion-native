@@ -72,9 +72,11 @@ Not working or not verified:
 
 ## Playing and building
 
-There is no release: nothing built is published, so you build the game. To
-play, [docs/RUNNING.md](docs/RUNNING.md) has the keys, the options and
-the files the game writes, for Linux and Windows. To build,
+There is no release: a built executable contains the game's complete assets,
+which are not this project's to distribute, so nothing built is published and
+you build the game. To play,
+[docs/RUNNING.md](docs/RUNNING.md) has the keys, the options and the files the
+game writes, for Linux and Windows. To build,
 [docs/BUILDING.md](docs/BUILDING.md) has the prerequisites (Ubuntu packages,
 including the 32-bit SDL2 libraries) and every variant. One command builds
 the 64-bit game for an operating system, and prints where the executable is:
