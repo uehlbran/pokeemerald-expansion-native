@@ -22,7 +22,7 @@ static struct {
     bool shown;
     bool hint_for_pad;
     bool hidden_since_read; /* shown went true to false since the last read of the keys */
-    uint16_t held_through; /* the buttons held since the overlay was shown */
+    uint16_t held_through;  /* the buttons held since the overlay was shown */
     overlay_text_writer write_text;
 } overlay;
 
