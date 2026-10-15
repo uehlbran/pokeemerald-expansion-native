@@ -128,9 +128,9 @@ static void unextended_signed_dividend_by_zero_32(void)
 }
 
 /* Not a divide error at all: SIGFPE sent by raise. Linux says so in si_code
- * (SI_TKILL); macOS gives it FPE_INTDIV, as a divide error (probe M2), and the
- * decoder then finds no division at the program counter, which is in raise's
- * own code. */
+ * (SI_TKILL); macOS gives it FPE_INTDIV, as a divide error (probe M2), and
+ * host_fault_is_divide_error then finds no division at the program counter,
+ * which is in raise's own code. */
 static void sigfpe_from_raise(void)
 {
     (void)raise(SIGFPE);

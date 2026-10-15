@@ -2382,18 +2382,22 @@ With the three, the clang-built Linux suite equals GCC's in all 5,875 results.
 ## 2026-10-15: On macOS a SIGFPE sent by kill looks like a divide error
 
 Linux tells a divide error from a SIGFPE another process sent by `si_code`
-(`FPE_INTDIV` against `SI_USER`), and arm_division passes the sent one on.
-macOS gives `FPE_INTDIV` for both, and for `raise` (probe M2: `SI_USER` never
-seen), so a handler cannot tell them apart. arm_division then treats a
-SIGFPE that arrives while the program counter is at a division by zero as
-that division, completes it with libgcc's rule and goes on; a SIGFPE sent
-anywhere else is passed on as undecodable, as before. The one case that
-differs from Linux needs a process to send SIGFPE to the game at the moment
-it is about to divide by zero, which no player and no tool does;
-`platform/test/darwin/test_arm_division_darwin.c` pins the behaviour.
-Alternatives: reading the instruction's operand to check that the divisor is
-zero is already what the decoder does, so nothing more can be learned from
-the fault; ignoring every SIGFPE that is not decodable is the current rule.
+(`FPE_INTDIV` against `SI_USER`), and arm_division and the crash handler's
+report go by it (`host_fault_is_divide_error`). macOS gives `FPE_INTDIV` for
+both, and for `raise` (probe M2: `SI_USER` never seen). So on macOS
+`host_fault_is_divide_error` also reads the instruction at the program
+counter, and a SIGFPE is a divide error only when that is a DIV or IDIV
+(`platform/host_macos.c`): a SIGFPE sent while the program is anywhere else
+is not one, as on Linux, and the crash handler names it "signal 8". A SIGFPE
+sent at the moment the program counter is at a division by zero still reads
+as a divide error, and arm_division completes that division with libgcc's
+rule and goes on. That needs a process to send SIGFPE to the game exactly
+then, which no player and no tool does;
+`platform/test/darwin/test_arm_division_darwin.c` pins it. The alternative,
+`si_code` alone, would have named every raised SIGFPE a divide error (the
+crash handler's report and `test_host_fault_posix.c` would differ from
+Linux's); the exception state's trap number (`__es.__trapno`) might tell the
+two apart, but no probe measured it, where the instruction is certain.
 
 ## 2026-10-15: Paths on macOS keep the 4096-byte limit; the long-path tests are Linux's
 

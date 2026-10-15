@@ -314,8 +314,9 @@ amendment to the owner's ruling (3)).
 macOS (`host_macos.c`, `host_macos_stack.c`) shares Linux's signals,
 `execve`, files and lock, and differs where the system does (the table's last
 column). Three differences reach behaviour. A SIGFPE sent by `kill` carries
-`FPE_INTDIV`, as a divide error does, so arm_division cannot tell the two
-apart and completes a division by zero the program counter happens to be at
+`FPE_INTDIV`, as a divide error does, so a divide error there is also a DIV
+or IDIV at the program counter, and a SIGFPE sent at the moment the program
+counter is at a division by zero is completed as that division
 (`DECISIONS.md`, "On macOS a SIGFPE sent by kill looks like a divide error").
 A save is made durable with `F_FULLFSYNC`, which reaches the drive's cache,
 where `fsync` stops at the drive (`DECISIONS.md`, "Saves on macOS are flushed

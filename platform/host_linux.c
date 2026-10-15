@@ -20,6 +20,7 @@
 #include <inttypes.h>
 #include <link.h> /* ElfW */
 #include <pthread.h>
+#include <signal.h>
 #include <stdio.h>
 #include <string.h>
 #include <sys/auxv.h>
@@ -33,6 +34,15 @@
 #include "host_memory.h"
 #include "host_process.h"
 #include "host_stack.h"
+
+/* --- host_fault: which SIGFPE is a divide error ---------------------------------- */
+
+/* The kernel gives a divide error FPE_INTDIV and a SIGFPE that kill or raise
+ * sent SI_USER or SI_TKILL. */
+bool host_fault_is_divide_error(const struct host_fault *fault)
+{
+    return fault->signal_number == SIGFPE && fault->info->si_code == FPE_INTDIV;
+}
 
 /* --- host_fault: the saved registers ------------------------------------------ */
 

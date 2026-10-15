@@ -29,6 +29,7 @@
 #include <mach-o/loader.h>
 #include <mach/vm_prot.h>
 #include <pthread.h>
+#include <signal.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -96,6 +97,65 @@ void host_fault_set_register(struct host_fault *fault, enum host_fault_register 
 uintptr_t host_fault_general_register(const struct host_fault *fault, unsigned number)
 {
     return read_slot(fault, general_slots[number % GENERAL_SLOT_COUNT]);
+}
+
+/* --- host_fault: which SIGFPE is a divide error ------------------------------------ */
+
+/* macOS gives a SIGFPE that kill or raise sends FPE_INTDIV too, as it gives a
+ * divide error (probe M2, research/probes/README.md), so si_code alone cannot
+ * tell them apart. A divide error is also a DIV or IDIV at the program
+ * counter, where the processor stopped: F6 or F7 with 6 or 7 in the ModRM
+ * byte's reg field, after any legacy prefixes and a REX prefix (Intel SDM
+ * vol. 2, 2.1, 2.2.1 and the DIV and IDIV pages). A SIGFPE sent while the
+ * program counter happens to be at such an instruction still reads as a
+ * divide error (docs/DECISIONS.md, "On macOS a SIGFPE sent by kill looks like
+ * a divide error"). The bytes read are at the saved program counter, in code
+ * that is mapped: the instruction that faulted, or raise's own. */
+#define MAX_PREFIXES 14u /* an instruction is at most 15 bytes */
+#define DIV_OPCODE_BYTE 0xF6u
+#define DIV_OPCODE_WORD 0xF7u
+#define MODRM_REG(modrm) (((unsigned)(modrm) >> 3) & 7u)
+#define MODRM_REG_DIV 6u
+#define MODRM_REG_IDIV 7u
+
+static bool is_legacy_prefix(unsigned char byte)
+{
+    switch (byte) {
+    case 0x26:
+    case 0x2E:
+    case 0x36:
+    case 0x3E:
+    case 0x64:
+    case 0x65: /* segment overrides */
+    case 0x66:
+    case 0x67: /* operand and address size */
+    case 0xF0:
+    case 0xF2:
+    case 0xF3: /* LOCK, REPNE, REP */
+        return true;
+    default:
+        return false;
+    }
+}
+
+static bool is_rex_prefix(unsigned char byte)
+{
+    return (byte & 0xF0u) == 0x40u;
+}
+
+bool host_fault_is_divide_error(const struct host_fault *fault)
+{
+    if (fault->signal_number != SIGFPE || fault->info->si_code != FPE_INTDIV)
+        return false;
+    const unsigned char *const code = (const unsigned char *)host_fault_register(fault, HOST_FAULT_PC);
+    size_t at = 0;
+    while (at < MAX_PREFIXES && is_legacy_prefix(code[at]))
+        at++;
+    if (is_rex_prefix(code[at]))
+        at++;
+    const unsigned reg = MODRM_REG(code[at + 1u]);
+    return (code[at] == DIV_OPCODE_BYTE || code[at] == DIV_OPCODE_WORD)
+           && (reg == MODRM_REG_DIV || reg == MODRM_REG_IDIV);
 }
 
 /* --- host_process: the executable's path ------------------------------------------ */
