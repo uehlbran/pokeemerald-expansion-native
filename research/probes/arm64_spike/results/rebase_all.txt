@@ -1,0 +1,14 @@
+      2 COMPILE-FAILED
+    765 OK
+COMPILE-FAILED libisagbprn.aarch64
+COMPILE-FAILED libisagbprn.x86_64
+== x86_64 rewrites
+1137 inttoptr constant
+638 inttoptr from i64
+11 ptrtoint constant to i64
+339 ptrtoint to i64
+== aarch64 rewrites
+1137 inttoptr constant
+665 inttoptr from i64
+11 ptrtoint constant to i64
+348 ptrtoint to i64

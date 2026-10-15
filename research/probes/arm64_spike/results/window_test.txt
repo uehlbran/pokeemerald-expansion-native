@@ -1,0 +1,29 @@
+rebasefilter out/window_test.ll: inttoptr constant: 2
+rebasefilter out/window_test.ll: inttoptr from i64: 8
+rebasefilter out/window_test.ll: ptrtoint to i64: 7
+== through rebasefilter.py
+image at 0x1400011b0, EWRAM section, I/O section at 0x104000000
+PASS T1_READ_PTR reaches the string
+PASS the script tag is set on the word
+PASS the tag is seen on the pointer
+PASS the untagged pointer is the function
+PASS the function ran
+PASS T2_READ_PTR reaches the EWRAM variable
+PASS EWRAM_START <= (uintptr_t)p < EWRAM_END
+PASS SetWordTaskArg/GetWordTaskArg round trip
+PASS the write through it lands
+PASS REG_BG0HOFS reaches the I/O region
+PASS (uintptr_t)(void *)(BG_VRAM + 0x20) == BG_VRAM + 0x20
+PASS a stack pointer aligned through uintptr_t
+PASS a host heap pointer through uintptr_t
+PASS a zero word is NULL
+SUMMARY fails=0
+exit status 0
+== plain (control)
+image at 0x1400011b0, EWRAM section, I/O section at 0x104000000
+FAIL T1_READ_PTR reaches the string
+PASS the script tag is set on the word
+PASS the tag is seen on the pointer
+FAIL the untagged pointer is the function
+./run.sh: line 33: 4167277 Segmentation fault      ./out/window_plain
+exit status 139
