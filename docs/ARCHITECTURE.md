@@ -325,7 +325,8 @@ padded at build time", has the reasoning.
 
 The cartridge's flash is the 128 KiB `SRAM` region; `flash` is the chip's
 driver entry in expansion's own table, and `save_file` persists the region
-as `pokeemerald.sav`: a 28-byte header (`PENSAVE\0`, format version, the
+as `pokeemerald.sav` (in the player's data directory, `platform/data_dir.h`):
+a 28-byte header (`PENSAVE\0`, format version, the
 writing build's pointer width and layout id, image size, CRC-32) and the
 image, written to a temporary file, synced and renamed. A file written by a
 build with another layout is refused, not overwritten, and so is a file

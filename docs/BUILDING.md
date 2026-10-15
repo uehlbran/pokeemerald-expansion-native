@@ -53,8 +53,14 @@ test results for 1.17.1 are in `docs/research/gba-baseline-1.17.1.md`.
 ```
 make -f Makefile.native -j$(nproc) native BITS=32        # build/native32/pokeemerald-native
 ./build/native32/pokeemerald-native                       # windowed, scale 3
-./build/native32/pokeemerald-native --help                # options: --headless --silent --unthrottled --frames N --screenshot F --save PATH --rtc-offset PATH --scale N --replay SCRIPT --out DIR --rtc-fixed EPOCH --audio-dump PATH
+./build/native32/pokeemerald-native --help                # options: --headless --silent --unthrottled --frames N --screenshot F --data-dir DIR --save PATH --rtc-offset PATH --scale N --keys --version --replay SCRIPT --out DIR --rtc-fixed EPOCH --audio-dump PATH
 ```
+
+The executable reports the version it was built from (`--version`, `--keys`, the F1
+overlay): `Makefile.native` passes `git describe --always --dirty --match 'v[0-9]*'`
+(the commit, as no tag of this project's exists yet; `unknown` without git) to
+`platform/Makefile`, which defines it for `platform/version.c` alone, so that ccache
+still serves every other object after a commit.
 
 Variants: `TEST=1` builds `build/native32-test/pokeemerald-native-test`
 with expansion's test suite linked in;
@@ -103,10 +109,11 @@ make -f Makefile.native -j32 check BITS=32
 How it works: `platform/README.md`, "The test runner"; the results against
 the GBA baseline: `platform/test_runner/SUITE-LOG.md`.
 
-The headless smoke boot used as a gate:
+The headless smoke boot used as a gate (`--data-dir`, or `--save` and `--rtc-offset`,
+keeps a gate's files out of the per-user data directory, docs/RUNNING.md):
 
 ```
-./build/native32/pokeemerald-native --headless --silent --unthrottled --frames 9000 --screenshot title.ppm
+./build/native32/pokeemerald-native --headless --silent --unthrottled --frames 9000 --screenshot title.ppm --data-dir out
 ```
 
 The input-replay smoke test (gate (d): the opening through a save, a cold
@@ -128,9 +135,13 @@ tests/smoke/run_debug_menu.sh build/native32/pokeemerald-native out/
 ASAN_OPTIONS=halt_on_error=0 tests/smoke/run_debug_menu.sh build/native32-san/pokeemerald-native out-san/
 ```
 
-Save file: `pokeemerald.sav` in the working directory (a 28-byte header
-plus the 128 KiB flash image; see `platform/README.md`); RTC offset in
-`pokeemerald.rtc`. A save is portable between the widths: a `pokeemerald.sav`
+Save file: `pokeemerald.sav` in the data directory, the per-user one by default, the
+executable's own in portable mode, or `--data-dir`'s (`docs/RUNNING.md`, "Where the
+files live"; `platform/data_dir.h`), a 28-byte header plus the 128 KiB flash image (see
+`platform/README.md`); RTC offset in `pokeemerald.rtc` beside it, and the player's
+`settings.ini` (keys and scale, read only). Every replay and gate passes `--save` and
+`--rtc-offset` (or `--data-dir`) and runs headless, which reads no settings, so none
+of them reads or writes the per-user directory. A save is portable between the widths: a `pokeemerald.sav`
 written by the 32-bit build is converted in memory when the 64-bit build loads it
 and the file is rewritten with the 64-bit tag at the game's next save; a 64-bit
 save loads in the 32-bit build the same way (`platform/README.md`;
@@ -344,7 +355,7 @@ The platform library alone: `make -C platform lib TARGET_OS=windows BITS=64`
 (`platform/build/64-windows/`). The unit tests, cross-built here and run on Windows (below):
 `make -C platform test TARGET_OS=windows BITS=64` writes every test that runs
 on Windows to `platform/build/64-windows/test/` (the portable ones and
-`platform/test/windows/`'s, 70 executables, with `SDL2.dll`); each is linked
+`platform/test/windows/`'s, 81 executables, with `SDL2.dll`); each is linked
 with the PE scripts and checked by `check_pe_layout.py` like the game. The
 Windows sources' static analysis: `make -C platform lint TARGET_OS=windows
 BITS=64` (clang-tidy for the MinGW-w64 target, with its headers, and cppcheck;
@@ -410,7 +421,7 @@ platform/test_runner/compare_suite_results.sh suite-linux64.log suite-windows.lo
 - `run_windows_tests.sh` runs every test executable as `make -C platform
   test` does on Linux (each to its end; a failure if it exits non-zero or its
   output has no "N passed, 0 failed"; its output and its standard error kept
-  beside it) and ends with "all 70 Windows test executables passed". Each
+  beside it) and ends with "all 81 Windows test executables passed". Each
   runs from a copy under its own name, deleted when it ends: an executable of
   this layout costs about 1 GiB of the system's commit charge from its first
   start until its file is deleted (the image's 1 GiB, gaps included, is
@@ -418,13 +429,22 @@ platform/test_runner/compare_suite_results.sh suite-linux64.log suite-windows.lo
   ran out after two dozen of them (`docs/DECISIONS.md`, "The Windows unit
   tests run from copies removed after them").
 - `run_windows_smoke.sh` starts the game with `--headless --silent --frames
-  60` in an empty directory and passes when it exits 0, prints only `main: 60
-  frames` on standard output and nothing on standard error, and has written
-  `pokeemerald.rtc` in binary mode; then again from a directory with a
-  non-ASCII name, with non-ASCII save and clock paths on the command line,
-  where the clock's file must appear under exactly its name and a file at the
-  save path without the save header must be refused by its name and left as
-  it was.
+  60 --data-dir data` in an empty directory and passes when it exits 0,
+  prints only `main: 60 frames` on standard output and nothing on standard
+  error, and has written `data/pokeemerald.rtc` in binary mode beside the
+  save's lock and nothing else in the directory; then again from a directory
+  with a non-ASCII name, with non-ASCII save and clock paths on the command
+  line, where the clock's file must appear under exactly its name and a file
+  at the save path without the save header must be refused by its name and
+  left as it was, and with a non-ASCII `--data-dir`, which must be made and
+  hold the clock's file and the lock. Then `--keys` with `--data-dir` must
+  print the version first and the four paths in it and the default keys, and,
+  with a `settings.ini` there, its key and its bad line's number; `--version`
+  the version alone, the one `--keys` printed;
+  and a copy of the executable beside a `settings.ini` (portable mode) must
+  name the copy's directory and the files in it. No run uses the per-user
+  directory, so the machine's `%APPDATA%` is never written. The script runs
+  against the Linux executable too.
 - The replays (gates d and e) compare with the Linux expectations unchanged:
   the Windows build draws the same frames and dumps the same facts as the
   Linux 64-bit one (the same code and data, bit-fields laid out as GCC lays

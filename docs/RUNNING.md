@@ -23,7 +23,8 @@ page are inside. macOS is not started: there is no build for it.
 ## Linux
 
 64-bit x86. The build needs SDL2 at run time (`libsdl2-2.0-0` on Debian and
-Ubuntu); nothing else. Run it from the directory where you want the save:
+Ubuntu); nothing else. Start it from anywhere: the save and the settings live
+in your per-user data directory ([below](#where-the-files-live)).
 
 ```
 ./pokeemerald-native
@@ -32,8 +33,9 @@ Ubuntu); nothing else. Run it from the directory where you want the save:
 ## Windows
 
 64-bit Windows 10 version 1903 (the May 2019 Update) or later. Keep
-`pokeemerald-native.exe` and `SDL2.dll` in the same folder and run the
-executable from the folder where you want the save. A console window opens
+`pokeemerald-native.exe` and `SDL2.dll` in the same folder and start the
+executable from anywhere: the save and the settings live in your per-user
+data directory ([below](#where-the-files-live)). A console window opens
 beside the game; it shows the game's messages and is not needed to play.
 
 The executable is not signed, so Windows SmartScreen may say "Windows
@@ -53,10 +55,112 @@ There is no 32-bit Windows build and no sanitizer build for Windows.
 | Arrow keys | D-pad |
 | A | L |
 | S | R |
+| F1 | the help overlay (not a GBA button) |
+
+Those are the defaults; the settings file ([below](#the-settings-file))
+moves any GBA button to another key. The keys are physical positions: on a
+keyboard that is not QWERTY, "Z" is the key where QWERTY has its Z.
 
 A game controller that SDL2 recognises works as well: its A, B, Start, Back,
 shoulder buttons, D-pad and left stick are the GBA's A, B, Start, Select, L,
-R and D-pad. The window is 3 times the GBA's screen; `--scale` changes it.
+R and D-pad. The controller's buttons cannot be changed.
+
+## The help overlay: F1, and quitting
+
+F1 shows the help overlay over the game: the version, the data directory and
+the paths of the save, the clock's file and the settings file, the keys in
+force and the controller's buttons, under the line `Q: quit  F1: close`.
+The overlay shows those lines from the top as far as the window has room: in
+a small window (`--scale 1` or 2) the last ones may not fit, and
+`pokeemerald-native --keys` prints them all.
+F1 again closes it. While it is shown the game keeps running but receives no
+key, so nothing you press reaches the game.
+
+Q, while the overlay is shown, quits the game, as closing the window does.
+Quitting does not save your game: save in the game first (Start, then SAVE),
+as on the GBA. The game's Start menu has no quit; its EXIT closes the menu,
+as in the original.
+
+## The settings file
+
+`settings.ini` in the data directory ([below](#where-the-files-live)). The
+game reads it when it starts and never writes it, so you make it yourself
+with any text editor; without it the game uses the defaults. One setting a
+line, `setting = value`; a line starting with `#` is a comment. The whole
+file with the defaults:
+
+```
+# pokeemerald-native settings: one "setting = value" a line.
+# A key is named as SDL names it: Z, X, Return, Backspace, Space,
+# Left Shift, Right Ctrl, Tab, Keypad 8, F2, Up, Down, Left, Right ...
+a = z
+b = x
+select = backspace
+start = return
+up = up
+down = down
+left = left
+right = right
+l = a
+r = s
+# The window: 1 to 16 times the GBA's 240x160 screen.
+scale = 3
+```
+
+The settings are the ten GBA buttons (`a`, `b`, `select`, `start`, `up`,
+`down`, `left`, `right`, `l`, `r`) and `scale`. A comment is a whole line:
+`a = z  # my key` reads the key name `z  # my key`, which is not one. Names and keys can be
+written in any case, with or without spaces around the `=`; a setting you
+leave out keeps its default, and if a setting appears twice the later line
+wins. Two buttons may share a key. F1 cannot be a button's key: it opens the
+overlay. `pokeemerald-native --keys` prints the keys in force with SDL's
+spelling of each name, so it also shows how to write one.
+
+A line the game cannot use (a misspelt setting, a key name SDL does not know,
+a scale outside 1 to 16, a line without `=`) is reported with its line number
+on standard error (the console window on Windows), for example
+
+```
+settings: /home/you/.local/share/pokeemerald-expansion-native/pokeemerald-native/settings.ini:4: 'jump' is not a setting (a, b, select, start, right, left, up, down, r, l, scale); the line is ignored
+```
+
+and the game starts with the rest of the file. `--scale` on the command
+line wins over the file's `scale`. A game started with `--headless` has no
+window and no keyboard, and reads no settings file.
+
+## Where the files live
+
+The save, the clock's file and the settings file live together in one data
+directory, whatever folder you start the game from:
+
+| System | The per-user data directory |
+|---|---|
+| Linux | `~/.local/share/pokeemerald-expansion-native/pokeemerald-native/` (`$XDG_DATA_HOME/...` if you set that variable) |
+| Windows | `%APPDATA%\pokeemerald-expansion-native\pokeemerald-native\`, that is `C:\Users\YOU\AppData\Roaming\pokeemerald-expansion-native\pokeemerald-native\` |
+
+The game makes the directory the first time it starts.
+`pokeemerald-native --keys` prints which directory is in use and the path of
+each file in it.
+
+**Portable mode.** Put a file named `settings.ini` beside the executable
+(an empty one will do, or one with your keys). From then on that folder is
+the data directory: the save, the clock's file and the settings are kept
+beside the executable, for a game on a USB stick or in a folder of its own.
+The folder must be one you can write to (not under `Program Files`).
+
+**Choosing it yourself.** `--data-dir DIR` makes `DIR` the data directory
+(the game creates it if it is missing; its parent must exist; a file of that
+name is refused), whatever the two rules above say. `--save PATH` and `--rtc-offset PATH` choose one file
+each and win over the data directory for that file; a relative path is taken
+from the folder you start the game in.
+
+**Saves from before.** Builds before this one kept `pokeemerald.sav` and
+`pokeemerald.rtc` in the folder the game was started from. To keep playing
+that save, either move both files into the per-user directory
+(`pokeemerald-native --keys` prints it, and makes it if it is not there
+yet), or, if they are beside the executable, put a `settings.ini` there to
+keep them where they are (portable mode). The old `pokeemerald.sav.lock` can
+be deleted.
 
 ## Options
 
@@ -65,11 +169,16 @@ output wins if they differ):
 
 ```
 usage: pokeemerald-native [options]
-  --headless         no window (input reads no keys); the frames still run
+  --headless         no window (input reads no keys, no settings file is read); the frames still run
   --silent           no audio device
-  --save PATH        the save file (default pokeemerald.sav)
-  --rtc-offset PATH  the real-time clock's offset file (default pokeemerald.rtc)
-  --scale N          window scale, 1 to 16 (default 3)
+  --data-dir DIR     where the save, the clock's file and settings.ini are (made if missing); default:
+                     the executable's directory if settings.ini is there (portable), else the
+                     per-user directory (--keys prints it)
+  --save PATH        the save file (default pokeemerald.sav in the data directory)
+  --rtc-offset PATH  the real-time clock's offset file (default pokeemerald.rtc in the data directory)
+  --scale N          window scale, 1 to 16 (default: the settings file's, else 3)
+  --keys             print the keys, the data directory, the files and the version, and exit
+  --version          print the version and exit
   --unthrottled      do not hold the GBA frame rate
   --frames N         exit after N frames (exit status 0)
   --screenshot PATH  write the last frame to PATH as a PPM when the game ends
@@ -90,38 +199,68 @@ usage: pokeemerald-native [options]
   --help             this text
 ```
 
-A player needs `--scale`, `--save`, `--rtc-offset` and `--silent`; the rest
-are for the project's tests (`--audio-dump` records what you hear, at the
-GBA's 32768 Hz, for comparing builds).
+A player needs `--keys`, `--version`, `--scale`, `--silent` and perhaps
+`--data-dir`, `--save` and `--rtc-offset`; the rest are for the project's
+tests (`--audio-dump` records what you hear, at the GBA's 32768 Hz, for
+comparing builds). `--keys` prints this, and the game then exits:
+
+```
+pokeemerald-native a554c4080f
+Data directory (per-user): /home/you/.local/share/pokeemerald-expansion-native/pokeemerald-native/
+Save: /home/you/.local/share/pokeemerald-expansion-native/pokeemerald-native/pokeemerald.sav
+Clock: /home/you/.local/share/pokeemerald-expansion-native/pokeemerald-native/pokeemerald.rtc
+Settings: /home/you/.local/share/pokeemerald-expansion-native/pokeemerald-native/settings.ini (not there: the defaults)
+Keyboard:
+  A       Z
+  B       X
+  Select  Backspace
+  Start   Return
+  Right   Right
+  Left    Left
+  Up      Up
+  Down    Down
+  R       S
+  L       A
+Controller: A, B, Back (Select), Start, the shoulders (L, R), the D-pad or the left stick
+```
+
+The mode in brackets is `per-user`, `portable` or `--data-dir`. The version
+is the commit the game was built from, `-dirty` if the build had changes not
+committed, or `unknown` for a build made without git; `--version` prints it
+alone (`a554c4080f`).
 
 ## The files the game writes
 
-All of them go where the options say, and by default into the directory you
-started the game from:
+All of them go into the data directory, unless `--save` or `--rtc-offset`
+says otherwise:
 
-- `pokeemerald.sav`: the save (`--save PATH`). A 28-byte header of this
-  project's, then the 128 KiB flash image the game saves to. It is written
-  whenever the game saves, by writing a temporary file and renaming it, so a
-  crash leaves the old save or the new one. A save moves between the 32-bit
-  and the 64-bit build (it is converted when loaded).
+- `pokeemerald.sav`: the save. A 28-byte header of this project's, then the
+  128 KiB flash image the game saves to. It is written whenever the game
+  saves, by writing a temporary file and renaming it, so a crash leaves the
+  old save or the new one. A save moves between the 32-bit and the 64-bit
+  build (it is converted when loaded).
 - `pokeemerald.sav.lock`: held while a game runs on that save. It is empty;
   leave it alone.
-- `pokeemerald.rtc`: the real-time clock's offset (`--rtc-offset PATH`). The
-  game's clock follows your computer's; this file holds the difference when
-  you set the time in the game.
+- `pokeemerald.rtc`: the real-time clock's offset. The game's clock follows
+  your computer's; this file holds the difference when you set the time in
+  the game.
+
+`settings.ini` is yours: the game only reads it.
 
 ## What the game refuses, and why
 
 - A second copy on the same save: it prints that another instance holds the
   save and does not start, so that two games cannot write over each other's
-  saves. Close the first, or give the second its own `--save`.
+  saves. Close the first, or give the second its own `--save` or
+  `--data-dir`.
 - A save file without this project's header, which is what an emulator or a
   flash cartridge writes: it prints that it looks like an emulator or
   cartridge save and leaves the file untouched. Importing those saves is not
   supported; this game's saves are not GBA `.sav` files either.
+- A settings file it cannot read (no permission to, or larger than 16 KiB),
+  or a data directory it cannot make or that is a file: it says which and
+  does not start.
 
 ## Planned, not built
 
-A settings file for the keys, saves and settings in a per-user folder (with a
-portable mode beside the executable), an in-game overlay on F1, and no
-console window on Windows.
+No console window on Windows.

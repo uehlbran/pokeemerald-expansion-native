@@ -10,15 +10,19 @@
  *
  * The frame runs with the real modules, headless and silent: handlers
  * installed in a table laid out like expansion's gIntrTable record what
- * VCOUNT and DISPSTAT read when the interrupt controller calls them.
+ * VCOUNT and DISPSTAT read when the interrupt controller calls them. The
+ * help overlay's Q runs with a window instead, on SDL's dummy driver, so
+ * that the key events the test pushes reach the frame loop's poll.
  */
-// deps: lcd_status.c gba_memmap.c interrupt.c timer.c dma.c transfer_bounds.c ppu.c ppu_bg.c ppu_obj.c ppu_window.c ppu_blend.c psg.c psg_channel.c psg_square.c psg_wave.c psg_noise.c audio.c video.c input.c flash.c save_file.c frame_pacer.c game_hooks.c debug_channel.c m4a_output.c sound_mix.c audio_dump.c sound_grid.c
+// deps: lcd_status.c gba_memmap.c interrupt.c timer.c dma.c transfer_bounds.c ppu.c ppu_bg.c ppu_obj.c ppu_window.c ppu_blend.c psg.c psg_channel.c psg_square.c psg_wave.c psg_noise.c audio.c video.c input.c overlay.c font.c flash.c save_file.c frame_pacer.c game_hooks.c debug_channel.c m4a_output.c sound_mix.c audio_dump.c sound_grid.c
 #include <setjmp.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+#include <SDL.h>
 
 #include <gba/types.h>
 #include <gba/flash_internal.h>
@@ -36,6 +40,7 @@
 #include "input.h"
 #include "interrupt.h"
 #include "lcd_status.h"
+#include "overlay.h"
 #include "ppu.h"
 #include "psg.h"
 #include "ptest.h"
@@ -155,19 +160,19 @@ static size_t index_of(const struct event *event)
     return (size_t)(event - events);
 }
 
-/* Every module frame_run uses, headless, silent, scripted input, no save
- * file; IME on, the three LCD interrupts enabled in IE and DISPSTAT. */
-static bool start(uint32_t frame_limit, const char *screenshot_path, const char *save_path)
+/* Every module frame_run uses, with the video given, silent, scripted input;
+ * IME on, the three LCD interrupts enabled in IE and DISPSTAT. */
+static bool start_with_video(const struct video_config *video, uint32_t frame_limit, const char *screenshot_path,
+                             const char *save_path)
 {
-    struct video_config video = {.headless = true, .scale = 1, .title = "test_frame"};
     struct frame_config config = {.frame_limit = frame_limit, .screenshot_path = screenshot_path};
     memset((void *)(uintptr_t)GBA_IO_BASE, 0, GBA_IO_SIZE);
     event_count = 0;
     if (gba_memmap_init() != GBA_MEMMAP_OK || transfer_bounds_init() != 0
         || interrupt_init(table, INTERRUPT_TABLE_LENGTH) != INTERRUPT_OK || timer_init(interrupt_raise) != TIMER_OK
         || dma_init(interrupt_raise) != DMA_OK || ppu_init() != PPU_OK || frame_start_psg() != 0
-        || audio_init(FRAME_AUDIO_SAMPLE_RATE_HZ, AUDIO_SILENT) != 0 || video_init(&video) != 0
-        || input_init(INPUT_SOURCE_SCRIPT) != 0 || save_file_init(save_path) != SAVE_FILE_OK
+        || audio_init(FRAME_AUDIO_SAMPLE_RATE_HZ, AUDIO_SILENT) != 0 || video_init(video) != 0
+        || input_init(INPUT_SOURCE_SCRIPT, NULL) != 0 || save_file_init(save_path) != SAVE_FILE_OK
         || frame_pacer_init(FRAME_PACER_UNTHROTTLED) != 0 || frame_init(&config) != 0)
         return false;
     flash_init();
@@ -178,8 +183,16 @@ static bool start(uint32_t frame_limit, const char *screenshot_path, const char 
     return true;
 }
 
+/* Headless, no save file unless one is given. */
+static bool start(uint32_t frame_limit, const char *screenshot_path, const char *save_path)
+{
+    static const struct video_config headless = {.headless = true, .scale = 1, .title = "test_frame"};
+    return start_with_video(&headless, frame_limit, screenshot_path, save_path);
+}
+
 static void stop(void)
 {
+    overlay_shutdown();
     frame_shutdown();
     frame_pacer_shutdown();
     save_file_shutdown();
@@ -587,6 +600,66 @@ PTEST(no_limit_keeps_going)
         PT_ASSERT_EQ_INT(frame_run(), FRAME_CONTINUE);
     PT_ASSERT_EQ_INT(frame_count(), 5);
     stop();
+}
+
+/* --- the help overlay's Q -------------------------------------------------- */
+
+static void one_line(overlay_line_sink sink, void *context)
+{
+    sink("help", context);
+}
+
+/* A window on SDL's dummy driver and the overlay started, as main starts them for a player. */
+static bool start_windowed(void)
+{
+    static const struct video_config windowed = {.headless = false, .scale = 1, .title = "test_frame"};
+    return tsup_set_environment("SDL_VIDEODRIVER", "dummy") && overlay_init(one_line) == 0
+           && start_with_video(&windowed, 0, NULL, NULL);
+}
+
+static bool push_key(SDL_Scancode scancode, SDL_Keycode keycode)
+{
+    SDL_Event event;
+    SDL_zero(event);
+    event.type = SDL_KEYDOWN;
+    event.key.keysym.scancode = scancode;
+    event.key.keysym.sym = keycode;
+    return SDL_PushEvent(&event) == 1;
+}
+
+PTEST(q_in_the_shown_overlay_ends_the_game_after_the_frame_with_status_0)
+{
+    PT_ASSERT(start_windowed());
+    const bool pushed = push_key(SDL_SCANCODE_F1, SDLK_F1) && push_key(SDL_SCANCODE_Q, SDLK_q);
+    const enum frame_result result = frame_run();
+    const uint32_t frames = frame_count();
+    const int status = frame_exit_status();
+    const enum frame_result after = frame_run();
+    stop();
+    PT_ASSERT(pushed);
+    PT_ASSERT_EQ_INT(result, FRAME_EXIT);
+    PT_ASSERT_EQ_U32(frames, 1u);
+    PT_ASSERT_EQ_INT(status, 0);
+    PT_ASSERT_EQ_INT(after, FRAME_EXIT);
+}
+
+/* Hidden, Q is an ordinary key (perhaps a button's): the game goes on, also once the overlay has been
+ * shown and hidden again. */
+PTEST(q_with_the_overlay_hidden_does_not_end_the_game)
+{
+    PT_ASSERT(start_windowed());
+    const bool pushed = push_key(SDL_SCANCODE_Q, SDLK_q);
+    const enum frame_result first = frame_run();
+    const bool opened = push_key(SDL_SCANCODE_F1, SDLK_F1);
+    const bool closed = push_key(SDL_SCANCODE_F1, SDLK_F1);
+    const bool pushed_again = opened && closed && push_key(SDL_SCANCODE_Q, SDLK_q);
+    const enum frame_result second = frame_run();
+    const bool shown = overlay_shown();
+    stop();
+    PT_ASSERT(pushed && pushed_again);
+    PT_ASSERT_EQ_INT(first, FRAME_CONTINUE);
+    PT_ASSERT_EQ_INT(second, FRAME_CONTINUE);
+    PT_ASSERT(!shown);
 }
 
 PTEST(frame_run_before_init_ends_the_loop)

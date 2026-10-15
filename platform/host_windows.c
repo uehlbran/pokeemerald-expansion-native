@@ -277,6 +277,28 @@ static HANDLE handle_of(int descriptor)
     return handle == -1 ? INVALID_HANDLE_VALUE : (HANDLE)handle;
 }
 
+/* ReadFile on the handle, as host_file_write_all writes. A synchronous read
+ * at a file's end succeeds with 0 bytes; a pipe whose writer has closed it
+ * fails with ERROR_BROKEN_PIPE, which is its end, not an error. */
+ptrdiff_t host_file_read(int descriptor, void *buffer, size_t size)
+{
+    HANDLE handle = handle_of(descriptor);
+    if (handle == INVALID_HANDLE_VALUE) {
+        errno = EBADF;
+        return -1;
+    }
+    const DWORD chunk = size > MAXDWORD ? MAXDWORD : (DWORD)size;
+    DWORD got = 0;
+    if (chunk > 0 && !ReadFile(handle, buffer, chunk, &got, NULL)) {
+        const DWORD error = GetLastError();
+        if (error == ERROR_BROKEN_PIPE || error == ERROR_HANDLE_EOF)
+            return 0;
+        errno = errno_of(error);
+        return -1;
+    }
+    return (ptrdiff_t)got;
+}
+
 /* WriteFile on the handle: the C runtime's text-mode newline translation is
  * skipped too, which the crash reports' "\n" does not need and the platform's
  * files (binary, host_file_open) do not have. */
@@ -457,6 +479,15 @@ int host_file_make_directory(const char *path)
         return -1;
     }
     return 0;
+}
+
+bool host_file_is_directory(const char *path)
+{
+    wchar_t wide_path[HOST_FILE_PATH_SIZE];
+    if (!widen(path, wide_path, HOST_FILE_PATH_SIZE))
+        return false;
+    const DWORD attributes = GetFileAttributesW(wide_path);
+    return attributes != INVALID_FILE_ATTRIBUTES && (attributes & FILE_ATTRIBUTE_DIRECTORY) != 0;
 }
 
 /* msvcrt's 64-bit conversion, which follows TZ (_tzset) or else the system's

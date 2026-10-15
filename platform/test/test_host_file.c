@@ -7,6 +7,8 @@
  * file until it is released; a missing directory is created, once; the local
  * time follows TZ, past 2038 at both widths. What else takes a descriptor or a
  * POSIX permission (the syncs, the umask) is in posix/test_host_file_posix.c;
+ * a read gives the file's bytes in order and then 0; a directory is told
+ * from a file;
  * a lock held by another process, in the save lock's tests
  * (posix/test_save_lock_posix.c, windows/test_save_lock_windows.c).
  */
@@ -73,6 +75,55 @@ PTEST(a_replacement_from_a_missing_file_fails_and_leaves_the_target)
     PT_ASSERT(removed);
 }
 
+/* --- host_file_read ----------------------------------------------------------------- */
+
+PTEST(a_read_gives_the_bytes_in_order_then_zero_at_the_end)
+{
+    struct scratch scratch;
+    if (!scratch_create(&scratch))
+        PT_FAIL("cannot create a scratch directory");
+    char buffer[16] = {0};
+    const bool written = write_text(scratch.path, "0123456789");
+    const int descriptor = host_file_open(scratch.path, O_RDONLY);
+    const ptrdiff_t first = host_file_read(descriptor, buffer, 4u);
+    const bool first_bytes = memcmp(buffer, "0123", 4u) == 0;
+    const ptrdiff_t none = host_file_read(descriptor, buffer, 0u);
+    const ptrdiff_t rest = host_file_read(descriptor, buffer, sizeof buffer);
+    const bool rest_bytes = memcmp(buffer, "456789", 6u) == 0;
+    const ptrdiff_t end = host_file_read(descriptor, buffer, sizeof buffer);
+    const ptrdiff_t end_again = host_file_read(descriptor, buffer, sizeof buffer);
+    const int closed = host_file_close(descriptor);
+    const bool removed = scratch_remove(&scratch);
+    PT_ASSERT(written);
+    PT_ASSERT(descriptor >= 0);
+    PT_ASSERT_EQ_INT(first, 4);
+    PT_ASSERT(first_bytes);
+    PT_ASSERT_EQ_INT(none, 0);
+    PT_ASSERT_EQ_INT(rest, 6); /* a regular file gives all it has left */
+    PT_ASSERT(rest_bytes);
+    PT_ASSERT_EQ_INT(end, 0);
+    PT_ASSERT_EQ_INT(end_again, 0);
+    PT_ASSERT_EQ_INT(closed, 0);
+    PT_ASSERT(removed);
+}
+
+PTEST(an_empty_file_reads_as_its_end_at_once)
+{
+    struct scratch scratch;
+    if (!scratch_create(&scratch))
+        PT_FAIL("cannot create a scratch directory");
+    char buffer[4];
+    const bool written = write_text(scratch.path, "");
+    const int descriptor = host_file_open(scratch.path, O_RDONLY);
+    const ptrdiff_t got = host_file_read(descriptor, buffer, sizeof buffer);
+    const int closed = host_file_close(descriptor);
+    const bool removed = scratch_remove(&scratch);
+    PT_ASSERT(written && descriptor >= 0);
+    PT_ASSERT_EQ_INT(got, 0);
+    PT_ASSERT_EQ_INT(closed, 0);
+    PT_ASSERT(removed);
+}
+
 /* --- host_file_seek and host_file_close ------------------------------------------ */
 
 PTEST(a_seek_moves_where_the_next_write_lands)
@@ -115,7 +166,12 @@ PTEST(a_closed_descriptor_cannot_be_sought_written_or_closed_again)
     const int sought = host_file_seek(descriptor, 0u);
     const int sought_error = errno;
     const int written = host_file_write_all(descriptor, "x", 1u);
+    char byte;
+    const ptrdiff_t read_back = host_file_read(descriptor, &byte, 1u);
+    const int read_error = errno;
     const bool removed = scratch_remove(&scratch);
+    PT_ASSERT_EQ_INT(read_back, -1);
+    PT_ASSERT_EQ_INT(read_error, EBADF);
     PT_ASSERT_EQ_INT(closed, 0);
     PT_ASSERT_EQ_INT(again, -1);
     PT_ASSERT_EQ_INT(again_error, EBADF);
@@ -182,6 +238,32 @@ PTEST(a_directory_under_a_missing_one_is_not_created)
     const bool removed = scratch_remove(&scratch);
     PT_ASSERT_EQ_INT(made, -1);
     PT_ASSERT_EQ_INT(error, ENOENT);
+    PT_ASSERT(removed);
+}
+
+PTEST(a_directory_is_told_from_a_file_and_from_nothing)
+{
+    struct scratch scratch;
+    if (!scratch_create(&scratch))
+        PT_FAIL("cannot create a scratch directory");
+    const bool written = write_text(scratch.path, "x");
+    const int made = host_file_make_directory(scratch.made);
+    const bool dir_is = host_file_is_directory(scratch.dir);
+    const bool made_is = host_file_is_directory(scratch.made);
+    const bool file_is = host_file_is_directory(scratch.path);
+    const bool missing_is = host_file_is_directory(scratch.missing);
+    const int made_again = host_file_make_directory(scratch.path); /* a file is there */
+    const int made_again_error = errno;
+    const bool removed = scratch_remove(&scratch);
+    PT_ASSERT(written);
+    PT_ASSERT_EQ_INT(made, 0);
+    PT_ASSERT(dir_is);
+    PT_ASSERT(made_is);
+    PT_ASSERT(!file_is);
+    PT_ASSERT(!missing_is);
+    PT_ASSERT(!host_file_is_directory(""));
+    PT_ASSERT_EQ_INT(made_again, -1);
+    PT_ASSERT_EQ_INT(made_again_error, EEXIST);
     PT_ASSERT(removed);
 }
 

@@ -207,7 +207,7 @@ BITS=64`) and run on Windows (`test_runner/run_windows_tests.sh`).
 | `host_process.h` | `host_process_executable_path`; `host_process_restart`: this executable again with the same standard handles, and whether a crash handler may call it; `host_process_end`: the process ended at once with a status | `readlink` of `/proc/self/exe` (`host_linux.c`), `execve`, async-signal-safe, so a handler may; `_exit` (`host_posix.c`) | `GetModuleFileNameW` converted to UTF-8; `CreateProcessW` of a child, a wait, `TerminateProcess` with its status, which no handler may call (it allocates); `TerminateProcess` | `test_host_process.c`, `posix/`, `windows/test_host_process_windows.c` |
 | `host_image.h` | the executable's image and its writable part, whether an address is in a read-only segment, the main thread's whole stack | `__executable_start`, `__data_start`, `_end`, `getauxval(AT_PHDR)`, `pthread_getattr_np` (`host_linux.c`) | `__text_start__`, `__data_start__`, `__bss_end__` (the writable sections linked last, `gba_game.pe.ld`), `VirtualQuery`, `GetCurrentThreadStackLimits` (2 MiB) | `test_host_image.c`, `linux/` |
 | `host_stack.h` | `host_stack_run`: a function on a given stack, at the same depth each call; `host_stack_leave`: back to the caller early | `ucontext`, AddressSanitizer's fiber annotations (`host_linux.c`) | a Win64 switch in assembly with unwind information, the `NT_TIB` stack limits widened over both stacks (`host_windows_stack.c`) | `test_host_stack.c`, `windows/test_host_stack_windows.c` |
-| `host_file.h` | `host_file_open` (not inherited; binary on Windows), `host_file_write_all` (every byte) and `host_file_for_handler` (resolves a descriptor at install time) and `host_file_write_from_handler` (the same for a fault handler, errno left alone, nothing of the C runtime on Windows), `host_file_sync`, `host_file_replace` (atomic; on Windows, on NTFS), `host_file_sync_directory_of`, `host_file_make_directory`, `host_file_local_time`; failures are -1 with `errno`, reported by the caller | `open` with `O_CLOEXEC`, `write`, `fsync`, `rename`, `open` of the directory and `fsync`, `mkdir(path, 0777)`, `localtime_r` with a 64-bit `time_t` (`host_posix.c`) | `_open` with `_O_NOINHERIT` and `_O_BINARY`, `WriteFile` and `FlushFileBuffers` on the descriptor's handle, `MoveFileExW` with `MOVEFILE_REPLACE_EXISTING` and `MOVEFILE_WRITE_THROUGH`, no directory sync (the length only), `CreateDirectoryW`, `_localtime64_s` | `test_host_file.c`, `posix/`, `windows/test_host_file_windows.c` |
+| `host_file.h` | `host_file_open` (not inherited; binary on Windows), `host_file_read` (up to a count, 0 at the end), `host_file_write_all` (every byte) and `host_file_for_handler` (resolves a descriptor at install time) and `host_file_write_from_handler` (the same for a fault handler, errno left alone, nothing of the C runtime on Windows), `host_file_sync`, `host_file_replace` (atomic; on Windows, on NTFS), `host_file_sync_directory_of`, `host_file_make_directory`, `host_file_is_directory`, `host_file_local_time`; failures are -1 with `errno`, reported by the caller | `open` with `O_CLOEXEC`, `read` (retried on `EINTR`), `write`, `fsync`, `rename`, `open` of the directory and `fsync`, `mkdir(path, 0777)`, `stat`, `localtime_r` with a 64-bit `time_t` (`host_posix.c`) | `_open` with `_O_NOINHERIT` and `_O_BINARY`, `ReadFile`, `WriteFile` and `FlushFileBuffers` on the descriptor's handle, `MoveFileExW` with `MOVEFILE_REPLACE_EXISTING` and `MOVEFILE_WRITE_THROUGH`, no directory sync (the length only), `CreateDirectoryW`, `GetFileAttributesW`, `_localtime64_s` | `test_host_file.c`, `posix/`, `windows/test_host_file_windows.c` |
 | `host_thread.h` | the test time limit's watchdog: a thread that stores `true` in an atomic flag once its deadline passes | a `pthread` on a condition variable (`host_posix.c`) | a thread on an event with a timeout, joined by a wait on its handle (`host_windows_thread.c`) | `test_host_thread.c`, `posix/`, `linux/` |
 
 ## The flash chip (`flash`) and the save file (`save_file`)
@@ -380,6 +380,11 @@ reported as pressed, unfiltered.
 | R | S | right shoulder |
 | Up/Down/Left/Right | arrow keys | D-pad, or left stick beyond `INPUT_STICK_DEADZONE` (16000) |
 
+The keyboard column is the default keymap (`input_buttons`); `main` passes
+`input_init` the one the settings file makes (`settings`, below). While the
+F1 overlay is shown, KEYINPUT reads every button released, whatever the
+source (`overlay_game_keys`).
+
 `test_input.c` sets `SDL_VIDEODRIVER=dummy` itself. SDL's dummy driver cannot
 put a key into `SDL_GetKeyboardState` (a pushed `SDL_KEYDOWN` is only queued),
 so key translation is tested through the pure `input_keyboard_to_keys` and
@@ -428,14 +433,16 @@ values are worked by hand from GBATEK; where GBATEK leaves a behaviour open,
 make -f Makefile.native -j$(nproc) native               # build/native32/pokeemerald-native
 make -f Makefile.native -j$(nproc) native TEST=1        # build/native32-test/pokeemerald-native-test
 make -f Makefile.native -j$(nproc) native SANITIZE=1    # build/native32-san/, ASan and UBSan throughout
-./build/native32/pokeemerald-native [--headless] [--silent] [--save PATH] [--rtc-offset PATH]
+./build/native32/pokeemerald-native [--headless] [--silent] [--data-dir DIR] [--save PATH] [--rtc-offset PATH]
         [--scale N] [--unthrottled] [--frames N] [--screenshot PATH]
-        [--replay SCRIPT [--out DIR]] [--rtc-fixed EPOCH] [--audio-dump PATH] [--test-runner] [--help]
+        [--replay SCRIPT [--out DIR]] [--rtc-fixed EPOCH] [--audio-dump PATH] [--test-runner]
+        [--keys] [--version] [--help]
 make -f Makefile.native -j32 check [SANITIZE=1] [TESTS=filter]   # expansion's suite, below
 ```
 
-The defaults are `pokeemerald.sav` and `pokeemerald.rtc` in the current
-directory, scale 3, paced to 59.7275 Hz, no frame limit. `--frames N` ends
+The defaults are `pokeemerald.sav` and `pokeemerald.rtc` in the data
+directory (below), the settings file's scale or 3, paced to 59.7275 Hz, no
+frame limit. `--frames N` ends
 the game after N frames with status 0 (the gates use it with `--headless
 --silent --unthrottled`); `--screenshot` writes the last frame as a PPM;
 `--audio-dump` writes every frame of sound the loop mixes to a WAV file
@@ -475,6 +482,47 @@ whatever rate the engine mixes; the PSG is generated on the same grid;
 `sound_mix` routes the two FIFOs and the PSG as `SOUNDCNT_H` says, at
 `psg.c`'s scale, and removes the DC offset the GBA's output capacitor
 removes.
+
+## The player's files, the settings and the help overlay (`player`, `data_dir`, `settings`, `help_text`, `overlay`, `font`, `version`)
+
+What a player sees of the platform itself; `docs/RUNNING.md` is the player's
+account, `docs/DECISIONS.md` ("The settings file, the data directory and the
+F1 overlay") the reasons.
+
+- `player` holds what a run knows of its player, found before any module
+  starts (`player_find`, which `main` calls): the paths, the settings, the
+  lines `--keys` prints and the overlay is given, the window's scale, and
+  whether the run gets the overlay at all (`player_wants_overlay`: a window
+  played from the keyboard). `test/test_player.c`.
+- `data_dir` finds the data directory and the paths in it: `--data-dir`, else the executable's
+  directory if `settings.ini` is there (portable), else SDL's per-user
+  directory (`SDL_GetPrefPath("pokeemerald-expansion-native",
+  "pokeemerald-native")`); `--save` and `--rtc-offset` win for their file. It
+  looks only when a file needs it, so a headless run given both paths (every
+  gate) never asks SDL for the per-user directory, which SDL would make. The
+  rule is `data_dir_resolve`, tested (`test/test_data_dir.c`) with a host of
+  the test's own in place of SDL's two calls; `test/linux/test_data_dir_linux.c`
+  checks SDL's answers through `XDG_DATA_HOME` and `/proc/self/exe`.
+- `settings` reads `settings.ini` (`key = value`, `#` comments; the buttons by
+  SDL's key names, and `scale`): `settings_parse` is pure, text in and
+  settings out with each bad line's number and kind, and `settings_load`
+  reads the file through `host_file.h` and reports. The keymap it makes is
+  `input`'s, whose fixed table is now the defaults it starts from.
+- `help_text` writes the lines `--keys` prints and the overlay shows.
+- `overlay` is the F1 overlay: F1 shows and hides it, Q quits while it is
+  shown (`frame.c` ends the loop as for a closed window), and
+  `overlay_game_keys` makes KEYINPUT read every button released meanwhile
+  (`input.c`). It is started only for a window played from the keyboard
+  (never headless, in test-runner mode or for a replay), and `overlay_draw`
+  lays out its text in a canvas; `video.c` owns the texture and copies it
+  over the frame, never into the frame buffer.
+- `font` is a bitmap font of printable ASCII, glyphs 5 pixels wide and 8
+  high (capitals 7, and a row for descenders) in cells 6 wide, lines 10 rows
+  apart (`font_glyphs.h`, drawn for this project) and draws text into a 32-bit
+  pixel buffer, clipped to it; `test/test_font.c` checks glyphs against
+  pictures written out in the test, pixel by pixel.
+- `version` is the build's `git describe` (`Makefile.native` defines it for
+  `version.c` alone, so ccache keeps the other objects).
 
 ## What the game links from its assembly files
 

@@ -8,8 +8,8 @@
  * expansion's own ReadKeys (src/main.c); no code is taken from the reference
  * ports.
  *
- * State (the source, the script value, the open controllers) is this
- * module's own and single-threaded: only the main thread calls in.
+ * State (the source, the keymap, the script value, the open controllers) is
+ * this module's own and single-threaded: only the main thread calls in.
  */
 #include "input.h"
 
@@ -18,26 +18,31 @@
 #include <stdio.h>
 
 #include "gba_memmap.h"
+#include "overlay.h"
 
 /* GBATEK "GBA Keypad Input": KEYINPUT is at 4000130h, a halfword. */
 #define KEYINPUT_OFFSET UINT32_C(0x130)
 
-static const struct input_key_binding keyboard_bindings[] = {
-    {SDL_SCANCODE_Z, INPUT_KEY_A, "A"},
-    {SDL_SCANCODE_X, INPUT_KEY_B, "B"},
-    {SDL_SCANCODE_BACKSPACE, INPUT_KEY_SELECT, "Select"},
-    {SDL_SCANCODE_RETURN, INPUT_KEY_START, "Start"},
-    {SDL_SCANCODE_RIGHT, INPUT_KEY_RIGHT, "Right"},
-    {SDL_SCANCODE_LEFT, INPUT_KEY_LEFT, "Left"},
-    {SDL_SCANCODE_UP, INPUT_KEY_UP, "Up"},
-    {SDL_SCANCODE_DOWN, INPUT_KEY_DOWN, "Down"},
-    {SDL_SCANCODE_S, INPUT_KEY_R, "R"},
-    {SDL_SCANCODE_A, INPUT_KEY_L, "L"},
+_Static_assert(INPUT_NO_SCANCODE == SDL_SCANCODE_UNKNOWN, "no key is SDL's unknown scancode");
+
+/* KEYINPUT bit order; the default keys are VisualBoyAdvance's. */
+static const struct input_button buttons[INPUT_BUTTON_COUNT] = {
+    {INPUT_KEY_A, "a", "A", SDL_SCANCODE_Z},
+    {INPUT_KEY_B, "b", "B", SDL_SCANCODE_X},
+    {INPUT_KEY_SELECT, "select", "Select", SDL_SCANCODE_BACKSPACE},
+    {INPUT_KEY_START, "start", "Start", SDL_SCANCODE_RETURN},
+    {INPUT_KEY_RIGHT, "right", "Right", SDL_SCANCODE_RIGHT},
+    {INPUT_KEY_LEFT, "left", "Left", SDL_SCANCODE_LEFT},
+    {INPUT_KEY_UP, "up", "Up", SDL_SCANCODE_UP},
+    {INPUT_KEY_DOWN, "down", "Down", SDL_SCANCODE_DOWN},
+    {INPUT_KEY_R, "r", "R", SDL_SCANCODE_S},
+    {INPUT_KEY_L, "l", "L", SDL_SCANCODE_A},
 };
 
 static struct {
     bool initialised;
     enum input_source source;
+    struct input_keymap keymap;
     uint16_t script_keys;
     bool controller_subsystem;
     bool reported_no_keyboard_state; /* once, so a frame loop does not repeat it */
@@ -49,24 +54,54 @@ uint16_t input_keys_to_keyinput(uint16_t keys_active_high)
     return (uint16_t)(~keys_active_high & INPUT_KEYS_MASK);
 }
 
-const struct input_key_binding *input_keyboard_bindings(size_t *count)
+const struct input_button *input_buttons(void)
 {
-    if (count != NULL)
-        *count = sizeof keyboard_bindings / sizeof keyboard_bindings[0];
-    return keyboard_bindings;
+    return buttons;
 }
 
-uint16_t input_keyboard_to_keys(const uint8_t *keyboard, int numkeys)
+struct input_keymap input_default_keymap(void)
+{
+    struct input_keymap keymap;
+    for (size_t i = 0; i < INPUT_BUTTON_COUNT; i++)
+        keymap.scancodes[i] = buttons[i].default_scancode;
+    return keymap;
+}
+
+int input_scancode_from_name(const char *name)
+{
+    if (name == NULL || name[0] == '\0')
+        return INPUT_NO_SCANCODE; /* SDL would set its error for nothing */
+    return (int)SDL_GetScancodeFromName(name);
+}
+
+const char *input_scancode_name(int scancode)
+{
+    if (scancode <= INPUT_NO_SCANCODE || scancode >= SDL_NUM_SCANCODES)
+        return "";
+    return SDL_GetScancodeName((SDL_Scancode)scancode);
+}
+
+uint16_t input_keyboard_to_keys(const struct input_keymap *keymap, const uint8_t *keyboard, int numkeys)
 {
     uint16_t keys = 0;
-    if (keyboard == NULL)
+    if (keymap == NULL || keyboard == NULL)
         return 0;
-    for (size_t i = 0; i < sizeof keyboard_bindings / sizeof keyboard_bindings[0]; i++) {
-        int scancode = keyboard_bindings[i].scancode;
+    for (size_t i = 0; i < INPUT_BUTTON_COUNT; i++) {
+        const int scancode = keymap->scancodes[i];
         if (scancode >= 0 && scancode < numkeys && keyboard[scancode] != 0)
-            keys = (uint16_t)(keys | keyboard_bindings[i].key);
+            keys = (uint16_t)(keys | buttons[i].key);
     }
     return keys;
+}
+
+/* Every scancode one SDL could report. */
+static bool keymap_is_valid(const struct input_keymap *keymap)
+{
+    for (size_t i = 0; i < INPUT_BUTTON_COUNT; i++) {
+        if (keymap->scancodes[i] <= INPUT_NO_SCANCODE || keymap->scancodes[i] >= SDL_NUM_SCANCODES)
+            return false;
+    }
+    return true;
 }
 
 uint16_t input_pad_to_keys(const struct input_pad_state *pad)
@@ -129,7 +164,7 @@ static uint16_t read_host_keys(void)
         (void)fprintf(stderr, "input: SDL_GetKeyboardState returned NULL; keyboard reads as no keys\n");
         state.reported_no_keyboard_state = true;
     }
-    uint16_t keys = input_keyboard_to_keys(keyboard, numkeys);
+    uint16_t keys = input_keyboard_to_keys(&state.keymap, keyboard, numkeys);
     for (size_t i = 0; i < INPUT_MAX_CONTROLLERS; i++) {
         if (state.controllers[i] != NULL) {
             struct input_pad_state pad = read_pad(state.controllers[i]);
@@ -216,11 +251,16 @@ static int init_host(void)
     return open_present_controllers();
 }
 
-int input_init(enum input_source source)
+int input_init(enum input_source source, const struct input_keymap *keymap)
 {
     int status;
     if (state.initialised) {
         (void)fprintf(stderr, "input: input_init called twice without input_shutdown\n");
+        return -1;
+    }
+    if (keymap != NULL && !keymap_is_valid(keymap)) {
+        (void)fprintf(stderr, "input: input_init given a keymap with a scancode outside 1..%d\n",
+                      SDL_NUM_SCANCODES - 1);
         return -1;
     }
     if (source == INPUT_SOURCE_HOST) {
@@ -236,6 +276,7 @@ int input_init(enum input_source source)
         return status;
     }
     state.source = source;
+    state.keymap = keymap != NULL ? *keymap : input_default_keymap();
     state.script_keys = 0;
     state.initialised = true;
     return 0;
@@ -267,7 +308,8 @@ void input_update_keyinput(void)
 {
     if (!state.initialised)
         return;
-    write_keyinput(state.source == INPUT_SOURCE_HOST ? read_host_keys() : state.script_keys);
+    const uint16_t keys = state.source == INPUT_SOURCE_HOST ? read_host_keys() : state.script_keys;
+    write_keyinput(overlay_game_keys(keys));
 }
 
 int input_handle_event(const union SDL_Event *event)

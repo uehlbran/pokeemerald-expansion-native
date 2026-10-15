@@ -21,6 +21,7 @@
 #include <string.h>
 
 #include "crash_reboot.h"
+#include "data_dir.h"
 
 #define DECIMAL_BASE 10 /* numbers are written and read in decimal */
 
@@ -29,11 +30,16 @@ void options_print_usage(FILE *out)
     (void)fprintf(
         out,
         "usage: pokeemerald-native [options]\n"
-        "  --headless         no window (input reads no keys); the frames still run\n"
+        "  --headless         no window (input reads no keys, no settings file is read); the frames still run\n"
         "  --silent           no audio device\n"
-        "  --save PATH        the save file (default %s)\n"
-        "  --rtc-offset PATH  the real-time clock's offset file (default %s)\n"
-        "  --scale N          window scale, 1 to %d (default %d)\n"
+        "  --data-dir DIR     where the save, the clock's file and %s are (made if missing); default:\n"
+        "                     the executable's directory if %s is there (portable), else the\n"
+        "                     per-user directory (--keys prints it)\n"
+        "  --save PATH        the save file (default %s in the data directory)\n"
+        "  --rtc-offset PATH  the real-time clock's offset file (default %s in the data directory)\n"
+        "  --scale N          window scale, 1 to %d (default: the settings file's, else %d)\n"
+        "  --keys             print the keys, the data directory, the files and the version, and exit\n"
+        "  --version          print the version and exit\n"
         "  --unthrottled      do not hold the GBA frame rate\n"
         "  --frames N         exit after N frames (exit status 0)\n"
         "  --screenshot PATH  write the last frame to PATH as a PPM when the game ends\n"
@@ -52,8 +58,8 @@ void options_print_usage(FILE *out)
         "                     output's rate), headless and --silent too; a replay's restart ends it; its\n"
         "                     sizes are written at exit (after a crash: sox --ignore-length reads it)\n"
         "  --help             this text\n",
-        OPTIONS_DEFAULT_SAVE_PATH, OPTIONS_DEFAULT_RTC_OFFSET_PATH, OPTIONS_MAX_SCALE, OPTIONS_DEFAULT_SCALE,
-        OPTIONS_DEFAULT_OUT_DIR);
+        DATA_DIR_SETTINGS_NAME, DATA_DIR_SETTINGS_NAME, DATA_DIR_SAVE_NAME, DATA_DIR_RTC_OFFSET_NAME, OPTIONS_MAX_SCALE,
+        OPTIONS_DEFAULT_SCALE, OPTIONS_DEFAULT_OUT_DIR);
 }
 
 static bool parse_unsigned(const char *text, unsigned long max, unsigned long *out)
@@ -94,6 +100,10 @@ static bool parse_flag(const char *arg, struct options *out)
         out->unthrottled = true;
     else if (strcmp(arg, "--help") == 0)
         out->help = true;
+    else if (strcmp(arg, "--keys") == 0)
+        out->keys = true;
+    else if (strcmp(arg, "--version") == 0)
+        out->version = true;
     else if (strcmp(arg, "--test-runner") == 0)
         out->test_runner = true;
     else
@@ -110,6 +120,8 @@ static bool parse_string_option(const char *arg, const char *value, struct optio
         return false;
     if (strcmp(arg, CRASH_REBOOT_OPTION) == 0)
         out->persistent_state = value;
+    else if (strcmp(arg, OPTIONS_DATA_DIR) == 0)
+        out->data_dir = value;
     else if (strcmp(arg, "--save") == 0)
         out->save_path = value;
     else if (strcmp(arg, "--rtc-offset") == 0)
@@ -137,6 +149,7 @@ static bool parse_number_option(const char *arg, const char *value, struct optio
         out->resume_after_line = (uint32_t)number;
     } else if (strcmp(arg, "--scale") == 0 && parse_unsigned(value, OPTIONS_MAX_SCALE, &number) && number >= 1) {
         out->scale = (int)number;
+        out->scale_given = true;
     } else if (strcmp(arg, "--frames") == 0 && parse_unsigned(value, UINT32_MAX, &number) && number >= 1) {
         out->frame_limit = (uint32_t)number;
     } else {
@@ -151,8 +164,6 @@ enum options_error options_parse(int argc, char **argv, struct options *out)
     *out = (struct options){
         .scale = OPTIONS_DEFAULT_SCALE,
         .frame_limit = OPTIONS_DEFAULT_FRAME_LIMIT,
-        .save_path = OPTIONS_DEFAULT_SAVE_PATH,
-        .rtc_offset_path = OPTIONS_DEFAULT_RTC_OFFSET_PATH,
         .argc = argc,
         .argv = argv,
         .out_dir = OPTIONS_DEFAULT_OUT_DIR,
@@ -174,7 +185,12 @@ enum options_error options_parse(int argc, char **argv, struct options *out)
         (void)fprintf(stderr, "options: %s is for --test-runner only\n", CRASH_REBOOT_OPTION);
         return OPTIONS_ERR_USAGE;
     }
+    if (out->keys && out->test_runner) {
+        (void)fprintf(stderr, "options: --keys shows a player's keys and files, and --test-runner has neither\n");
+        return OPTIONS_ERR_USAGE;
+    }
     if (out->test_runner) {
+        out->data_dir = NULL;
         out->save_path = NULL;
         out->rtc_offset_path = NULL;
     }

@@ -271,6 +271,17 @@ int host_file_open(const char *path, int flags)
     return open(path, flags | O_CLOEXEC, HOST_FILE_CREATED_MODE);
 }
 
+ptrdiff_t host_file_read(int descriptor, void *buffer, size_t size)
+{
+    if (size > (size_t)PTRDIFF_MAX)
+        size = (size_t)PTRDIFF_MAX; /* read(2) leaves larger counts to the implementation */
+    ssize_t got;
+    do {
+        got = read(descriptor, buffer, size);
+    } while (got < 0 && errno == EINTR);
+    return (ptrdiff_t)got;
+}
+
 /* write(2) is async-signal-safe (signal-safety(7)). It returns 0 for a
  * non-empty buffer only on a device that takes nothing, which would loop
  * forever: that is an error here. */
@@ -376,6 +387,12 @@ int host_file_release_lock(int descriptor)
 int host_file_make_directory(const char *path)
 {
     return mkdir(path, HOST_FILE_DIRECTORY_MODE);
+}
+
+bool host_file_is_directory(const char *path)
+{
+    struct stat status;
+    return stat(path, &status) == 0 && S_ISDIR(status.st_mode);
 }
 
 int host_file_local_time(int64_t seconds, struct tm *out)

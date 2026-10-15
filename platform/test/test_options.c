@@ -45,10 +45,12 @@ PTEST(no_arguments_give_the_documented_defaults)
     struct options o;
     PT_ASSERT_EQ_INT(PARSE(&o, NULL), OPTIONS_OK);
     PT_ASSERT(!o.headless && !o.silent && !o.unthrottled && !o.help && !o.test_runner && !o.rtc_fixed);
-    PT_ASSERT_EQ_INT(o.scale, 3); /* docs/BUILDING.md: "scale 3" */
+    PT_ASSERT(!o.keys && !o.version);
+    PT_ASSERT_EQ_INT(o.scale, 3); /* docs/RUNNING.md: "3 times the GBA's screen" */
+    PT_ASSERT(!o.scale_given);
     PT_ASSERT_EQ_U32(o.frame_limit, 0);
-    PT_ASSERT_EQ_STR(o.save_path, "pokeemerald.sav");
-    PT_ASSERT_EQ_STR(o.rtc_offset_path, "pokeemerald.rtc");
+    /* Not given: data_dir.h puts them in the data directory, which it finds. */
+    PT_ASSERT(o.data_dir == NULL && o.save_path == NULL && o.rtc_offset_path == NULL);
     PT_ASSERT_EQ_STR(o.out_dir, ".");
     PT_ASSERT(o.screenshot_path == NULL && o.replay_path == NULL && o.persistent_state == NULL);
     PT_ASSERT(o.audio_dump_path == NULL);
@@ -69,14 +71,20 @@ PTEST(the_flags_set_their_own_field_only)
     PT_ASSERT(!o.headless && !o.silent && o.unthrottled && !o.help && !o.test_runner);
     PT_ASSERT_EQ_INT(PARSE(&o, "--help"), OPTIONS_OK);
     PT_ASSERT(!o.headless && !o.silent && !o.unthrottled && o.help && !o.test_runner);
+    PT_ASSERT(!o.keys && !o.version);
+    PT_ASSERT_EQ_INT(PARSE(&o, "--keys"), OPTIONS_OK);
+    PT_ASSERT(!o.headless && !o.help && !o.test_runner && o.keys && !o.version);
+    PT_ASSERT_EQ_INT(PARSE(&o, "--version"), OPTIONS_OK);
+    PT_ASSERT(!o.headless && !o.help && !o.test_runner && !o.keys && o.version);
 }
 
 PTEST(the_options_with_a_value_take_the_next_argument)
 {
     struct options o;
     PT_ASSERT_EQ_INT(PARSE(&o, "--save", "a.sav", "--rtc-offset", "a.rtc", "--screenshot", "s.ppm", "--replay",
-                           "r.replay", "--out", "dir"),
+                           "r.replay", "--out", "dir", "--data-dir", "data"),
                      OPTIONS_OK);
+    PT_ASSERT_EQ_STR(o.data_dir, "data");
     PT_ASSERT_EQ_STR(o.save_path, "a.sav");
     PT_ASSERT_EQ_STR(o.rtc_offset_path, "a.rtc");
     PT_ASSERT_EQ_STR(o.screenshot_path, "s.ppm");
@@ -99,8 +107,8 @@ PTEST(audio_dump_takes_a_path_with_or_without_a_device)
 PTEST(a_string_option_followed_by_another_option_is_refused)
 {
     struct options o;
-    static const char *const with_string[] = {"--save",   "--rtc-offset", "--screenshot",
-                                              "--replay", "--out",        "--audio-dump"};
+    static const char *const with_string[] = {"--save", "--rtc-offset", "--screenshot", "--replay",
+                                              "--out",  "--audio-dump", "--data-dir"};
     for (size_t i = 0; i < sizeof with_string / sizeof with_string[0]; i++)
         PT_ASSERT_EQ_INT(PARSE(&o, with_string[i], "--headless"), OPTIONS_ERR_USAGE);
     PT_ASSERT_EQ_INT(PARSE(&o, "--test-runner", "--persistent-state", "--headless"), OPTIONS_ERR_USAGE);
@@ -113,8 +121,8 @@ PTEST(an_option_with_a_value_as_the_last_argument_is_refused)
 {
     struct options o;
     static const char *const with_value[] = {
-        "--save",  "--rtc-offset", "--screenshot", "--replay",    "--out",
-        "--scale", "--frames",     "--resume-at",  "--rtc-fixed", "--audio-dump",
+        "--save",   "--rtc-offset", "--screenshot", "--replay",     "--out",      "--scale",
+        "--frames", "--resume-at",  "--rtc-fixed",  "--audio-dump", "--data-dir",
     };
     for (size_t i = 0; i < sizeof with_value / sizeof with_value[0]; i++)
         PT_ASSERT_EQ_INT(PARSE(&o, with_value[i]), OPTIONS_ERR_USAGE);
@@ -127,6 +135,7 @@ PTEST(scale_accepts_one_to_the_maximum_and_nothing_else)
     struct options o;
     PT_ASSERT_EQ_INT(PARSE(&o, "--scale", "1"), OPTIONS_OK);
     PT_ASSERT_EQ_INT(o.scale, 1);
+    PT_ASSERT(o.scale_given); /* it wins over the settings file's */
     PT_ASSERT_EQ_INT(PARSE(&o, "--scale", "16"), OPTIONS_OK);
     PT_ASSERT_EQ_INT(o.scale, OPTIONS_MAX_SCALE);
     PT_ASSERT_EQ_INT(PARSE(&o, "--scale", "0"), OPTIONS_ERR_USAGE);
@@ -196,10 +205,20 @@ PTEST(an_unknown_argument_is_refused)
 PTEST(test_runner_mode_writes_no_files)
 {
     struct options o;
-    PT_ASSERT_EQ_INT(PARSE(&o, "--save", "a.sav", "--test-runner", "--rtc-offset", "a.rtc"), OPTIONS_OK);
+    PT_ASSERT_EQ_INT(PARSE(&o, "--save", "a.sav", "--test-runner", "--rtc-offset", "a.rtc", "--data-dir", "d"),
+                     OPTIONS_OK);
     PT_ASSERT(o.test_runner);
     PT_ASSERT(o.save_path == NULL);
     PT_ASSERT(o.rtc_offset_path == NULL);
+    PT_ASSERT(o.data_dir == NULL);
+}
+
+PTEST(keys_with_test_runner_mode_is_refused)
+{
+    struct options o;
+    PT_ASSERT_EQ_INT(PARSE(&o, "--keys", "--test-runner"), OPTIONS_ERR_USAGE);
+    PT_ASSERT_EQ_INT(PARSE(&o, "--test-runner", "--keys"), OPTIONS_ERR_USAGE);
+    PT_ASSERT_EQ_INT(PARSE(&o, "--keys", "--headless", "--data-dir", "d"), OPTIONS_OK);
 }
 
 PTEST(the_persistent_state_needs_test_runner_mode)
@@ -236,10 +255,29 @@ PTEST(the_usage_text_names_every_option_and_the_defaults)
     PT_ASSERT(rewound);
     PT_ASSERT(length > 0 && length < sizeof text - 1u);
     static const char *const expected[] = {
-        "--headless",   "--silent",     "--save",        "--rtc-offset",       "--scale",         "--unthrottled",
-        "--frames",     "--screenshot", "--test-runner", "--persistent-state", "--replay",        "--out",
-        "--rtc-fixed",  "--resume-at",  "--help",        "pokeemerald.sav",    "pokeemerald.rtc", "1 to 16 (default 3)",
+        "--headless",
+        "--silent",
+        "--save",
+        "--rtc-offset",
+        "--scale",
+        "--unthrottled",
+        "--frames",
+        "--screenshot",
+        "--test-runner",
+        "--persistent-state",
+        "--replay",
+        "--out",
+        "--rtc-fixed",
+        "--resume-at",
+        "--help",
+        "pokeemerald.sav",
+        "pokeemerald.rtc",
+        "settings.ini",
+        "1 to 16 (default: the settings file's, else 3)",
         "--audio-dump",
+        "--data-dir",
+        "--keys",
+        "--version",
     };
     bool all_present = true;
     for (size_t i = 0; i < sizeof expected / sizeof expected[0]; i++)

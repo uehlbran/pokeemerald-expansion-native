@@ -1587,6 +1587,151 @@ reputation-less executable). **VirusTotal** scan links would be added to
 release notes only if a public release ever happens, with the known caveat
 that MinGW-built executables draw false positives from some engines.
 
+## 2026-10-14: The settings file, the data directory and the F1 overlay
+
+The owner's rulings from the Windows hands-on check (a settings file for the
+keys, an overlay with the map, the save path and the version, `--keys`) with
+the two adjustments (the files in the per-user directory with a portable
+mode; Quit in the platform's overlay), as built. The player's account is
+`docs/RUNNING.md`; the modules are `platform/data_dir.h`, `settings.h`,
+`help_text.h`, `overlay.h`, `font.h` and `version.h`.
+
+**The names.** `SDL_GetPrefPath("pokeemerald-expansion-native",
+"pokeemerald-native")`: `~/.local/share/pokeemerald-expansion-native/pokeemerald-native/`
+on Linux (or under `$XDG_DATA_HOME`), `%APPDATA%\pokeemerald-expansion-native\pokeemerald-native\`
+on Windows, `~/Library/Application Support/pokeemerald-expansion-native/pokeemerald-native/`
+on macOS. The application is the executable's name, as ruled. SDL asks for an
+organisation too, and its header documents no empty one (the behaviour of
+`""` on Windows and macOS is not written anywhere SDL 2 promises), so it gets
+a name: the project's own, which claims nothing on behalf of pret or
+rh-hideout, as a name of theirs would. The files keep their names,
+`pokeemerald.sav` (with `pokeemerald.sav.lock`) and `pokeemerald.rtc`, and
+the new one is `settings.ini`: plain text that every system opens in an
+editor (Notepad, by default, on Windows), which is what a file the player
+writes by hand needs.
+
+**The rule** (`data_dir_resolve`): `--data-dir DIR`, made if missing with
+`host_file_make_directory` (its parent must exist), refused if what is there
+is not a directory (`host_file_is_directory`), and made and checked whenever
+it is given, even when every file has its own path; else the executable's
+directory (`SDL_GetBasePath`) if `settings.ini` is there, "there" meaning it
+opens or exists without read permission (`EACCES`, then reported when read);
+else the per-user directory. `--save` and `--rtc-offset` win for their file,
+as given (relative to the working directory). The directory is looked for
+only when a file needs it, and in that order, because `SDL_GetPrefPath`
+creates the directory: portable mode and `--data-dir` never call it, and a
+headless run with both paths given looks for nothing. A headless run reads no
+settings file, since it has no keyboard and no window for one to set; that
+is also what keeps every gate off the per-user directory without a new
+argument. Test-runner mode has no files, as before. No per-user directory
+(SDL fails) stops the start with a message naming `--data-dir`; an unknown
+executable directory is reported and portable mode skipped. The rule is pure
+but for SDL's two answers, which the unit tests replace with a host of their
+own (counting that the per-user one is not asked for when unused); SDL's own
+answers are checked on Linux through `XDG_DATA_HOME` and `/proc/self/exe`.
+
+**The settings file** (`settings_parse`, pure): `setting = value` lines, `#`
+comments on lines of their own (SDL names a key `#`), blank lines; the ten
+buttons by their names (`a`, `b`, `select`, `start`, `right`, `left`, `up`,
+`down`, `r`, `l`) with SDL's key names (`SDL_GetScancodeFromName`, through
+`input.c`, which owns the keyboard), and `scale`, 1 to 16, which `--scale`
+overrides. Names and keys in any case, blanks around them ignored, CRLF and a
+UTF-8 byte order mark accepted. Two lines for one setting: the later wins,
+as in every file of this kind, so a line added at the end takes effect. Keys
+are scancodes, physical positions, as the defaults always were. F1 is refused
+as a button's key (it would open the overlay and close the keypad). A bad
+line is reported on stderr with its number and what is wrong and ignored; the
+rest applies. A file that cannot be read, or one over 16 KiB, stops the start
+with a message: it is the player's own, written to be read, and running
+without it would leave them guessing. The game never writes it. `input.c`'s
+fixed table became the defaults the file overrides; the translators take the
+keymap and stay pure.
+
+**The overlay.** F1 (the scancode, the same key on every layout) shows and
+hides it; Q, while it is shown, quits (`SDLK_q`, the key that types q, so
+that the hint `Q: quit  F1: close` names the key on the keyboard). It shows
+`--keys`'s lines (`help_text_write`, one function for both): the version, the
+data directory and its mode, the three paths, then the keys in force and the
+controller line, files first because a small window's overlay shows the
+lines from the top until it is full (at `--scale 1` some 14 lines of 38
+characters; `--keys` prints everything). Quit is the window-close path: the frame loop ends, `main`
+stores the save only if the game wrote one and it is pending, as at any exit,
+stops the modules and releases the lock; the platform writes nothing of its
+own. The game's Start menu is not touched. While the overlay is shown the
+game keeps running, as ruled, and KEYINPUT reads every button released,
+from the keyboard, a controller or a script alike: the keys are the overlay's
+then, so F1, Q (which may be a button's key) or anything pressed while
+reading never reaches the game, and nothing is half-pressed when it closes.
+It exists only for a window played from the keyboard; `main` does not start
+it headless, in test-runner mode or for a replay, so no gate or replay can
+open it, and it is drawn by `video.c` as a second texture over the frame in
+the window, never into the frame buffer the screenshots come from.
+
+**The text.** A bitmap font of our own, not SDL_ttf: SDL2 draws no text, and
+SDL_ttf would be a second library, plus a font file with its own licence to
+ship, for one screen of ASCII; the game's font is tiles in the game's own
+encoding, not ASCII. The glyphs (`font_glyphs.h`) were drawn for this project
+on a 5x8 grid, 5x7 capitals with a descender row, in 6x10 cells (a column and
+two rows of space); no font was copied or followed. The overlay is an ARGB
+texture of the window's initial size (240 and 160 times the scale), black at
+7/8 opacity under white text, drawn once at start-up; the glyphs are drawn
+at half the window's scale (at least 1), so that a line holds some 80 to 120
+characters at every scale from 2; a longer line goes on in the next, and
+lines past the bottom are left out. Characters outside ASCII (a path with an
+accent) show as one `?` each. Tested on buffers: the glyphs against
+pictures written in the tests, the drawing pixel by pixel at scales 1 and 2,
+clipping, the layout at scales 1, 3 and 4, the wrapping and the cut.
+
+**Where it lives in the code.** `platform/player.c` holds what a run knows
+of its player (the paths, the settings, the help text, the window's scale)
+and the one decision of who gets the overlay (`player_wants_overlay`: not
+headless, not test-runner mode, not a replay), all unit-tested; `main.c`
+calls it. The settings file and the clock's offset are read through
+`host_file_read` (read(2) retried on `EINTR`; Windows: `ReadFile` on the
+descriptor's handle, as `host_file_write_all` writes), so that the OS calls
+stay behind `host_file.h`. A bad line is reported with its printable ASCII
+only, other bytes as `?`, so that a settings file cannot write control
+sequences to the terminal.
+
+**The version.** `git describe --always --dirty --match 'v[0-9]*'`, from
+`Makefile.native`, kept to the characters a tag or a hash has; `unknown`
+without git. The match is needed because the history carries expansion's
+tags (`expansion/1.10.0`, `1.11.0`), after which plain `git describe` would
+name the build (`expansion/1.10.0-5060-g...`, read as expansion 1.10.0); it
+takes a release tag of this project's own if the owner makes one named
+`v...`, else the abbreviated commit. It is defined for `version.c` alone and
+rebuilt only when it changes (`platform/Makefile`, `version.txt`), so that
+ccache still serves every other object after a commit.
+
+**What the gates pass.** `tests/smoke/lib.sh` (both replays, `run_cross_os.sh`)
+and `save_steps.sh` and `run_cross_width.sh` already pass `--save` and
+`--rtc-offset` headless, so they look for no data directory and read no
+settings: the replays and the cross-width script were run with
+`XDG_DATA_HOME` pointing at a scratch path, which stayed absent, and their
+outputs are unchanged. `native-rom-test` runs `--test-runner`, which has no
+files. `run_windows_smoke.sh` now passes `--data-dir` (relative, and a
+non-ASCII one) or both paths, checks the files where they were told to go,
+and checks `--keys` with `--data-dir`, with a settings file (its key, and its
+bad line's number on stderr), `--version`, and portable mode (a copy of the
+executable beside a `settings.ini`, the printed directory checked by a marker
+file in it, since Windows may print short names); it runs against the Linux
+executable as well. BUILDING.md's smoke boot passes `--data-dir out`. No
+gate writes into the per-user directory of the machine running it.
+
+**What a restart carries.** `restart.c` keeps every argument but
+`--resume-at` and `--audio-dump`, so `--data-dir`, `--save` and
+`--rtc-offset` reach the restarted run (`test_restart.c`), which finds the
+same files; portable mode follows from the settings file beside the
+executable, and the restart starts the same executable (`/proc/self/exe`;
+`GetModuleFileNameW`) in the same working directory. The crash reboot runs
+in test-runner mode only, which has no data directory; it keeps every
+argument but `--persistent-state` in any case.
+
+Not verified here: the overlay on a screen (no display; its picture is
+unit-tested); SDL's per-user directory on Windows, which a gate may not
+create; and the portable smoke's run on Windows, which the Windows runner
+does next.
+
 ## 2026-10-15: Fast-forward, Steam Deck and native Apple silicon (the owner's additions)
 
 The owner added three items to the plan on 2026-10-15 (PLAN.md "Milestone

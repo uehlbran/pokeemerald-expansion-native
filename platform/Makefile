@@ -243,6 +243,18 @@ endif
 # independent code cannot encode it.
 $(OBJ_DIR)/test/test_arm_division.o: CFLAGS_ALL += -fno-pie
 
+# The build's version (version.h): Makefile.native passes `git describe`'s,
+# and anything else builds "unknown". It is defined for version.c alone, since
+# a define in every file's flags would change all their compile commands at
+# each commit and ccache would miss on every one. version.txt holds the value
+# the object was built with and is rewritten only when it changes, so that
+# version.o is rebuilt then and only then.
+PLATFORM_VERSION ?= unknown
+VERSION_FILE := $(BUILD_DIR)/version.txt
+$(shell mkdir -p $(BUILD_DIR) && { [ "$$(cat $(VERSION_FILE) 2>/dev/null)" = '$(PLATFORM_VERSION)' ] || printf '%s\n' '$(PLATFORM_VERSION)' > $(VERSION_FILE); })
+$(OBJ_DIR)/version.o: CFLAGS_ALL += -DPLATFORM_VERSION='"$(PLATFORM_VERSION)"'
+$(OBJ_DIR)/version.o: $(VERSION_FILE)
+
 # These objects read expansion's structure layouts through its headers, so they
 # are compiled as the game is (Makefile.native CPPFLAGS and ARCH_FLAGS), or the
 # layouts could differ: inspect.c and its tests read the game's variables;

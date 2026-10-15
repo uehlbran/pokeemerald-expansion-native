@@ -25,6 +25,7 @@
 #include "interrupt.h"
 #include "lcd_status.h"
 #include "m4a_output.h"
+#include "overlay.h"
 #include "ppu.h"
 #include "psg.h"
 #include "save_file.h"
@@ -218,12 +219,16 @@ static void mix_sound(void)
     }
 }
 
-/* video_poll_events' callback: controller hot-plug. A controller that cannot
- * be opened is reported by input and play goes on with the others. */
+/* video_poll_events' callback: controller hot-plug, and the help overlay's
+ * keys, whose Q ends the game after this frame as closing the window does.
+ * A controller that cannot be opened is reported by input and play goes on
+ * with the others. */
 static void on_sdl_event(const union SDL_Event *event, void *context)
 {
     (void)context;
     (void)input_handle_event(event);
+    if (overlay_handle_event(event) == OVERLAY_QUIT)
+        frame.exit_requested = true;
 }
 
 static void run_step_hook(void)

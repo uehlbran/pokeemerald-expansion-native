@@ -4,12 +4,16 @@
  * Stands in for the GBA's 240x160 LCD (GBATEK "LCD Dimensions and Timings").
  * The PPU draws a frame into a BGR555 buffer; this module shows it. It is the
  * only module that calls SDL's video API; the other modules that use SDL
- * (audio, input, frame, frame_pacer, main) name what they use in their own
- * headers. Design:
+ * (audio, input, frame, frame_pacer, main, data_dir, overlay) name what they
+ * use in their own headers. Design:
  * docs/RESEARCH.md "Video".
  *
  * Headless mode creates no window and no SDL state; present just discards.
  * That is what the smoke test and the test runner use.
+ *
+ * With the help overlay started (overlay.h, before video_init), the window
+ * also shows it over the frame while it is shown; the frame buffer and
+ * video_write_frame_ppm never see it.
  */
 #ifndef VIDEO_H
 #define VIDEO_H
@@ -43,7 +47,8 @@ struct video_config {
 
 /* Returns 0 on success, nonzero after printing a message to stderr. On
  * failure everything already created is released. Calling it while
- * initialised is an error. */
+ * initialised is an error. A window gets the overlay's texture, drawn now,
+ * if the overlay is started. */
 int video_init(const struct video_config *cfg);
 
 /* frame: VIDEO_PIXEL_COUNT uint16_t in GBATEK BGR555 (bits 0-4 red, 5-9

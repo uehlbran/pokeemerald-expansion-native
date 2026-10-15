@@ -32,10 +32,11 @@
  *     on the grid by zero-order hold, and as many PSG samples
  *     (psg_generate), mixed (sound_mix), queued (audio_queue) and, with
  *     --audio-dump, recorded (audio_dump).
- *  6. The panel shows the frame (video_present); SDL's events are polled
- *     (video_poll_events, each passed to input_handle_event; a quit ends the
- *     loop after this frame); the step hook, if one is set, runs (below);
- *     KEYINPUT is written (input_update_keyinput).
+ *  6. The panel shows the frame (video_present, with the help overlay over
+ *     it while shown); SDL's events are polled (video_poll_events, each
+ *     passed to input_handle_event and overlay_handle_event; a quit, or Q in
+ *     the overlay, ends the loop after this frame); the step hook, if one is
+ *     set, runs (below); KEYINPUT is written (input_update_keyinput).
  *  7. If the game wrote the flash chip, the save file is stored.
  *  8. The pacer holds the GBA frame rate (frame_pacer_wait).
  *  9. The frame count; with a frame limit, the last frame ends the loop;

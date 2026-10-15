@@ -18,10 +18,14 @@
  * one exception is crash_reboot's handler, which, in test-runner mode,
  * replaces a crashed process with a fresh run of the same program.
  *
- * Before any module starts, main takes the save's lock (save_lock.h), so
- * that a second instance on the same save stops there, and it releases the
- * lock once every module has stopped, after the last store and before a
- * restart, whose new run takes it again as any start does.
+ * Before any module starts, main finds the player's files (player.h: the
+ * data directory, the save, the clock's offset and the settings file, read
+ * then) and takes the save's lock (save_lock.h), so that a
+ * second instance on the same save stops there, and it releases the lock
+ * once every module has stopped, after the last store and before a restart,
+ * whose new run finds the same files from the same arguments and takes the
+ * lock again as any start does. --keys prints what was found and ends there,
+ * and --version before anything is looked for.
  *
  * Test-runner mode (--test-runner) makes the process what mgba-rom-test is
  * to expansion's hydra (tools/mgba-rom-test-hydra, run through
@@ -48,6 +52,7 @@
 #include "bios.h"
 #include "crash_reboot.h"
 #include "crt0.h"
+#include "data_dir.h"
 #include "debug_channel.h"
 #include "dma.h"
 #include "fixed_clock.h"
@@ -59,6 +64,8 @@
 #include "input.h"
 #include "interrupt.h"
 #include "options.h"
+#include "overlay.h"
+#include "player.h"
 #include "ppu.h"
 #include "psg.h"
 #include "replay_session.h"
@@ -69,6 +76,7 @@
 #include "save_lock.h"
 #include "timer.h"
 #include "transfer_bounds.h"
+#include "version.h"
 #include "video.h"
 
 /* Expansion's entry point and IRQ handler table (src/main.c). */
@@ -209,10 +217,11 @@ static int64_t read_fixed_clock(void)
 
 static int start_rtc(const struct options *o)
 {
+    const char *const offset_path = player_rtc_offset_path();
     fixed_clock_base = o->rtc_fixed_epoch;
     if (o->rtc_fixed) /* no host time zone in a deterministic run */
-        return rtc_init_utc(read_fixed_clock, o->rtc_offset_path);
-    return rtc_init(NULL, o->rtc_offset_path);
+        return rtc_init_utc(read_fixed_clock, offset_path);
+    return rtc_init(NULL, offset_path);
 }
 static int start_frame_pacer(const struct options *o)
 {
@@ -230,9 +239,20 @@ static int start_bios(const struct options *o)
     return 0;
 }
 
+/* The help overlay, for a window played from the keyboard only
+ * (player_wants_overlay); before video, which draws it into its texture. */
+static int start_overlay(const struct options *o)
+{
+    return player_wants_overlay(o) ? overlay_init(player_write_help) : 0;
+}
+
 static int start_video(const struct options *o)
 {
-    struct video_config config = {.headless = o->headless, .scale = o->scale, .title = MAIN_WINDOW_TITLE};
+    struct video_config config = {
+        .headless = o->headless,
+        .scale = player_window_scale(o),
+        .title = MAIN_WINDOW_TITLE,
+    };
     return video_init(&config);
 }
 
@@ -240,7 +260,7 @@ static int start_input(const struct options *o)
 {
     /* Headless there is no window to take keys from, and a replay supplies
      * them; the script source reads "no key pressed" until a replay sets it. */
-    return input_init(o->headless || o->replay_path != NULL ? INPUT_SOURCE_SCRIPT : INPUT_SOURCE_HOST);
+    return input_init(o->headless || o->replay_path != NULL ? INPUT_SOURCE_SCRIPT : INPUT_SOURCE_HOST, player_keymap());
 }
 
 static int start_flash(const struct options *o)
@@ -285,7 +305,9 @@ static int adopt_save_layout(const char *path, uint32_t pointer_bits)
  * stops, and the player decides what to do with it. */
 static int start_save_file(const struct options *o)
 {
-    if (save_file_init(o->save_path) != SAVE_FILE_OK)
+    (void)o;
+    const char *const path = player_save_path();
+    if (save_file_init(path) != SAVE_FILE_OK)
         return -1;
     int status = save_file_load();
     struct save_file_layout layout;
@@ -295,17 +317,17 @@ static int start_save_file(const struct options *o)
         return 0;
     case SAVE_FILE_FOREIGN_LAYOUT:
         if (save_file_loaded_layout(&layout) && layout.layout_id == SAVE_FILE_LAYOUT_ID)
-            return adopt_save_layout(o->save_path, layout.pointer_bits);
+            return adopt_save_layout(path, layout.pointer_bits);
         (void)fprintf(stderr,
                       "main: %s was written by a build with another save layout, which this build cannot "
                       "read; not starting, so it is not overwritten\n",
-                      o->save_path);
+                      path);
         return -1;
     default:
         (void)fprintf(stderr,
                       "main: %s cannot be used (above); not starting, so it is not overwritten. Move it "
                       "away to start without a save\n",
-                      o->save_path);
+                      path);
         return -1;
     }
 }
@@ -356,6 +378,7 @@ static const struct module_step module_steps[] = {
     {"sdl", start_sdl, SDL_Quit},
     {"audio", start_audio, audio_shutdown},
     {"audio_dump", start_audio_dump, audio_dump_shutdown},
+    {"overlay", start_overlay, overlay_shutdown},
     {"video", start_video, video_shutdown},
     {"input", start_input, input_shutdown},
     {"rtc", start_rtc, rtc_shutdown},
@@ -505,9 +528,20 @@ int main(int argc, char **argv)
         options_print_usage(stdout);
         return MAIN_EXIT_OK;
     }
+    if (options.version) {
+        (void)printf("%s\n", version_string());
+        return MAIN_EXIT_OK;
+    }
+    /* The data directory and the files in it, and the settings file's
+     * contents, before the save's lock is taken. */
+    if (player_find(&options, data_dir_sdl_host()) != 0)
+        return MAIN_EXIT_FAILURE;
+    if (options.keys)
+        return player_print_keys(stdout) == 0 ? MAIN_EXIT_OK : MAIN_EXIT_FAILURE;
 
     /* Test-runner mode has no save path: it writes no save and takes no lock. */
-    if (options.save_path != NULL && save_lock_take(options.save_path) != SAVE_LOCK_OK)
+    const char *const save_path = player_save_path();
+    if (save_path != NULL && save_lock_take(save_path) != SAVE_LOCK_OK)
         return MAIN_EXIT_FAILURE; /* reported */
     if (!start_steps(module_steps, MODULE_STEP_COUNT, &options)) {
         save_lock_release();

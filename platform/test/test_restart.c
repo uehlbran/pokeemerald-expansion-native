@@ -44,6 +44,21 @@ PTEST(leaves_out_the_audio_dump_and_its_path)
     PT_ASSERT(args.argv[4] == NULL);
 }
 
+/* The restarted run must find the files the first one wrote: the data directory and the explicit paths
+ * are carried as they were given. Portable mode needs nothing carried: it follows from the settings file
+ * beside the executable, which the restart starts again (host_process_restart). */
+PTEST(keeps_the_data_directory_and_the_file_paths)
+{
+    char *const argv[] = {"game", "--data-dir", "d", "--save", "s.sav", "--rtc-offset", "c.rtc", "--headless"};
+    struct restart_args args;
+    PT_ASSERT_EQ_INT(restart_build_args(8, argv, 12, 0, &args), 0);
+    for (size_t i = 0; i < 8; i++)
+        PT_ASSERT_EQ_STR(args.argv[i], argv[i]);
+    PT_ASSERT_EQ_STR(args.argv[8], "--resume-at");
+    PT_ASSERT_EQ_STR(args.argv[9], "12");
+    PT_ASSERT(args.argv[10] == NULL);
+}
+
 PTEST(advances_the_fixed_clock)
 {
     char *const argv[] = {"game", "--rtc-fixed", "1700000000", "--silent"};
