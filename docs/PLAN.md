@@ -211,10 +211,18 @@ Order of work:
    Two tasks from the owner's Windows hands-on check (DECISIONS.md
    "The owner's rulings from the Windows hands-on check", 2026-10-14),
    after the audio-rate task and before macOS: (c) a settings file
-   beside the executable that rebinds the keyboard (with an on-screen
-   help overlay and a `--keys` option); (d) no console window on
-   Windows: link as a GUI program, attach to the parent's console when
-   there is one, otherwise log to a file beside the executable.
+   that rebinds the keyboard, with an F1 overlay (the key map, the
+   active save, clock and settings paths, the version, and Quit, which
+   is the platform's and never the game's Start menu) and a `--keys`
+   option printing the map and the paths; the save, the RTC offset
+   file and the settings file default to SDL_GetPrefPath's per-user
+   directory, or the executable's directory when a settings file
+   already exists there (portable mode); explicit `--save` and
+   `--rtc-offset` win; both modes documented (BUILDING.md or
+   docs/RUNNING.md); DECISIONS.md "Two adjustments from the owner";
+   (d) no console window on Windows: link as a GUI program, attach to
+   the parent's console when there is one, otherwise log to a file in
+   the per-user directory.
 2. An inventory of the Windows (MinGW) and macOS ports, no code (an Opus
    worker, to the session scratchpad and summarised here): what in
    `platform/` and the build glue is Linux-specific (the regions mapped

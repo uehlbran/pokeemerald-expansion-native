@@ -1495,3 +1495,27 @@ Also confirmed for the owner: the translucent oval under every overworld
 character is expansion's own default (`OW_OBJECT_VANILLA_SHADOWS FALSE`,
 `OW_SHADOW_INTENSITY 4` of 16 in `include/config/overworld.h`); the Linux
 replay screenshot shows the same.
+
+## 2026-10-14: Two adjustments from the owner to the tasks from the Windows check
+
+Quit and the file locations, ruled by the owner after the hands-on check;
+they refine "The owner's rulings from the Windows hands-on check" above.
+
+**Quit lives in the platform's F1 overlay, not in the game's Start menu.**
+Adding it to the Start menu would be another patch to expansion's code,
+against the upstream-modification policy (UPSTREAM_MODIFICATIONS.md). The
+Start menu's EXIT stays as in the original game: it closes the menu.
+
+**Default file locations move to the per-user directory.** Today the save
+defaults to the bare relative path `pokeemerald.sav` (`OPTIONS_DEFAULT_SAVE_PATH`),
+so it depends on the working directory: a shortcut or a different launch
+folder silently starts a fresh game; and a folder beside the executable may
+not be writable (Program Files; a 64-bit process gets no write
+virtualization). The owner rules: the save, the RTC offset file and the new
+settings file default to the per-user directory SDL_GetPrefPath gives; the
+executable's directory is used instead only when a settings file already
+exists there (portable mode); explicit `--save` and `--rtc-offset` paths
+still win. The F1 overlay and the `--keys` output show the active paths.
+Both modes are documented in BUILDING.md or a short docs/RUNNING.md. For the
+owner: the saves from the builds of 2026-10-14 live in the launch directory
+and will need moving once, by hand, to the per-user directory.

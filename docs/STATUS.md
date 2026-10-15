@@ -74,7 +74,11 @@ game flags (3249f05722). Milestone 6's screenshot flake (the trainer party
 seed hashing a pointer) is recorded in the milestone 6 section and in
 DECISIONS.md. Earlier breakages are in the milestone logs.
 
-**Needs the owner.** One thing to know: the default coding worker cannot
+**Needs the owner.** A note for later, as asked: the saves written by
+the Windows builds of 2026-10-14 live in the launch directory (beside the
+executable, `pokeemerald.sav` and `pokeemerald.rtc`); once the settings
+task moves the defaults to the per-user directory, they will need moving
+there once, by hand (the task's docs page will say where). Also: the default coding worker cannot
 be DeepSeek 4.1 Flash, because the Agent tool of this session offers
 only Sonnet, Opus, Haiku and Fable (checked again 2026-10-14; DECISIONS.md).
 Plain code, build glue, tests and docs drafts go to Sonnet, hard pieces
