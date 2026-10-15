@@ -8,7 +8,7 @@ another macro; where upstream's own condition or the pointer-width test
 `__SIZEOF_POINTER__` is also needed it is nested inside the guard, or follows
 it as `#elif`), is as small as it can
 be, and has a row in the table below with the file, the reason, a summary
-of the diff, and the stage that added it (the "Since" column: M1 the research and the first documents, M2 the 32-bit boot, M3 the input replay and the save, M4 the test runner, M5 the debug-menu gate, M6 the audit of every row and the contribution rules, M7 the 64-bit build, M8 the Windows build; "Review 2026-10-14" is the code review of that date; a row can name several). The GBA build must produce
+of the diff, and the stage that added it (the "Since" column: M1 the research and the first documents, M2 the 32-bit boot, M3 the input replay and the save, M4 the test runner, M5 the debug-menu gate, M6 the audit of every row and the contribution rules, M7 the 64-bit build, M8 the Windows build; "Review 2026-10-14" is the code review of that date, "Review 2026-10-15" the review of the tree before the repository was published; a row can name several). The GBA build must produce
 the same ROM before and after (check with `make compare` where
 applicable, and `make check` always). A modification that changes GBA
 behaviour is a bug.
