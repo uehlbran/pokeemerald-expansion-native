@@ -63,7 +63,7 @@ body:
     id: logs
     attributes:
       label: Logs
-      description: Linux: the terminal output. Windows: `pokeemerald.log` in the data directory (docs/RUNNING.md says where it is). Steam Deck: the output of `./pokeemerald-native` run in Konsole. Paste it here.
+      description: "Linux: the terminal output. Windows: `pokeemerald.log` in the data directory (docs/RUNNING.md says where it is). Steam Deck: the output of `./pokeemerald-native` run in Konsole. Paste it here."
       render: text
     validations:
       required: false
