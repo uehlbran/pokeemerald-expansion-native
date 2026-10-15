@@ -13,117 +13,46 @@ you build it from this repository, and no build is published.
 
 ## Get started
 
+**First time building software? Follow the [step-by-step guide](docs/GETTING-STARTED.md).**
+
 You build the game yourself; no download exists.
 
 **Windows 10 or 11**
 
-1. Open PowerShell as administrator:
-   - Click the Start button and type `PowerShell`.
-   - Right-click "Windows PowerShell" and click "Run as administrator".
-2. Install Ubuntu:
-   - Copy this line, right-click in the PowerShell window to paste it, press Enter.
-   - Wait until the prompt comes back.
+1. In PowerShell opened as administrator, paste this line and press Enter; restart the computer if it asks you to:
 
    ```
    wsl --install -d Ubuntu-24.04
    ```
 
-3. If the text says the system must be rebooted, restart the computer (Start,
-   the power button, "Restart").
-4. Set up Ubuntu the first time:
-   - A window titled Ubuntu opens after the restart. If none opens within a
-     minute, click Start, type `Ubuntu` and press Enter.
-   - It asks you to create a user name. Type a short one in lower case, such
-     as `player`, and press Enter.
-   - It asks for a password twice. Type one and press Enter, then type it
-     again and press Enter. Nothing shows while you type; that is normal.
-   - Wait until a line ending in `$` shows.
-5. Install the tools the game needs to build:
-   - Copy this line, right-click in the Ubuntu window to paste it, press Enter.
-   - If it asks for your password, type the one you just made and press Enter.
-   - Wait until the line ending in `$` comes back.
+2. In the Ubuntu window, paste each of these lines and press Enter, waiting for each to finish (the last is slow):
 
    ```
    sudo apt update && sudo apt install -y build-essential git python3 pkg-config curl clang gcc-multilib libpng-dev libsdl2-dev gcc-mingw-w64-x86-64 binutils-mingw-w64-x86-64
-   ```
-
-6. Download the code and build the game. Copy each line, paste it, press
-   Enter, and wait for the line ending in `$` before the next. The last one is
-   slow, and its last line says `build-native: done:`.
-
-   ```
    git clone --depth 1 https://github.com/uehlbran/pokeemerald-expansion-native.git
-   ```
-
-   ```
    cd pokeemerald-expansion-native
-   ```
-
-   ```
    tools/build-native.sh --os windows
    ```
 
-7. Copy the game to your Desktop:
-   - Copy this line, paste it, press Enter. A folder opens in Windows Explorer.
+3. Paste this line and press Enter, copy `pokeemerald-native.exe` and `SDL2.dll` from the folder that opens into a new folder, and double-click the .exe ("More info", then "Run anyway" if SmartScreen asks):
 
-     ```
-     explorer.exe build/native64-windows
-     ```
-
-   - Click `pokeemerald-native.exe`, hold Ctrl and click `SDL2.dll`, then
-     press Ctrl+C.
-   - Right-click an empty part of the Desktop, click "New", then "Folder", type
-     `Pokemon` and press Enter.
-   - Double-click the new folder and press Ctrl+V.
-8. Double-click `pokeemerald-native.exe` in that folder. If Windows says
-   "Windows protected your PC" (the game file is not signed), click "More
-   info", then "Run anyway".
-
-Every step with more detail, and what to do if something goes wrong:
-[docs/GETTING-STARTED.md](docs/GETTING-STARTED.md#windows-10-or-11).
+   ```
+   explorer.exe build/native64-windows
+   ```
 
 **Linux (Ubuntu 24.04)**
 
-Open a terminal with Ctrl+Alt+T. For each line below, copy it, paste it with
-Ctrl+Shift+V, press Enter, and wait until the line ending in `$` comes back.
+In a terminal, paste each line and press Enter; the build is slow and ends with `build-native: done:`.
 
-1. Install the tools the game needs to build (it may ask for your password;
-   nothing shows as you type):
+```
+sudo apt update && sudo apt install -y build-essential git python3 pkg-config curl clang gcc-multilib libpng-dev libsdl2-dev gcc-mingw-w64-x86-64 binutils-mingw-w64-x86-64
+git clone --depth 1 https://github.com/uehlbran/pokeemerald-expansion-native.git
+cd pokeemerald-expansion-native
+tools/build-native.sh --os linux
+./build/native64/pokeemerald-native
+```
 
-   ```
-   sudo apt update && sudo apt install -y build-essential git python3 pkg-config curl clang gcc-multilib libpng-dev libsdl2-dev gcc-mingw-w64-x86-64 binutils-mingw-w64-x86-64
-   ```
-
-2. Download the code:
-
-   ```
-   git clone --depth 1 https://github.com/uehlbran/pokeemerald-expansion-native.git
-   ```
-
-3. Go into the new folder:
-
-   ```
-   cd pokeemerald-expansion-native
-   ```
-
-4. Build the game. This is slow; the last line says `build-native: done:`:
-
-   ```
-   tools/build-native.sh --os linux
-   ```
-
-5. Start the game:
-
-   ```
-   ./build/native64/pokeemerald-native
-   ```
-
-Every step with more detail, and what to do if something goes wrong:
-[docs/GETTING-STARTED.md](docs/GETTING-STARTED.md#linux-ubuntu-2404).
-
-**Steam Deck**: build the Linux game, then add it to Steam; see
-[docs/GETTING-STARTED.md](docs/GETTING-STARTED.md#steam-deck). Not yet
-tried on a Deck.
+**Steam Deck**: build the Linux game, then add it to Steam; see [the guide](docs/GETTING-STARTED.md#steam-deck). Not yet tried on a Deck.
 
 **macOS**: not yet; in progress on the branch `work/macos`.
 
