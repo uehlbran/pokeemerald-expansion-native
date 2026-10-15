@@ -64,7 +64,7 @@ it (`platform/gba_regions.pe.ld`, `platform/gba_game.pe.ld`,
 - `platform/build_glue/check_pe_layout.py` checks every link's result, because
   the executable cannot be run where it is built. That the loader accepts the
   layout, and refuses one with holes, was measured on a Windows runner
-  (`research/probes/README.md`).
+  (the loader probes of the Windows port).
 
 The executable is linked at 0x40000000 so it never overlaps a region. The
 two places where expansion takes a pointer to be in the cartridge ROM are
@@ -216,8 +216,7 @@ beyond the C library and SDL, and each need is one of seven concerns. Each
 concern is one header, `platform/host_<concern>.h`, which says what it stands in for and which OS
 facility it wraps; the modules call it and contain no OS call of their own
 (no `sigaction`, `ucontext`, `/proc`, `getauxval`, `pthread`, `fsync`).
-`research/m8-inventory.md`, sections 1.2, 3 and 5.1, has the counterparts on
-Windows and macOS; `DECISIONS.md`, "The ports share a thin host layer", why
+The counterparts on Windows and macOS are the same concerns with that OS's calls; `DECISIONS.md`, "The ports share a thin host layer", says why
 it is one layer and not `#ifdef`s in the modules. `host_thread.h` serves only
 the unit tests' time limit.
 
@@ -272,8 +271,7 @@ and replaced with `MoveFileExW` and write-through, with no directory sync. The
 save's lock is `LockFileEx` over the whole lock file, released with
 `UnlockFileEx` before its handle closes; since the restarted run is a child
 the restarting process waits for, `main` releases the lock before the
-restart, and the child takes it as any start does (`DECISIONS.md`, the
-amendment to the owner's ruling (3)).
+restart, and the child takes it as any start does (`DECISIONS.md`, "The save's lock across a restart and a crash").
 
 The replay's function names are OS-neutral the same way: the link writes
 `<executable>.symbols`, the executable's function symbols as `nm` lists

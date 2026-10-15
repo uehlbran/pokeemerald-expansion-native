@@ -7,8 +7,8 @@
  * path relative to wherever the game was started from (a shortcut, another
  * folder) would silently start a fresh game, while the executable's own
  * folder may not be writable (Program Files). So the files live in one data
- * directory (docs/DECISIONS.md, the owner's adjustments to the tasks from the
- * Windows check), found in this order:
+ * directory (docs/DECISIONS.md, "Quit lives in the F1 overlay; the default file
+ * locations are the per-user directory"), found in this order:
  *   1. --data-dir DIR: that directory, made if it is missing (its parent
  *      must exist), refused if something else is there; for the gates and
  *      tests;

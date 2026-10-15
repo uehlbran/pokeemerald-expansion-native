@@ -11,8 +11,7 @@
 # else. Caches may hold compiled objects, converted assets and ccache data,
 # never a linked game or test runner (same entry).
 #
-# The Windows runner (milestone 8, tasks W8 and W9; docs/PLAN.md "Milestone 8
-# plan"; docs/BUILDING.md, "Running it on Windows"). Nothing built for Windows
+# The Windows runner (docs/BUILDING.md, "Running it on Windows"). Nothing built for Windows
 # runs on the Linux build machine, so the Windows job cross-builds with
 # MinGW-w64 (docs/BUILDING.md, "Windows (cross-build from Linux)") and runs
 # what it built, in one job, so that no build is carried between jobs. The
@@ -50,7 +49,7 @@
 #
 # Windows minutes count double. Nightly at 05:17 UTC, an hour after
 # native.yml's nightly tier, and by hand. The windows job's limit is 60
-# minutes; the owner expects about 30 (the Linux builds in WSL, the three
+# minutes; about 30 are expected (the Linux builds in WSL, the three
 # cross-builds, then the Windows steps, which took 8 minutes before).
 name: windows
 

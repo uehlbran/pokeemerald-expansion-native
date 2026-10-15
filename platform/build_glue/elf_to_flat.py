@@ -40,7 +40,9 @@ object. The rules, each the one place it is decided:
     the same symbol, so the C side and the data agree. A label inside a
     relocated word (the key-split labels of sound/keysplit_tables.inc point
     back into the voicegroup before them) is set back from the word's end,
-    ".set name, . - n", as the source sets it. Names are plain
+    ".set name, . - n", as the source sets it (at expansion 1.17.1 there is
+    one, keysplit_piano, 4 bytes into the word before it; clang writes it as
+    an N_ALT_ENTRY symbol on Mach-O). Names are plain
     identifiers; two symbols that would get one name are refused. The
     undefined symbols are those a relocation of the listing names: one that
     no relocation names (25 at expansion 1.17.1, C enum constants the

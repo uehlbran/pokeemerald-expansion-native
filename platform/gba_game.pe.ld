@@ -25,7 +25,7 @@
  *    __data_start__ to __bss_end__, as an ELF image's is from __data_start to
  *    _end (host_image.h's writable part, host_windows.c). The resources,
  *    read-only, which the default script puts last, move before them.
- * The layout the loader accepted: research/probes/windows_layout.
+ * The layout the loader accepted: loader probe W1, variant "filled_gaps".
  */
 
 /* Symbols whose address is their value, as in gba_game.ld: four music players
