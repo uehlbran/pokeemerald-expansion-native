@@ -280,6 +280,30 @@ PTEST(a_keymap_moves_a_button_to_another_key)
     PT_ASSERT_EQ_U32(input_keyboard_to_keys(&keymap, state, SDL_NUM_SCANCODES), INPUT_KEY_A);
 }
 
+PTEST(the_debug_menu_key_presses_r_and_start_together_and_f4_is_its_default)
+{
+    struct input_keymap keymap = input_default_keymap();
+    uint8_t state[SDL_NUM_SCANCODES] = {0};
+    PT_ASSERT_EQ_INT(keymap.debug_menu, SDL_SCANCODE_F4);
+    PT_ASSERT_EQ_INT(INPUT_DEBUG_MENU_DEFAULT_SCANCODE, SDL_SCANCODE_F4);
+    state[SDL_SCANCODE_F4] = 1;
+    PT_ASSERT_EQ_U32(input_keyboard_to_keys(&keymap, state, SDL_NUM_SCANCODES), INPUT_KEY_R | INPUT_KEY_START);
+    state[SDL_SCANCODE_Z] = 1; /* with a button: both */
+    PT_ASSERT_EQ_U32(input_keyboard_to_keys(&keymap, state, SDL_NUM_SCANCODES),
+                     INPUT_KEY_A | INPUT_KEY_R | INPUT_KEY_START);
+    keymap.debug_menu = SDL_SCANCODE_F6; /* moved: F4 is nothing, F6 is the menu */
+    PT_ASSERT_EQ_U32(input_keyboard_to_keys(&keymap, state, SDL_NUM_SCANCODES), INPUT_KEY_A);
+    state[SDL_SCANCODE_F6] = 1;
+    PT_ASSERT_EQ_U32(input_keyboard_to_keys(&keymap, state, SDL_NUM_SCANCODES),
+                     INPUT_KEY_A | INPUT_KEY_R | INPUT_KEY_START);
+    keymap.debug_menu = INPUT_NO_SCANCODE; /* none: no key is the menu, and state[0] is not read as it */
+    state[INPUT_NO_SCANCODE] = 1;
+    PT_ASSERT_EQ_U32(input_keyboard_to_keys(&keymap, state, SDL_NUM_SCANCODES), INPUT_KEY_A);
+    /* a state too short to hold the key is not read past */
+    keymap.debug_menu = SDL_SCANCODE_F4;
+    PT_ASSERT_EQ_U32(input_keyboard_to_keys(&keymap, state, SDL_SCANCODE_F4), INPUT_KEY_A);
+}
+
 PTEST(two_buttons_on_one_key_are_both_pressed)
 {
     struct input_keymap keymap = input_default_keymap();

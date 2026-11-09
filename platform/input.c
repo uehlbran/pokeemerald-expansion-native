@@ -64,6 +64,7 @@ struct input_keymap input_default_keymap(void)
     struct input_keymap keymap;
     for (size_t i = 0; i < INPUT_BUTTON_COUNT; i++)
         keymap.scancodes[i] = buttons[i].default_scancode;
+    keymap.debug_menu = INPUT_DEBUG_MENU_DEFAULT_SCANCODE;
     return keymap;
 }
 
@@ -91,18 +92,23 @@ uint16_t input_keyboard_to_keys(const struct input_keymap *keymap, const uint8_t
         if (scancode >= 0 && scancode < numkeys && keyboard[scancode] != 0)
             keys = (uint16_t)(keys | buttons[i].key);
     }
+    const int debug_menu = keymap->debug_menu;
+    if (debug_menu > INPUT_NO_SCANCODE && debug_menu < numkeys && keyboard[debug_menu] != 0)
+        keys = (uint16_t)(keys | INPUT_KEY_R | INPUT_KEY_START);
     return keys;
 }
 
-/* Every scancode one SDL could report. */
+/* Every scancode one SDL could report; the debug menu's may be none. */
 static bool keymap_is_valid(const struct input_keymap *keymap)
 {
     for (size_t i = 0; i < INPUT_BUTTON_COUNT; i++) {
         if (keymap->scancodes[i] <= INPUT_NO_SCANCODE || keymap->scancodes[i] >= SDL_NUM_SCANCODES)
             return false;
     }
-    return true;
+    return keymap->debug_menu >= INPUT_NO_SCANCODE && keymap->debug_menu < SDL_NUM_SCANCODES;
 }
+
+_Static_assert(INPUT_DEBUG_MENU_DEFAULT_SCANCODE == SDL_SCANCODE_F4, "the debug menu's default key is F4");
 
 uint16_t input_pad_to_keys(const struct input_pad_state *pad)
 {

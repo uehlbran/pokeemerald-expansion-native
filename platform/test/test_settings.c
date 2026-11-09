@@ -42,6 +42,7 @@ static bool fast_forward_is_default(const struct fastforward_settings *f)
 {
     const struct fastforward_settings d = fastforward_defaults();
     return fastforward_keys_equal(&f->hold, &d.hold) && fastforward_keys_equal(&f->toggle, &d.toggle)
+           && fastforward_keys_equal(&f->faster, &d.faster) && fastforward_keys_equal(&f->slower, &d.slower)
            && f->speed == d.speed && f->audio == d.audio;
 }
 
@@ -252,6 +253,56 @@ PTEST(a_button_may_share_fast_forwards_key)
     PT_ASSERT_EQ_U32(s.problem_count, 0u);
     PT_ASSERT_EQ_INT(s.keymap.scancodes[SELECT], SDL_SCANCODE_TAB);
     PT_ASSERT(fast_forward_is_default(&s.fast_forward));
+}
+
+PTEST(the_speed_keys_and_the_debug_menu_key_are_applied)
+{
+    struct settings s;
+    parse("Fast_Forward_Faster = ctrl+keypad +\nfast_forward_slower = Keypad -\ndebug_menu = f5\n", &s);
+    PT_ASSERT_EQ_U32(s.problem_count, 0u);
+    PT_ASSERT(is_key(&s.fast_forward.faster, SDL_SCANCODE_KP_PLUS, FASTFORWARD_CTRL));
+    PT_ASSERT(is_key(&s.fast_forward.slower, SDL_SCANCODE_KP_MINUS, 0u));
+    PT_ASSERT_EQ_INT(s.keymap.debug_menu, SDL_SCANCODE_F5);
+    parse("", &s);
+    PT_ASSERT(is_key(&s.fast_forward.faster, SDL_SCANCODE_F3, 0u));
+    PT_ASSERT(is_key(&s.fast_forward.slower, SDL_SCANCODE_F2, 0u));
+    PT_ASSERT_EQ_INT(s.keymap.debug_menu, SDL_SCANCODE_F4);
+}
+
+PTEST(the_debug_menu_key_may_be_none_but_not_f1_or_a_key_sdl_does_not_know)
+{
+    struct settings s;
+    parse("debug_menu = None\n", &s);
+    PT_ASSERT_EQ_INT(s.keymap.debug_menu, INPUT_NO_SCANCODE);
+    PT_ASSERT_EQ_U32(s.problem_count, 0u);
+    parse("debug_menu = f1\ndebug_menu = nokey\n", &s);
+    PT_ASSERT_EQ_INT(s.keymap.debug_menu, SDL_SCANCODE_F4);
+    PT_ASSERT_EQ_U32(s.problem_count, 2u);
+    PT_ASSERT_EQ_INT(s.problems[0].kind, SETTINGS_RESERVED_KEY);
+    PT_ASSERT_EQ_INT(s.problems[1].kind, SETTINGS_UNKNOWN_KEY);
+}
+
+/* The four fast-forward keys are four keys: of two lines that make two of them one, the later
+ * is ignored and its setting keeps its default, which a line may also clash with. */
+PTEST(a_speed_key_on_another_fast_forward_key_is_refused_on_the_later_line)
+{
+    struct settings s;
+    parse("fast_forward_faster = tab\n", &s); /* the hold's default */
+    PT_ASSERT(fast_forward_is_default(&s.fast_forward));
+    PT_ASSERT_EQ_U32(s.problem_count, 1u);
+    PT_ASSERT_EQ_INT(s.problems[0].kind, SETTINGS_SAME_FAST_FORWARD_KEY);
+    PT_ASSERT_EQ_STR(s.problems[0].text, "tab");
+    parse("fast_forward_slower = f3\n", &s); /* the faster key's default */
+    PT_ASSERT(fast_forward_is_default(&s.fast_forward));
+    PT_ASSERT_EQ_U32(s.problem_count, 1u);
+    parse("fast_forward_faster = f9\nfast_forward_slower = f9\nfast_forward_toggle = f2\n", &s);
+    PT_ASSERT(is_key(&s.fast_forward.faster, SDL_SCANCODE_F9, 0u));
+    PT_ASSERT(is_key(&s.fast_forward.slower, SDL_SCANCODE_F2, 0u)); /* line 2 refused, the default */
+    PT_ASSERT(is_key(&s.fast_forward.toggle, SDL_SCANCODE_TAB, FASTFORWARD_SHIFT)); /* line 3: now F2 is taken */
+    PT_ASSERT_EQ_U32(s.problem_count, 2u);
+    PT_ASSERT_EQ_U32(s.problems[0].line, 2u);
+    PT_ASSERT_EQ_U32(s.problems[1].line, 3u);
+    PT_ASSERT_EQ_INT(s.problems[1].kind, SETTINGS_SAME_FAST_FORWARD_KEY);
 }
 
 /* One key cannot both hold and toggle: of the two lines that make them one, the later is
@@ -491,7 +542,8 @@ PTEST(a_file_is_applied_and_each_problem_reported_with_its_line)
     const int written = snprintf(
         expected, sizeof expected,
         "settings: %s:3: 'jump' is not a setting (a, b, select, start, right, left, up, down, r, l, "
-        "scale, fast_forward, fast_forward_toggle, fast_forward_speed, fast_forward_audio, fullscreen, "
+        "scale, fast_forward, fast_forward_toggle, fast_forward_faster, fast_forward_slower, fast_forward_speed, "
+        "fast_forward_audio, debug_menu, fullscreen, "
         "fullscreen_toggle, pad_fast_forward, pad_fast_forward_toggle, pad_overlay, pad_overlay_close, pad_quit, "
         "pad_fullscreen); the line is ignored\n"
         "settings: %s:4: the scale '40' is not a whole number from 1 to 16; the line is ignored\n",
@@ -520,7 +572,7 @@ PTEST(the_report_names_each_kind_of_problem_and_those_not_kept)
     PT_ASSERT(strstr(said, "settings: f.ini:1: 'x' is not a 'setting = value' line; the line is ignored\n") != NULL);
     PT_ASSERT(strstr(said, "settings: f.ini:2: 'nokey' is not a key name SDL knows") != NULL);
     PT_ASSERT(strstr(said, "settings: f.ini:3: 'F1' opens the help overlay and cannot be a button's, "
-                           "fast-forward's or the fullscreen key; the line is ignored\n")
+                           "fast-forward's, the debug menu's or the fullscreen key; the line is ignored\n")
               != NULL);
     PT_ASSERT(strstr(said, "settings: f.ini:4: the fast-forward speed '9' is not 2, 3, 4 or unlimited; the line is "
                            "ignored\n")
@@ -542,8 +594,8 @@ PTEST(the_report_of_one_key_for_both)
     const size_t got = rewound ? fread(said, 1, sizeof said - 1u, out) : 0;
     said[got] = '\0';
     (void)fclose(out);
-    PT_ASSERT_EQ_STR(said, "settings: f.ini:2: 'tab' is the other fast-forward key too: one key cannot both hold and "
-                           "toggle, and this one keeps its default; the line is ignored\n");
+    PT_ASSERT_EQ_STR(said, "settings: f.ini:2: 'tab' is another fast-forward key too: hold, toggle, faster and slower "
+                           "are four keys, and this one keeps its default; the line is ignored\n");
 }
 
 /* ---- the controller's functions and fullscreen ---- */

@@ -17,8 +17,11 @@
  *     scale = 4
  *     fast_forward = tab
  *     fast_forward_toggle = shift+tab
+ *     fast_forward_faster = f3
+ *     fast_forward_slower = f2
  *     fast_forward_speed = 2
  *     fast_forward_audio = play
+ *     debug_menu = f4
  *     pad_overlay = x
  *     pad_fast_forward = lefttrigger
  *     fullscreen = yes
@@ -26,8 +29,12 @@
  * A setting is a button's name (input_buttons' `setting`: a, b, select,
  * start, right, left, up, down, r, l), `scale`, or one of fast-forward's:
  * `fast_forward` (the key held), `fast_forward_toggle` (the key that
- * switches it on and off), `fast_forward_speed` (2, 3, 4 or `unlimited`)
- * and `fast_forward_audio` (`play`, sped up, or `mute`); a controller
+ * switches it on and off), `fast_forward_faster` and `fast_forward_slower`
+ * (the keys that take the speed a step up or down while the game runs),
+ * `fast_forward_speed` (2, 3, 4 or `unlimited`, the speed at the start)
+ * and `fast_forward_audio` (`play`, sped up, or `mute`); `debug_menu`, the
+ * key that presses R and Start together, which opens expansion's debug menu
+ * in the overworld (a key as SDL names it, or `none`); a controller
  * function's, `pad_fast_forward`, `pad_fast_forward_toggle`, `pad_overlay`,
  * `pad_overlay_close`, `pad_quit` and `pad_fullscreen` (controller.h), whose
  * value is a button as SDL names it (SDL_GameControllerGetButtonFromString:
@@ -45,12 +52,12 @@
  * skipped. The later of two lines for one setting wins. Keys are scancodes,
  * physical positions, as the defaults are. F1 is the help overlay's
  * (overlay.h) and is refused as a button's or a fast-forward key; a button
- * and fast-forward may share a key, as two buttons may. One key cannot both
- * hold and toggle: if the file makes the two one, the later of the lines
- * that set them is a problem and its setting keeps its default (checked
- * again, so that a line clashing with the other's default is one too); the
- * same goes for two controller functions on one button. F1 is refused as
- * the fullscreen key too. A
+ * and fast-forward may share a key, as two buttons may. Fast-forward's four
+ * keys are four keys: if the file makes two of them one, the later of the
+ * lines that set them is a problem and its setting keeps its default
+ * (checked again, so that a line clashing with another's default is one
+ * too); the same goes for two controller functions on one button. F1 is
+ * refused as the fullscreen key and the debug menu key too. A
  * line that is not `setting = value`, a setting that does not exist and a
  * value that is not one are problems: each is reported with its line number
  * and the line is ignored, the rest applies.
@@ -88,7 +95,7 @@ enum settings_problem_kind {
     SETTINGS_BAD_SCALE,             /* text: the value, not 1 to OPTIONS_MAX_SCALE */
     SETTINGS_BAD_SPEED,             /* text: the value, not 2, 3, 4 or unlimited */
     SETTINGS_BAD_AUDIO,             /* text: the value, not play or mute */
-    SETTINGS_SAME_FAST_FORWARD_KEY, /* text: the value, the other fast-forward key's too */
+    SETTINGS_SAME_FAST_FORWARD_KEY, /* text: the value, another fast-forward key's too */
     SETTINGS_UNKNOWN_CONTROL,       /* text: the value, which names no controller button */
     SETTINGS_SAME_CONTROL,          /* text: the value, another function's button too */
     SETTINGS_BAD_FULLSCREEN         /* text: the value, not yes, no or auto */

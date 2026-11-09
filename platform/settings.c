@@ -22,6 +22,10 @@
 #define FAST_FORWARD_TOGGLE_SETTING "fast_forward_toggle"
 #define FAST_FORWARD_SPEED_SETTING "fast_forward_speed"
 #define FAST_FORWARD_AUDIO_SETTING "fast_forward_audio"
+#define FAST_FORWARD_FASTER_SETTING "fast_forward_faster"
+#define FAST_FORWARD_SLOWER_SETTING "fast_forward_slower"
+#define DEBUG_MENU_SETTING "debug_menu"
+#define NONE_VALUE "none"
 #define FULLSCREEN_SETTING "fullscreen"
 #define FULLSCREEN_KEY_SETTING "fullscreen_toggle"
 #define AUTO_VALUE "auto"
@@ -62,13 +66,21 @@ struct key_line {
     struct span value;
 };
 
-/* What settings_parse knows as it goes: the settings, and where the two
- * fast-forward keys came from, for the check that they differ. */
+/* What settings_parse knows as it goes: the settings, and where the four
+ * fast-forward keys came from (fastforward_settings_key's order), for the
+ * check that they differ. */
 struct parse {
     struct settings *settings;
-    struct key_line hold;
-    struct key_line toggle;
+    struct key_line keys[FASTFORWARD_KEY_COUNT];
     struct key_line pad[CONTROLLER_FUNCTION_COUNT];
+};
+
+/* The fast-forward key settings, in fastforward_settings_key's order. */
+static const char *const fast_forward_key_settings[FASTFORWARD_KEY_COUNT] = {
+    FAST_FORWARD_SETTING,
+    FAST_FORWARD_TOGGLE_SETTING,
+    FAST_FORWARD_FASTER_SETTING,
+    FAST_FORWARD_SLOWER_SETTING,
 };
 
 static bool is_blank(char c)
@@ -219,6 +231,23 @@ static void apply_fullscreen_key(struct settings *settings, uint32_t line, struc
         settings->fullscreen_key = scancode;
 }
 
+/* The debug menu's key, or "none" for no such key (R+Start still opens it). */
+static void apply_debug_menu_key(struct settings *settings, uint32_t line, struct span value)
+{
+    if (span_is(value, NONE_VALUE)) {
+        settings->keymap.debug_menu = INPUT_NO_SCANCODE;
+        return;
+    }
+    char name[KEY_NAME_SIZE];
+    const int scancode = span_to_string(value, name, sizeof name) ? input_scancode_from_name(name) : INPUT_NO_SCANCODE;
+    if (scancode == INPUT_NO_SCANCODE)
+        add_problem(settings, line, SETTINGS_UNKNOWN_KEY, value);
+    else if (scancode == OVERLAY_TOGGLE_SCANCODE)
+        add_problem(settings, line, SETTINGS_RESERVED_KEY, value);
+    else
+        settings->keymap.debug_menu = scancode;
+}
+
 static void apply_pad_control(struct parse *parse, uint32_t line, size_t function, struct span value)
 {
     char name[KEY_NAME_SIZE];
@@ -269,8 +298,18 @@ static void keep_pad_apart(struct parse *parse)
     }
 }
 
-static void apply_fast_forward_key(struct parse *parse, uint32_t line, struct span value, struct fastforward_key *key,
-                                   struct key_line *from)
+/* The fast-forward key setting called name, in fast_forward_key_settings'
+ * order, or FASTFORWARD_KEY_COUNT. */
+static size_t find_fast_forward_key(struct span name)
+{
+    for (size_t i = 0; i < FASTFORWARD_KEY_COUNT; i++) {
+        if (span_is(name, fast_forward_key_settings[i]))
+            return i;
+    }
+    return FASTFORWARD_KEY_COUNT;
+}
+
+static void apply_fast_forward_key(struct parse *parse, uint32_t line, size_t index, struct span value)
 {
     char name[KEY_NAME_SIZE];
     struct fastforward_key read;
@@ -279,29 +318,36 @@ static void apply_fast_forward_key(struct parse *parse, uint32_t line, struct sp
     } else if (read.scancode == OVERLAY_TOGGLE_SCANCODE) {
         add_problem(parse->settings, line, SETTINGS_RESERVED_KEY, value);
     } else {
-        *key = read;
-        *from = (struct key_line){.line = line, .value = value};
+        *fastforward_settings_key_mutable(&parse->settings->fast_forward, index) = read;
+        parse->keys[index] = (struct key_line){.line = line, .value = value};
     }
 }
 
-/* If the two keys are one, the later line's goes back to its default
- * (settings.h). */
-static bool keep_apart(struct parse *parse)
+/* Of two fast-forward keys that are one, the one the later line set, or
+ * FASTFORWARD_KEY_COUNT if there are not two. */
+static size_t find_key_clash(const struct parse *parse)
 {
-    struct fastforward_settings *const keys = &parse->settings->fast_forward;
-    if (!fastforward_keys_equal(&keys->hold, &keys->toggle))
-        return true;
-    const struct fastforward_settings defaults = fastforward_defaults();
-    if (parse->hold.line > parse->toggle.line) {
-        add_problem(parse->settings, parse->hold.line, SETTINGS_SAME_FAST_FORWARD_KEY, parse->hold.value);
-        keys->hold = defaults.hold;
-        parse->hold.line = 0;
-    } else {
-        add_problem(parse->settings, parse->toggle.line, SETTINGS_SAME_FAST_FORWARD_KEY, parse->toggle.value);
-        keys->toggle = defaults.toggle;
-        parse->toggle.line = 0;
+    const struct fastforward_settings *const keys = &parse->settings->fast_forward;
+    for (size_t i = 0; i < FASTFORWARD_KEY_COUNT; i++) {
+        for (size_t j = 0; j < i; j++) {
+            if (fastforward_keys_equal(fastforward_settings_key(keys, i), fastforward_settings_key(keys, j)))
+                return parse->keys[i].line > parse->keys[j].line ? i : j;
+        }
     }
-    return false;
+    return FASTFORWARD_KEY_COUNT;
+}
+
+/* The later line's key goes back to its default (settings.h). Each pass
+ * takes one key off a custom value, so the passes end: the defaults differ. */
+static void keep_apart(struct parse *parse)
+{
+    const struct fastforward_settings defaults = fastforward_defaults();
+    for (size_t later = find_key_clash(parse); later != FASTFORWARD_KEY_COUNT; later = find_key_clash(parse)) {
+        add_problem(parse->settings, parse->keys[later].line, SETTINGS_SAME_FAST_FORWARD_KEY, parse->keys[later].value);
+        *fastforward_settings_key_mutable(&parse->settings->fast_forward, later)
+            = *fastforward_settings_key(&defaults, later);
+        parse->keys[later].line = 0;
+    }
 }
 
 /* The settings other than the buttons; false if name is none of them. */
@@ -311,10 +357,10 @@ static bool apply_named(struct parse *parse, uint32_t line, struct span name, st
     if (span_is(name, SCALE_SETTING)) {
         if (!parse_whole_number(value, 1, OPTIONS_MAX_SCALE, &settings->scale))
             add_problem(settings, line, SETTINGS_BAD_SCALE, value);
-    } else if (span_is(name, FAST_FORWARD_SETTING)) {
-        apply_fast_forward_key(parse, line, value, &settings->fast_forward.hold, &parse->hold);
-    } else if (span_is(name, FAST_FORWARD_TOGGLE_SETTING)) {
-        apply_fast_forward_key(parse, line, value, &settings->fast_forward.toggle, &parse->toggle);
+    } else if (find_fast_forward_key(name) != FASTFORWARD_KEY_COUNT) {
+        apply_fast_forward_key(parse, line, find_fast_forward_key(name), value);
+    } else if (span_is(name, DEBUG_MENU_SETTING)) {
+        apply_debug_menu_key(settings, line, value);
     } else if (span_is(name, FAST_FORWARD_SPEED_SETTING)) {
         if (!parse_speed(value, &settings->fast_forward.speed))
             add_problem(settings, line, SETTINGS_BAD_SPEED, value);
@@ -391,9 +437,7 @@ void settings_parse(const char *text, size_t size, struct settings *out)
         parse_line(&parse, line, (struct span){.text = start, .length = length});
         position += length + (end != NULL ? 1u : 0u);
     }
-    /* Twice: the default a refused line leaves may be the other line's key. */
-    if (!keep_apart(&parse))
-        (void)keep_apart(&parse);
+    keep_apart(&parse);
     keep_pad_apart(&parse);
 }
 
@@ -455,8 +499,9 @@ static void print_setting_names(FILE *out)
     const struct input_button *const buttons = input_buttons();
     for (size_t i = 0; i < INPUT_BUTTON_COUNT; i++)
         (void)fprintf(out, "%s, ", buttons[i].setting);
-    (void)fputs(SCALE_SETTING ", " FAST_FORWARD_SETTING ", " FAST_FORWARD_TOGGLE_SETTING ", " FAST_FORWARD_SPEED_SETTING
-                              ", " FAST_FORWARD_AUDIO_SETTING ", " FULLSCREEN_SETTING ", " FULLSCREEN_KEY_SETTING,
+    (void)fputs(SCALE_SETTING ", " FAST_FORWARD_SETTING ", " FAST_FORWARD_TOGGLE_SETTING ", " FAST_FORWARD_FASTER_SETTING
+                              ", " FAST_FORWARD_SLOWER_SETTING ", " FAST_FORWARD_SPEED_SETTING ", " FAST_FORWARD_AUDIO_SETTING
+                              ", " DEBUG_MENU_SETTING ", " FULLSCREEN_SETTING ", " FULLSCREEN_KEY_SETTING,
                 out);
     const struct controller_function_info *const functions = controller_functions();
     for (size_t i = 0; i < CONTROLLER_FUNCTION_COUNT; i++)
@@ -482,7 +527,9 @@ static void print_problem(const struct settings_problem *problem, const char *pa
                       problem->text);
         break;
     case SETTINGS_RESERVED_KEY:
-        (void)fprintf(out, "'%s' opens the help overlay and cannot be a button's, fast-forward's or the fullscreen key",
+        (void)fprintf(out,
+                      "'%s' opens the help overlay and cannot be a button's, fast-forward's, the debug menu's or the "
+                      "fullscreen key",
                       problem->text);
         break;
     case SETTINGS_BAD_SPEED:
@@ -496,8 +543,8 @@ static void print_problem(const struct settings_problem *problem, const char *pa
         break;
     case SETTINGS_SAME_FAST_FORWARD_KEY:
         (void)fprintf(out,
-                      "'%s' is the other fast-forward key too: one key cannot both hold and toggle, and this one "
-                      "keeps its default",
+                      "'%s' is another fast-forward key too: hold, toggle, faster and slower are four keys, and this "
+                      "one keeps its default",
                       problem->text);
         break;
     case SETTINGS_UNKNOWN_CONTROL:

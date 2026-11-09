@@ -60,9 +60,11 @@ There is no 32-bit Windows build and no sanitizer build for Windows.
 | F11 | fullscreen on and off ([below](#fullscreen)) |
 | Tab, held | fast-forward while held ([below](#fast-forward)) |
 | Shift+Tab | fast-forward on, and off again |
+| F3, F2 | fast-forward's speed one step up, one step down |
+| F4 | R and Start together: the debug menu, the cheats ([below](#cheats-the-debug-menu)) |
 
 Those are the defaults; the settings file ([below](#the-settings-file))
-moves any GBA button, and either fast-forward key, to another key. The keys are physical positions: on a
+moves any GBA button, any fast-forward key and the debug menu key to another key. The keys are physical positions: on a
 keyboard that is not QWERTY, "Z" is the key where QWERTY has its Z.
 
 A game controller that SDL2 recognises works as well, and does everything the
@@ -119,7 +121,13 @@ the window (`FF 3x`, `FF 4x` or `FF max` at the other speeds).
 
 - The speed is a setting, `fast_forward_speed` ([below](#the-settings-file)):
   2, 3 or 4 times the GBA's speed, or `unlimited`, as fast as your computer
-  runs the game. The game itself is unchanged: it runs the same frames, more
+  runs the game. F3 takes it one step up that list and F2 one step down,
+  while you play, whether fast-forward is on (the indicator and the sound
+  follow at once) or off (the indicator shows the new speed for a second
+  and a half, and the next fast-forward runs at it); at the ends of the
+  list a press changes nothing but still shows the speed. The change lasts
+  until you quit: the file is never written, so the game starts at
+  `fast_forward_speed` again. The game itself is unchanged: it runs the same frames, more
   of them a second. Everything it counts in frames hurries along (walking,
   text, animations, and the play time on your trainer card); the clock
   (the time of day, Berries, tides) keeps your computer's time.
@@ -128,12 +136,14 @@ the window (`FF 3x`, `FF 4x` or `FF max` at the other speeds).
   ends it starts again cleanly after a moment's silence.
   `fast_forward_audio = mute` silences the game while fast-forward is on
   instead.
-- Both keys can be changed in the settings file (`fast_forward` for the one
-  you hold, `fast_forward_toggle` for the switch). A fast-forward key may
+- All four keys can be changed in the settings file (`fast_forward` for the
+  one you hold, `fast_forward_toggle` for the switch, `fast_forward_faster`
+  and `fast_forward_slower` for the speed). A fast-forward key may
   have `shift+`, `ctrl+` or `alt+`, or several, in front of it, as
   `shift+tab` has; it then works only with exactly those held, so Tab and
-  Shift+Tab are two keys. A GBA button and fast-forward may share a key:
-  pressing it does both.
+  Shift+Tab are two keys. The four are four different keys: a line that
+  makes two of them one is reported and keeps its default. A GBA button and
+  fast-forward may share a key: pressing it does both.
 - Letting go of the hold key ends fast-forward, and so does switching to
   another window while you hold it. Fast-forward switched on with Shift+Tab
   stays on until you press it again, switch to another window or quit; after
@@ -149,7 +159,51 @@ the right stick to switch it on and off. The hold ends when the trigger is
 let go, when the controller is unplugged and when the window loses focus; the
 switch ends when the window loses focus too (unplugging the controller leaves
 it on). While the overlay is shown the controller's fast-forward buttons do
-nothing either.
+nothing either. The speed keys have no controller button: set the speed
+with the keyboard, or in the file.
+
+## Cheats: the debug menu
+
+The cheats are expansion's own debug menu (`src/debug.c`,
+`DEBUG_OVERWORLD_MENU` in `include/config/debug.h`), which this build keeps
+switched on. In the overworld, hold R and press Start (S then Return on the
+default keys), or press F4, which presses the two for you; the menu opens
+over the map, A chooses, B goes back. Its sub-menus, as expansion 1.17.1
+ships them:
+
+- **Utilities**: Fly to map, Warp to map warp, Set weather, Time Functions
+  (the time of day, the weekday, the wall clock, the daily events), Berry
+  Functions, Follower NPC, Watch credits, and Cheat start, which skips the
+  opening with a ready party.
+- **PC/Bag**: Access PC from anywhere; Fill the PC boxes, the PC items and
+  each bag pocket; Clear Bag; Clear Storage Boxes.
+- **Party**: Heal party; Edit Pokémon (status, faint, hidden nature,
+  friendship, ability, Move Relearner, hatch an Egg); Check EVs and IVs;
+  Pokérus; Clear Party, Set Party; Start Debug Battle.
+- **Give X**: Give item XYZ (any item, any quantity), Pokémon (Basic) by
+  species and level, Pokémon (Complex) with its form, shininess, nature,
+  ability, moves, IVs and EVs, Give Egg, Give Decoration, Max Money, Max
+  Coins, Max Battle Points, Daycare Egg.
+- **Player**: the player's name, gender and Trainer ID.
+- **Trainers** and **Encounters**: a battle against any trainer, with a
+  partner or as a double battle; rematches and the VS Seeker; mass outbreaks.
+- **Flags & Vars**: Set Flag XYZ and Set Var XYZ by number; the Pokédex
+  flags; toggles for the Pokédex, the National Dex, the PokéNav, Match Call,
+  the Running Shoes, the Fly flags, all badges, Game clear and the Frontier
+  Pass; and the cheats proper, Collision OFF (walk through walls), Encounter
+  OFF, Trainer See OFF, Catching OFF and Bag Use OFF.
+- **Sound**: play any music or sound effect. **ROM Info**: expansion's
+  version and the save's free space.
+
+In a battle, Select opens expansion's battle debug menu
+(`DEBUG_BATTLE_MENU`), also on in this build.
+
+What the menu changes is saved with your game like anything else: a
+Pokémon it gives is a Pokémon in your save, and a save made after "cheat
+start" is a save past the opening. The menu is not available in a replay,
+which drives the game with scripted keys, nor to the test runner. The F4
+key can be moved or removed in the settings file (`debug_menu`; `none`
+leaves R+Start alone to open it).
 
 ## Fullscreen
 
@@ -230,10 +284,16 @@ scale = 3
 # and off; shift+, ctrl+ and alt+ go in front of a key.
 fast_forward = tab
 fast_forward_toggle = shift+tab
-# 2, 3 or 4 times the GBA's speed, or unlimited.
+# The speed one step up and one step down the list below, while you play.
+fast_forward_faster = f3
+fast_forward_slower = f2
+# 2, 3 or 4 times the GBA's speed, or unlimited: the speed at the start.
 fast_forward_speed = 2
 # While fast-forward is on, the sound: play (sped up) or mute.
 fast_forward_audio = play
+# The key that presses R and Start together, which opens the debug menu
+# (the cheats) in the overworld; none for no such key.
+debug_menu = f4
 # Fullscreen: yes, no, or auto (fullscreen on a Steam Deck only), and its key.
 fullscreen = auto
 fullscreen_toggle = f11
@@ -248,9 +308,11 @@ pad_fullscreen = lefttrigger
 ```
 
 The settings are the ten GBA buttons (`a`, `b`, `select`, `start`, `up`,
-`down`, `left`, `right`, `l`, `r`), `scale`, and fast-forward's four
-(`fast_forward`, `fast_forward_toggle`, `fast_forward_speed`,
-`fast_forward_audio`; [above](#fast-forward)), `fullscreen` and
+`down`, `left`, `right`, `l`, `r`), `scale`, fast-forward's six
+(`fast_forward`, `fast_forward_toggle`, `fast_forward_faster`,
+`fast_forward_slower`, `fast_forward_speed`, `fast_forward_audio`;
+[above](#fast-forward)), `debug_menu` ([above](#cheats-the-debug-menu); a key,
+or `none`), `fullscreen` and
 `fullscreen_toggle` ([above](#fullscreen)), and the controller's six
 (`pad_fast_forward`, `pad_fast_forward_toggle`, `pad_overlay`,
 `pad_overlay_close`, `pad_quit`, `pad_fullscreen`), each a button as SDL names

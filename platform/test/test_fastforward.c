@@ -5,7 +5,8 @@
  * ending on its key-up and on the window losing focus, the toggle ending on
  * the focus loss too and staying on across frames and key-ups until pressed
  * again, the overlay taking the presses but not the release, the multiplier
- * and the sound at each speed; and the indicator's text, place and picture.
+ * and the sound at each speed, the speed keys taking the speed up and down
+ * the list; and the indicator's text, place and picture.
  * The expected pictures are drawn with font.h's own calls, which test_font.c
  * checks pixel by pixel.
  */
@@ -91,8 +92,24 @@ PTEST(the_defaults_are_tab_held_shift_tab_toggled_twice_the_speed_and_the_sound_
     PT_ASSERT_EQ_U32(d.hold.modifiers, 0u);
     PT_ASSERT_EQ_INT(d.toggle.scancode, SDL_SCANCODE_TAB);
     PT_ASSERT_EQ_U32(d.toggle.modifiers, FASTFORWARD_SHIFT);
+    PT_ASSERT_EQ_INT(d.faster.scancode, SDL_SCANCODE_F3);
+    PT_ASSERT_EQ_U32(d.faster.modifiers, 0u);
+    PT_ASSERT_EQ_INT(d.slower.scancode, SDL_SCANCODE_F2);
+    PT_ASSERT_EQ_U32(d.slower.modifiers, 0u);
     PT_ASSERT_EQ_U32(d.speed, 2u);
     PT_ASSERT_EQ_INT(d.audio, FASTFORWARD_AUDIO_PLAY);
+}
+
+PTEST(the_settings_keys_are_hold_toggle_faster_slower_in_that_order_and_nothing_else)
+{
+    struct fastforward_settings d = fastforward_defaults();
+    PT_ASSERT(fastforward_settings_key(&d, 0) == &d.hold);
+    PT_ASSERT(fastforward_settings_key(&d, 1) == &d.toggle);
+    PT_ASSERT(fastforward_settings_key(&d, 2) == &d.faster);
+    PT_ASSERT(fastforward_settings_key(&d, 3) == &d.slower);
+    PT_ASSERT(fastforward_settings_key(&d, FASTFORWARD_KEY_COUNT) == NULL);
+    PT_ASSERT(fastforward_settings_key_mutable(&d, 2) == &d.faster);
+    PT_ASSERT(fastforward_settings_key_mutable(&d, 99) == NULL);
 }
 
 static bool named(const char *name, int scancode, unsigned modifiers)
@@ -507,7 +524,131 @@ PTEST(mute_is_the_sound_off_while_fast_forward_is_on)
     fastforward_shutdown();
 }
 
-PTEST(init_needs_settings_a_speed_two_keys_and_is_called_once)
+/* ---- the speed keys ---- */
+
+PTEST(a_speed_step_goes_up_and_down_the_list_and_stops_at_its_ends)
+{
+    PT_ASSERT_EQ_U32(fastforward_speed_step(2u, true), 3u);
+    PT_ASSERT_EQ_U32(fastforward_speed_step(3u, true), 4u);
+    PT_ASSERT_EQ_U32(fastforward_speed_step(4u, true), FASTFORWARD_UNLIMITED);
+    PT_ASSERT_EQ_U32(fastforward_speed_step(FASTFORWARD_UNLIMITED, true), FASTFORWARD_UNLIMITED);
+    PT_ASSERT_EQ_U32(fastforward_speed_step(FASTFORWARD_UNLIMITED, false), 4u);
+    PT_ASSERT_EQ_U32(fastforward_speed_step(4u, false), 3u);
+    PT_ASSERT_EQ_U32(fastforward_speed_step(3u, false), 2u);
+    PT_ASSERT_EQ_U32(fastforward_speed_step(2u, false), 2u);
+    /* not a speed: left alone */
+    PT_ASSERT_EQ_U32(fastforward_speed_step(1u, true), 1u);
+    PT_ASSERT_EQ_U32(fastforward_speed_step(7u, false), 7u);
+}
+
+PTEST(f3_and_f2_change_the_speed_in_force_whether_fast_forward_is_on_or_off)
+{
+    fastforward_shutdown();
+    PT_ASSERT_EQ_U32(fastforward_speed(), FRAME_PACER_NORMAL_SPEED); /* before init */
+    start();
+    PT_ASSERT_EQ_U32(fastforward_speed(), 2u);
+    press(SDL_SCANCODE_F3, KMOD_NONE); /* off: the speed changes, the multiplier does not */
+    PT_ASSERT_EQ_U32(fastforward_speed(), 3u);
+    PT_ASSERT(!fastforward_active());
+    PT_ASSERT_EQ_U32(fastforward_multiplier(), FRAME_PACER_NORMAL_SPEED);
+    press(SDL_SCANCODE_TAB, KMOD_NONE);
+    PT_ASSERT_EQ_U32(fastforward_multiplier(), 3u);
+    press(SDL_SCANCODE_F3, KMOD_NONE); /* on: the multiplier follows at once */
+    PT_ASSERT_EQ_U32(fastforward_multiplier(), 4u);
+    press(SDL_SCANCODE_F3, KMOD_NONE);
+    PT_ASSERT_EQ_U32(fastforward_multiplier(), FASTFORWARD_UNLIMITED);
+    press(SDL_SCANCODE_F3, KMOD_NONE); /* the top: nothing */
+    PT_ASSERT_EQ_U32(fastforward_multiplier(), FASTFORWARD_UNLIMITED);
+    press(SDL_SCANCODE_F2, KMOD_NONE);
+    PT_ASSERT_EQ_U32(fastforward_multiplier(), 4u);
+    press(SDL_SCANCODE_F2, KMOD_NONE);
+    press(SDL_SCANCODE_F2, KMOD_NONE);
+    press(SDL_SCANCODE_F2, KMOD_NONE); /* the bottom: nothing */
+    PT_ASSERT_EQ_U32(fastforward_multiplier(), 2u);
+    PT_ASSERT(fastforward_active()); /* the speed keys never turn it off or on */
+    release(SDL_SCANCODE_TAB, KMOD_NONE);
+    PT_ASSERT_EQ_U32(fastforward_speed(), 2u);
+    fastforward_shutdown();
+    PT_ASSERT_EQ_U32(fastforward_speed(), FRAME_PACER_NORMAL_SPEED);
+}
+
+PTEST(a_speed_key_with_other_modifiers_a_repeat_or_under_the_overlay_changes_nothing)
+{
+    start();
+    press(SDL_SCANCODE_F3, KMOD_LSHIFT); /* Shift+F3 is not F3 */
+    PT_ASSERT_EQ_U32(fastforward_speed(), 2u);
+    const SDL_Event repeat = key_event(SDL_KEYDOWN, SDL_SCANCODE_F3, KMOD_NONE, 1);
+    fastforward_handle_event(&repeat);
+    PT_ASSERT_EQ_U32(fastforward_speed(), 2u);
+    PT_ASSERT_EQ_INT(overlay_init(no_text), 0);
+    press_f1();
+    PT_ASSERT(overlay_shown());
+    press(SDL_SCANCODE_F3, KMOD_NONE);
+    PT_ASSERT_EQ_U32(fastforward_speed(), 2u);
+    press_f1();
+    press(SDL_SCANCODE_F3, KMOD_NONE);
+    PT_ASSERT_EQ_U32(fastforward_speed(), 3u);
+    overlay_shutdown();
+    fastforward_shutdown();
+}
+
+PTEST(a_speed_key_shows_the_indicator_for_the_flash_frames_while_fast_forward_is_off)
+{
+    fastforward_shutdown();
+    fastforward_end_frame(); /* before init: nothing */
+    PT_ASSERT(!fastforward_indicator_shown());
+    start();
+    PT_ASSERT(!fastforward_indicator_shown());
+    press(SDL_SCANCODE_F3, KMOD_NONE);
+    PT_ASSERT(fastforward_indicator_shown());
+    for (uint32_t i = 0; i < FASTFORWARD_FLASH_FRAMES - 1u; i++)
+        fastforward_end_frame();
+    PT_ASSERT(fastforward_indicator_shown()); /* the last frame of the flash */
+    fastforward_end_frame();
+    PT_ASSERT(!fastforward_indicator_shown());
+    press(SDL_SCANCODE_F2, KMOD_NONE); /* a press at the list's end shows it too */
+    press(SDL_SCANCODE_F2, KMOD_NONE);
+    PT_ASSERT(fastforward_indicator_shown());
+    PT_ASSERT_EQ_U32(fastforward_speed(), 2u);
+    for (uint32_t i = 0; i < FASTFORWARD_FLASH_FRAMES; i++)
+        fastforward_end_frame();
+    PT_ASSERT(!fastforward_indicator_shown());
+    /* on: shown whatever the flash, and the frames do not end it */
+    press(SDL_SCANCODE_TAB, KMOD_NONE);
+    for (uint32_t i = 0; i < FASTFORWARD_FLASH_FRAMES; i++)
+        fastforward_end_frame();
+    PT_ASSERT(fastforward_indicator_shown());
+    release(SDL_SCANCODE_TAB, KMOD_NONE);
+    PT_ASSERT(!fastforward_indicator_shown());
+    /* the overlay hides the flash as it hides the indicator */
+    press(SDL_SCANCODE_F3, KMOD_NONE);
+    PT_ASSERT_EQ_INT(overlay_init(no_text), 0);
+    press_f1();
+    PT_ASSERT(!fastforward_indicator_shown());
+    overlay_shutdown();
+    fastforward_shutdown();
+    PT_ASSERT(!fastforward_indicator_shown());
+}
+
+PTEST(rebound_speed_keys_are_the_ones_that_work)
+{
+    struct fastforward_settings settings = fastforward_defaults();
+    settings.faster = (struct fastforward_key){.scancode = SDL_SCANCODE_KP_PLUS, .modifiers = FASTFORWARD_CTRL};
+    settings.slower = (struct fastforward_key){.scancode = SDL_SCANCODE_KP_MINUS, .modifiers = 0u};
+    fastforward_shutdown();
+    PT_ASSERT_EQ_INT(fastforward_init(&settings), 0);
+    press(SDL_SCANCODE_F3, KMOD_NONE);
+    PT_ASSERT_EQ_U32(fastforward_speed(), 2u);
+    press(SDL_SCANCODE_KP_PLUS, KMOD_NONE); /* without Ctrl: not the key */
+    PT_ASSERT_EQ_U32(fastforward_speed(), 2u);
+    press(SDL_SCANCODE_KP_PLUS, KMOD_RCTRL);
+    PT_ASSERT_EQ_U32(fastforward_speed(), 3u);
+    press(SDL_SCANCODE_KP_MINUS, KMOD_NONE);
+    PT_ASSERT_EQ_U32(fastforward_speed(), 2u);
+    fastforward_shutdown();
+}
+
+PTEST(init_needs_settings_a_speed_four_different_keys_and_is_called_once)
 {
     struct fastforward_settings settings = fastforward_defaults();
     fastforward_shutdown();
@@ -518,6 +659,15 @@ PTEST(init_needs_settings_a_speed_two_keys_and_is_called_once)
     PT_ASSERT_EQ_INT(fastforward_init(&settings), -1);
     settings = fastforward_defaults();
     settings.toggle = settings.hold;
+    PT_ASSERT_EQ_INT(fastforward_init(&settings), -1);
+    settings = fastforward_defaults();
+    settings.faster = settings.hold;
+    PT_ASSERT_EQ_INT(fastforward_init(&settings), -1);
+    settings = fastforward_defaults();
+    settings.slower = settings.toggle;
+    PT_ASSERT_EQ_INT(fastforward_init(&settings), -1);
+    settings = fastforward_defaults();
+    settings.slower = settings.faster;
     PT_ASSERT_EQ_INT(fastforward_init(&settings), -1);
     PT_ASSERT(!fastforward_enabled());
     settings = fastforward_defaults();
@@ -561,13 +711,17 @@ PTEST(the_indicator_sits_in_the_top_right_corner)
     PT_ASSERT_EQ_U32(max.height, 10u);
 }
 
-PTEST(the_box_is_the_started_speeds)
+PTEST(the_box_is_the_speed_in_forces)
 {
     start_with(FASTFORWARD_UNLIMITED, FASTFORWARD_AUDIO_PLAY);
     const struct fastforward_rect box = fastforward_indicator_box();
+    press(SDL_SCANCODE_F2, KMOD_NONE); /* to 4x: "FF 4x" is a cell narrower */
+    const struct fastforward_rect after = fastforward_indicator_box();
     fastforward_shutdown();
     PT_ASSERT_EQ_U32(box.x, 201u);
     PT_ASSERT_EQ_U32(box.width, 37u);
+    PT_ASSERT_EQ_U32(after.x, 207u);
+    PT_ASSERT_EQ_U32(after.width, 31u);
 }
 
 /* Draws the indicator on a canvas of its box and compares it with the background and text
@@ -601,9 +755,12 @@ PTEST(the_indicator_is_its_text_on_the_overlays_background)
     const bool four = indicator_draws(31, 10, "FF 4x");
     start_with(FASTFORWARD_UNLIMITED, FASTFORWARD_AUDIO_MUTE);
     const bool max = indicator_draws(37, 10, "FF max");
+    press(SDL_SCANCODE_F2, KMOD_NONE); /* the speed key changes what is drawn */
+    const bool stepped = indicator_draws(31, 10, "FF 4x");
     fastforward_shutdown();
     PT_ASSERT(four);
     PT_ASSERT(max);
+    PT_ASSERT(stepped);
     PT_ASSERT(indicator_draws(31, 10, NULL));
 }
 

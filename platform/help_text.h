@@ -44,6 +44,7 @@ typedef void (*help_text_sink)(const char *line, void *context);
  *     Keyboard:
  *       A       Z                 (each button and its key, input_buttons' order)
  *       Fullscreen F11            (the toggle key)
+ *       Debug menu F4             (the key that presses R+Start; "none (R+Start)")
  *     Controller:
  *       GBA buttons: ...          (the fixed layout)
  *       Fast-forward hold    Right trigger   (each function in controller_functions' order
@@ -51,7 +52,9 @@ typedef void (*help_text_sink)(const char *line, void *context);
  *     Fast-forward:
  *       Hold    Tab               (fastforward_key_name)
  *       Toggle  Shift+Tab
- *       Speed   2x                ("unlimited")
+ *       Faster  F3                (the speed one step up, and down)
+ *       Slower  F2
+ *       Speed   2x                ("unlimited"; the speed at the start)
  *       Sound   sped up           ("muted") */
 void help_text_write(const struct help_info *info, help_text_sink sink, void *context);
 

@@ -28,6 +28,10 @@ static void write_keys(const struct help_info *info, help_text_sink sink, void *
     (void)snprintf(line, sizeof line, "  %-*s %s", BUTTON_COLUMN_WIDTH, "Fullscreen",
                    input_scancode_name(info->fullscreen_key));
     sink(line, context);
+    (void)snprintf(line, sizeof line, "  %-*s %s", BUTTON_COLUMN_WIDTH, "Debug menu",
+                   info->keymap->debug_menu == INPUT_NO_SCANCODE ? "none (R+Start)"
+                                                                 : input_scancode_name(info->keymap->debug_menu));
+    sink(line, context);
 }
 
 static void write_controller(const struct controller_bindings *pad, help_text_sink sink, void *context)
@@ -53,6 +57,12 @@ static void write_fast_forward(const struct fastforward_settings *fast_forward, 
     sink(line, context);
     fastforward_key_name(&fast_forward->toggle, key, sizeof key);
     (void)snprintf(line, sizeof line, "  %-*s %s", BUTTON_COLUMN_WIDTH, "Toggle", key);
+    sink(line, context);
+    fastforward_key_name(&fast_forward->faster, key, sizeof key);
+    (void)snprintf(line, sizeof line, "  %-*s %s", BUTTON_COLUMN_WIDTH, "Faster", key);
+    sink(line, context);
+    fastforward_key_name(&fast_forward->slower, key, sizeof key);
+    (void)snprintf(line, sizeof line, "  %-*s %s", BUTTON_COLUMN_WIDTH, "Slower", key);
     sink(line, context);
     if (fast_forward->speed == FASTFORWARD_UNLIMITED)
         (void)snprintf(line, sizeof line, "  %-*s unlimited", BUTTON_COLUMN_WIDTH, "Speed");

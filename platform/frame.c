@@ -320,6 +320,7 @@ static void present_and_read_keys(void)
     if (!video_poll_events(on_sdl_event, NULL))
         frame.exit_requested = true;
     apply_speed();
+    fastforward_end_frame();
     run_step_hook();
     input_update_keyinput();
 }

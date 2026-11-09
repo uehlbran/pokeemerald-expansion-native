@@ -68,6 +68,7 @@ static struct {
     SDL_Texture *overlay;   /* NULL unless the overlay is started */
     SDL_Texture *indicator; /* NULL unless fast-forward is started */
     SDL_Rect indicator_place;
+    uint32_t indicator_speed; /* the speed the indicator was painted for */
     SDL_Point overlay_size;       /* the overlay texture's pixels */
     bool overlay_painted_for_pad; /* which hint it shows (overlay_hint_for_pad) */
 } state;
@@ -143,12 +144,24 @@ static int create_indicator(void)
 {
     const struct fastforward_rect box = fastforward_indicator_box();
     state.indicator_place = (SDL_Rect){.x = (int)box.x, .y = (int)box.y, .w = (int)box.width, .h = (int)box.height};
+    state.indicator_speed = fastforward_speed();
     state.indicator = SDL_CreateTexture(state.renderer, OVERLAY_TEXTURE_FORMAT, SDL_TEXTUREACCESS_STREAMING,
                                         state.indicator_place.w, state.indicator_place.h);
     if (state.indicator == NULL)
         return sdl_error_on("SDL_CreateTexture", "indicator");
     return paint_texture(state.indicator, state.indicator_place.w, state.indicator_place.h, fastforward_draw_indicator,
                          "indicator");
+}
+
+/* The speed keys (fastforward.h) change the indicator's text, and "FF max"
+ * is wider than "FF 2x": the texture is made again for the speed in force. */
+static int refresh_indicator(void)
+{
+    if (state.indicator_speed == fastforward_speed())
+        return 0;
+    SDL_DestroyTexture(state.indicator);
+    state.indicator = NULL;
+    return create_indicator();
 }
 
 static int create_window_objects(const struct video_config *cfg)
@@ -214,6 +227,8 @@ int video_present(const uint16_t *frame)
         return sdl_error("SDL_RenderClear");
     if (SDL_RenderCopy(state.renderer, state.texture, NULL, NULL) != 0)
         return sdl_error("SDL_RenderCopy");
+    if (state.indicator != NULL && fastforward_indicator_shown() && refresh_indicator() != 0)
+        return -1;
     if (state.indicator != NULL && fastforward_indicator_shown()
         && SDL_RenderCopy(state.renderer, state.indicator, NULL, &state.indicator_place) != 0)
         return sdl_error_on("SDL_RenderCopy", "indicator");

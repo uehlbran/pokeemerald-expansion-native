@@ -2665,3 +2665,47 @@ that `cp --preserve=timestamps` and `tar` onto the Windows file system do
 not trip on ownership, that the `again/` directory's save reaches the last
 stage intact, that a run by hand and the nightly share the caches as
 intended, and that the token's fetch of `${{ github.sha }}` works (a scheduled or manual run on a fork-less private or public repository; if the fetch of a bare SHA is refused, fetch the branch and check out the SHA).
+
+## 2026-11-09: Two keys change fast-forward's speed while playing, and one key opens the debug menu
+
+A player asked for "cheats and speed multipliers". Both were there: the
+speed is `fast_forward_speed` in the settings file, 2, 3, 4 or unlimited,
+and the cheats are expansion's debug menu, which this build keeps on
+(`DEBUG_OVERWORLD_MENU` is `DISABLED_ON_RELEASE` and the native build never
+defines `RELEASE`; `tests/smoke/debug_menu.replay` drives it). What was
+missing was reach: the speed could only be changed by quitting, editing the
+file and starting again, and the debug menu's R+Start is a chord on two
+letter keys that nothing on the screen names.
+
+Chosen, for the speed: two more fast-forward keys in `fastforward.h`,
+`faster` (F3) and `slower` (F2), each a step along the list 2x, 3x, 4x,
+unlimited, saturating at its ends. They change the speed in force whether
+fast-forward is on or off, the pacer and the sound follow at the next
+frame through the path that already handled a change between on and off
+(`frame.c`, `apply_speed`), and `video.c` paints the indicator again when
+the speed it was painted for is no longer the one in force
+(`fastforward_speed`), because "FF max" is a cell wider than "FF 2x". The
+four keys must differ, in `fastforward_init` and in the settings file,
+where the pairwise check that kept hold and toggle apart now runs over the
+four (`keep_apart`, the shape `keep_pad_apart` already had). Rejected:
+writing the new speed back to the settings file, which the game by
+decision never writes (settings.h); a wider range of speeds, since the
+sound's speed-up is bounded by `SOUND_SPEEDUP_MAX_FACTOR` and 4x is where
+the sound stops being music; controller buttons for the two, which would
+take two of the few buttons left and the speed is set rarely. What it
+costs: a speed set by key is lost at quit, which the player is told.
+
+Chosen, for the cheats: a `debug_menu` key in the keymap (`input.h`, F4,
+or `none`), which `input_keyboard_to_keys` reads as R and Start down
+together, so that the game sees exactly the chord it waits for
+(`DEBUG_OVERWORLD_HELD_KEYS` held and `DEBUG_OVERWORLD_TRIGGER_EVENT` in
+`src/field_control_avatar.c`) and no expansion file changes. The help
+overlay and `--keys` name it, and `docs/RUNNING.md` has a section on what
+the menu offers, since the menu is the cheats. Rejected: a platform menu
+of its own for cheats, which would duplicate expansion's and have to be
+kept in step with it; GameShark or CodeBreaker codes applied to the GBA
+regions each frame, which the layout would allow but which are written
+for the retail ROM's RAM and mean nothing in expansion's; switching the
+menu on by a build flag, since it is already on. What it costs: nothing
+in a replay or a gate, whose keys are scripted (the field reads as no key
+there), and a key that the player can move or remove.

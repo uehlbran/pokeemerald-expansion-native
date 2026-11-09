@@ -71,6 +71,9 @@
 /* What a keymap entry holds for no key: SDL_SCANCODE_UNKNOWN. */
 #define INPUT_NO_SCANCODE 0
 
+/* The debug menu key (below): F4 by default. */
+#define INPUT_DEBUG_MENU_DEFAULT_SCANCODE 61 /* SDL_SCANCODE_F4 */
+
 enum input_source { INPUT_SOURCE_HOST, INPUT_SOURCE_SCRIPT };
 
 /* One GBA button, as input_buttons() lists them. */
@@ -82,9 +85,14 @@ struct input_button {
 };
 
 /* The keyboard key of each button: scancodes[i] presses input_buttons()[i].
- * Two buttons may share a key; a scancode is never INPUT_NO_SCANCODE. */
+ * Two buttons may share a key; a scancode is never INPUT_NO_SCANCODE.
+ * debug_menu is the key that presses R and Start together, which opens
+ * expansion's debug menu in the overworld (include/config/debug.h,
+ * DEBUG_OVERWORLD_MENU: items, Pokémon, money, flags, warps; the cheats),
+ * so that one key does what two do; INPUT_NO_SCANCODE for no such key. */
 struct input_keymap {
     int scancodes[INPUT_BUTTON_COUNT];
+    int debug_menu;
 };
 
 /* A controller's state, as input_pad_to_keys() reads it. 0 = up, non-zero =
@@ -142,7 +150,7 @@ uint16_t input_keys_to_keyinput(uint16_t keys_active_high);
  * Select, Start, Right, Left, Up, Down, R, L). */
 const struct input_button *input_buttons(void);
 
-/* Every button on its default_scancode. */
+/* Every button on its default_scancode, the debug menu on F4. */
 struct input_keymap input_default_keymap(void);
 
 /* The scancode SDL names name, ignoring case ("Z", "return", "Left Shift",
