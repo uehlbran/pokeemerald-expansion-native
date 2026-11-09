@@ -95,6 +95,18 @@ OBJ_DIR   := $(BUILD_DIR)/obj
 # (docs/C-RULES.md). Warnings are errors, for our files only.
 WARNINGS := -Wall -Wextra -Wshadow -Wstrict-prototypes -Wconversion -Werror
 
+# MinGW-w64 13 (Ubuntu 26.04's mingw-w64-common) redirects the printf family
+# to __mingw_* through __asm__ labels instead of the inline wrappers earlier
+# versions used under __USE_MINGW_ANSI_STDIO. GCC still takes a declaration
+# named fprintf for its builtin and checks the format as ms_printf, which
+# knows no %z, so every "%zu" in the platform is an error under -Werror. The
+# runtime call is __mingw_fprintf, which does know %zu, and the Linux build
+# checks the same sources with glibc's gnu_printf, so the Windows build only
+# drops the check it cannot do right.
+ifeq ($(TARGET_OS),windows)
+WARNINGS += -Wno-format
+endif
+
 # -O1, not -O0 or -O2: GCC's flow-based warnings (-Wmaybe-uninitialized,
 # -Warray-bounds, -Wstringop-overflow, -Wnonnull after inlining) only run with
 # optimisation, so -O0 would hide bugs; -O1 keeps code close enough to the

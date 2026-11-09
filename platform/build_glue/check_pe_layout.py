@@ -25,7 +25,10 @@ reads the PE headers and exits 1, printing one line per problem, unless:
   * above it, the sections the loader keeps (not the discardable debug
     sections) are read-only first and writable after (gba_game.pe.ld moves
     the initialised data there), so that the program's mutable data is one
-    stretch, which host_windows.c's host_image_writable gives;
+    stretch, which host_windows.c's host_image_writable gives. The rule ends
+    with .bss, where that stretch ends (__bss_end__): the default script puts
+    the import tables and .tls after it, and binutils 2.45 marks .idata
+    read-only, as MSVC's IAT in .rdata is; the loader writes it regardless;
   * its resources hold the application manifest (type RT_MANIFEST, id 1) and
     the manifest sets the active code page to UTF-8 (build_glue/
     windows_manifest.xml, linked through target.mk), without which the
@@ -270,6 +273,8 @@ def check_image(image, subsystem_flag):
         elif not section.writable and first_writable is not None:
             problems.append("%s is read-only but follows the writable %s: the writable sections must come last"
                             % (section.name, first_writable.name))
+        if section.name == ".bss":
+            break   # host_image_writable ends here; .idata and .tls follow it in the default script
     if image.manifest is None:
         problems.append("there is no application manifest (resource type 24, id 1): target.mk links "
                         "windows_manifest.o into every executable")
@@ -355,8 +360,13 @@ def self_test():
            [".data is read-only but follows the writable .rdata"])
     image = layout()
     image.sections[-1].flags &= ~0x02000000
-    expect("a kept read-only section after the data", check_image(image, "--gui"),
-           [".debug is read-only but follows the writable .data"])
+    expect("a kept read-only section after .bss (the default script's .idata)", check_image(image, "--gui"), [])
+    image = layout()
+    image.sections[-2].address += 0x1000   # .bss
+    image.sections[-1].address += 0x1000   # .debug
+    image.sections.insert(-2, Section(".idata", CODE_ADDRESS + 0x4000, 0x10, READ_ONLY_INITIALISED))
+    expect("a read-only section between the data and .bss", check_image(image, "--gui"),
+           [".idata is read-only but follows the writable .data"])
     image = layout()
     image.manifest = None
     expect("no manifest", check_image(image, "--gui"), ["there is no application manifest"])

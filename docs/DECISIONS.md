@@ -2665,3 +2665,47 @@ that `cp --preserve=timestamps` and `tar` onto the Windows file system do
 not trip on ownership, that the `again/` directory's save reaches the last
 stage intact, that a run by hand and the nightly share the caches as
 intended, and that the token's fetch of `${{ github.sha }}` works (a scheduled or manual run on a fork-less private or public repository; if the fetch of a bare SHA is refused, fetch the branch and check out the SHA).
+
+## 2026-11-09: The Windows cross-build on Ubuntu 26.04's toolchain: no format check, and the layout rule ends at .bss
+
+Ubuntu 26.04 ships GCC 13.2 (`win32` threads), binutils 2.45.90 and
+mingw-w64 13.0.0 for `x86_64-w64-mingw32`. Ubuntu 24.04, where CI builds,
+ships older ones, and the cross-build passed there unchanged. On 26.04 it
+failed twice, and each failure had a cause outside our sources.
+
+First, every `%zu` in the platform was a `-Wformat` error. mingw-w64 13's
+`<stdio.h>`, under `__USE_MINGW_ANSI_STDIO`, redirects the printf family to
+`__mingw_fprintf` and the others through `__asm__` labels on the standard
+declarations, where earlier versions defined inline wrappers that called
+them. GCC still takes a declaration named `fprintf` for its builtin and
+checks the format as `ms_printf`, the C runtime's dialect, which has no
+`%z`; the call at run time goes to `__mingw_fprintf`, which does. The proof:
+with `-fno-builtin-fprintf` alone, `bios_internal.c` compiled. Chosen:
+`WARNINGS += -Wno-format` under `ifeq ($(TARGET_OS),windows)` in
+`platform/Makefile`. Rejected: `-fno-builtin-*` for the whole family, which
+also loses GCC's constant folding and its other checks of those calls, for
+no gain in checking; a cast of every `size_t` argument, which edits dozens
+of correct lines to suit one toolchain's declaration; a `format
+(gnu_printf, ...)` attribute, which can be put on our declarations but not
+on the C library's. What it costs: on Windows alone, a bad format string is
+found by the Linux build of the same sources (gate "platform"), not by the
+cross-build.
+
+Second, `check_pe_layout.py` refused every link: `.idata` is read-only but
+follows the writable `.bss`. binutils 2.45 marks `.idata` READONLY, where
+earlier versions left it writable; the default script places it after
+`.bss`, and the check, "read-only first, writable after" over every kept
+section, had tolerated a writable `.idata` there without saying so. Chosen:
+the rule ends at `.bss`, where `host_image_writable` ends (`__bss_end__`).
+`.idata`, `.CRT` and `.tls` after it are the C runtime's and the loader's,
+outside the stretch the rule protects, and the loader writes the import
+address table whatever the section's flags say. Rejected: moving `.idata`
+among the read-only sections with `INSERT AFTER .xdata` in
+`gba_game.pe.ld`. The default script's own `.idata` output section stays,
+with its `LONG(0)` terminators, 0x18 bytes of it, and its
+`__IAT_start__`/`__IAT_end__` definitions win over the moved section's, so
+the PE's import address table directory is empty and the executable cannot
+start. What it costs: nothing the rule protected; the self-test gained a
+case for a read-only section between the data and `.bss`, which still
+fails, and the case for a kept read-only section after `.bss` now expects
+no problem.

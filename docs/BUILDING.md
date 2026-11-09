@@ -334,6 +334,20 @@ make -f Makefile.native -j"$(nproc)" native TARGET_OS=windows BITS=64       # bu
 Or, instead of the two makes, `tools/build-native.sh --os windows`, which
 checks the prerequisites first and runs the same makes.
 
+Two details of the cross-toolchain depend on the Ubuntu release. CI builds
+on Ubuntu 24.04. On Ubuntu 26.04 (GCC 13.2 `win32`, binutils 2.45.90,
+mingw-w64 13.0.0) the platform's `-Werror` build takes `-Wno-format`
+(`platform/Makefile`): that mingw-w64 redirects the printf family to its own
+`__mingw_*` functions through `__asm__` labels rather than inline wrappers,
+so GCC checks every format as the C runtime's `ms_printf`, which knows no
+`%zu`, while the call at run time goes to a function that does; the Linux
+build keeps the check on the same sources. That binutils also marks `.idata`
+read-only, and the default script places it after `.bss`, so
+`check_pe_layout.py`'s order rule ends at `.bss`, where `host_image_writable`
+ends, and leaves `.idata` and `.tls` alone. `docs/DECISIONS.md`, "The Windows
+cross-build on Ubuntu 26.04's toolchain", has the reasons and what was
+rejected.
+
 `native` fetches SDL2 itself when it is missing (`sdl2-mingw` is only for doing it
 alone). The fetch is the newest 2.30 release's `SDL2-devel-2.30.12-mingw.tar.gz`
 from github.com/libsdl-org/SDL, checked against the sha256 recorded in
