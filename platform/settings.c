@@ -22,6 +22,12 @@
 #define FAST_FORWARD_TOGGLE_SETTING "fast_forward_toggle"
 #define FAST_FORWARD_SPEED_SETTING "fast_forward_speed"
 #define FAST_FORWARD_AUDIO_SETTING "fast_forward_audio"
+#define FAST_FORWARD_FASTER_SETTING "fast_forward_faster"
+#define FAST_FORWARD_SLOWER_SETTING "fast_forward_slower"
+#define DEBUG_MENU_SETTING "debug_menu"
+#define NONE_VALUE "none"
+#define PAD_BUTTON_PREFIX "pad_"
+#define TEMP_SUFFIX ".tmp"
 #define FULLSCREEN_SETTING "fullscreen"
 #define FULLSCREEN_KEY_SETTING "fullscreen_toggle"
 #define AUTO_VALUE "auto"
@@ -62,13 +68,21 @@ struct key_line {
     struct span value;
 };
 
-/* What settings_parse knows as it goes: the settings, and where the two
- * fast-forward keys came from, for the check that they differ. */
+/* What settings_parse knows as it goes: the settings, and where the four
+ * fast-forward keys came from (fastforward_settings_key's order), for the
+ * check that they differ. */
 struct parse {
     struct settings *settings;
-    struct key_line hold;
-    struct key_line toggle;
+    struct key_line keys[FASTFORWARD_KEY_COUNT];
     struct key_line pad[CONTROLLER_FUNCTION_COUNT];
+};
+
+/* The fast-forward key settings, in fastforward_settings_key's order. */
+static const char *const fast_forward_key_settings[FASTFORWARD_KEY_COUNT] = {
+    FAST_FORWARD_SETTING,
+    FAST_FORWARD_TOGGLE_SETTING,
+    FAST_FORWARD_FASTER_SETTING,
+    FAST_FORWARD_SLOWER_SETTING,
 };
 
 static bool is_blank(char c)
@@ -219,6 +233,23 @@ static void apply_fullscreen_key(struct settings *settings, uint32_t line, struc
         settings->fullscreen_key = scancode;
 }
 
+/* The debug menu's key, or "none" for no such key (R+Start still opens it). */
+static void apply_debug_menu_key(struct settings *settings, uint32_t line, struct span value)
+{
+    if (span_is(value, NONE_VALUE)) {
+        settings->keymap.debug_menu = INPUT_NO_SCANCODE;
+        return;
+    }
+    char name[KEY_NAME_SIZE];
+    const int scancode = span_to_string(value, name, sizeof name) ? input_scancode_from_name(name) : INPUT_NO_SCANCODE;
+    if (scancode == INPUT_NO_SCANCODE)
+        add_problem(settings, line, SETTINGS_UNKNOWN_KEY, value);
+    else if (scancode == OVERLAY_TOGGLE_SCANCODE)
+        add_problem(settings, line, SETTINGS_RESERVED_KEY, value);
+    else
+        settings->keymap.debug_menu = scancode;
+}
+
 static void apply_pad_control(struct parse *parse, uint32_t line, size_t function, struct span value)
 {
     char name[KEY_NAME_SIZE];
@@ -230,6 +261,28 @@ static void apply_pad_control(struct parse *parse, uint32_t line, size_t functio
         parse->settings->pad.controls[function] = control;
         parse->pad[function] = (struct key_line){.line = line, .value = value};
     }
+}
+
+/* The index in input_buttons() of the button whose controller setting
+ * (PAD_BUTTON_PREFIX and the button's setting: "pad_a", "pad_select") is
+ * name, or INPUT_BUTTON_COUNT. */
+static size_t find_pad_button(struct span name)
+{
+    const size_t prefix = sizeof PAD_BUTTON_PREFIX - 1u;
+    if (name.length <= prefix || !span_is((struct span){.text = name.text, .length = prefix}, PAD_BUTTON_PREFIX))
+        return INPUT_BUTTON_COUNT;
+    return find_button((struct span){.text = name.text + prefix, .length = name.length - prefix});
+}
+
+static void apply_pad_button(struct settings *settings, uint32_t line, size_t button, struct span value)
+{
+    char name[KEY_NAME_SIZE];
+    const int control = span_to_string(value, name, sizeof name) ? controller_control_from_name(name)
+                                                                 : CONTROLLER_NO_CONTROL;
+    if (control == CONTROLLER_NO_CONTROL)
+        add_problem(settings, line, SETTINGS_UNKNOWN_CONTROL, value);
+    else
+        settings->pad_buttons.controls[button] = control;
 }
 
 /* The function whose setting is called name, or CONTROLLER_FUNCTION_COUNT. */
@@ -269,8 +322,18 @@ static void keep_pad_apart(struct parse *parse)
     }
 }
 
-static void apply_fast_forward_key(struct parse *parse, uint32_t line, struct span value, struct fastforward_key *key,
-                                   struct key_line *from)
+/* The fast-forward key setting called name, in fast_forward_key_settings'
+ * order, or FASTFORWARD_KEY_COUNT. */
+static size_t find_fast_forward_key(struct span name)
+{
+    for (size_t i = 0; i < FASTFORWARD_KEY_COUNT; i++) {
+        if (span_is(name, fast_forward_key_settings[i]))
+            return i;
+    }
+    return FASTFORWARD_KEY_COUNT;
+}
+
+static void apply_fast_forward_key(struct parse *parse, uint32_t line, size_t index, struct span value)
 {
     char name[KEY_NAME_SIZE];
     struct fastforward_key read;
@@ -279,29 +342,36 @@ static void apply_fast_forward_key(struct parse *parse, uint32_t line, struct sp
     } else if (read.scancode == OVERLAY_TOGGLE_SCANCODE) {
         add_problem(parse->settings, line, SETTINGS_RESERVED_KEY, value);
     } else {
-        *key = read;
-        *from = (struct key_line){.line = line, .value = value};
+        *fastforward_settings_key_mutable(&parse->settings->fast_forward, index) = read;
+        parse->keys[index] = (struct key_line){.line = line, .value = value};
     }
 }
 
-/* If the two keys are one, the later line's goes back to its default
- * (settings.h). */
-static bool keep_apart(struct parse *parse)
+/* Of two fast-forward keys that are one, the one the later line set, or
+ * FASTFORWARD_KEY_COUNT if there are not two. */
+static size_t find_key_clash(const struct parse *parse)
 {
-    struct fastforward_settings *const keys = &parse->settings->fast_forward;
-    if (!fastforward_keys_equal(&keys->hold, &keys->toggle))
-        return true;
-    const struct fastforward_settings defaults = fastforward_defaults();
-    if (parse->hold.line > parse->toggle.line) {
-        add_problem(parse->settings, parse->hold.line, SETTINGS_SAME_FAST_FORWARD_KEY, parse->hold.value);
-        keys->hold = defaults.hold;
-        parse->hold.line = 0;
-    } else {
-        add_problem(parse->settings, parse->toggle.line, SETTINGS_SAME_FAST_FORWARD_KEY, parse->toggle.value);
-        keys->toggle = defaults.toggle;
-        parse->toggle.line = 0;
+    const struct fastforward_settings *const keys = &parse->settings->fast_forward;
+    for (size_t i = 0; i < FASTFORWARD_KEY_COUNT; i++) {
+        for (size_t j = 0; j < i; j++) {
+            if (fastforward_keys_equal(fastforward_settings_key(keys, i), fastforward_settings_key(keys, j)))
+                return parse->keys[i].line > parse->keys[j].line ? i : j;
+        }
     }
-    return false;
+    return FASTFORWARD_KEY_COUNT;
+}
+
+/* The later line's key goes back to its default (settings.h). Each pass
+ * takes one key off a custom value, so the passes end: the defaults differ. */
+static void keep_apart(struct parse *parse)
+{
+    const struct fastforward_settings defaults = fastforward_defaults();
+    for (size_t later = find_key_clash(parse); later != FASTFORWARD_KEY_COUNT; later = find_key_clash(parse)) {
+        add_problem(parse->settings, parse->keys[later].line, SETTINGS_SAME_FAST_FORWARD_KEY, parse->keys[later].value);
+        *fastforward_settings_key_mutable(&parse->settings->fast_forward, later)
+            = *fastforward_settings_key(&defaults, later);
+        parse->keys[later].line = 0;
+    }
 }
 
 /* The settings other than the buttons; false if name is none of them. */
@@ -311,10 +381,10 @@ static bool apply_named(struct parse *parse, uint32_t line, struct span name, st
     if (span_is(name, SCALE_SETTING)) {
         if (!parse_whole_number(value, 1, OPTIONS_MAX_SCALE, &settings->scale))
             add_problem(settings, line, SETTINGS_BAD_SCALE, value);
-    } else if (span_is(name, FAST_FORWARD_SETTING)) {
-        apply_fast_forward_key(parse, line, value, &settings->fast_forward.hold, &parse->hold);
-    } else if (span_is(name, FAST_FORWARD_TOGGLE_SETTING)) {
-        apply_fast_forward_key(parse, line, value, &settings->fast_forward.toggle, &parse->toggle);
+    } else if (find_fast_forward_key(name) != FASTFORWARD_KEY_COUNT) {
+        apply_fast_forward_key(parse, line, find_fast_forward_key(name), value);
+    } else if (span_is(name, DEBUG_MENU_SETTING)) {
+        apply_debug_menu_key(settings, line, value);
     } else if (span_is(name, FAST_FORWARD_SPEED_SETTING)) {
         if (!parse_speed(value, &settings->fast_forward.speed))
             add_problem(settings, line, SETTINGS_BAD_SPEED, value);
@@ -357,6 +427,11 @@ static void parse_line(struct parse *parse, uint32_t line, struct span raw)
         apply_pad_control(parse, line, pad_function, value);
         return;
     }
+    const size_t pad_button = find_pad_button(name);
+    if (pad_button != INPUT_BUTTON_COUNT) {
+        apply_pad_button(settings, line, pad_button, value);
+        return;
+    }
     const size_t button = find_button(name);
     if (button == INPUT_BUTTON_COUNT)
         add_problem(settings, line, SETTINGS_UNKNOWN_SETTING, name);
@@ -371,6 +446,7 @@ void settings_defaults(struct settings *out)
     out->scale = OPTIONS_DEFAULT_SCALE;
     out->fast_forward = fastforward_defaults();
     out->pad = controller_default_bindings();
+    out->pad_buttons = input_default_padmap();
     out->fullscreen = FULLSCREEN_AUTO;
     out->fullscreen_key = FULLSCREEN_DEFAULT_SCANCODE;
 }
@@ -391,9 +467,7 @@ void settings_parse(const char *text, size_t size, struct settings *out)
         parse_line(&parse, line, (struct span){.text = start, .length = length});
         position += length + (end != NULL ? 1u : 0u);
     }
-    /* Twice: the default a refused line leaves may be the other line's key. */
-    if (!keep_apart(&parse))
-        (void)keep_apart(&parse);
+    keep_apart(&parse);
     keep_pad_apart(&parse);
 }
 
@@ -455,12 +529,15 @@ static void print_setting_names(FILE *out)
     const struct input_button *const buttons = input_buttons();
     for (size_t i = 0; i < INPUT_BUTTON_COUNT; i++)
         (void)fprintf(out, "%s, ", buttons[i].setting);
-    (void)fputs(SCALE_SETTING ", " FAST_FORWARD_SETTING ", " FAST_FORWARD_TOGGLE_SETTING ", " FAST_FORWARD_SPEED_SETTING
-                              ", " FAST_FORWARD_AUDIO_SETTING ", " FULLSCREEN_SETTING ", " FULLSCREEN_KEY_SETTING,
+    (void)fputs(SCALE_SETTING ", " FAST_FORWARD_SETTING ", " FAST_FORWARD_TOGGLE_SETTING ", " FAST_FORWARD_FASTER_SETTING
+                              ", " FAST_FORWARD_SLOWER_SETTING ", " FAST_FORWARD_SPEED_SETTING ", " FAST_FORWARD_AUDIO_SETTING
+                              ", " DEBUG_MENU_SETTING ", " FULLSCREEN_SETTING ", " FULLSCREEN_KEY_SETTING,
                 out);
     const struct controller_function_info *const functions = controller_functions();
     for (size_t i = 0; i < CONTROLLER_FUNCTION_COUNT; i++)
         (void)fprintf(out, ", %s", functions[i].setting);
+    for (size_t i = 0; i < INPUT_BUTTON_COUNT; i++)
+        (void)fprintf(out, ", " PAD_BUTTON_PREFIX "%s", buttons[i].setting);
 }
 
 static void print_problem(const struct settings_problem *problem, const char *path, FILE *out)
@@ -482,7 +559,9 @@ static void print_problem(const struct settings_problem *problem, const char *pa
                       problem->text);
         break;
     case SETTINGS_RESERVED_KEY:
-        (void)fprintf(out, "'%s' opens the help overlay and cannot be a button's, fast-forward's or the fullscreen key",
+        (void)fprintf(out,
+                      "'%s' opens the help overlay and cannot be a button's, fast-forward's, the debug menu's or the "
+                      "fullscreen key",
                       problem->text);
         break;
     case SETTINGS_BAD_SPEED:
@@ -496,8 +575,8 @@ static void print_problem(const struct settings_problem *problem, const char *pa
         break;
     case SETTINGS_SAME_FAST_FORWARD_KEY:
         (void)fprintf(out,
-                      "'%s' is the other fast-forward key too: one key cannot both hold and toggle, and this one "
-                      "keeps its default",
+                      "'%s' is another fast-forward key too: hold, toggle, faster and slower are four keys, and this "
+                      "one keeps its default",
                       problem->text);
         break;
     case SETTINGS_UNKNOWN_CONTROL:
@@ -533,4 +612,158 @@ void settings_report(const struct settings *settings, const char *path, FILE *ou
     if (settings->problem_count > kept)
         (void)fprintf(out, MODULE ": %s: %llu more lines with problems, also ignored\n", path,
                       (unsigned long long)(settings->problem_count - kept));
+}
+
+/* ---- the writer ---- */
+
+/* settings_write's output so far: what fits of it in out, and its length. */
+struct writer {
+    char *out;
+    size_t size;
+    size_t length;
+};
+
+static void put(struct writer *w, const char *text)
+{
+    for (const char *c = text; *c != '\0'; c++) {
+        if (w->length + 1u < w->size)
+            w->out[w->length] = *c;
+        w->length++;
+    }
+    if (w->size > 0)
+        w->out[w->length < w->size ? w->length : w->size - 1u] = '\0';
+}
+
+/* "name = value\n", or nothing for an empty value (a key SDL has no name for). */
+static void put_setting(struct writer *w, const char *name, const char *value)
+{
+    if (value[0] == '\0')
+        return;
+    put(w, name);
+    put(w, " = ");
+    put(w, value);
+    put(w, "\n");
+}
+
+static void put_fast_forward(struct writer *w, const struct fastforward_settings *f)
+{
+    char text[KEY_NAME_SIZE];
+    put(w, "# Fast-forward: hold, toggle, one step faster and slower; the speed at the\n"
+           "# start (2, 3, 4 or unlimited) and the sound while it is on (play or mute).\n");
+    for (size_t i = 0; i < FASTFORWARD_KEY_COUNT; i++) {
+        fastforward_key_name(fastforward_settings_key(f, i), text, sizeof text);
+        put_setting(w, fast_forward_key_settings[i], text);
+    }
+    if (f->speed == FASTFORWARD_UNLIMITED)
+        (void)snprintf(text, sizeof text, UNLIMITED_VALUE);
+    else
+        (void)snprintf(text, sizeof text, "%lu", (unsigned long)f->speed);
+    put_setting(w, FAST_FORWARD_SPEED_SETTING, text);
+    put_setting(w, FAST_FORWARD_AUDIO_SETTING, f->audio == FASTFORWARD_AUDIO_MUTE ? MUTE_VALUE : PLAY_VALUE);
+}
+
+static void put_controller(struct writer *w, const struct settings *s)
+{
+    char name[KEY_NAME_SIZE];
+    const struct input_button *const buttons = input_buttons();
+    const struct controller_function_info *const functions = controller_functions();
+    put(w, "# The controller: its functions, then the GBA buttons on it (SDL's button\n"
+           "# names: a, b, x, y, back, start, leftshoulder, dpup, ..., or lefttrigger\n"
+           "# and righttrigger).\n");
+    for (size_t i = 0; i < CONTROLLER_FUNCTION_COUNT; i++)
+        put_setting(w, functions[i].setting, controller_control_setting(s->pad.controls[i]));
+    for (size_t i = 0; i < INPUT_BUTTON_COUNT; i++) {
+        (void)snprintf(name, sizeof name, PAD_BUTTON_PREFIX "%s", buttons[i].setting);
+        put_setting(w, name, controller_control_setting(s->pad_buttons.controls[i]));
+    }
+}
+
+static const char *fullscreen_value(enum fullscreen_setting fullscreen)
+{
+    switch (fullscreen) {
+    case FULLSCREEN_YES:
+        return YES_VALUE;
+    case FULLSCREEN_NO:
+        return NO_VALUE;
+    case FULLSCREEN_AUTO:
+    default:
+        return AUTO_VALUE;
+    }
+}
+
+size_t settings_write(const struct settings *settings, char *out, size_t size)
+{
+    struct writer w = {.out = out, .size = size, .length = 0};
+    char text[KEY_NAME_SIZE];
+    const struct input_button *const buttons = input_buttons();
+    if (size > 0)
+        out[0] = '\0';
+    put(&w, "# pokeemerald-native settings, written by the bubble menu's Save.\n"
+            "# One \"setting = value\" a line; docs/RUNNING.md has them all.\n"
+            "# The GBA buttons on the keyboard (SDL's key names).\n");
+    for (size_t i = 0; i < INPUT_BUTTON_COUNT; i++)
+        put_setting(&w, buttons[i].setting, input_scancode_name(settings->keymap.scancodes[i]));
+    put(&w, "# The key that opens the debug menu (R and Start together), or none.\n");
+    put_setting(&w, DEBUG_MENU_SETTING,
+                settings->keymap.debug_menu == INPUT_NO_SCANCODE ? NONE_VALUE
+                                                                 : input_scancode_name(settings->keymap.debug_menu));
+    put(&w, "# The window: 1 to 16 times the GBA's 240x160 screen.\n");
+    (void)snprintf(text, sizeof text, "%d", settings->scale);
+    put_setting(&w, SCALE_SETTING, text);
+    put_fast_forward(&w, &settings->fast_forward);
+    put(&w, "# Fullscreen: yes, no or auto, and its key.\n");
+    put_setting(&w, FULLSCREEN_SETTING, fullscreen_value(settings->fullscreen));
+    put_setting(&w, FULLSCREEN_KEY_SETTING, input_scancode_name(settings->fullscreen_key));
+    put_controller(&w, settings);
+    return w.length;
+}
+
+static void report_save(const char *call, const char *path)
+{
+    (void)fprintf(stderr, MODULE ": saving the settings: %s(%s) failed: %s\n", call, path, strerror(errno));
+}
+
+/* Writes text to temp and closes it; false after a report, temp removed. */
+static bool write_temp(const char *temp, const char *text, size_t length)
+{
+    const int descriptor = host_file_open(temp, O_WRONLY | O_CREAT | O_TRUNC);
+    if (descriptor < 0) {
+        report_save("open", temp);
+        return false;
+    }
+    const bool written = host_file_write_all(descriptor, text, length) == 0 && host_file_sync(descriptor) == 0;
+    if (!written)
+        report_save("write", temp);
+    if (host_file_close(descriptor) != 0 && written) {
+        report_save("close", temp);
+        (void)remove(temp);
+        return false;
+    }
+    if (!written)
+        (void)remove(temp);
+    return written;
+}
+
+int settings_save(const char *path, const struct settings *settings)
+{
+    static char text[SETTINGS_FILE_MAX_SIZE];
+    char temp[HOST_FILE_PATH_SIZE];
+    if (path == NULL || path[0] == '\0' || settings == NULL) {
+        (void)fprintf(stderr, MODULE ": saving the settings: this run reads no settings file\n");
+        return -1;
+    }
+    const int temp_length = snprintf(temp, sizeof temp, "%s" TEMP_SUFFIX, path);
+    const size_t length = settings_write(settings, text, sizeof text);
+    if (temp_length < 0 || (size_t)temp_length >= sizeof temp || length >= sizeof text) {
+        (void)fprintf(stderr, MODULE ": saving the settings: the path or the text is too long\n");
+        return -1;
+    }
+    if (!write_temp(temp, text, length))
+        return -1;
+    if (host_file_replace(temp, path) != 0) {
+        report_save("rename", path);
+        (void)remove(temp);
+        return -1;
+    }
+    return 0;
 }

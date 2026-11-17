@@ -3,9 +3,12 @@
  *
  * Real hardware: the LCD controller runs a frame every 280896 CPU cycles,
  * 59.7275 Hz (GBATEK "LCD Dimensions and Timings"). Here: sleep with
- * SDL_Delay for the bulk of the wait and spin on the performance counter for
- * the last SPIN_MARGIN_MS, because SDL_Delay may oversleep by a millisecond
- * or more. Deadlines are exact ticks via a carried remainder (see header).
+ * host_sleep_us for the bulk of the wait and spin on the performance counter
+ * for the last SPIN_MARGIN_MS, because a sleep may oversleep by a fraction
+ * of a millisecond. Not SDL_Delay, which sleeps in the system's timer ticks
+ * and would oversleep a whole 4.2 ms fast-forward frame wherever Windows
+ * keeps them at 15.6 ms (host_sleep.h). Deadlines are exact ticks via a
+ * carried remainder (see header).
  * Fast-forward divides the period by its multiplier and nothing else: the
  * frames the game runs are the same, closer together.
  *
@@ -19,8 +22,11 @@
 
 #include <SDL.h>
 
+#include "host_sleep.h"
+
 #define MODULE "frame_pacer"
 #define MS_PER_SECOND UINT64_C(1000)
+#define US_PER_SECOND UINT64_C(1000000)
 /* Sleep until this close to the deadline, then spin. */
 #define SPIN_MARGIN_MS UINT64_C(2)
 
@@ -110,7 +116,7 @@ void frame_pacer_wait(void)
             return;
         uint64_t left = state.deadline - now;
         if (left > spin_ticks)
-            SDL_Delay((Uint32)((left - spin_ticks) * MS_PER_SECOND / state.counter_hz));
+            host_sleep_us((left - spin_ticks) * US_PER_SECOND / state.counter_hz);
     }
 }
 

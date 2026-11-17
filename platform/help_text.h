@@ -25,7 +25,8 @@ struct help_info {
     const char *version;               /* version_string() */
     const struct input_keymap *keymap; /* the keys in force */
     const struct controller_bindings *pad;
-    int fullscreen_key; /* an SDL_Scancode */
+    const struct input_padmap *pad_buttons; /* NULL: SDL's layout */
+    int fullscreen_key;                     /* an SDL_Scancode */
     const struct fastforward_settings *fast_forward;
     const struct data_paths *paths;
     bool settings_found; /* the settings file was there */
@@ -44,14 +45,18 @@ typedef void (*help_text_sink)(const char *line, void *context);
  *     Keyboard:
  *       A       Z                 (each button and its key, input_buttons' order)
  *       Fullscreen F11            (the toggle key)
+ *       Debug menu F4             (the key that presses R+Start; "none (R+Start)")
+ *       Menu       F5, or a click on the bubble   (bubble_menu.h)
  *     Controller:
- *       GBA buttons: ...          (the fixed layout)
+ *       GBA buttons: ...          (SDL's layout, or "as the menu's Pad tab sets them")
  *       Fast-forward hold    Right trigger   (each function in controller_functions' order
  *                                             and the label of its button)
  *     Fast-forward:
  *       Hold    Tab               (fastforward_key_name)
  *       Toggle  Shift+Tab
- *       Speed   2x                ("unlimited")
+ *       Faster  F3                (the speed one step up, and down)
+ *       Slower  F2
+ *       Speed   2x                ("unlimited"; the speed at the start)
  *       Sound   sped up           ("muted") */
 void help_text_write(const struct help_info *info, help_text_sink sink, void *context);
 

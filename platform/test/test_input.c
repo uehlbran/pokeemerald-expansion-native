@@ -19,6 +19,7 @@
 #include <gba/io_reg.h>
 #include <stdlib.h>
 
+#include "controller.h"
 #include "gba_memmap.h"
 #include "input.h"
 #include "overlay.h"
@@ -278,6 +279,152 @@ PTEST(a_keymap_moves_a_button_to_another_key)
     PT_ASSERT_EQ_U32(input_keyboard_to_keys(&keymap, state, SDL_NUM_SCANCODES), 0u);
     state[SDL_SCANCODE_SPACE] = 1;
     PT_ASSERT_EQ_U32(input_keyboard_to_keys(&keymap, state, SDL_NUM_SCANCODES), INPUT_KEY_A);
+}
+
+PTEST(the_debug_menu_key_presses_r_and_start_together_and_f4_is_its_default)
+{
+    struct input_keymap keymap = input_default_keymap();
+    uint8_t state[SDL_NUM_SCANCODES] = {0};
+    PT_ASSERT_EQ_INT(keymap.debug_menu, SDL_SCANCODE_F4);
+    PT_ASSERT_EQ_INT(INPUT_DEBUG_MENU_DEFAULT_SCANCODE, SDL_SCANCODE_F4);
+    state[SDL_SCANCODE_F4] = 1;
+    PT_ASSERT_EQ_U32(input_keyboard_to_keys(&keymap, state, SDL_NUM_SCANCODES), INPUT_KEY_R | INPUT_KEY_START);
+    state[SDL_SCANCODE_Z] = 1; /* with a button: both */
+    PT_ASSERT_EQ_U32(input_keyboard_to_keys(&keymap, state, SDL_NUM_SCANCODES),
+                     INPUT_KEY_A | INPUT_KEY_R | INPUT_KEY_START);
+    keymap.debug_menu = SDL_SCANCODE_F6; /* moved: F4 is nothing, F6 is the menu */
+    PT_ASSERT_EQ_U32(input_keyboard_to_keys(&keymap, state, SDL_NUM_SCANCODES), INPUT_KEY_A);
+    state[SDL_SCANCODE_F6] = 1;
+    PT_ASSERT_EQ_U32(input_keyboard_to_keys(&keymap, state, SDL_NUM_SCANCODES),
+                     INPUT_KEY_A | INPUT_KEY_R | INPUT_KEY_START);
+    keymap.debug_menu = INPUT_NO_SCANCODE; /* none: no key is the menu, and state[0] is not read as it */
+    state[INPUT_NO_SCANCODE] = 1;
+    PT_ASSERT_EQ_U32(input_keyboard_to_keys(&keymap, state, SDL_NUM_SCANCODES), INPUT_KEY_A);
+    /* a state too short to hold the key is not read past */
+    keymap.debug_menu = SDL_SCANCODE_F4;
+    PT_ASSERT_EQ_U32(input_keyboard_to_keys(&keymap, state, SDL_SCANCODE_F4), INPUT_KEY_A);
+}
+
+/* ---- the controller map, the live maps and the injection ---- */
+
+PTEST(the_default_padmap_is_sdls_layout_and_valid)
+{
+    static const int expected[INPUT_BUTTON_COUNT] = {
+        SDL_CONTROLLER_BUTTON_A,           SDL_CONTROLLER_BUTTON_B,          SDL_CONTROLLER_BUTTON_BACK,
+        SDL_CONTROLLER_BUTTON_START,       SDL_CONTROLLER_BUTTON_DPAD_RIGHT, SDL_CONTROLLER_BUTTON_DPAD_LEFT,
+        SDL_CONTROLLER_BUTTON_DPAD_UP,     SDL_CONTROLLER_BUTTON_DPAD_DOWN,  SDL_CONTROLLER_BUTTON_RIGHTSHOULDER,
+        SDL_CONTROLLER_BUTTON_LEFTSHOULDER,
+    };
+    struct input_padmap padmap = input_default_padmap();
+    for (size_t i = 0; i < INPUT_BUTTON_COUNT; i++)
+        PT_ASSERT_EQ_INT(padmap.controls[i], expected[i]);
+    PT_ASSERT(input_padmap_is_valid(&padmap));
+    padmap.controls[3] = CONTROLLER_RIGHT_TRIGGER; /* the last control */
+    PT_ASSERT(input_padmap_is_valid(&padmap));
+    padmap.controls[3] = CONTROLLER_CONTROL_COUNT;
+    PT_ASSERT(!input_padmap_is_valid(&padmap));
+    padmap.controls[3] = CONTROLLER_NO_CONTROL;
+    PT_ASSERT(!input_padmap_is_valid(&padmap));
+    PT_ASSERT(!input_padmap_is_valid(NULL));
+}
+
+PTEST(a_padmap_moves_a_button_to_another_control_and_a_trigger)
+{
+    uint8_t controls[CONTROLLER_CONTROL_COUNT] = {0};
+    struct input_padmap padmap = input_default_padmap();
+    padmap.controls[0] = SDL_CONTROLLER_BUTTON_X; /* A on X */
+    padmap.controls[2] = CONTROLLER_LEFT_TRIGGER; /* Select on the left trigger */
+    padmap.controls[1] = SDL_CONTROLLER_BUTTON_X; /* B on X too */
+    controls[SDL_CONTROLLER_BUTTON_A] = 1;
+    PT_ASSERT_EQ_U32(input_pad_controls_to_keys(&padmap, controls, CONTROLLER_CONTROL_COUNT, 0, 0), 0u);
+    controls[SDL_CONTROLLER_BUTTON_X] = 1;
+    controls[CONTROLLER_LEFT_TRIGGER] = 1;
+    PT_ASSERT_EQ_U32(input_pad_controls_to_keys(&padmap, controls, CONTROLLER_CONTROL_COUNT, 0, 0),
+                     INPUT_KEY_A | INPUT_KEY_B | INPUT_KEY_SELECT);
+    /* a control past count reads as up; the stick moves the D-pad whatever the map */
+    PT_ASSERT_EQ_U32(input_pad_controls_to_keys(&padmap, controls, CONTROLLER_LEFT_TRIGGER, 0, 0),
+                     INPUT_KEY_A | INPUT_KEY_B);
+    PT_ASSERT_EQ_U32(input_pad_controls_to_keys(&padmap, controls, 0, -20000, 20000), INPUT_KEY_LEFT | INPUT_KEY_DOWN);
+    PT_ASSERT_EQ_U32(input_pad_controls_to_keys(NULL, controls, CONTROLLER_CONTROL_COUNT, 0, 0), 0u);
+    PT_ASSERT_EQ_U32(input_pad_controls_to_keys(&padmap, NULL, CONTROLLER_CONTROL_COUNT, 0, 0), 0u);
+}
+
+PTEST(the_live_maps_are_set_after_init_and_refused_before_or_when_invalid)
+{
+    input_shutdown();
+    struct input_keymap keymap = input_default_keymap();
+    struct input_padmap padmap = input_default_padmap();
+    keymap.scancodes[0] = SDL_SCANCODE_SPACE;
+    padmap.controls[0] = SDL_CONTROLLER_BUTTON_Y;
+    PT_ASSERT_EQ_INT(input_set_keymap(&keymap), -1);
+    PT_ASSERT_EQ_INT(input_set_padmap(&padmap), -1);
+    PT_ASSERT_EQ_INT(input_current_keymap().scancodes[0], SDL_SCANCODE_Z); /* the defaults before init */
+    PT_ASSERT_EQ_INT(input_init(INPUT_SOURCE_SCRIPT, NULL), 0);
+    PT_ASSERT_EQ_INT(input_set_keymap(&keymap), 0);
+    PT_ASSERT_EQ_INT(input_set_padmap(&padmap), 0);
+    PT_ASSERT_EQ_INT(input_current_keymap().scancodes[0], SDL_SCANCODE_SPACE);
+    PT_ASSERT_EQ_INT(input_current_padmap().controls[0], SDL_CONTROLLER_BUTTON_Y);
+    keymap.scancodes[1] = INPUT_NO_SCANCODE;
+    padmap.controls[1] = -5;
+    PT_ASSERT_EQ_INT(input_set_keymap(&keymap), -1);
+    PT_ASSERT_EQ_INT(input_set_padmap(&padmap), -1);
+    PT_ASSERT_EQ_INT(input_set_keymap(NULL), -1);
+    PT_ASSERT_EQ_INT(input_current_keymap().scancodes[1], SDL_SCANCODE_X); /* unchanged */
+    const char *names[INPUT_MAX_CONTROLLERS];
+    PT_ASSERT_EQ_U32((uint32_t)input_controller_names(names, INPUT_MAX_CONTROLLERS), 0u); /* the script source */
+    input_shutdown();
+}
+
+PTEST(an_injection_holds_its_keys_for_its_frames_on_top_of_the_source)
+{
+    overlay_shutdown(); /* no latch left by another test: they share a process on Windows */
+    PT_ASSERT_EQ_INT(input_init(INPUT_SOURCE_SCRIPT, NULL), 0);
+    input_script_set(INPUT_KEY_A);
+    input_inject(INPUT_KEY_R | INPUT_KEY_START, 2u);
+    input_update_keyinput();
+    const uint16_t first = *keyinput();
+    input_update_keyinput();
+    const uint16_t second = *keyinput();
+    input_update_keyinput();
+    const uint16_t third = *keyinput();
+    input_inject(INPUT_KEY_B, 1000u); /* capped: the last frame of the cap still holds it, the next does not */
+    for (uint32_t i = 0; i < INPUT_MAX_INJECT_FRAMES; i++)
+        input_update_keyinput();
+    const uint16_t last_capped = *keyinput();
+    input_update_keyinput();
+    const uint16_t capped = *keyinput();
+    input_inject(INPUT_KEY_B, 5u);
+    input_inject(0, 0); /* cancelled */
+    input_update_keyinput();
+    const uint16_t cancelled = *keyinput();
+    input_shutdown();
+    input_inject(INPUT_KEY_B, 5u); /* before init: nothing */
+    *keyinput() = 0;
+    PT_ASSERT_EQ_U32(first, input_keys_to_keyinput(INPUT_KEY_A | INPUT_KEY_R | INPUT_KEY_START));
+    PT_ASSERT_EQ_U32(second, first);
+    PT_ASSERT_EQ_U32(third, input_keys_to_keyinput(INPUT_KEY_A));
+    PT_ASSERT_EQ_U32(last_capped, input_keys_to_keyinput(INPUT_KEY_A | INPUT_KEY_B));
+    PT_ASSERT_EQ_U32(capped, input_keys_to_keyinput(INPUT_KEY_A));
+    PT_ASSERT_EQ_U32(cancelled, input_keys_to_keyinput(INPUT_KEY_A));
+}
+
+PTEST(an_injection_reaches_the_game_while_the_menu_holds_its_keys_back)
+{
+    overlay_shutdown();
+    PT_ASSERT_EQ_INT(input_init(INPUT_SOURCE_SCRIPT, NULL), 0);
+    input_script_set(INPUT_KEY_A);
+    overlay_set_menu_open(true);
+    input_update_keyinput();
+    const uint16_t held_back = *keyinput();
+    overlay_set_menu_open(false);
+    input_inject(INPUT_KEY_R | INPUT_KEY_START, 1u);
+    input_update_keyinput(); /* A, held through the menu, stays released; the injection does not */
+    const uint16_t injected = *keyinput();
+    input_shutdown();
+    overlay_shutdown(); /* A's latch would outlive the test */
+    *keyinput() = 0;
+    PT_ASSERT_EQ_U32(held_back, 0x03FFu);
+    PT_ASSERT_EQ_U32(injected, input_keys_to_keyinput(INPUT_KEY_R | INPUT_KEY_START));
 }
 
 PTEST(two_buttons_on_one_key_are_both_pressed)

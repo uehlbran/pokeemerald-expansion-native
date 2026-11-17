@@ -124,6 +124,15 @@ int controller_init(const struct controller_bindings *bindings);
  * twice. */
 void controller_shutdown(void);
 
+/* The bubble menu's rebinding (bubble_menu.h): the bindings in force from
+ * now on (copied), with nothing held, so that no function stays pressed on
+ * a control it no longer has. Returns 0, or -1 for invalid bindings or
+ * before init, which changes nothing. */
+int controller_set_bindings(const struct controller_bindings *bindings);
+
+/* The bindings in force (the defaults before init). */
+struct controller_bindings controller_current_bindings(void);
+
 bool controller_enabled(void);
 
 /* An SDL event, as the frame loop polls them: updates what is held and

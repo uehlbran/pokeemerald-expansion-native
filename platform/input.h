@@ -40,6 +40,7 @@
 #ifndef INPUT_H
 #define INPUT_H
 
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 
@@ -71,6 +72,9 @@
 /* What a keymap entry holds for no key: SDL_SCANCODE_UNKNOWN. */
 #define INPUT_NO_SCANCODE 0
 
+/* The debug menu key (below): F4 by default. */
+#define INPUT_DEBUG_MENU_DEFAULT_SCANCODE 61 /* SDL_SCANCODE_F4 */
+
 enum input_source { INPUT_SOURCE_HOST, INPUT_SOURCE_SCRIPT };
 
 /* One GBA button, as input_buttons() lists them. */
@@ -82,10 +86,27 @@ struct input_button {
 };
 
 /* The keyboard key of each button: scancodes[i] presses input_buttons()[i].
- * Two buttons may share a key; a scancode is never INPUT_NO_SCANCODE. */
+ * Two buttons may share a key; a scancode is never INPUT_NO_SCANCODE.
+ * debug_menu is the key that presses R and Start together, which opens
+ * expansion's debug menu in the overworld (include/config/debug.h,
+ * DEBUG_OVERWORLD_MENU: items, Pokémon, money, flags, warps; the cheats),
+ * so that one key does what two do; INPUT_NO_SCANCODE for no such key. */
 struct input_keymap {
     int scancodes[INPUT_BUTTON_COUNT];
+    int debug_menu;
 };
+
+/* The controller control of each button: controls[i] presses
+ * input_buttons()[i]. A control is controller.h's: an SDL game-controller
+ * button or one of its two triggers (CONTROLLER_LEFT_TRIGGER, _RIGHT_), read
+ * as pressed past CONTROLLER_TRIGGER_PRESS. Two buttons may share a
+ * control. The left stick moves the D-pad whatever the map says. */
+struct input_padmap {
+    int controls[INPUT_BUTTON_COUNT];
+};
+
+/* How long input_inject holds its keys at most. */
+#define INPUT_MAX_INJECT_FRAMES 60u
 
 /* A controller's state, as input_pad_to_keys() reads it. 0 = up, non-zero =
  * down; the stick axes are SDL_GameController's left stick. */
@@ -142,8 +163,37 @@ uint16_t input_keys_to_keyinput(uint16_t keys_active_high);
  * Select, Start, Right, Left, Up, Down, R, L). */
 const struct input_button *input_buttons(void);
 
-/* Every button on its default_scancode. */
+/* Every button on its default_scancode, the debug menu on F4. */
 struct input_keymap input_default_keymap(void);
+
+/* SDL's layout: A, B, Back (Select), Start, the D-pad, the shoulders. */
+struct input_padmap input_default_padmap(void);
+
+/* Whether every control is a button or a trigger. Pure. */
+bool input_padmap_is_valid(const struct input_padmap *padmap);
+
+/* The bubble menu's rebinding (bubble_menu.h): the keymap or the controller
+ * map in force from the next read (copied). Return 0, or -1 for an invalid
+ * map or before init, which changes nothing. */
+int input_set_keymap(const struct input_keymap *keymap);
+int input_set_padmap(const struct input_padmap *padmap);
+
+/* The maps in force: the defaults before init. */
+struct input_keymap input_current_keymap(void);
+struct input_padmap input_current_padmap(void);
+
+/* Holds keys (INPUT_KEY_* bits) down for the next `frames` reads, at most
+ * INPUT_MAX_INJECT_FRAMES, on top of what the source gives and whatever the
+ * overlay and the bubble menu hold back: the menu's "open the debug menu"
+ * presses R and Start for the game this way. A later call replaces an
+ * earlier one; 0 frames cancels. Before init it does nothing. */
+void input_inject(uint16_t keys, uint32_t frames);
+
+/* The names of the open controllers (SDL_GameControllerName, "Controller"
+ * for one without), at most max of them, into names; the count. 0 before
+ * init and for the script source. The names live until the controller is
+ * closed. */
+size_t input_controller_names(const char **names, size_t max);
 
 /* The scancode SDL names name, ignoring case ("Z", "return", "Left Shift",
  * "Keypad 8"; SDL_GetScancodeFromName), or INPUT_NO_SCANCODE for a name SDL
@@ -159,6 +209,13 @@ const char *input_scancode_name(int scancode);
  * numkeys, reads as not pressed. */
 uint16_t input_keyboard_to_keys(const struct input_keymap *keymap, const uint8_t *keyboard, int numkeys);
 uint16_t input_pad_to_keys(const struct input_pad_state *pad);
+
+/* Pure: the keys a controller presses through padmap. controls[c] is
+ * non-zero while control c is down (count entries; a control past count
+ * reads as up); the stick axes move the D-pad past INPUT_STICK_DEADZONE as
+ * input_pad_to_keys's do. A NULL padmap or controls reads as no key. */
+uint16_t input_pad_controls_to_keys(const struct input_padmap *padmap, const uint8_t *controls, size_t count,
+                                    int16_t left_x, int16_t left_y);
 
 
 #endif /* INPUT_H */

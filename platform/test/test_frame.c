@@ -16,7 +16,7 @@
  * loop's poll; fast-forward's sound runs on SDL's dummy audio device too,
  * which plays its queue at the device's rate, and the pacer in real time.
  */
-// deps: lcd_status.c gba_memmap.c interrupt.c timer.c dma.c transfer_bounds.c ppu.c ppu_bg.c ppu_obj.c ppu_window.c ppu_blend.c psg.c psg_channel.c psg_square.c psg_wave.c psg_noise.c audio.c video.c input.c overlay.c controller.c font.c flash.c save_file.c frame_pacer.c game_hooks.c debug_channel.c m4a_output.c sound_mix.c audio_dump.c sound_grid.c fastforward.c fullscreen.c sound_speedup.c
+// deps: bubble_menu.c lcd_status.c gba_memmap.c interrupt.c timer.c dma.c transfer_bounds.c ppu.c ppu_bg.c ppu_obj.c ppu_window.c ppu_blend.c psg.c psg_channel.c psg_square.c psg_wave.c psg_noise.c audio.c video.c input.c overlay.c controller.c font.c flash.c save_file.c frame_pacer.c game_hooks.c debug_channel.c m4a_output.c sound_mix.c audio_dump.c sound_grid.c fastforward.c fullscreen.c sound_speedup.c
 #include <setjmp.h>
 #include <stdbool.h>
 #include <stdint.h>
@@ -1101,13 +1101,23 @@ static bool push_toggle(void)
     return push_key_event(SDL_KEYDOWN, SDL_SCANCODE_TAB, KMOD_LSHIFT);
 }
 
-static bool push_focus_lost(void)
+static bool push_focus_event(SDL_WindowEventID id)
 {
     SDL_Event event;
     SDL_zero(event);
     event.type = SDL_WINDOWEVENT;
-    event.window.event = SDL_WINDOWEVENT_FOCUS_LOST;
+    event.window.event = (Uint8)id;
     return SDL_PushEvent(&event) == 1;
+}
+
+static bool push_focus_lost(void)
+{
+    return push_focus_event(SDL_WINDOWEVENT_FOCUS_LOST);
+}
+
+static bool push_focus_gained(void)
+{
+    return push_focus_event(SDL_WINDOWEVENT_FOCUS_GAINED);
 }
 
 /* Runs count frames; true if the game went on through all of them. */
@@ -1190,9 +1200,9 @@ PTEST(the_hold_ends_when_the_window_loses_the_focus_without_a_key_up)
     PT_ASSERT(!active);
 }
 
-/* The toggle ends with the focus as the hold does: on at the frame before, at the normal pace
- * at the frame after, and switched on again by the next press once the focus is back. */
-PTEST(the_toggle_ends_when_the_window_loses_the_focus_and_switches_on_again_after)
+/* Without the focus the toggle waits: on at the frame before, at the normal pace while the
+ * window has not the focus, on again at the frame after it comes back, and off at its key. */
+PTEST(the_toggle_waits_while_the_window_has_not_the_focus_and_resumes_with_it)
 {
     PT_ASSERT(start_fast_forward(2u, FASTFORWARD_AUDIO_PLAY));
     const bool toggled = push_toggle();
@@ -1203,19 +1213,23 @@ PTEST(the_toggle_ends_when_the_window_loses_the_focus_and_switches_on_again_afte
     const uint32_t after = frame_pacer_multiplier();
     const bool ran_idle = run_frames(3);
     const uint32_t still_after = frame_pacer_multiplier();
-    const bool again = push_toggle();
-    const bool ran_again = run_frames(1);
-    const uint32_t toggled_again = frame_pacer_multiplier();
+    const bool gained = push_focus_gained();
+    const bool ran_back = run_frames(1);
+    const uint32_t back = frame_pacer_multiplier();
+    const bool off = push_toggle();
+    const bool ran_off = run_frames(1);
+    const uint32_t switched_off = frame_pacer_multiplier();
     stop();
-    PT_ASSERT(toggled && lost && again && ran && ran_lost && ran_idle && ran_again);
+    PT_ASSERT(toggled && lost && gained && off && ran && ran_lost && ran_idle && ran_back && ran_off);
     PT_ASSERT_EQ_U32(on, 2u);
     PT_ASSERT_EQ_U32(after, FRAME_PACER_NORMAL_SPEED);
     PT_ASSERT_EQ_U32(still_after, FRAME_PACER_NORMAL_SPEED);
-    PT_ASSERT_EQ_U32(toggled_again, 2u);
+    PT_ASSERT_EQ_U32(back, 2u);
+    PT_ASSERT_EQ_U32(switched_off, FRAME_PACER_NORMAL_SPEED);
 }
 
-/* The hold's path, unchanged by the toggle's: holding Tab again after the focus returns
- * fast-forwards again. */
+/* The hold's path: holding Tab again after the focus returns fast-forwards again (a key only
+ * comes to a window that has the focus, so the gain comes first). */
 PTEST(the_hold_fast_forwards_again_after_the_focus_returns)
 {
     PT_ASSERT(start_fast_forward(2u, FASTFORWARD_AUDIO_PLAY));
@@ -1223,7 +1237,7 @@ PTEST(the_hold_fast_forwards_again_after_the_focus_returns)
     const bool lost = push_focus_lost();
     const bool ran = run_frames(1);
     const uint32_t after_loss = frame_pacer_multiplier();
-    const bool held_again = push_key_event(SDL_KEYDOWN, SDL_SCANCODE_TAB, KMOD_NONE);
+    const bool held_again = push_focus_gained() && push_key_event(SDL_KEYDOWN, SDL_SCANCODE_TAB, KMOD_NONE);
     const bool ran_again = run_frames(1);
     const uint32_t after_hold = frame_pacer_multiplier();
     stop();
@@ -1439,9 +1453,8 @@ PTEST(the_trigger_let_go_ends_the_hold_and_the_stick_click_toggles_once)
     PT_ASSERT_EQ_U32(toggled, 2u); /* held for three frames, flipped once */
 }
 
-/* The stick click's toggle ends with the focus as the trigger's hold does, and a second click
- * after the focus returns switches it on. */
-PTEST(the_window_losing_the_focus_ends_the_sticks_toggle_and_a_click_switches_it_on_again)
+/* The stick click's toggle waits without the focus as the keyboard's does, and is back with it. */
+PTEST(the_window_losing_the_focus_suspends_the_sticks_toggle_until_it_is_back)
 {
     PT_ASSERT(start_player());
     bool pushed = push_pad_button(SDL_CONTROLLERBUTTONDOWN, SDL_CONTROLLER_BUTTON_RIGHTSTICK);
@@ -1451,7 +1464,7 @@ PTEST(the_window_losing_the_focus_ends_the_sticks_toggle_and_a_click_switches_it
     pushed = push_focus_lost() && pushed;
     ran = run_frames(1) && ran;
     const uint32_t after = frame_pacer_multiplier();
-    pushed = push_pad_button(SDL_CONTROLLERBUTTONDOWN, SDL_CONTROLLER_BUTTON_RIGHTSTICK) && pushed;
+    pushed = push_focus_gained() && pushed;
     ran = run_frames(1) && ran;
     const uint32_t again = frame_pacer_multiplier();
     stop();

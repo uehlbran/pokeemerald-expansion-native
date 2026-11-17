@@ -74,6 +74,31 @@ static void start(void)
     PT_ASSERT_EQ_INT(controller_init(&defaults), 0);
 }
 
+/* ---- the bubble menu's rebinding ---- */
+
+PTEST(bindings_set_while_running_take_over_and_forget_what_was_held)
+{
+    struct controller_bindings b = controller_default_bindings();
+    controller_shutdown();
+    PT_ASSERT_EQ_INT(controller_set_bindings(&b), -1); /* before init */
+    PT_ASSERT_EQ_INT(controller_current_bindings().controls[CONTROLLER_OVERLAY], SDL_CONTROLLER_BUTTON_Y);
+    start();
+    (void)press(1, SDL_CONTROLLER_BUTTON_Y);
+    PT_ASSERT(controller_held(CONTROLLER_OVERLAY));
+    b.controls[CONTROLLER_OVERLAY] = SDL_CONTROLLER_BUTTON_DPAD_UP;
+    PT_ASSERT_EQ_INT(controller_set_bindings(&b), 0);
+    PT_ASSERT(!controller_held(CONTROLLER_OVERLAY)); /* nothing held after a rebinding */
+    PT_ASSERT_EQ_INT(controller_current_bindings().controls[CONTROLLER_OVERLAY], SDL_CONTROLLER_BUTTON_DPAD_UP);
+    const struct controller_edge edge = press(1, SDL_CONTROLLER_BUTTON_DPAD_UP);
+    PT_ASSERT_EQ_INT(edge.function, CONTROLLER_OVERLAY);
+    PT_ASSERT(edge.pressed);
+    b.controls[CONTROLLER_QUIT] = SDL_CONTROLLER_BUTTON_DPAD_UP; /* two on one: refused */
+    PT_ASSERT_EQ_INT(controller_set_bindings(&b), -1);
+    PT_ASSERT_EQ_INT(controller_set_bindings(NULL), -1);
+    PT_ASSERT_EQ_INT(controller_current_bindings().controls[CONTROLLER_QUIT], SDL_CONTROLLER_BUTTON_X);
+    controller_shutdown();
+}
+
 /* ---- the bindings ---- */
 
 PTEST(the_default_bindings_are_the_decks_free_controls)

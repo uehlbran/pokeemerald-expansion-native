@@ -47,6 +47,17 @@ const struct input_keymap *player_keymap(void);
  * settings file). */
 const struct controller_bindings *player_controller(void);
 
+/* The GBA buttons on a controller (the defaults without a settings file). */
+const struct input_padmap *player_padmap(void);
+
+/* The bubble menu's Save (bubble_menu.h): the settings read at the start
+ * with what the menu changed since (the keymap and the controller map in
+ * force, the controller's bindings, fast-forward's speed and sound), written
+ * to the run's settings file (settings_save), and kept as the run's
+ * settings. Returns 0, or -1 after a report on stderr (no settings file for
+ * this run; a write that failed, which leaves the old file). */
+int player_save_settings(void);
+
 /* Whether the window starts fullscreen, from the settings file and the
  * environment's SteamDeck (fullscreen.h); false for a run without a player at
  * the keyboard. */

@@ -2665,3 +2665,131 @@ that `cp --preserve=timestamps` and `tar` onto the Windows file system do
 not trip on ownership, that the `again/` directory's save reaches the last
 stage intact, that a run by hand and the nightly share the caches as
 intended, and that the token's fetch of `${{ github.sha }}` works (a scheduled or manual run on a fork-less private or public repository; if the fetch of a bare SHA is refused, fetch the branch and check out the SHA).
+
+## 2026-11-09: Two keys change fast-forward's speed while playing, and one key opens the debug menu
+
+A player asked for "cheats and speed multipliers". Both were there: the
+speed is `fast_forward_speed` in the settings file, 2, 3, 4 or unlimited,
+and the cheats are expansion's debug menu, which this build keeps on
+(`DEBUG_OVERWORLD_MENU` is `DISABLED_ON_RELEASE` and the native build never
+defines `RELEASE`; `tests/smoke/debug_menu.replay` drives it). What was
+missing was reach: the speed could only be changed by quitting, editing the
+file and starting again, and the debug menu's R+Start is a chord on two
+letter keys that nothing on the screen names.
+
+Chosen, for the speed: two more fast-forward keys in `fastforward.h`,
+`faster` (F3) and `slower` (F2), each a step along the list 2x, 3x, 4x,
+unlimited, saturating at its ends. They change the speed in force whether
+fast-forward is on or off, the pacer and the sound follow at the next
+frame through the path that already handled a change between on and off
+(`frame.c`, `apply_speed`), and `video.c` paints the indicator again when
+the speed it was painted for is no longer the one in force
+(`fastforward_speed`), because "FF max" is a cell wider than "FF 2x". The
+four keys must differ, in `fastforward_init` and in the settings file,
+where the pairwise check that kept hold and toggle apart now runs over the
+four (`keep_apart`, the shape `keep_pad_apart` already had). Rejected:
+writing the new speed back to the settings file, which the game by
+decision never writes (settings.h); a wider range of speeds, since the
+sound's speed-up is bounded by `SOUND_SPEEDUP_MAX_FACTOR` and 4x is where
+the sound stops being music; controller buttons for the two, which would
+take two of the few buttons left and the speed is set rarely. What it
+costs: a speed set by key is lost at quit, which the player is told.
+
+Chosen, for the cheats: a `debug_menu` key in the keymap (`input.h`, F4,
+or `none`), which `input_keyboard_to_keys` reads as R and Start down
+together, so that the game sees exactly the chord it waits for
+(`DEBUG_OVERWORLD_HELD_KEYS` held and `DEBUG_OVERWORLD_TRIGGER_EVENT` in
+`src/field_control_avatar.c`) and no expansion file changes. The help
+overlay and `--keys` name it, and `docs/RUNNING.md` has a section on what
+the menu offers, since the menu is the cheats. Rejected: a platform menu
+of its own for cheats, which would duplicate expansion's and have to be
+kept in step with it; GameShark or CodeBreaker codes applied to the GBA
+regions each frame, which the layout would allow but which are written
+for the retail ROM's RAM and mean nothing in expansion's; switching the
+menu on by a build flag, since it is already on. What it costs: nothing
+in a replay or a gate, whose keys are scripted (the field reads as no key
+there), and a key that the player can move or remove.
+
+## 2026-11-17: A clickable menu for the speed, the cheats and the mapping, which may write the settings file
+
+The player asked for a bubble in the top-left corner that opens the cheats,
+the speeds, and a way to add a controller and map it. Keys alone (F2 to F5)
+were not enough: nothing on the screen says they exist, and a controller's
+GBA buttons could not be moved at all (SDL's layout was fixed, and Steam
+Input was the answer on a Deck only).
+
+Chosen: `platform/bubble_menu.c`, drawn by `video.c` over the frame like the
+overlay and the indicator (never into the frame buffer, so no screenshot
+or gate sees it), clicked with the mouse in the LCD's coordinates (SDL
+gives them in the renderer's logical size), started for the runs that get
+the overlay. Its rows act on the modules that already own the state: the
+speed through four setters on `fastforward.h`; the keymap and a new
+controller map (`input_padmap`, ten controls, settings `pad_a` ... `pad_l`)
+through `input_set_keymap` and `input_set_padmap`; the functions through
+`controller_set_bindings`, which swaps a taken button rather than refusing
+it. The game's keys are held back while it is open by the overlay's own
+latch (`overlay_set_menu_open`), so a button pressed in the menu does not
+reach the game when it closes. The menu rebuilds its rows from those
+modules every time, keeping no copy that could disagree with them.
+
+The cheats are `platform/cheats.c`, compiled with the game's defines as
+`inspect.c` is, calling what expansion's debug menu calls (HealPlayerParty,
+SetMoney, AddBagItem, FlagToggle), in the overworld only, between two
+frames, from the event loop. Three are flags expansion's config leaves at
+0; the native build gives them three of the unused flags 0x20 to 0x22
+(`include/config/overworld.h` and `wild_encounter.h`, under the guard), which
+also makes the debug menu's own Collision, Encounter and Trainer See
+toggles work. "Open the debug menu" presses R and Start for the game for
+two frames (`input_inject`), past the menu's latch. The menu reaches the
+cheats and the file through hooks, so its tests need no game.
+
+Save rewrites `settings.ini` whole (`settings_write`, then a temporary file
+that replaces the old one, as the clock's offset is written). This
+supersedes "the game reads it at start-up and never writes it" for one
+action the player takes; the file is never written otherwise.
+
+Rejected: a menu drawn in the game's own window system (it would be
+expansion code, under the guard in many files, and only reachable where
+the game takes input); an editor of GameShark codes (meaningless addresses
+for expansion, as decided on 2026-11-09); writing the settings file on
+every change (a stray click would lose the player's comments, and a failed
+write mid-game has nobody to tell); editing only the changed lines of the
+file (a parser that keeps comments and unknown lines in place, for little
+gain over the documented rewrite). What it costs: the comments in a file
+the menu saves are lost, which `docs/RUNNING.md` says; the cheats' three
+flags are in the save, so a save made with walls off has them off until
+switched back; the menu's labels are English, as the overlay's are, since
+the font is ASCII.
+
+## 2026-11-17: Fast-forward switched on waits while the window has not the focus, instead of switching off
+
+Reported: the menu's speeds "change nothing; the character goes no faster".
+Measured on the player's Windows 11 laptop with a log in fastforward.c:
+choosing a speed in the menu switched the toggle on, and a moment later a
+focus loss switched it off, as the 2026-10-15 rule said it should (an
+unwatched game must not run at full speed). Which window took the focus in
+that run was not recorded; during earlier tests on the same machine a
+"battery low" dialog of Windows' had taken it over the game. Nothing tells
+the player the toggle went off. Holding
+Tab and with no other window coming up, the same build ran 1500 frames at
+4x at 149 frames a second and at max at 177, against 61 at the normal
+speed; the window and fullscreen alike reach about 300 frames a second
+unthrottled, so neither the display nor the machine caps it.
+
+Chosen: the focus loss suspends the toggle rather than ending it. Without
+the focus the game runs at the normal speed and no indicator is drawn,
+which keeps the rule's intent; with the focus back, fast-forward resumes
+at the speed chosen. The hold still ends with the loss, since its key-up
+goes to the other window; the controller's hold likewise. Rejected:
+keeping the old rule and drawing a notice when it fires (the speed is still
+lost, and the player has to find it again); ignoring the focus entirely
+(the unwatched game at full speed the rule was made against).
+
+With it, the pacer sleeps on `host_sleep_us`, a high-resolution waitable
+timer on Windows and nanosleep elsewhere, in place of SDL_Delay. That was
+first suspected and is not the cause on this machine, where Windows
+honours SDL's 1 ms timer request (twenty sleeps of 2 ms: 58 ms with
+SDL_Delay, 44 to 49 ms with the timer). It is kept because Windows 11 may
+leave the system timer at 15.6 ms for a process it deems in the
+background or to save power, and a 4.2 ms fast-forward frame would then
+oversleep to the tick; the timer depends on no such setting.

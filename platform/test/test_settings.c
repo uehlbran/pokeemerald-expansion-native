@@ -42,6 +42,7 @@ static bool fast_forward_is_default(const struct fastforward_settings *f)
 {
     const struct fastforward_settings d = fastforward_defaults();
     return fastforward_keys_equal(&f->hold, &d.hold) && fastforward_keys_equal(&f->toggle, &d.toggle)
+           && fastforward_keys_equal(&f->faster, &d.faster) && fastforward_keys_equal(&f->slower, &d.slower)
            && f->speed == d.speed && f->audio == d.audio;
 }
 
@@ -252,6 +253,56 @@ PTEST(a_button_may_share_fast_forwards_key)
     PT_ASSERT_EQ_U32(s.problem_count, 0u);
     PT_ASSERT_EQ_INT(s.keymap.scancodes[SELECT], SDL_SCANCODE_TAB);
     PT_ASSERT(fast_forward_is_default(&s.fast_forward));
+}
+
+PTEST(the_speed_keys_and_the_debug_menu_key_are_applied)
+{
+    struct settings s;
+    parse("Fast_Forward_Faster = ctrl+keypad +\nfast_forward_slower = Keypad -\ndebug_menu = f5\n", &s);
+    PT_ASSERT_EQ_U32(s.problem_count, 0u);
+    PT_ASSERT(is_key(&s.fast_forward.faster, SDL_SCANCODE_KP_PLUS, FASTFORWARD_CTRL));
+    PT_ASSERT(is_key(&s.fast_forward.slower, SDL_SCANCODE_KP_MINUS, 0u));
+    PT_ASSERT_EQ_INT(s.keymap.debug_menu, SDL_SCANCODE_F5);
+    parse("", &s);
+    PT_ASSERT(is_key(&s.fast_forward.faster, SDL_SCANCODE_F3, 0u));
+    PT_ASSERT(is_key(&s.fast_forward.slower, SDL_SCANCODE_F2, 0u));
+    PT_ASSERT_EQ_INT(s.keymap.debug_menu, SDL_SCANCODE_F4);
+}
+
+PTEST(the_debug_menu_key_may_be_none_but_not_f1_or_a_key_sdl_does_not_know)
+{
+    struct settings s;
+    parse("debug_menu = None\n", &s);
+    PT_ASSERT_EQ_INT(s.keymap.debug_menu, INPUT_NO_SCANCODE);
+    PT_ASSERT_EQ_U32(s.problem_count, 0u);
+    parse("debug_menu = f1\ndebug_menu = nokey\n", &s);
+    PT_ASSERT_EQ_INT(s.keymap.debug_menu, SDL_SCANCODE_F4);
+    PT_ASSERT_EQ_U32(s.problem_count, 2u);
+    PT_ASSERT_EQ_INT(s.problems[0].kind, SETTINGS_RESERVED_KEY);
+    PT_ASSERT_EQ_INT(s.problems[1].kind, SETTINGS_UNKNOWN_KEY);
+}
+
+/* The four fast-forward keys are four keys: of two lines that make two of them one, the later
+ * is ignored and its setting keeps its default, which a line may also clash with. */
+PTEST(a_speed_key_on_another_fast_forward_key_is_refused_on_the_later_line)
+{
+    struct settings s;
+    parse("fast_forward_faster = tab\n", &s); /* the hold's default */
+    PT_ASSERT(fast_forward_is_default(&s.fast_forward));
+    PT_ASSERT_EQ_U32(s.problem_count, 1u);
+    PT_ASSERT_EQ_INT(s.problems[0].kind, SETTINGS_SAME_FAST_FORWARD_KEY);
+    PT_ASSERT_EQ_STR(s.problems[0].text, "tab");
+    parse("fast_forward_slower = f3\n", &s); /* the faster key's default */
+    PT_ASSERT(fast_forward_is_default(&s.fast_forward));
+    PT_ASSERT_EQ_U32(s.problem_count, 1u);
+    parse("fast_forward_faster = f9\nfast_forward_slower = f9\nfast_forward_toggle = f2\n", &s);
+    PT_ASSERT(is_key(&s.fast_forward.faster, SDL_SCANCODE_F9, 0u));
+    PT_ASSERT(is_key(&s.fast_forward.slower, SDL_SCANCODE_F2, 0u)); /* line 2 refused, the default */
+    PT_ASSERT(is_key(&s.fast_forward.toggle, SDL_SCANCODE_TAB, FASTFORWARD_SHIFT)); /* line 3: now F2 is taken */
+    PT_ASSERT_EQ_U32(s.problem_count, 2u);
+    PT_ASSERT_EQ_U32(s.problems[0].line, 2u);
+    PT_ASSERT_EQ_U32(s.problems[1].line, 3u);
+    PT_ASSERT_EQ_INT(s.problems[1].kind, SETTINGS_SAME_FAST_FORWARD_KEY);
 }
 
 /* One key cannot both hold and toggle: of the two lines that make them one, the later is
@@ -491,9 +542,11 @@ PTEST(a_file_is_applied_and_each_problem_reported_with_its_line)
     const int written = snprintf(
         expected, sizeof expected,
         "settings: %s:3: 'jump' is not a setting (a, b, select, start, right, left, up, down, r, l, "
-        "scale, fast_forward, fast_forward_toggle, fast_forward_speed, fast_forward_audio, fullscreen, "
+        "scale, fast_forward, fast_forward_toggle, fast_forward_faster, fast_forward_slower, fast_forward_speed, "
+        "fast_forward_audio, debug_menu, fullscreen, "
         "fullscreen_toggle, pad_fast_forward, pad_fast_forward_toggle, pad_overlay, pad_overlay_close, pad_quit, "
-        "pad_fullscreen); the line is ignored\n"
+        "pad_fullscreen, pad_a, pad_b, pad_select, pad_start, pad_right, pad_left, pad_up, pad_down, pad_r, "
+        "pad_l); the line is ignored\n"
         "settings: %s:4: the scale '40' is not a whole number from 1 to 16; the line is ignored\n",
         path, path);
     PT_ASSERT(written > 0 && (size_t)written < sizeof expected);
@@ -520,7 +573,7 @@ PTEST(the_report_names_each_kind_of_problem_and_those_not_kept)
     PT_ASSERT(strstr(said, "settings: f.ini:1: 'x' is not a 'setting = value' line; the line is ignored\n") != NULL);
     PT_ASSERT(strstr(said, "settings: f.ini:2: 'nokey' is not a key name SDL knows") != NULL);
     PT_ASSERT(strstr(said, "settings: f.ini:3: 'F1' opens the help overlay and cannot be a button's, "
-                           "fast-forward's or the fullscreen key; the line is ignored\n")
+                           "fast-forward's, the debug menu's or the fullscreen key; the line is ignored\n")
               != NULL);
     PT_ASSERT(strstr(said, "settings: f.ini:4: the fast-forward speed '9' is not 2, 3, 4 or unlimited; the line is "
                            "ignored\n")
@@ -542,8 +595,8 @@ PTEST(the_report_of_one_key_for_both)
     const size_t got = rewound ? fread(said, 1, sizeof said - 1u, out) : 0;
     said[got] = '\0';
     (void)fclose(out);
-    PT_ASSERT_EQ_STR(said, "settings: f.ini:2: 'tab' is the other fast-forward key too: one key cannot both hold and "
-                           "toggle, and this one keeps its default; the line is ignored\n");
+    PT_ASSERT_EQ_STR(said, "settings: f.ini:2: 'tab' is another fast-forward key too: hold, toggle, faster and slower "
+                           "are four keys, and this one keeps its default; the line is ignored\n");
 }
 
 /* ---- the controller's functions and fullscreen ---- */
@@ -707,6 +760,167 @@ PTEST(a_file_larger_than_the_limit_is_refused_with_the_defaults)
     PT_ASSERT(strstr(said, "is larger than 16384 bytes") != NULL);
     PT_ASSERT_EQ_INT(at_limit.status, 0);
     PT_ASSERT_EQ_INT(at_limit.settings.keymap.scancodes[A], SDL_SCANCODE_Q);
+}
+
+/* ---- the controller's GBA buttons, the writer and the save ---- */
+
+PTEST(the_gba_buttons_on_a_controller_are_settings_and_sdls_layout_by_default)
+{
+    struct settings s;
+    parse("", &s);
+    const struct input_padmap defaults = input_default_padmap();
+    PT_ASSERT(memcmp(&s.pad_buttons, &defaults, sizeof defaults) == 0);
+    PT_ASSERT_EQ_INT(s.pad_buttons.controls[A], SDL_CONTROLLER_BUTTON_A);
+    PT_ASSERT_EQ_INT(s.pad_buttons.controls[SELECT], SDL_CONTROLLER_BUTTON_BACK);
+    parse("PAD_A = x\npad_b = y\npad_select = righttrigger\npad_l = a\n", &s);
+    PT_ASSERT_EQ_U32(s.problem_count, 0u);
+    PT_ASSERT_EQ_INT(s.pad_buttons.controls[A], SDL_CONTROLLER_BUTTON_X);
+    PT_ASSERT_EQ_INT(s.pad_buttons.controls[B], SDL_CONTROLLER_BUTTON_Y);
+    PT_ASSERT_EQ_INT(s.pad_buttons.controls[SELECT], CONTROLLER_RIGHT_TRIGGER);
+    PT_ASSERT_EQ_INT(s.pad_buttons.controls[L], SDL_CONTROLLER_BUTTON_A); /* two may share one */
+    PT_ASSERT(pad_is_default(&s.pad));                                    /* the functions are apart */
+}
+
+PTEST(a_controller_button_that_is_not_one_and_a_setting_that_is_not_a_button_are_problems)
+{
+    struct settings s;
+    parse("pad_a = nobutton\npad_jump = x\npad_ = x\n", &s);
+    PT_ASSERT_EQ_INT(s.pad_buttons.controls[A], SDL_CONTROLLER_BUTTON_A);
+    PT_ASSERT_EQ_U32(s.problem_count, 3u);
+    PT_ASSERT_EQ_INT(s.problems[0].kind, SETTINGS_UNKNOWN_CONTROL);
+    PT_ASSERT_EQ_INT(s.problems[1].kind, SETTINGS_UNKNOWN_SETTING);
+    PT_ASSERT_EQ_INT(s.problems[2].kind, SETTINGS_UNKNOWN_SETTING);
+}
+
+/* Settings written then parsed are the same settings, every field. */
+static bool reads_back(const struct settings *written)
+{
+    static char text[SETTINGS_FILE_MAX_SIZE];
+    struct settings read;
+    const size_t length = settings_write(written, text, sizeof text);
+    if (length >= sizeof text || strlen(text) != length)
+        return false;
+    settings_parse(text, length, &read);
+    return read.problem_count == 0 && memcmp(&read.keymap, &written->keymap, sizeof read.keymap) == 0
+           && read.scale == written->scale && fastforward_keys_equal(&read.fast_forward.hold, &written->fast_forward.hold)
+           && fastforward_keys_equal(&read.fast_forward.toggle, &written->fast_forward.toggle)
+           && fastforward_keys_equal(&read.fast_forward.faster, &written->fast_forward.faster)
+           && fastforward_keys_equal(&read.fast_forward.slower, &written->fast_forward.slower)
+           && read.fast_forward.speed == written->fast_forward.speed
+           && read.fast_forward.audio == written->fast_forward.audio
+           && memcmp(&read.pad, &written->pad, sizeof read.pad) == 0
+           && memcmp(&read.pad_buttons, &written->pad_buttons, sizeof read.pad_buttons) == 0
+           && read.fullscreen == written->fullscreen && read.fullscreen_key == written->fullscreen_key;
+}
+
+PTEST(the_written_defaults_read_back_as_the_defaults)
+{
+    struct settings s;
+    settings_defaults(&s);
+    PT_ASSERT(reads_back(&s));
+}
+
+PTEST(every_setting_written_reads_back_as_it_was)
+{
+    struct settings s;
+    settings_defaults(&s);
+    s.keymap.scancodes[A] = SDL_SCANCODE_SPACE;
+    s.keymap.scancodes[L] = SDL_SCANCODE_LSHIFT;
+    s.keymap.scancodes[UP] = SDL_SCANCODE_KP_8;
+    s.keymap.debug_menu = INPUT_NO_SCANCODE;
+    s.scale = 7;
+    s.fast_forward.hold = (struct fastforward_key){.scancode = SDL_SCANCODE_SPACE, .modifiers = 0u};
+    s.fast_forward.toggle = (struct fastforward_key){.scancode = SDL_SCANCODE_F, .modifiers = FASTFORWARD_CTRL | FASTFORWARD_ALT};
+    s.fast_forward.faster = (struct fastforward_key){.scancode = SDL_SCANCODE_KP_PLUS, .modifiers = FASTFORWARD_SHIFT};
+    s.fast_forward.speed = FASTFORWARD_UNLIMITED;
+    s.fast_forward.audio = FASTFORWARD_AUDIO_MUTE;
+    s.pad.controls[CONTROLLER_OVERLAY] = SDL_CONTROLLER_BUTTON_DPAD_UP;
+    s.pad_buttons.controls[A] = CONTROLLER_LEFT_TRIGGER;
+    s.pad_buttons.controls[START] = SDL_CONTROLLER_BUTTON_GUIDE;
+    s.fullscreen = FULLSCREEN_NO;
+    s.fullscreen_key = SDL_SCANCODE_F12;
+    PT_ASSERT(reads_back(&s));
+    s.keymap.debug_menu = SDL_SCANCODE_F6;
+    s.fast_forward.speed = 3u;
+    s.fullscreen = FULLSCREEN_YES;
+    PT_ASSERT(reads_back(&s));
+}
+
+PTEST(the_writer_returns_the_whole_length_and_cuts_what_does_not_fit)
+{
+    struct settings s;
+    char small[16];
+    char big[SETTINGS_FILE_MAX_SIZE];
+    settings_defaults(&s);
+    const size_t whole = settings_write(&s, big, sizeof big);
+    PT_ASSERT(whole > sizeof small);
+    PT_ASSERT_EQ_U32((uint32_t)settings_write(&s, small, sizeof small), (uint32_t)whole);
+    PT_ASSERT_EQ_U32((uint32_t)strlen(small), (uint32_t)(sizeof small - 1u));
+    PT_ASSERT(strncmp(small, big, sizeof small - 1u) == 0);
+    PT_ASSERT_EQ_U32((uint32_t)settings_write(&s, NULL, 0), (uint32_t)whole);
+    PT_ASSERT(strstr(big, "\na = Z\n") != NULL);
+    PT_ASSERT(strstr(big, "\npad_select = back\n") != NULL);
+    PT_ASSERT(strstr(big, "\nfast_forward_toggle = Shift+Tab\n") != NULL);
+    PT_ASSERT(strstr(big, "\ndebug_menu = F4\n") != NULL);
+}
+
+PTEST(save_writes_a_file_that_loads_back_and_replaces_the_old_one)
+{
+    char dir[TSUP_PATH_SIZE];
+    char path[TSUP_PATH_SIZE];
+    char said[512];
+    struct settings s;
+    settings_defaults(&s);
+    s.keymap.scancodes[B] = SDL_SCANCODE_Q;
+    s.pad_buttons.controls[B] = SDL_CONTROLLER_BUTTON_Y;
+    PT_ASSERT(tsup_make_temp_directory(dir, sizeof dir, "settings"));
+    PT_ASSERT(settings_path_in(dir, path));
+    PT_ASSERT(write_file(path, "a = q\n", 6));
+    const int saved = settings_save(path, &s);
+    struct load_case c = {.path = path};
+    PT_ASSERT(tsup_capture_stderr(load, &c, said, sizeof said));
+    char temp[TSUP_PATH_SIZE + 8u];
+    (void)snprintf(temp, sizeof temp, "%s.tmp", path);
+    FILE *const left = fopen(temp, "rb");
+    if (left != NULL)
+        (void)fclose(left);
+    PT_ASSERT(tsup_remove_tree(dir));
+    PT_ASSERT_EQ_INT(saved, 0);
+    PT_ASSERT_EQ_INT(c.status, 0);
+    PT_ASSERT_EQ_U32(c.settings.problem_count, 0u);
+    PT_ASSERT_EQ_INT(c.settings.keymap.scancodes[A], SDL_SCANCODE_Z); /* the old file's line is gone */
+    PT_ASSERT_EQ_INT(c.settings.keymap.scancodes[B], SDL_SCANCODE_Q);
+    PT_ASSERT_EQ_INT(c.settings.pad_buttons.controls[B], SDL_CONTROLLER_BUTTON_Y);
+    PT_ASSERT(left == NULL); /* no temporary file left beside it */
+}
+
+static void save_nowhere(void *context)
+{
+    int *const status = context;
+    struct settings s;
+    settings_defaults(&s);
+    *status = settings_save("", &s);
+}
+
+static void save_into_missing_directory(void *context)
+{
+    int *const status = context;
+    struct settings s;
+    settings_defaults(&s);
+    *status = settings_save("/nonexistent-directory-for-test_settings/settings.ini", &s);
+}
+
+PTEST(save_without_a_file_or_into_a_missing_directory_fails_with_a_report)
+{
+    char said[512];
+    int status = 0;
+    PT_ASSERT(tsup_capture_stderr(save_nowhere, &status, said, sizeof said));
+    PT_ASSERT_EQ_INT(status, -1);
+    PT_ASSERT(strstr(said, "reads no settings file") != NULL);
+    status = 0;
+    PT_ASSERT(tsup_capture_stderr(save_into_missing_directory, &status, said, sizeof said));
+    PT_ASSERT_EQ_INT(status, -1);
+    PT_ASSERT(strstr(said, "saving the settings: open(") != NULL);
 }
 
 /* A directory where the file should be cannot be read: reported, and the start stops (main). */

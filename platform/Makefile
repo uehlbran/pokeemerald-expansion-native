@@ -260,7 +260,7 @@ $(OBJ_DIR)/version.o: $(VERSION_FILE)
 # layouts could differ: inspect.c and its tests read the game's variables;
 # save_convert.c pins its layout tables to the game's structs; rtc_siirtc.c
 # fills the game's struct SiiRtcInfo and reads its BUGFIX setting.
-GAME_FLAG_OBJS := $(OBJ_DIR)/inspect.o $(OBJ_DIR)/inspect_menu.o $(OBJ_DIR)/inspect_args.o \
+GAME_FLAG_OBJS := $(OBJ_DIR)/inspect.o $(OBJ_DIR)/cheats.o $(OBJ_DIR)/inspect_menu.o $(OBJ_DIR)/inspect_args.o \
                   $(OBJ_DIR)/test/test_inspect_args.o $(OBJ_DIR)/save_convert.o $(OBJ_DIR)/rtc_siirtc.o
 $(GAME_FLAG_OBJS): CFLAGS_ALL += $(GAME_DEFINES) -DTESTING=0 -DEMERALD $(GAME_CHAR_FLAGS)
 # -MD, not -MMD: expansion's headers come by -idirafter, which makes them system
@@ -379,7 +379,7 @@ format-check:
 # that include expansion's headers as the game does. Expansion's headers are
 # not ours: ../.clang-tidy's HeaderFilterRegex keeps findings to platform/.
 LINT_DIR := $(BUILD_DIR)/lint
-LINT_GAME_FILES := inspect.c inspect_menu.c inspect_args.c test/test_inspect_args.c save_convert.c rtc_siirtc.c
+LINT_GAME_FILES := inspect.c cheats.c inspect_menu.c inspect_args.c test/test_inspect_args.c save_convert.c rtc_siirtc.c
 ifeq ($(TARGET_OS),windows)
 LINT_TARGET_FLAGS := --target=x86_64-w64-mingw32 $(TARGET_CFLAGS)
 endif

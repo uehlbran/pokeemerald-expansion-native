@@ -15,6 +15,7 @@
 
 #include "audio.h"
 #include "audio_dump.h"
+#include "bubble_menu.h"
 #include "controller.h"
 #include "dma.h"
 #include "fastforward.h"
@@ -285,10 +286,16 @@ static void on_sdl_event(const union SDL_Event *event, void *context)
     (void)context;
     (void)input_handle_event(event);
     const struct controller_edge edge = controller_handle_event(event);
-    if (overlay_handle_event(event) == OVERLAY_QUIT || overlay_handle_controller(&edge) == OVERLAY_QUIT)
-        frame.exit_requested = true;
+    /* Fast-forward sees every event: it ignores presses while the menu is
+     * open (overlay_takes_input) but must see a release, or a hold would
+     * outlast its key. The rest see only what the menu leaves them. */
+    const bool menus = bubble_menu_handle_event(event);
     fastforward_handle_event(event);
     fastforward_handle_controller(&edge);
+    if (menus)
+        return;
+    if (overlay_handle_event(event) == OVERLAY_QUIT || overlay_handle_controller(&edge) == OVERLAY_QUIT)
+        frame.exit_requested = true;
     if (fullscreen_toggle_requested(event) || (edge.pressed && edge.function == CONTROLLER_FULLSCREEN))
         toggle_fullscreen();
 }
@@ -320,6 +327,7 @@ static void present_and_read_keys(void)
     if (!video_poll_events(on_sdl_event, NULL))
         frame.exit_requested = true;
     apply_speed();
+    fastforward_end_frame();
     run_step_hook();
     input_update_keyinput();
 }

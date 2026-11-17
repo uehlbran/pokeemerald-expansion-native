@@ -169,6 +169,20 @@ bool controller_enabled(void)
     return controller.enabled;
 }
 
+int controller_set_bindings(const struct controller_bindings *bindings)
+{
+    if (!controller.enabled || !controller_bindings_are_valid(bindings))
+        return -1;
+    controller.bindings = *bindings;
+    memset(controller.slots, 0, sizeof controller.slots);
+    return 0;
+}
+
+struct controller_bindings controller_current_bindings(void)
+{
+    return controller.enabled ? controller.bindings : controller_default_bindings();
+}
+
 static uint32_t control_bit(int control)
 {
     return UINT32_C(1) << (unsigned)control;

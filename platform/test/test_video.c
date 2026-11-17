@@ -1,4 +1,4 @@
-// deps: overlay.c controller.c font.c fastforward.c input.c
+// deps: overlay.c controller.c font.c fastforward.c input.c bubble_menu.c
 /*
  * Tests of video. They run with SDL's dummy video driver (set with setenv
  * before the first SDL call, so no display is needed). The pixel format is

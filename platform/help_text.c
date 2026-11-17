@@ -4,6 +4,7 @@
 #include "help_text.h"
 
 #include <stdio.h>
+#include <string.h>
 
 #include "version.h"
 
@@ -14,6 +15,10 @@
 #define FUNCTION_COLUMN_WIDTH 20
 
 #define CONTROLLER_LINE "  GBA buttons: A, B, Back (Select), Start, the shoulders (L, R), the D-pad or the left stick"
+#define CONTROLLER_MAPPED_LINE "  GBA buttons: as the menu's Pad tab sets them, and the left stick"
+
+/* What opens the bubble menu (bubble_menu.h). */
+#define MENU_KEYS "F5, or a click on the bubble"
 
 static void write_keys(const struct help_info *info, help_text_sink sink, void *context)
 {
@@ -28,14 +33,28 @@ static void write_keys(const struct help_info *info, help_text_sink sink, void *
     (void)snprintf(line, sizeof line, "  %-*s %s", BUTTON_COLUMN_WIDTH, "Fullscreen",
                    input_scancode_name(info->fullscreen_key));
     sink(line, context);
+    (void)snprintf(line, sizeof line, "  %-*s %s", BUTTON_COLUMN_WIDTH, "Debug menu",
+                   info->keymap->debug_menu == INPUT_NO_SCANCODE ? "none (R+Start)"
+                                                                 : input_scancode_name(info->keymap->debug_menu));
+    sink(line, context);
+    (void)snprintf(line, sizeof line, "  %-*s %s", BUTTON_COLUMN_WIDTH, "Menu", MENU_KEYS);
+    sink(line, context);
 }
 
-static void write_controller(const struct controller_bindings *pad, help_text_sink sink, void *context)
+/* Whether the controller's GBA buttons are SDL's layout: NULL is. */
+static bool pad_buttons_are_default(const struct input_padmap *padmap)
 {
+    const struct input_padmap defaults = input_default_padmap();
+    return padmap == NULL || memcmp(padmap, &defaults, sizeof defaults) == 0;
+}
+
+static void write_controller(const struct help_info *info, help_text_sink sink, void *context)
+{
+    const struct controller_bindings *const pad = info->pad;
     char line[HELP_TEXT_LINE_SIZE];
     const struct controller_function_info *const functions = controller_functions();
     sink("Controller:", context);
-    sink(CONTROLLER_LINE, context);
+    sink(pad_buttons_are_default(info->pad_buttons) ? CONTROLLER_LINE : CONTROLLER_MAPPED_LINE, context);
     for (size_t i = 0; i < CONTROLLER_FUNCTION_COUNT; i++) {
         (void)snprintf(line, sizeof line, "  %-*s %s", FUNCTION_COLUMN_WIDTH, functions[i].name,
                        controller_control_label(pad->controls[i]));
@@ -53,6 +72,12 @@ static void write_fast_forward(const struct fastforward_settings *fast_forward, 
     sink(line, context);
     fastforward_key_name(&fast_forward->toggle, key, sizeof key);
     (void)snprintf(line, sizeof line, "  %-*s %s", BUTTON_COLUMN_WIDTH, "Toggle", key);
+    sink(line, context);
+    fastforward_key_name(&fast_forward->faster, key, sizeof key);
+    (void)snprintf(line, sizeof line, "  %-*s %s", BUTTON_COLUMN_WIDTH, "Faster", key);
+    sink(line, context);
+    fastforward_key_name(&fast_forward->slower, key, sizeof key);
+    (void)snprintf(line, sizeof line, "  %-*s %s", BUTTON_COLUMN_WIDTH, "Slower", key);
     sink(line, context);
     if (fast_forward->speed == FASTFORWARD_UNLIMITED)
         (void)snprintf(line, sizeof line, "  %-*s unlimited", BUTTON_COLUMN_WIDTH, "Speed");
@@ -93,6 +118,6 @@ void help_text_write(const struct help_info *info, help_text_sink sink, void *co
     sink(line, context);
     write_files(info, sink, context);
     write_keys(info, sink, context);
-    write_controller(info->pad, sink, context);
+    write_controller(info, sink, context);
     write_fast_forward(info->fast_forward, sink, context);
 }

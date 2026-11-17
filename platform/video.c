@@ -38,6 +38,7 @@
 #include "fastforward.h"
 #include "font.h"
 #include "overlay.h"
+#include "bubble_menu.h"
 
 #define MODULE "video"
 #define TEXTURE_PITCH ((int)(VIDEO_WIDTH * sizeof(uint16_t)))
@@ -68,8 +69,15 @@ static struct {
     SDL_Texture *overlay;   /* NULL unless the overlay is started */
     SDL_Texture *indicator; /* NULL unless fast-forward is started */
     SDL_Rect indicator_place;
+    uint32_t indicator_speed; /* the speed the indicator was painted for */
     SDL_Point overlay_size;       /* the overlay texture's pixels */
     bool overlay_painted_for_pad; /* which hint it shows (overlay_hint_for_pad) */
+    SDL_Texture *menu_bubble;     /* NULL unless the bubble menu is started */
+    SDL_Texture *menu_panel;
+    SDL_Rect menu_bubble_place; /* in LCD pixels */
+    SDL_Point menu_bubble_size; /* the textures' pixels */
+    SDL_Point menu_panel_size;
+    uint32_t menu_painted_revision;
 } state;
 
 static int sdl_error(const char *call)
@@ -143,12 +151,72 @@ static int create_indicator(void)
 {
     const struct fastforward_rect box = fastforward_indicator_box();
     state.indicator_place = (SDL_Rect){.x = (int)box.x, .y = (int)box.y, .w = (int)box.width, .h = (int)box.height};
+    state.indicator_speed = fastforward_speed();
     state.indicator = SDL_CreateTexture(state.renderer, OVERLAY_TEXTURE_FORMAT, SDL_TEXTUREACCESS_STREAMING,
                                         state.indicator_place.w, state.indicator_place.h);
     if (state.indicator == NULL)
         return sdl_error_on("SDL_CreateTexture", "indicator");
     return paint_texture(state.indicator, state.indicator_place.w, state.indicator_place.h, fastforward_draw_indicator,
                          "indicator");
+}
+
+/* Paints the bubble and the panel (bubble_menu.h) for the menu's revision. */
+static int paint_menu(void)
+{
+    state.menu_painted_revision = bubble_menu_revision();
+    if (paint_texture(state.menu_bubble, state.menu_bubble_size.x, state.menu_bubble_size.y, bubble_menu_draw_bubble,
+                      "menu bubble")
+        != 0)
+        return -1;
+    return paint_texture(state.menu_panel, state.menu_panel_size.x, state.menu_panel_size.y, bubble_menu_draw_panel,
+                         "menu panel");
+}
+
+/* The bubble menu's two textures: the bubble at its place, and the panel of
+ * the window's size, both at the window's scale so that the text is sharp. */
+static int create_menu(int scale)
+{
+    state.menu_bubble_place = (SDL_Rect){.x = BUBBLE_MENU_BUBBLE_X,
+                                         .y = BUBBLE_MENU_BUBBLE_Y,
+                                         .w = BUBBLE_MENU_BUBBLE_SIZE,
+                                         .h = BUBBLE_MENU_BUBBLE_SIZE};
+    state.menu_bubble_size = (SDL_Point){.x = BUBBLE_MENU_BUBBLE_SIZE * scale, .y = BUBBLE_MENU_BUBBLE_SIZE * scale};
+    state.menu_panel_size = (SDL_Point){.x = (int)VIDEO_WIDTH * scale, .y = (int)VIDEO_HEIGHT * scale};
+    state.menu_bubble = SDL_CreateTexture(state.renderer, OVERLAY_TEXTURE_FORMAT, SDL_TEXTUREACCESS_STREAMING,
+                                          state.menu_bubble_size.x, state.menu_bubble_size.y);
+    if (state.menu_bubble == NULL)
+        return sdl_error_on("SDL_CreateTexture", "menu bubble");
+    state.menu_panel = SDL_CreateTexture(state.renderer, OVERLAY_TEXTURE_FORMAT, SDL_TEXTUREACCESS_STREAMING,
+                                         state.menu_panel_size.x, state.menu_panel_size.y);
+    if (state.menu_panel == NULL)
+        return sdl_error_on("SDL_CreateTexture", "menu panel");
+    return paint_menu();
+}
+
+/* The panel, if open, then the bubble over it, painted again when the menu
+ * changed. */
+static int present_menu(void)
+{
+    if (state.menu_panel == NULL)
+        return 0;
+    if (state.menu_painted_revision != bubble_menu_revision() && paint_menu() != 0)
+        return -1;
+    if (bubble_menu_open() && SDL_RenderCopy(state.renderer, state.menu_panel, NULL, NULL) != 0)
+        return sdl_error_on("SDL_RenderCopy", "menu panel");
+    if (SDL_RenderCopy(state.renderer, state.menu_bubble, NULL, &state.menu_bubble_place) != 0)
+        return sdl_error_on("SDL_RenderCopy", "menu bubble");
+    return 0;
+}
+
+/* The speed keys (fastforward.h) change the indicator's text, and "FF max"
+ * is wider than "FF 2x": the texture is made again for the speed in force. */
+static int refresh_indicator(void)
+{
+    if (state.indicator_speed == fastforward_speed())
+        return 0;
+    SDL_DestroyTexture(state.indicator);
+    state.indicator = NULL;
+    return create_indicator();
 }
 
 static int create_window_objects(const struct video_config *cfg)
@@ -170,6 +238,8 @@ static int create_window_objects(const struct video_config *cfg)
     if (state.texture == NULL)
         return sdl_error("SDL_CreateTexture");
     if (overlay_enabled() && create_overlay(cfg->scale) != 0)
+        return -1;
+    if (bubble_menu_enabled() && create_menu(cfg->scale) != 0)
         return -1;
     return fastforward_enabled() ? create_indicator() : 0;
 }
@@ -214,9 +284,13 @@ int video_present(const uint16_t *frame)
         return sdl_error("SDL_RenderClear");
     if (SDL_RenderCopy(state.renderer, state.texture, NULL, NULL) != 0)
         return sdl_error("SDL_RenderCopy");
+    if (state.indicator != NULL && fastforward_indicator_shown() && refresh_indicator() != 0)
+        return -1;
     if (state.indicator != NULL && fastforward_indicator_shown()
         && SDL_RenderCopy(state.renderer, state.indicator, NULL, &state.indicator_place) != 0)
         return sdl_error_on("SDL_RenderCopy", "indicator");
+    if (present_menu() != 0)
+        return -1;
     if (state.overlay != NULL && overlay_shown() && repaint_overlay_hint() != 0)
         return -1;
     if (state.overlay != NULL && overlay_shown() && SDL_RenderCopy(state.renderer, state.overlay, NULL, NULL) != 0)
@@ -262,6 +336,13 @@ bool video_poll_events(void (*on_event)(const union SDL_Event *event, void *ctx)
 
 void video_shutdown(void)
 {
+    if (state.menu_bubble != NULL)
+        SDL_DestroyTexture(state.menu_bubble);
+    if (state.menu_panel != NULL)
+        SDL_DestroyTexture(state.menu_panel);
+    state.menu_bubble = NULL;
+    state.menu_panel = NULL;
+    state.menu_painted_revision = 0;
     if (state.indicator != NULL)
         SDL_DestroyTexture(state.indicator);
     if (state.overlay != NULL)

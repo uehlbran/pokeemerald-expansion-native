@@ -57,6 +57,8 @@
 #include "audio.h"
 #include "audio_dump.h"
 #include "bios.h"
+#include "bubble_menu.h"
+#include "cheats.h"
 #include "console.h"
 #include "crash_reboot.h"
 #include "crt0.h"
@@ -292,7 +294,27 @@ static int start_input(const struct options *o)
 {
     /* Headless there is no window to take keys from, and a replay supplies
      * them; the script source reads "no key pressed" until a replay sets it. */
-    return input_init(o->headless || o->replay_path != NULL ? INPUT_SOURCE_SCRIPT : INPUT_SOURCE_HOST, player_keymap());
+    const int status =
+        input_init(o->headless || o->replay_path != NULL ? INPUT_SOURCE_SCRIPT : INPUT_SOURCE_HOST, player_keymap());
+    if (status != 0 || input_set_padmap(player_padmap()) == 0)
+        return status;
+    (void)fprintf(stderr, "main: the settings' controller buttons are not valid; SDL's layout is used\n");
+    return 0;
+}
+
+/* The bubble menu (bubble_menu.h), for the runs that get the overlay; its
+ * hooks are the game's cheats and the player's settings file. Before video,
+ * which draws it. */
+static const struct bubble_menu_hooks bubble_menu_game_hooks = {
+    .cheats_available = cheats_available,
+    .cheat_run = cheats_run,
+    .cheat_on = cheats_on,
+    .save_settings = player_save_settings,
+};
+
+static int start_bubble_menu(const struct options *o)
+{
+    return player_at_keyboard(o) ? bubble_menu_init(&bubble_menu_game_hooks) : 0;
 }
 
 static int start_flash(const struct options *o)
@@ -414,6 +436,7 @@ static const struct module_step module_steps[] = {
     {"fastforward", start_fastforward, fastforward_shutdown},
     {"controller", start_controller, controller_shutdown},
     {"fullscreen", start_fullscreen, fullscreen_shutdown},
+    {"bubble_menu", start_bubble_menu, bubble_menu_shutdown},
     {"video", start_video, video_shutdown},
     {"input", start_input, input_shutdown},
     {"rtc", start_rtc, rtc_shutdown},

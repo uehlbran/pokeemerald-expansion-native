@@ -22,13 +22,29 @@
  * Right Alt (with Left Ctrl on Windows), so it counts as Alt (and Ctrl).
  * Presses that repeat do nothing.
  *
+ * Two more keys change the speed while the game runs, so that the settings
+ * file need not be edited for it: the faster key (F3) takes the speed one
+ * step up the list 2x, 3x, 4x, unlimited, and the slower key (F2) one step
+ * down; at either end a press changes nothing. The new speed is in force at
+ * once, whether fast-forward is on (the pacer and the sound follow at the
+ * next frame, and the indicator is drawn again) or off (the next
+ * fast-forward runs at it), and it lasts until the game ends: the file is
+ * never written. The four keys are four different keys. So that a press
+ * while fast-forward is off is seen, the indicator shows the new speed for
+ * FASTFORWARD_FLASH_FRAMES frames after it (the frame loop counts them
+ * down with fastforward_end_frame); while fast-forward is on it shows
+ * anyway.
+ *
  * The hold ends when its scancode comes up, whatever the modifiers are by
  * then, and when the window loses the keyboard's focus, whose key-up would
  * go to another window: the game cannot stay fast-forwarded by a key no
- * longer held. The toggle stays on until it is pressed again, the window
- * loses focus (the player cannot see the indicator then, and an unwatched
- * game would run at full speed) or the game ends; after the focus returns a
- * press switches it on again. While the help overlay is shown (overlay.h) a
+ * longer held. The toggle stays on until it is pressed again or the game
+ * ends; while the window does not have the focus it is suspended: the game
+ * runs at its normal speed (the player cannot see the indicator then, and an
+ * unwatched game would run at full speed) and fast-forward resumes when the
+ * focus comes back. Earlier the focus loss switched the toggle off, so that a
+ * notification taking the focus for a moment silently undid the speed the
+ * player had chosen in the bubble menu (docs/DECISIONS.md, 2026-11-17). While the help overlay is shown (overlay.h) a
  * press is the overlay's and changes nothing; a release still ends the hold,
  * for the same reason; a toggle switched on stays on, and the game runs on
  * fast under the overlay, which hides the indicator.
@@ -40,9 +56,8 @@
  * a key's is; the hold ends with the release, with the controller going away
  * (SDL sends no release for a pulled cable) and with the window losing the
  * focus, because it lasts only as long as controller_held says some
- * controller holds the control. The controller's toggle ends with the
- * window's focus like the keyboard's, in the same place, since both are one
- * state.
+ * controller holds the control. The controller's toggle is the keyboard's
+ * (one state), suspended without the focus in the same way.
  *
  * The indicator, "FF 2x", "FF 3x", "FF 4x" or "FF max", is drawn in the
  * screen's top-right corner while fast-forward is on (fastforward_draw_indicator
@@ -78,6 +93,18 @@
 #define FASTFORWARD_UNLIMITED FRAME_PACER_UNLIMITED
 #define FASTFORWARD_DEFAULT_SPEED 2u
 
+/* The keys that change the speed (above), by default F3 and F2, which no
+ * GBA button, the overlay (F1) or fullscreen (F11) uses. */
+#define FASTFORWARD_DEFAULT_FASTER_SCANCODE SDL_SCANCODE_F3
+#define FASTFORWARD_DEFAULT_SLOWER_SCANCODE SDL_SCANCODE_F2
+
+/* The keys a fastforward_settings holds: hold, toggle, faster, slower. */
+#define FASTFORWARD_KEY_COUNT 4u
+
+/* How long the indicator shows a speed set by key while fast-forward is
+ * off: 90 frames, a second and a half. */
+#define FASTFORWARD_FLASH_FRAMES 90u
+
 /* Room for a key's name, "Ctrl+Alt+Shift+" and SDL's longest key name, and
  * for the indicator's text, with their NULs. */
 #define FASTFORWARD_KEY_NAME_SIZE 64u
@@ -102,6 +129,8 @@ enum fastforward_audio { FASTFORWARD_AUDIO_PLAY, FASTFORWARD_AUDIO_MUTE };
 struct fastforward_settings {
     struct fastforward_key hold;
     struct fastforward_key toggle; /* never the same key as hold */
+    struct fastforward_key faster; /* the speed one step up; the four keys differ */
+    struct fastforward_key slower; /* the speed one step down */
     uint32_t speed;                /* FASTFORWARD_MIN_SPEED..FASTFORWARD_MAX_SPEED or FASTFORWARD_UNLIMITED */
     enum fastforward_audio audio;
 };
@@ -114,8 +143,18 @@ struct fastforward_rect {
     size_t height;
 };
 
-/* Tab and Shift+Tab, FASTFORWARD_DEFAULT_SPEED, the sound played. */
+/* Tab and Shift+Tab, F3 and F2, FASTFORWARD_DEFAULT_SPEED, the sound played. */
 struct fastforward_settings fastforward_defaults(void);
+
+/* The settings' keys in order: hold, toggle, faster, slower (index below
+ * FASTFORWARD_KEY_COUNT); NULL for another index. */
+const struct fastforward_key *fastforward_settings_key(const struct fastforward_settings *settings, size_t index);
+struct fastforward_key *fastforward_settings_key_mutable(struct fastforward_settings *settings, size_t index);
+
+/* Pure: the speed one step up (faster) or down the list 2x, 3x, 4x,
+ * unlimited from speed, or speed itself at the list's end or for a speed
+ * that is not one. */
+uint32_t fastforward_speed_step(uint32_t speed, bool faster);
 
 /* The key name names: an SDL key name ("Tab", "F2", "Keypad +";
  * input_scancode_from_name), after any of "shift+", "ctrl+" and "alt+", in
@@ -135,7 +174,7 @@ bool fastforward_key_pressed(const struct fastforward_key *key, int scancode, ui
 
 /* Makes the keys work, with settings (copied); off until a key is pressed.
  * Returns 0, or -1 (reported) for NULL, a second init, or settings with a
- * speed that is not one or the same key twice. */
+ * speed that is not one or the same key twice among the four. */
 int fastforward_init(const struct fastforward_settings *settings);
 
 /* Turns it off and makes the keys do nothing. Safe at any time and twice. */
@@ -159,11 +198,33 @@ bool fastforward_active(void);
  * fast-forward is on, else FRAME_PACER_NORMAL_SPEED. */
 uint32_t fastforward_multiplier(void);
 
+/* The speed in force, on or off: the settings' until the faster or slower
+ * key changes it. FRAME_PACER_NORMAL_SPEED before init. */
+uint32_t fastforward_speed(void);
+
+/* The bubble menu's controls (bubble_menu.h): the speed in force, as the
+ * speed keys set it (shown for a while like them); returns 0, or -1 for a
+ * speed that is not one or before init, which changes nothing. */
+int fastforward_set_speed(uint32_t speed);
+
+/* Whether the toggle is on, and switching it on or off as its key does. */
+bool fastforward_toggled(void);
+void fastforward_set_toggled(bool on);
+
+/* The sound while fast-forward is on, and changing it. Before init the
+ * getter answers FASTFORWARD_AUDIO_PLAY and the setter does nothing. */
+enum fastforward_audio fastforward_audio(void);
+void fastforward_set_audio(enum fastforward_audio audio);
+
 /* Whether the sound is off now: fast-forward on with FASTFORWARD_AUDIO_MUTE. */
 bool fastforward_muted(void);
 
-/* Whether the indicator shows now: fast-forward on and the overlay hidden. */
+/* Whether the indicator shows now: fast-forward on, or a speed key pressed
+ * within the last FASTFORWARD_FLASH_FRAMES frames, and the overlay hidden. */
 bool fastforward_indicator_shown(void);
+
+/* A frame has run: counts the flash down. Before init it does nothing. */
+void fastforward_end_frame(void);
 
 /* The indicator's text for a speed: "FF 2x" for 2, ..., "FF max" for
  * FASTFORWARD_UNLIMITED, into out (FASTFORWARD_INDICATOR_TEXT_SIZE bytes). */
@@ -173,10 +234,10 @@ void fastforward_indicator_text(uint32_t speed, char *out, size_t size);
  * around it, in the screen's top-right corner (above). */
 struct fastforward_rect fastforward_indicator_place(const char *text);
 
-/* The started speed's indicator's box (fastforward_indicator_place). */
+/* The indicator's box for the speed in force (fastforward_indicator_place). */
 struct fastforward_rect fastforward_indicator_box(void);
 
-/* The started speed's indicator, filling a canvas of its box's size: the
+/* The indicator for the speed in force, filling a canvas of its box's size: the
  * overlay's background and its text colour, the text a padding from the
  * top-left. Before init, the background only. */
 void fastforward_draw_indicator(const struct font_canvas *canvas);

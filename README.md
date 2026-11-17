@@ -68,7 +68,10 @@ tools/build-native.sh --os linux
 
 Keys: arrows for the D-pad, Z for A, X for B, A for L, S for R, Enter for
 Start, Backspace for Select. F1 opens a help overlay, F11 toggles fullscreen,
-Tab held is fast-forward. [docs/RUNNING.md](docs/RUNNING.md) has the settings
+Tab held is fast-forward (F3 and F2 change its speed), F4 opens expansion's
+debug menu, the cheats. The bubble in the window's top-left corner (or F5)
+opens a menu with the speeds, one-click cheats, and the controller's and the
+keyboard's mapping. [docs/RUNNING.md](docs/RUNNING.md) has the settings
 file, the controller and where the save is.
 
 ## What this is

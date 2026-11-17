@@ -17,8 +17,11 @@
  *     scale = 4
  *     fast_forward = tab
  *     fast_forward_toggle = shift+tab
+ *     fast_forward_faster = f3
+ *     fast_forward_slower = f2
  *     fast_forward_speed = 2
  *     fast_forward_audio = play
+ *     debug_menu = f4
  *     pad_overlay = x
  *     pad_fast_forward = lefttrigger
  *     fullscreen = yes
@@ -26,16 +29,24 @@
  * A setting is a button's name (input_buttons' `setting`: a, b, select,
  * start, right, left, up, down, r, l), `scale`, or one of fast-forward's:
  * `fast_forward` (the key held), `fast_forward_toggle` (the key that
- * switches it on and off), `fast_forward_speed` (2, 3, 4 or `unlimited`)
- * and `fast_forward_audio` (`play`, sped up, or `mute`); a controller
+ * switches it on and off), `fast_forward_faster` and `fast_forward_slower`
+ * (the keys that take the speed a step up or down while the game runs),
+ * `fast_forward_speed` (2, 3, 4 or `unlimited`, the speed at the start)
+ * and `fast_forward_audio` (`play`, sped up, or `mute`); `debug_menu`, the
+ * key that presses R and Start together, which opens expansion's debug menu
+ * in the overworld (a key as SDL names it, or `none`); a controller
  * function's, `pad_fast_forward`, `pad_fast_forward_toggle`, `pad_overlay`,
  * `pad_overlay_close`, `pad_quit` and `pad_fullscreen` (controller.h), whose
  * value is a button as SDL names it (SDL_GameControllerGetButtonFromString:
  * x, y, leftstick, rightstick, dpup, ...) or lefttrigger or righttrigger; and
  * fullscreen's, `fullscreen` (`yes`, `no`, or `auto`, the default: fullscreen
- * on a Steam Deck only, fullscreen.h) and `fullscreen_toggle` (a key, F11).
- * The controller's GBA buttons are not settings: they are SDL's layout, and
- * Steam Input remaps them where a player wants others. A button's value is
+ * on a Steam Deck only, fullscreen.h) and `fullscreen_toggle` (a key, F11);
+ * and the GBA buttons on a controller, `pad_a`, `pad_b`, `pad_select`,
+ * `pad_start`, `pad_right`, `pad_left`, `pad_up`, `pad_down`, `pad_r` and
+ * `pad_l`, each a control named as the functions' are (input.h's
+ * input_padmap; SDL's layout by default, and two may share one). The
+ * bubble menu (bubble_menu.h) writes the file when the player asks it to
+ * (settings_save); the game writes it at no other time. A button's value is
  * a key as SDL names it (SDL_GetScancodeFromName: "Z", "Return", "Left
  * Shift", "Keypad 8", "F2", ...); a fast-forward key's is one too, after any
  * of `shift+`, `ctrl+` and `alt+` (fastforward_key_from_name); the scale is a
@@ -45,12 +56,12 @@
  * skipped. The later of two lines for one setting wins. Keys are scancodes,
  * physical positions, as the defaults are. F1 is the help overlay's
  * (overlay.h) and is refused as a button's or a fast-forward key; a button
- * and fast-forward may share a key, as two buttons may. One key cannot both
- * hold and toggle: if the file makes the two one, the later of the lines
- * that set them is a problem and its setting keeps its default (checked
- * again, so that a line clashing with the other's default is one too); the
- * same goes for two controller functions on one button. F1 is refused as
- * the fullscreen key too. A
+ * and fast-forward may share a key, as two buttons may. Fast-forward's four
+ * keys are four keys: if the file makes two of them one, the later of the
+ * lines that set them is a problem and its setting keeps its default
+ * (checked again, so that a line clashing with another's default is one
+ * too); the same goes for two controller functions on one button. F1 is
+ * refused as the fullscreen key and the debug menu key too. A
  * line that is not `setting = value`, a setting that does not exist and a
  * value that is not one are problems: each is reported with its line number
  * and the line is ignored, the rest applies.
@@ -88,7 +99,7 @@ enum settings_problem_kind {
     SETTINGS_BAD_SCALE,             /* text: the value, not 1 to OPTIONS_MAX_SCALE */
     SETTINGS_BAD_SPEED,             /* text: the value, not 2, 3, 4 or unlimited */
     SETTINGS_BAD_AUDIO,             /* text: the value, not play or mute */
-    SETTINGS_SAME_FAST_FORWARD_KEY, /* text: the value, the other fast-forward key's too */
+    SETTINGS_SAME_FAST_FORWARD_KEY, /* text: the value, another fast-forward key's too */
     SETTINGS_UNKNOWN_CONTROL,       /* text: the value, which names no controller button */
     SETTINGS_SAME_CONTROL,          /* text: the value, another function's button too */
     SETTINGS_BAD_FULLSCREEN         /* text: the value, not yes, no or auto */
@@ -105,6 +116,7 @@ struct settings {
     int scale;
     struct fastforward_settings fast_forward;
     struct controller_bindings pad;
+    struct input_padmap pad_buttons; /* the GBA buttons on a controller: pad_a ... pad_l */
     enum fullscreen_setting fullscreen;
     int fullscreen_key;   /* an SDL_Scancode, never INPUT_NO_SCANCODE */
     bool found;           /* settings_load: the file was there */
@@ -131,5 +143,31 @@ int settings_load(const char *path, struct settings *out);
 /* One line per problem kept, "settings: PATH:LINE: what is wrong; what
  * happens instead", and one for the problems not kept, to out. */
 void settings_report(const struct settings *settings, const char *path, FILE *out);
+
+/* The text of a settings file that settings_parse reads back as settings
+ * (every setting on its own line, under comments that name them), into out
+ * (size bytes, NUL-terminated when size > 0). Returns the length of the
+ * whole text, as snprintf does: a return of size or more means out held
+ * too little. A key SDL has no name for is left out, so it reads back as
+ * its default. Pure. */
+size_t settings_write(const struct settings *settings, char *out, size_t size);
+
+/* Writes settings_write's text to path, through a file beside it that then
+ * replaces it (host_file_replace), so that a failure leaves the old file.
+ * Returns 0, or -1 after a report on stderr. */
+int settings_save(const char *path, const struct settings *settings);
+
+/* The text of a settings file that settings_parse reads back as settings
+ * (every setting on its own line, under comments that name them), into out
+ * (size bytes, NUL-terminated when size > 0). Returns the length of the
+ * whole text, as snprintf does: a return of size or more means out held
+ * too little. A key SDL has no name for is left out, so it reads back as
+ * its default. Pure. */
+size_t settings_write(const struct settings *settings, char *out, size_t size);
+
+/* Writes settings_write's text to path, through a file beside it that then
+ * replaces it (host_file_replace), so that a failure leaves the old file.
+ * Returns 0, or -1 after a report on stderr. */
+int settings_save(const char *path, const struct settings *settings);
 
 #endif /* PLATFORM_SETTINGS_H */

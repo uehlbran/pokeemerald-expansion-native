@@ -33,6 +33,7 @@ int player_find(const struct options *options, const struct data_dir_host *host)
         .version = version_string(),
         .keymap = &player.settings.keymap,
         .pad = &player.settings.pad,
+        .pad_buttons = &player.settings.pad_buttons,
         .fullscreen_key = player.settings.fullscreen_key,
         .fast_forward = &player.settings.fast_forward,
         .paths = &player.paths,
@@ -59,6 +60,30 @@ const struct input_keymap *player_keymap(void)
 const struct controller_bindings *player_controller(void)
 {
     return &player.settings.pad;
+}
+
+const struct input_padmap *player_padmap(void)
+{
+    return &player.settings.pad_buttons;
+}
+
+int player_save_settings(void)
+{
+    struct settings saved = player.settings;
+    saved.keymap = input_current_keymap();
+    saved.pad_buttons = input_current_padmap();
+    saved.pad = controller_current_bindings();
+    if (fastforward_enabled()) {
+        saved.fast_forward.speed = fastforward_speed();
+        saved.fast_forward.audio = fastforward_audio();
+    }
+    if (settings_save(player.paths.settings, &saved) != 0)
+        return -1;
+    saved.found = true;
+    saved.problem_count = 0;
+    player.settings = saved;
+    player.help.settings_found = true;
+    return 0;
 }
 
 bool player_starts_fullscreen(const struct options *options)

@@ -35,6 +35,7 @@
 #include "host_file.h"
 #include "host_internal.h"
 #include "host_process.h"
+#include "host_sleep.h"
 #include "host_thread.h"
 
 _Static_assert(sizeof(time_t) >= 8, "host_posix.c needs a 64-bit time_t (_TIME_BITS=64)");
@@ -698,4 +699,24 @@ void host_watchdog_stop(struct host_watchdog *watchdog)
     if (watchdog->failure != 0)
         watchdog_report(watchdog->failed_call, watchdog->failure);
     watchdog_release(watchdog);
+}
+
+/* ---- host_sleep.h ---- */
+
+#define US_PER_SECOND UINT64_C(1000000)
+#define NS_PER_US 1000L
+
+void host_sleep_us(uint64_t microseconds)
+{
+    if (microseconds == 0)
+        return;
+    if (microseconds > HOST_SLEEP_MAX_US)
+        microseconds = HOST_SLEEP_MAX_US;
+    struct timespec left = {
+        .tv_sec = (time_t)(microseconds / US_PER_SECOND),
+        .tv_nsec = (long)(microseconds % US_PER_SECOND) * NS_PER_US,
+    };
+    /* A signal ends the sleep early; sleep again for what is left. */
+    while (nanosleep(&left, &left) != 0 && errno == EINTR)
+        ;
 }

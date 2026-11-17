@@ -17,8 +17,12 @@
 #include <stdbool.h>
 #include <stdio.h>
 
+#include "controller.h"
 #include "gba_memmap.h"
 #include "overlay.h"
+
+/* What a controller without a name is called in the bubble menu. */
+#define UNNAMED_CONTROLLER "Controller"
 
 /* GBATEK "GBA Keypad Input": KEYINPUT is at 4000130h, a halfword. */
 #define KEYINPUT_OFFSET UINT32_C(0x130)
@@ -43,7 +47,10 @@ static struct {
     bool initialised;
     enum input_source source;
     struct input_keymap keymap;
+    struct input_padmap padmap;
     uint16_t script_keys;
+    uint16_t inject_keys;   /* input_inject's keys, held while inject_frames lasts */
+    uint32_t inject_frames;
     bool controller_subsystem;
     bool reported_no_keyboard_state; /* once, so a frame loop does not repeat it */
     SDL_GameController *controllers[INPUT_MAX_CONTROLLERS];
@@ -64,6 +71,7 @@ struct input_keymap input_default_keymap(void)
     struct input_keymap keymap;
     for (size_t i = 0; i < INPUT_BUTTON_COUNT; i++)
         keymap.scancodes[i] = buttons[i].default_scancode;
+    keymap.debug_menu = INPUT_DEBUG_MENU_DEFAULT_SCANCODE;
     return keymap;
 }
 
@@ -91,45 +99,88 @@ uint16_t input_keyboard_to_keys(const struct input_keymap *keymap, const uint8_t
         if (scancode >= 0 && scancode < numkeys && keyboard[scancode] != 0)
             keys = (uint16_t)(keys | buttons[i].key);
     }
+    const int debug_menu = keymap->debug_menu;
+    if (debug_menu > INPUT_NO_SCANCODE && debug_menu < numkeys && keyboard[debug_menu] != 0)
+        keys = (uint16_t)(keys | INPUT_KEY_R | INPUT_KEY_START);
     return keys;
 }
 
-/* Every scancode one SDL could report. */
+/* Every scancode one SDL could report; the debug menu's may be none. */
 static bool keymap_is_valid(const struct input_keymap *keymap)
 {
     for (size_t i = 0; i < INPUT_BUTTON_COUNT; i++) {
         if (keymap->scancodes[i] <= INPUT_NO_SCANCODE || keymap->scancodes[i] >= SDL_NUM_SCANCODES)
             return false;
     }
+    return keymap->debug_menu >= INPUT_NO_SCANCODE && keymap->debug_menu < SDL_NUM_SCANCODES;
+}
+
+_Static_assert(INPUT_DEBUG_MENU_DEFAULT_SCANCODE == SDL_SCANCODE_F4, "the debug menu's default key is F4");
+
+struct input_padmap input_default_padmap(void)
+{
+    static const int defaults[INPUT_BUTTON_COUNT] = {
+        SDL_CONTROLLER_BUTTON_A,          SDL_CONTROLLER_BUTTON_B,         SDL_CONTROLLER_BUTTON_BACK,
+        SDL_CONTROLLER_BUTTON_START,      SDL_CONTROLLER_BUTTON_DPAD_RIGHT, SDL_CONTROLLER_BUTTON_DPAD_LEFT,
+        SDL_CONTROLLER_BUTTON_DPAD_UP,    SDL_CONTROLLER_BUTTON_DPAD_DOWN, SDL_CONTROLLER_BUTTON_RIGHTSHOULDER,
+        SDL_CONTROLLER_BUTTON_LEFTSHOULDER,
+    };
+    struct input_padmap padmap;
+    for (size_t i = 0; i < INPUT_BUTTON_COUNT; i++)
+        padmap.controls[i] = defaults[i];
+    return padmap;
+}
+
+bool input_padmap_is_valid(const struct input_padmap *padmap)
+{
+    if (padmap == NULL)
+        return false;
+    for (size_t i = 0; i < INPUT_BUTTON_COUNT; i++) {
+        if (padmap->controls[i] < 0 || padmap->controls[i] >= CONTROLLER_CONTROL_COUNT)
+            return false;
+    }
     return true;
+}
+
+uint16_t input_pad_controls_to_keys(const struct input_padmap *padmap, const uint8_t *controls, size_t count,
+                                    int16_t left_x, int16_t left_y)
+{
+    uint16_t keys = 0;
+    if (padmap == NULL || controls == NULL)
+        return 0;
+    for (size_t i = 0; i < INPUT_BUTTON_COUNT; i++) {
+        const int control = padmap->controls[i];
+        if (control >= 0 && (size_t)control < count && controls[control] != 0)
+            keys = (uint16_t)(keys | buttons[i].key);
+    }
+    if (left_y < -INPUT_STICK_DEADZONE)
+        keys |= INPUT_KEY_UP;
+    if (left_y > INPUT_STICK_DEADZONE)
+        keys |= INPUT_KEY_DOWN;
+    if (left_x < -INPUT_STICK_DEADZONE)
+        keys |= INPUT_KEY_LEFT;
+    if (left_x > INPUT_STICK_DEADZONE)
+        keys |= INPUT_KEY_RIGHT;
+    return keys;
 }
 
 uint16_t input_pad_to_keys(const struct input_pad_state *pad)
 {
-    uint16_t keys = 0;
     if (pad == NULL)
         return 0;
-    if (pad->a != 0)
-        keys |= INPUT_KEY_A;
-    if (pad->b != 0)
-        keys |= INPUT_KEY_B;
-    if (pad->back != 0)
-        keys |= INPUT_KEY_SELECT;
-    if (pad->start != 0)
-        keys |= INPUT_KEY_START;
-    if (pad->left_shoulder != 0)
-        keys |= INPUT_KEY_L;
-    if (pad->right_shoulder != 0)
-        keys |= INPUT_KEY_R;
-    if (pad->dpad_up != 0 || pad->left_y < -INPUT_STICK_DEADZONE)
-        keys |= INPUT_KEY_UP;
-    if (pad->dpad_down != 0 || pad->left_y > INPUT_STICK_DEADZONE)
-        keys |= INPUT_KEY_DOWN;
-    if (pad->dpad_left != 0 || pad->left_x < -INPUT_STICK_DEADZONE)
-        keys |= INPUT_KEY_LEFT;
-    if (pad->dpad_right != 0 || pad->left_x > INPUT_STICK_DEADZONE)
-        keys |= INPUT_KEY_RIGHT;
-    return keys;
+    uint8_t controls[CONTROLLER_CONTROL_COUNT] = {0};
+    controls[SDL_CONTROLLER_BUTTON_A] = pad->a;
+    controls[SDL_CONTROLLER_BUTTON_B] = pad->b;
+    controls[SDL_CONTROLLER_BUTTON_BACK] = pad->back;
+    controls[SDL_CONTROLLER_BUTTON_START] = pad->start;
+    controls[SDL_CONTROLLER_BUTTON_LEFTSHOULDER] = pad->left_shoulder;
+    controls[SDL_CONTROLLER_BUTTON_RIGHTSHOULDER] = pad->right_shoulder;
+    controls[SDL_CONTROLLER_BUTTON_DPAD_UP] = pad->dpad_up;
+    controls[SDL_CONTROLLER_BUTTON_DPAD_DOWN] = pad->dpad_down;
+    controls[SDL_CONTROLLER_BUTTON_DPAD_LEFT] = pad->dpad_left;
+    controls[SDL_CONTROLLER_BUTTON_DPAD_RIGHT] = pad->dpad_right;
+    const struct input_padmap defaults = input_default_padmap();
+    return input_pad_controls_to_keys(&defaults, controls, CONTROLLER_CONTROL_COUNT, pad->left_x, pad->left_y);
 }
 
 static void write_keyinput(uint16_t keys_active_high)
@@ -138,22 +189,20 @@ static void write_keyinput(uint16_t keys_active_high)
     *reg = input_keys_to_keyinput(keys_active_high);
 }
 
-static struct input_pad_state read_pad(SDL_GameController *controller)
+/* The keys one controller presses through the controller map: every button
+ * and both triggers (pressed past CONTROLLER_TRIGGER_PRESS), and the stick. */
+static uint16_t read_controller(SDL_GameController *controller)
 {
-    struct input_pad_state pad = {0};
-    pad.a = SDL_GameControllerGetButton(controller, SDL_CONTROLLER_BUTTON_A);
-    pad.b = SDL_GameControllerGetButton(controller, SDL_CONTROLLER_BUTTON_B);
-    pad.start = SDL_GameControllerGetButton(controller, SDL_CONTROLLER_BUTTON_START);
-    pad.back = SDL_GameControllerGetButton(controller, SDL_CONTROLLER_BUTTON_BACK);
-    pad.left_shoulder = SDL_GameControllerGetButton(controller, SDL_CONTROLLER_BUTTON_LEFTSHOULDER);
-    pad.right_shoulder = SDL_GameControllerGetButton(controller, SDL_CONTROLLER_BUTTON_RIGHTSHOULDER);
-    pad.dpad_up = SDL_GameControllerGetButton(controller, SDL_CONTROLLER_BUTTON_DPAD_UP);
-    pad.dpad_down = SDL_GameControllerGetButton(controller, SDL_CONTROLLER_BUTTON_DPAD_DOWN);
-    pad.dpad_left = SDL_GameControllerGetButton(controller, SDL_CONTROLLER_BUTTON_DPAD_LEFT);
-    pad.dpad_right = SDL_GameControllerGetButton(controller, SDL_CONTROLLER_BUTTON_DPAD_RIGHT);
-    pad.left_x = SDL_GameControllerGetAxis(controller, SDL_CONTROLLER_AXIS_LEFTX);
-    pad.left_y = SDL_GameControllerGetAxis(controller, SDL_CONTROLLER_AXIS_LEFTY);
-    return pad;
+    uint8_t controls[CONTROLLER_CONTROL_COUNT] = {0};
+    for (int button = 0; button < (int)SDL_CONTROLLER_BUTTON_MAX; button++)
+        controls[button] = SDL_GameControllerGetButton(controller, (SDL_GameControllerButton)button);
+    controls[CONTROLLER_LEFT_TRIGGER] =
+        SDL_GameControllerGetAxis(controller, SDL_CONTROLLER_AXIS_TRIGGERLEFT) > CONTROLLER_TRIGGER_PRESS;
+    controls[CONTROLLER_RIGHT_TRIGGER] =
+        SDL_GameControllerGetAxis(controller, SDL_CONTROLLER_AXIS_TRIGGERRIGHT) > CONTROLLER_TRIGGER_PRESS;
+    return input_pad_controls_to_keys(&state.padmap, controls, CONTROLLER_CONTROL_COUNT,
+                                      SDL_GameControllerGetAxis(controller, SDL_CONTROLLER_AXIS_LEFTX),
+                                      SDL_GameControllerGetAxis(controller, SDL_CONTROLLER_AXIS_LEFTY));
 }
 
 static uint16_t read_host_keys(void)
@@ -166,10 +215,8 @@ static uint16_t read_host_keys(void)
     }
     uint16_t keys = input_keyboard_to_keys(&state.keymap, keyboard, numkeys);
     for (size_t i = 0; i < INPUT_MAX_CONTROLLERS; i++) {
-        if (state.controllers[i] != NULL) {
-            struct input_pad_state pad = read_pad(state.controllers[i]);
-            keys = (uint16_t)(keys | input_pad_to_keys(&pad));
-        }
+        if (state.controllers[i] != NULL)
+            keys = (uint16_t)(keys | read_controller(state.controllers[i]));
     }
     return keys;
 }
@@ -277,9 +324,60 @@ int input_init(enum input_source source, const struct input_keymap *keymap)
     }
     state.source = source;
     state.keymap = keymap != NULL ? *keymap : input_default_keymap();
+    state.padmap = input_default_padmap();
     state.script_keys = 0;
+    state.inject_keys = 0;
+    state.inject_frames = 0;
     state.initialised = true;
     return 0;
+}
+
+int input_set_keymap(const struct input_keymap *keymap)
+{
+    if (!state.initialised || keymap == NULL || !keymap_is_valid(keymap))
+        return -1;
+    state.keymap = *keymap;
+    return 0;
+}
+
+int input_set_padmap(const struct input_padmap *padmap)
+{
+    if (!state.initialised || !input_padmap_is_valid(padmap))
+        return -1;
+    state.padmap = *padmap;
+    return 0;
+}
+
+struct input_keymap input_current_keymap(void)
+{
+    return state.initialised ? state.keymap : input_default_keymap();
+}
+
+struct input_padmap input_current_padmap(void)
+{
+    return state.initialised ? state.padmap : input_default_padmap();
+}
+
+void input_inject(uint16_t keys, uint32_t frames)
+{
+    if (!state.initialised)
+        return;
+    state.inject_keys = (uint16_t)(keys & INPUT_KEYS_MASK);
+    state.inject_frames = frames < INPUT_MAX_INJECT_FRAMES ? frames : INPUT_MAX_INJECT_FRAMES;
+}
+
+size_t input_controller_names(const char **names, size_t max)
+{
+    size_t count = 0;
+    if (!state.initialised || state.source != INPUT_SOURCE_HOST || names == NULL)
+        return 0;
+    for (size_t i = 0; i < INPUT_MAX_CONTROLLERS && count < max; i++) {
+        if (state.controllers[i] == NULL)
+            continue;
+        const char *const name = SDL_GameControllerName(state.controllers[i]);
+        names[count++] = name != NULL ? name : UNNAMED_CONTROLLER;
+    }
+    return count;
 }
 
 void input_shutdown(void)
@@ -296,6 +394,8 @@ void input_shutdown(void)
     }
     state.initialised = false;
     state.script_keys = 0;
+    state.inject_keys = 0;
+    state.inject_frames = 0;
     state.reported_no_keyboard_state = false;
 }
 
@@ -309,7 +409,12 @@ void input_update_keyinput(void)
     if (!state.initialised)
         return;
     const uint16_t keys = state.source == INPUT_SOURCE_HOST ? read_host_keys() : state.script_keys;
-    write_keyinput(overlay_game_keys(keys));
+    uint16_t game_keys = overlay_game_keys(keys);
+    if (state.inject_frames > 0) {
+        game_keys = (uint16_t)(game_keys | state.inject_keys);
+        state.inject_frames--;
+    }
+    write_keyinput(game_keys);
 }
 
 int input_handle_event(const union SDL_Event *event)

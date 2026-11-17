@@ -400,6 +400,40 @@ PTEST(an_overlay_opened_and_closed_within_one_poll_still_latches_the_b)
     overlay_shutdown();
 }
 
+/* KEYINPUT bits (input.h): A, B and Up. */
+#define KEY_A 0x0001u
+#define KEY_B 0x0002u
+#define KEY_UP 0x0040u
+
+PTEST(the_bubble_menu_open_holds_the_keys_back_and_latches_them_as_the_overlay_does)
+{
+    overlay_shutdown();
+    PT_ASSERT(!overlay_takes_input());
+    overlay_set_menu_open(true); /* even with the overlay not started */
+    PT_ASSERT(overlay_takes_input());
+    PT_ASSERT_EQ_U32(overlay_game_keys(KEY_A | KEY_B), 0u);
+    overlay_set_menu_open(false);
+    PT_ASSERT(!overlay_takes_input());
+    PT_ASSERT_EQ_U32(overlay_game_keys(KEY_A), 0u);              /* held at the first read after: latched */
+    PT_ASSERT_EQ_U32(overlay_game_keys(KEY_A | KEY_UP), KEY_UP); /* A still held through it, Up new */
+    PT_ASSERT_EQ_U32(overlay_game_keys(KEY_UP), KEY_UP);
+    PT_ASSERT_EQ_U32(overlay_game_keys(KEY_A), KEY_A); /* let go and pressed again */
+    overlay_shutdown();
+}
+
+PTEST(the_menu_closing_under_a_shown_overlay_still_holds_the_keys)
+{
+    static const char *const lines[] = {"x"};
+    start(lines, 1);
+    SDL_Event f1 = press(SDL_SCANCODE_F1, SDLK_F1);
+    (void)overlay_handle_event(&f1);
+    overlay_set_menu_open(true);
+    overlay_set_menu_open(false);
+    PT_ASSERT(overlay_takes_input()); /* the overlay is still shown */
+    PT_ASSERT_EQ_U32(overlay_game_keys(KEY_A), 0u);
+    overlay_shutdown();
+}
+
 PTEST(a_hidden_overlay_never_shown_latches_nothing)
 {
     start(NULL, 0);

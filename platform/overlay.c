@@ -21,7 +21,8 @@ static struct {
     bool enabled;
     bool shown;
     bool hint_for_pad;
-    bool hidden_since_read; /* shown went true to false since the last read of the keys */
+    bool menu_open;         /* the bubble menu's panel is open (overlay_set_menu_open) */
+    bool hidden_since_read; /* the keys stopped being held back since the last read of them */
     uint16_t held_through;  /* the buttons held since the overlay was shown */
     overlay_text_writer write_text;
 } overlay;
@@ -74,11 +75,31 @@ static void note_input_device(const SDL_Event *event)
         overlay.hint_for_pad = true;
 }
 
+/* Whether the game's keys are held back: the overlay shown or the menu open. */
+static bool holding_keys(void)
+{
+    return overlay.shown || overlay.menu_open;
+}
+
 static void set_shown(bool shown)
 {
-    if (overlay.shown && !shown)
-        overlay.hidden_since_read = true;
+    const bool was_holding = holding_keys();
     overlay.shown = shown;
+    if (was_holding && !holding_keys())
+        overlay.hidden_since_read = true;
+}
+
+void overlay_set_menu_open(bool open)
+{
+    const bool was_holding = holding_keys();
+    overlay.menu_open = open;
+    if (was_holding && !holding_keys())
+        overlay.hidden_since_read = true;
+}
+
+bool overlay_takes_input(void)
+{
+    return holding_keys();
 }
 
 enum overlay_request overlay_handle_event(const union SDL_Event *event)
@@ -124,7 +145,7 @@ uint16_t overlay_game_keys(uint16_t keys)
      * poll latches too. */
     const bool just_hidden = overlay.hidden_since_read;
     overlay.hidden_since_read = false;
-    if (overlay.shown) {
+    if (holding_keys()) {
         overlay.held_through = keys;
         return 0;
     }

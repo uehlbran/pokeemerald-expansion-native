@@ -58,6 +58,8 @@ PTEST(the_defaults_per_user_line_for_line)
         "  R          S",
         "  L          A",
         "  Fullscreen F11",
+        "  Debug menu F4",
+        "  Menu       F5, or a click on the bubble",
         "Controller:",
         "  GBA buttons: A, B, Back (Select), Start, the shoulders (L, R), the D-pad or the left stick",
         "  Fast-forward hold    Right trigger",
@@ -69,6 +71,8 @@ PTEST(the_defaults_per_user_line_for_line)
         "Fast-forward:",
         "  Hold       Tab",
         "  Toggle     Shift+Tab",
+        "  Faster     F3",
+        "  Slower     F2",
         "  Speed      2x",
         "  Sound      sped up",
     };
@@ -97,6 +101,7 @@ PTEST(the_keys_in_force_and_a_settings_file_found_portable)
     struct input_keymap keymap = input_default_keymap();
     keymap.scancodes[0] = SDL_SCANCODE_SPACE;
     keymap.scancodes[9] = SDL_SCANCODE_LSHIFT;
+    keymap.debug_menu = INPUT_NO_SCANCODE;
     struct controller_bindings pad = controller_default_bindings();
     pad.controls[CONTROLLER_OVERLAY] = SDL_CONTROLLER_BUTTON_DPAD_UP;
     pad.controls[CONTROLLER_FULLSCREEN] = SDL_CONTROLLER_BUTTON_LEFTSTICK;
@@ -117,10 +122,39 @@ PTEST(the_keys_in_force_and_a_settings_file_found_portable)
     PT_ASSERT_EQ_STR(collected.lines[6], "  A          Space");
     PT_ASSERT_EQ_STR(collected.lines[15], "  L          Left Shift");
     PT_ASSERT_EQ_STR(collected.lines[16], "  Fullscreen F12");
+    PT_ASSERT_EQ_STR(collected.lines[17], "  Debug menu none (R+Start)");
+    PT_ASSERT_EQ_STR(collected.lines[18], "  Menu       F5, or a click on the bubble");
     PT_ASSERT_EQ_STR(collected.lines[1], "Data directory (portable): C:\\Games\\pen\\");
     PT_ASSERT_EQ_STR(collected.lines[4], "Settings: C:\\Games\\pen\\settings.ini");
-    PT_ASSERT_EQ_STR(collected.lines[21], "  Help overlay         D-pad up");
-    PT_ASSERT_EQ_STR(collected.lines[24], "  Fullscreen           Left stick click");
+    PT_ASSERT_EQ_STR(collected.lines[23], "  Help overlay         D-pad up");
+    PT_ASSERT_EQ_STR(collected.lines[26], "  Fullscreen           Left stick click");
+}
+
+PTEST(a_controller_mapped_in_the_menu_is_named_as_such)
+{
+    const struct input_keymap keymap = input_default_keymap();
+    const struct controller_bindings pad = controller_default_bindings();
+    struct input_padmap pad_buttons = input_default_padmap();
+    const struct fastforward_settings fast_forward = fastforward_defaults();
+    const struct data_paths paths = paths_in(DATA_DIR_GIVEN, "out/");
+    struct help_info info = {
+        .version = "x",
+        .keymap = &keymap,
+        .pad = &pad,
+        .pad_buttons = &pad_buttons,
+        .fullscreen_key = SDL_SCANCODE_F11,
+        .fast_forward = &fast_forward,
+        .paths = &paths,
+        .settings_found = true,
+    };
+    memset(&collected, 0, sizeof collected);
+    help_text_write(&info, collect, &collected);
+    PT_ASSERT_EQ_STR(collected.lines[20], "  GBA buttons: A, B, Back (Select), Start, the shoulders (L, R), the D-pad or "
+                                          "the left stick");
+    pad_buttons.controls[0] = SDL_CONTROLLER_BUTTON_X;
+    memset(&collected, 0, sizeof collected);
+    help_text_write(&info, collect, &collected);
+    PT_ASSERT_EQ_STR(collected.lines[20], "  GBA buttons: as the menu's Pad tab sets them, and the left stick");
 }
 
 PTEST(a_given_directory_and_a_run_without_settings_or_directory)
@@ -152,8 +186,10 @@ PTEST(a_given_directory_and_a_run_without_settings_or_directory)
     PT_ASSERT_EQ_STR(collected.lines[4], "Settings: none read");
 }
 
-/* The last five lines, for fast-forward's settings as a file makes them. */
-static void check_fast_forward(const struct fastforward_settings *fast_forward, const char *const expected[5])
+/* The last seven lines, for fast-forward's settings as a file makes them. */
+#define FAST_FORWARD_LINES 7u
+static void check_fast_forward(const struct fastforward_settings *fast_forward,
+                               const char *const expected[FAST_FORWARD_LINES])
 {
     const struct input_keymap keymap = input_default_keymap();
     const struct controller_bindings pad = controller_default_bindings();
@@ -169,9 +205,9 @@ static void check_fast_forward(const struct fastforward_settings *fast_forward, 
     };
     memset(&collected, 0, sizeof collected);
     help_text_write(&info, collect, &collected);
-    PT_ASSERT(collected.count >= 5u);
-    for (size_t i = 0; i < 5; i++)
-        PT_ASSERT_EQ_STR(collected.lines[collected.count - 5u + i], expected[i]);
+    PT_ASSERT(collected.count >= FAST_FORWARD_LINES);
+    for (size_t i = 0; i < FAST_FORWARD_LINES; i++)
+        PT_ASSERT_EQ_STR(collected.lines[collected.count - FAST_FORWARD_LINES + i], expected[i]);
 }
 
 PTEST(fast_forwards_keys_speed_and_sound_as_set)
@@ -179,20 +215,25 @@ PTEST(fast_forwards_keys_speed_and_sound_as_set)
     struct fastforward_settings fast_forward = {
         .hold = {.scancode = SDL_SCANCODE_SPACE, .modifiers = 0u},
         .toggle = {.scancode = SDL_SCANCODE_F, .modifiers = FASTFORWARD_CTRL | FASTFORWARD_ALT},
+        .faster = {.scancode = SDL_SCANCODE_KP_PLUS, .modifiers = FASTFORWARD_SHIFT},
+        .slower = {.scancode = SDL_SCANCODE_KP_MINUS, .modifiers = 0u},
         .speed = 4u,
         .audio = FASTFORWARD_AUDIO_MUTE,
     };
-    static const char *const four[] = {"Fast-forward:", "  Hold       Space", "  Toggle     Ctrl+Alt+F",
-                                       "  Speed      4x", "  Sound      muted"};
+    static const char *const four[] = {"Fast-forward:",         "  Hold       Space",    "  Toggle     Ctrl+Alt+F",
+                                       "  Faster     Shift+Keypad +", "  Slower     Keypad -", "  Speed      4x",
+                                       "  Sound      muted"};
     check_fast_forward(&fast_forward, four);
     fast_forward.speed = FASTFORWARD_UNLIMITED;
     fast_forward.audio = FASTFORWARD_AUDIO_PLAY;
-    static const char *const unlimited[] = {"Fast-forward:", "  Hold       Space", "  Toggle     Ctrl+Alt+F",
-                                            "  Speed      unlimited", "  Sound      sped up"};
+    static const char *const unlimited[] = {"Fast-forward:",         "  Hold       Space",    "  Toggle     Ctrl+Alt+F",
+                                            "  Faster     Shift+Keypad +", "  Slower     Keypad -", "  Speed      unlimited",
+                                            "  Sound      sped up"};
     check_fast_forward(&fast_forward, unlimited);
     fast_forward.speed = 3u;
-    static const char *const three[] = {"Fast-forward:", "  Hold       Space", "  Toggle     Ctrl+Alt+F",
-                                        "  Speed      3x", "  Sound      sped up"};
+    static const char *const three[] = {"Fast-forward:",         "  Hold       Space",    "  Toggle     Ctrl+Alt+F",
+                                        "  Faster     Shift+Keypad +", "  Slower     Keypad -", "  Speed      3x",
+                                        "  Sound      sped up"};
     check_fast_forward(&fast_forward, three);
 }
 

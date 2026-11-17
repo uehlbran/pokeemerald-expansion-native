@@ -108,9 +108,18 @@ enum overlay_request overlay_handle_controller(const struct controller_edge *edg
 bool overlay_hint_for_pad(void);
 
 /* The buttons the game reads of keys (KEYINPUT bits, active high): all of
- * them, or none while the overlay is shown and, after it hides, none of those
- * still held then. Call it once per frame with that frame's keys. */
+ * them, or none while the overlay is shown or the bubble menu is open and,
+ * after both are gone, none of those still held then. Call it once per frame
+ * with that frame's keys. */
 uint16_t overlay_game_keys(uint16_t keys);
+
+/* The bubble menu (bubble_menu.h) tells the overlay its panel opened or
+ * closed: while open, the game's keys are held back as under the overlay. */
+void overlay_set_menu_open(bool open);
+
+/* Whether a press belongs to the overlay or the bubble menu rather than to
+ * the game and fast-forward: the overlay shown, or the menu open. */
+bool overlay_takes_input(void);
 
 /* The glyphs' scale for a canvas width pixels wide: a window of scale s is
  * 240s wide, and the text is drawn at s / 2, at least 1, so that a line

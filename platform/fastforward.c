@@ -1,5 +1,5 @@
 /*
- * fastforward.c: fast-forward's keys, state and indicator (fastforward.h).
+ * fastforward.c: fast-forward's keys, state, speed and indicator (fastforward.h).
  *
  * Written from the behaviour fastforward.h fixes; SDL's key names are looked
  * up through input.h, which owns the keyboard. No emulator's code is
@@ -53,7 +53,9 @@ static struct {
     bool enabled;
     bool held;
     bool toggled;
-    bool pad_held; /* the controller's hold was pressed and is not yet released */
+    bool pad_held;  /* the controller's hold was pressed and is not yet released */
+    bool unfocused; /* the window lost the focus and has not had it back: no fast-forward meanwhile */
+    uint32_t flash_frames; /* frames left of the indicator after a speed key, fast-forward off */
     struct fastforward_settings settings;
 } fastforward;
 
@@ -62,9 +64,44 @@ struct fastforward_settings fastforward_defaults(void)
     return (struct fastforward_settings){
         .hold = {.scancode = SDL_SCANCODE_TAB, .modifiers = 0u},
         .toggle = {.scancode = SDL_SCANCODE_TAB, .modifiers = FASTFORWARD_SHIFT},
+        .faster = {.scancode = FASTFORWARD_DEFAULT_FASTER_SCANCODE, .modifiers = 0u},
+        .slower = {.scancode = FASTFORWARD_DEFAULT_SLOWER_SCANCODE, .modifiers = 0u},
         .speed = FASTFORWARD_DEFAULT_SPEED,
         .audio = FASTFORWARD_AUDIO_PLAY,
     };
+}
+
+struct fastforward_key *fastforward_settings_key_mutable(struct fastforward_settings *settings, size_t index)
+{
+    switch (index) {
+    case 0:
+        return &settings->hold;
+    case 1:
+        return &settings->toggle;
+    case 2:
+        return &settings->faster;
+    case 3:
+        return &settings->slower;
+    default:
+        return NULL;
+    }
+}
+
+const struct fastforward_key *fastforward_settings_key(const struct fastforward_settings *settings, size_t index)
+{
+    /* The same four, read only; the cast drops const for the lookup alone. */
+    return fastforward_settings_key_mutable((struct fastforward_settings *)settings, index);
+}
+
+uint32_t fastforward_speed_step(uint32_t speed, bool faster)
+{
+    if (speed == FASTFORWARD_UNLIMITED)
+        return faster ? FASTFORWARD_UNLIMITED : FASTFORWARD_MAX_SPEED;
+    if (speed < FASTFORWARD_MIN_SPEED || speed > FASTFORWARD_MAX_SPEED)
+        return speed;
+    if (faster)
+        return speed == FASTFORWARD_MAX_SPEED ? FASTFORWARD_UNLIMITED : speed + 1u;
+    return speed == FASTFORWARD_MIN_SPEED ? speed : speed - 1u;
 }
 
 static const char *skip_blanks(const char *text)
@@ -163,17 +200,30 @@ static bool speed_is_valid(uint32_t speed)
     return speed == FASTFORWARD_UNLIMITED || (speed >= FASTFORWARD_MIN_SPEED && speed <= FASTFORWARD_MAX_SPEED);
 }
 
+/* Whether two of the settings' four keys are one. */
+static bool keys_clash(const struct fastforward_settings *settings)
+{
+    for (size_t i = 0; i < FASTFORWARD_KEY_COUNT; i++) {
+        for (size_t j = 0; j < i; j++) {
+            if (fastforward_keys_equal(fastforward_settings_key(settings, i), fastforward_settings_key(settings, j)))
+                return true;
+        }
+    }
+    return false;
+}
+
 int fastforward_init(const struct fastforward_settings *settings)
 {
-    if (settings == NULL || fastforward.enabled || !speed_is_valid(settings->speed)
-        || fastforward_keys_equal(&settings->hold, &settings->toggle)) {
-        (void)fprintf(stderr, MODULE ": fastforward_init needs a speed and two keys, and is called once\n");
+    if (settings == NULL || fastforward.enabled || !speed_is_valid(settings->speed) || keys_clash(settings)) {
+        (void)fprintf(stderr, MODULE ": fastforward_init needs a speed and four different keys, and is called once\n");
         return -1;
     }
     fastforward.settings = *settings;
     fastforward.held = false;
     fastforward.toggled = false;
     fastforward.pad_held = false;
+    fastforward.unfocused = false;
+    fastforward.flash_frames = 0;
     fastforward.enabled = true;
     return 0;
 }
@@ -184,6 +234,8 @@ void fastforward_shutdown(void)
     fastforward.held = false;
     fastforward.toggled = false;
     fastforward.pad_held = false;
+    fastforward.unfocused = false;
+    fastforward.flash_frames = 0;
 }
 
 bool fastforward_enabled(void)
@@ -191,16 +243,28 @@ bool fastforward_enabled(void)
     return fastforward.enabled;
 }
 
+/* A speed key's press: the speed, and the indicator shown for a while even
+ * with fast-forward off, so that the press is seen (at the list's end too). */
+static void set_speed(uint32_t speed)
+{
+    fastforward.settings.speed = speed;
+    fastforward.flash_frames = FASTFORWARD_FLASH_FRAMES;
+}
+
 /* A press, the overlay's while it is shown; a repeat does nothing. */
 static void key_down(const SDL_KeyboardEvent *key)
 {
-    if (key->repeat != 0 || overlay_shown())
+    if (key->repeat != 0 || overlay_takes_input())
         return;
     const int scancode = (int)key->keysym.scancode;
     if (fastforward_key_pressed(&fastforward.settings.toggle, scancode, key->keysym.mod))
         fastforward.toggled = !fastforward.toggled;
     else if (fastforward_key_pressed(&fastforward.settings.hold, scancode, key->keysym.mod))
         fastforward.held = true;
+    else if (fastforward_key_pressed(&fastforward.settings.faster, scancode, key->keysym.mod))
+        set_speed(fastforward_speed_step(fastforward.settings.speed, true));
+    else if (fastforward_key_pressed(&fastforward.settings.slower, scancode, key->keysym.mod))
+        set_speed(fastforward_speed_step(fastforward.settings.speed, false));
 }
 
 void fastforward_handle_event(const union SDL_Event *event)
@@ -216,9 +280,13 @@ void fastforward_handle_event(const union SDL_Event *event)
             fastforward.held = false;
         break;
     case SDL_WINDOWEVENT:
+        /* The hold ends (its key-up goes to the other window); the toggle
+         * only waits for the focus to come back (fastforward.h). */
         if (event->window.event == SDL_WINDOWEVENT_FOCUS_LOST) {
             fastforward.held = false;
-            fastforward.toggled = false;
+            fastforward.unfocused = true;
+        } else if (event->window.event == SDL_WINDOWEVENT_FOCUS_GAINED) {
+            fastforward.unfocused = false;
         }
         break;
     default:
@@ -230,7 +298,7 @@ void fastforward_handle_controller(const struct controller_edge *edge)
 {
     if (!fastforward.enabled || edge == NULL)
         return;
-    if (edge->pressed && !overlay_shown()) {
+    if (edge->pressed && !overlay_takes_input()) {
         if (edge->function == CONTROLLER_FAST_FORWARD_TOGGLE)
             fastforward.toggled = !fastforward.toggled;
         else if (edge->function == CONTROLLER_FAST_FORWARD_HOLD)
@@ -242,12 +310,48 @@ void fastforward_handle_controller(const struct controller_edge *edge)
 
 bool fastforward_active(void)
 {
-    return fastforward.enabled && (fastforward.held || fastforward.toggled || fastforward.pad_held);
+    return fastforward.enabled && !fastforward.unfocused
+           && (fastforward.held || fastforward.toggled || fastforward.pad_held);
 }
 
 uint32_t fastforward_multiplier(void)
 {
     return fastforward_active() ? fastforward.settings.speed : FRAME_PACER_NORMAL_SPEED;
+}
+
+uint32_t fastforward_speed(void)
+{
+    return fastforward.enabled ? fastforward.settings.speed : FRAME_PACER_NORMAL_SPEED;
+}
+
+int fastforward_set_speed(uint32_t speed)
+{
+    if (!fastforward.enabled || !speed_is_valid(speed))
+        return -1;
+    set_speed(speed);
+    return 0;
+}
+
+bool fastforward_toggled(void)
+{
+    return fastforward.enabled && fastforward.toggled;
+}
+
+void fastforward_set_toggled(bool on)
+{
+    if (fastforward.enabled)
+        fastforward.toggled = on;
+}
+
+enum fastforward_audio fastforward_audio(void)
+{
+    return fastforward.enabled ? fastforward.settings.audio : FASTFORWARD_AUDIO_PLAY;
+}
+
+void fastforward_set_audio(enum fastforward_audio audio)
+{
+    if (fastforward.enabled && (audio == FASTFORWARD_AUDIO_PLAY || audio == FASTFORWARD_AUDIO_MUTE))
+        fastforward.settings.audio = audio;
 }
 
 bool fastforward_muted(void)
@@ -257,7 +361,13 @@ bool fastforward_muted(void)
 
 bool fastforward_indicator_shown(void)
 {
-    return fastforward_active() && !overlay_shown();
+    return (fastforward_active() || (fastforward.enabled && fastforward.flash_frames > 0)) && !overlay_shown();
+}
+
+void fastforward_end_frame(void)
+{
+    if (fastforward.enabled && fastforward.flash_frames > 0)
+        fastforward.flash_frames--;
 }
 
 void fastforward_indicator_text(uint32_t speed, char *out, size_t size)
