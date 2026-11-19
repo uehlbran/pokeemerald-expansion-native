@@ -1091,17 +1091,91 @@ void InitTrainerBattleParameter(void)
     sTrainerBattleEndScript = NULL;
 }
 
+#if PLATFORM_NATIVE
+#if __SIZEOF_POINTER__ == 8
+// The trainerbattle macro (asm/macros/event.inc) writes its pointers as 4-byte words, and
+// script bytecode keeps them so at 64 bits (platform/build_glue/asm_filter.py widens only
+// the data laid out for C structs), while this struct's pointers are 8 bytes. Copying the
+// bytes put the defeat text's word in the intro text's high half, and every scripted
+// trainer battle read its texts and return scripts from the wrong offsets. The script's
+// layout is read field by field instead: 40 bytes, the pointers 4-byte little-endian
+// words, zero-extended (a .4byte address fits in 32 bits, or the link fails).
+#define TRAINER_BATTLE_SCRIPT_ARGS_SIZE 40
+
+static u16 ReadTrainerBattleScriptHalfword(const u8 *bytes)
+{
+    return (u16)(bytes[0] | (bytes[1] << 8));
+}
+
+static u8 *ReadTrainerBattleScriptPointer(const u8 *bytes)
+{
+    u32 word = (u32)bytes[0] | ((u32)bytes[1] << 8) | ((u32)bytes[2] << 16) | ((u32)bytes[3] << 24);
+    return (u8 *)(uintptr_t)word;
+}
+
+// The offsets are the macro's: the flag bits, localIdA, trainer_a, then three pointers,
+// localIdB, trainer_b, five pointers and rival_battle_flags.
+static void DecodeTrainerBattleArgs(const u8 *bytes, TrainerBattleParameter *out)
+{
+    memset(out->data, 0, sizeof(TrainerBattleParameter));
+    out->data[0] = bytes[0];
+    out->params.objEventLocalIdA = bytes[1];
+    out->params.opponentA = ReadTrainerBattleScriptHalfword(bytes + 2);
+    out->params.introTextA = ReadTrainerBattleScriptPointer(bytes + 4);
+    out->params.defeatTextA = ReadTrainerBattleScriptPointer(bytes + 8);
+    out->params.battleScriptRetAddrA = ReadTrainerBattleScriptPointer(bytes + 12);
+    out->params.objEventLocalIdB = bytes[16];
+    out->params.opponentB = ReadTrainerBattleScriptHalfword(bytes + 17);
+    out->params.introTextB = ReadTrainerBattleScriptPointer(bytes + 19);
+    out->params.defeatTextB = ReadTrainerBattleScriptPointer(bytes + 23);
+    out->params.battleScriptRetAddrB = ReadTrainerBattleScriptPointer(bytes + 27);
+    out->params.victoryText = ReadTrainerBattleScriptPointer(bytes + 31);
+    out->params.cannotBattleText = ReadTrainerBattleScriptPointer(bytes + 35);
+    out->params.rivalBattleFlags = bytes[39];
+}
+
+#endif
+#endif
+#line 1094
 void TrainerBattleLoadArgs(const u8 *data)
 {
     InitTrainerBattleParameter();
+#if PLATFORM_NATIVE
+#if __SIZEOF_POINTER__ != 8
+#line 1097
     memcpy(gTrainerBattleParameter.data, data, sizeof(TrainerBattleParameter));
     sTrainerBattleEndScript = (u8*)data + sizeof(TrainerBattleParameter);
+#else
+#line 1097
+    DecodeTrainerBattleArgs(data, &gTrainerBattleParameter);
+    sTrainerBattleEndScript = (u8*)data + TRAINER_BATTLE_SCRIPT_ARGS_SIZE;
+#endif
+#else
+#line 1097
+    memcpy(gTrainerBattleParameter.data, data, sizeof(TrainerBattleParameter));
+    sTrainerBattleEndScript = (u8*)data + sizeof(TrainerBattleParameter);
+#endif
+#line 1099
 }
 
 // loads trainer A parameter to trainer B. Used for second trainer in trainer_see.c
 void TrainerBattleLoadArgsSecondTrainer(const u8 *data)
 {
+#if PLATFORM_NATIVE
+#if __SIZEOF_POINTER__ != 8
+#line 1104
     TrainerBattleParameter *temp = (TrainerBattleParameter*)data;
+#else
+#line 1104
+    TrainerBattleParameter decoded;
+    DecodeTrainerBattleArgs(data, &decoded);
+    TrainerBattleParameter *temp = &decoded;
+#endif
+#else
+#line 1104
+    TrainerBattleParameter *temp = (TrainerBattleParameter*)data;
+#endif
+#line 1105
 
     TRAINER_BATTLE_PARAM.playMusicB = temp->params.playMusicA;
     TRAINER_BATTLE_PARAM.objEventLocalIdB = temp->params.objEventLocalIdA;

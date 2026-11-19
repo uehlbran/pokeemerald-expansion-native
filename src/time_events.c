@@ -36,7 +36,15 @@ void UpdateMirageRnd(u16 days)
     s32 rnd = GetMirageRnd();
     while (days)
     {
+#if PLATFORM_NATIVE
+        // On u32: the product passes INT_MAX, which C leaves undefined (UBSan stops there);
+        // the GBA's multiply wraps, as the unsigned one does.
+        rnd = (s32)ISO_RANDOMIZE2((u32)rnd);
+#else
+#line 39
         rnd = ISO_RANDOMIZE2(rnd);
+#endif
+#line 40
         days--;
     }
     SetMirageRnd(rnd);

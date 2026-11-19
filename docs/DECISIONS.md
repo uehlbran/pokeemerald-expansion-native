@@ -2665,3 +2665,29 @@ that `cp --preserve=timestamps` and `tar` onto the Windows file system do
 not trip on ownership, that the `again/` directory's save reaches the last
 stage intact, that a run by hand and the nightly share the caches as
 intended, and that the token's fetch of `${{ github.sha }}` works (a scheduled or manual run on a fork-less private or public repository; if the fetch of a bare SHA is refused, fetch the branch and check out the SHA).
+
+## 2026-11-19: A trainerbattle command's arguments are decoded in C at 64 bits, not widened in the macro
+
+Reported: the 64-bit game closed when the player talked to the rival on
+Route 103. `TrainerBattleLoadArgs` (`src/battle_setup.c`) copied the
+command's arguments over `TrainerBattleParameter`, whose eight pointers are
+8 bytes at 64 bits, while the `trainerbattle` macro writes them as 4-byte
+words and event-script bytecode keeps every address so. Every scripted
+trainer battle read shifted texts and return scripts; one with no intro
+text faulted.
+
+Chosen: under the guard and the width test, the arguments are read field
+by field at the macro's offsets, each pointer a zero-extended 4-byte word,
+and the script resumes 40 bytes on, as on the GBA. The bytecode is the
+same at both widths. Rejected: widening the macro's pointers to `.8byte`
+under `.ifdef NATIVE_POINTER_SIZE_8`, as `asm/macros/battle_script.inc` is
+widened. Battle scripts are read only through `CMD_ARGS` structs, so there
+every reader changes with the macro; event scripts are read by
+`ScriptReadWord` (4 bytes) everywhere else, and `trainerbattle` would be
+the one command whose length differs between the widths, for every code
+that walks or matches a script by its bytes (`src/debug.c` and
+`trainer_see.c` look at trainer scripts) to agree with.
+What it costs: the 40-byte layout is written twice, in the macro and in
+`DecodeTrainerBattleArgs`; an upgrade that changes the macro must change the
+decoder. `test/trainer_battle_args.c` sets every field and fails if the two
+disagree.
